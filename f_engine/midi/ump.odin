@@ -1,6 +1,6 @@
 // MIDI 1.0 messages, their Universal MIDI Packet (UMP) encoding, and helpers.
 // Drivers speak UMP (CoreMIDI, Windows MIDI Services) or bytes (ALSA, WinMM);
-// the engine works with MIDI 1.0 bytes. See docs/BACKEND.md.
+// the engine works with MIDI 1.0 bytes. See docs/design/backend.md.
 package midi
 
 // Length in bytes of a MIDI 1.0 message with this status byte (0 = not a

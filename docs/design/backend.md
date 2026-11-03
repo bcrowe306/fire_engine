@@ -1,4 +1,7 @@
-# Audio & MIDI backends
+---
+title: Audio and MIDI backends
+description: How fire:backend and fire:midi wrap CoreAudio, ALSA, JACK, WASAPI, CoreMIDI, the ALSA sequencer and WinMM, and how they are tested.
+---
 
 Status: audio drivers for CoreAudio (macOS 11+), ALSA and JACK (Linux) and
 WASAPI (Windows); MIDI drivers for CoreMIDI, the ALSA sequencer and WinMM; hot-plug

@@ -1,7 +1,7 @@
 // Simulated audio driver for tests and headless runs. It produces callbacks of
 // fixed or jittery size in any native format and plane layout, can loop
 // outputs back to inputs with a fixed latency, and can inject xruns, device
-// loss and format changes. See docs/BACKEND.md.
+// loss and format changes. See docs/design/backend.md.
 package fake
 
 import "base:intrinsics"

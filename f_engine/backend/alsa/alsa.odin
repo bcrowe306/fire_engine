@@ -1,6 +1,6 @@
 #+build linux
 // ALSA driver: playback and capture PCMs (linked, same card) serviced by a
-// thread of our own. See docs/BACKEND.md.
+// thread of our own. See docs/design/backend.md.
 package alsa
 
 import "base:intrinsics"

@@ -2,7 +2,7 @@
 // WinMM MIDI driver: works on every Windows version. No virtual ports (returns
 // .Unsupported) and no scheduling: Midi_Output holds messages until their time.
 // Windows MIDI Services (Windows 11 24H2+) will be a separate driver.
-// See docs/BACKEND.md.
+// See docs/design/backend.md.
 package winmm_midi
 
 import "base:intrinsics"

@@ -17,6 +17,10 @@ Node_VTable :: struct {
 	params:  proc(self: rawptr) -> []Param_Info,
 	// Control thread. Free the node's own state (the inverse of its `*_create`).
 	destroy: proc(self: rawptr, allocator: mem.Allocator),
+	// Control thread, after prepare. Frames by which the output lags the
+	// input (lookahead, linear-phase filters, plugin latency). May be nil: 0.
+	// The graph delays parallel paths to compensate.
+	latency: proc(self: rawptr) -> int,
 }
 
 Node_State :: enum u8 {
@@ -91,4 +95,10 @@ find_param :: proc(params: []Param_Info, id: Param_Id) -> (Param_Info, bool) {
 		if p.id == id do return p, true
 	}
 	return {}, false
+}
+
+// Frames of latency the node reports (0 if it doesn't). Control thread.
+node_latency :: proc(n: ^Node) -> int {
+	if n.vtable == nil || n.vtable.latency == nil do return 0
+	return max(n.vtable.latency(n.data), 0)
 }

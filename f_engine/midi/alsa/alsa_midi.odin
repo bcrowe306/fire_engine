@@ -1,6 +1,6 @@
 #+build linux
 // ALSA sequencer MIDI driver: virtual ports, routing to any sequencer port,
-// kernel-timestamped input and queue-scheduled output. See docs/BACKEND.md.
+// kernel-timestamped input and queue-scheduled output. See docs/design/backend.md.
 package alsa_midi
 
 import "base:intrinsics"

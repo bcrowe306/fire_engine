@@ -25,6 +25,7 @@ Probe_Block :: struct {
 }
 
 Probe :: struct {
+	log_allocator:   mem.Allocator, // the log lives until destroy, so it can be read after release
 	events:          []Probe_Event,
 	event_count:     int,
 	blocks:          []Probe_Block,
@@ -41,7 +42,12 @@ probe_vtable := core.Node_VTable {
 	process = probe_process,
 	reset   = proc(self: rawptr) {},
 	release = probe_release,
-	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Probe)(self), allocator) },
+	destroy = proc(self: rawptr, allocator: mem.Allocator) {
+		p := (^Probe)(self)
+		delete(p.events, p.log_allocator)
+		delete(p.blocks, p.log_allocator)
+		free(p, allocator)
+	},
 }
 
 probe_create :: proc(capacity := 65536, allocator := context.allocator) -> (core.Node, ^Probe) {
@@ -61,6 +67,9 @@ probe_blocks :: proc(p: ^Probe) -> []Probe_Block {
 @(private)
 probe_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, allocator: mem.Allocator) -> core.Error {
 	p := (^Probe)(self)
+	delete(p.events, p.log_allocator) // re-prepare
+	delete(p.blocks, p.log_allocator)
+	p.log_allocator = allocator
 	p.events = make([]Probe_Event, p.capacity, allocator)
 	p.blocks = make([]Probe_Block, p.capacity, allocator)
 	p.event_count, p.block_count, p.overflow = 0, 0, 0
@@ -105,10 +114,7 @@ probe_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	}
 }
 
-// Frees the probe's log and the probe itself.
+// Frees the probe's log and the probe itself (the same as core.node_destroy).
 probe_destroy :: proc(n: ^core.Node, p: ^Probe) {
-	delete(p.events, n.allocator)
-	delete(p.blocks, n.allocator)
-	p.events, p.blocks = nil, nil
 	core.node_destroy(n)
 }

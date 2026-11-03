@@ -1,7 +1,7 @@
 #+build windows
 // WASAPI driver: shared mode, event-driven, render and capture endpoints of
 // one physical device, serviced by an MMCSS "Pro Audio" thread of our own.
-// See docs/BACKEND.md.
+// See docs/design/backend.md.
 package wasapi
 
 import "base:intrinsics"

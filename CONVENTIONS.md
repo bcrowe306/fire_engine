@@ -22,13 +22,13 @@ on purpose, leave a comment explaining why.
 | `fire:rt`        | Realtime utilities: FTZ/DAZ, SPSC queue, `host_time_ns` (the device/MIDI clock), `set_realtime_priority`, `precise_sleep` | — |
 | `fire:dsp`       | DSP primitives and simple nodes                            | `core`, `rt`        |
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
-| `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/BACKEND.md`) | `core`, `rt` |
+| `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/design/backend.md`) | `core`, `rt` |
 | `fire:backend/fake` | Simulated driver for tests and headless runs           | `backend`, `core`   |
 | `fire:backend/<api>` | Drivers: `coreaudio` (macOS), `alsa` and `jack` (Linux; JACK loaded at run time), `wasapi` (Windows); planned ASIO | `backend`, `core`, `rt`, `sys/<api>` |
 | `fire:midi`      | MIDI 1.0 ⇄ UMP, input scheduling into blocks, SysEx queue, output sender, driver interface | `core`, `rt` |
 | `fire:midi/<api>` | MIDI drivers: `coremidi` (macOS), `alsa` (Linux sequencer), `winmm` (Windows) | `midi`, `core`, `rt`, `sys/<api>` |
 | `fire:sys/<api>` | Raw OS API bindings, no logic. Package name `<api>_sys` (Odin package names must be unique) | OS packages only |
-| `fire:graph`     | (planned) node graph, scheduler, thread pool               | `core`, `rt`        |
+| `fire:graph`     | Audio graph: nodes + connections, compiled plans, multithreaded scheduler, latency compensation (see `docs/design/graph.md`) | `core`, `rt` |
 
 `dsp` must never import `backend` or `graph`. Engine packages must never import `testkit`.
 

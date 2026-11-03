@@ -1,7 +1,7 @@
 #+build darwin
 // CoreMIDI driver (macOS 11+), using the UMP event-list APIs with the MIDI 1.0
 // protocol. Input from every connected source arrives through one input port,
-// so CoreMIDI delivers it on one thread. See docs/BACKEND.md.
+// so CoreMIDI delivers it on one thread. See docs/design/backend.md.
 package coremidi
 
 import "base:intrinsics"

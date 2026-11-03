@@ -1,6 +1,6 @@
 // JACK driver: the JACK server is the device. We register one JACK port per
 // channel; JACK's realtime thread calls us once per period. libjack is loaded
-// at run time (create returns .Unsupported without it). See docs/BACKEND.md.
+// at run time (create returns .Unsupported without it). See docs/design/backend.md.
 package jack
 
 import "base:intrinsics"

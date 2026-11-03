@@ -1,5 +1,5 @@
 // Audio device abstraction: the driver contract and the types both sides share.
-// See docs/BACKEND.md.
+// See docs/design/backend.md.
 package backend
 
 import "core:mem"

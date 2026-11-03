@@ -1,6 +1,6 @@
 #+build darwin
 // CoreAudio HAL driver: one device, driven by an AudioDeviceIOProc.
-// See docs/BACKEND.md. The HAL hands IOProcs canonical f32 buffers, one
+// See docs/design/backend.md. The HAL hands IOProcs canonical f32 buffers, one
 // AudioBuffer per stream, so the device's AudioBufferList maps 1:1 onto planes.
 package coreaudio
 
