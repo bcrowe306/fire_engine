@@ -3,7 +3,6 @@
 package backend
 
 import "core:mem"
-import "core:time"
 
 import "fire:core"
 
@@ -122,6 +121,7 @@ driver_enumerate :: proc(d: ^Driver, allocator := context.allocator) -> ([]Devic
 
 Device_Event_Kind :: enum u8 {
 	Devices_Changed, // devices added or removed; re-enumerate
+	Default_Device_Changed, // the system default input or output changed
 	Device_Lost,     // the open device went away; stop and close it
 	Format_Changed,  // the device changed rate or layout under us; reopen
 	Xrun,            // `count` discontinuities since the last poll
@@ -151,9 +151,4 @@ Device_Callback :: struct {
 	process: proc(user: rawptr, block: ^Io_Block),                       // [rt]
 	release: proc(user: rawptr),                                         // control thread; may be nil
 	user:    rawptr,
-}
-
-// [rt] The clock all device and MIDI timestamps use.
-host_time_ns :: proc "contextless" () -> u64 {
-	return u64(time.tick_now()._nsec)
 }

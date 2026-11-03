@@ -21,6 +21,7 @@ failure. Logs stay in `.test_artifacts/.run/`. `FIRE_TIMEOUT` (seconds, default
 | `rt`       | Flush-to-zero, SPSC queue (including a 2-thread stress test) |
 | `dsp`      | Smoother, gain, one-pole lowpass |
 | `backend`  | Format conversion, block splitting, timestamps, channel selection, loopback through every format and plane layout, xrun/unplug/format events, rt allocations, threaded start/stop (all on the fake driver) |
+| `coreaudio` | macOS only. SDK struct layouts, host clock vs CoreAudio, device listing; with BlackHole 2ch installed: loopback, start/stop, rate-change events (skipped without it) |
 
 ## Writing a DSP test
 

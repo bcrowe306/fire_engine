@@ -24,11 +24,14 @@ on purpose, leave a comment explaining why.
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
 | `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/BACKEND.md`) | `core`, `rt` |
 | `fire:backend/fake` | Simulated driver for tests and headless runs           | `backend`, `core`   |
-| `fire:backend/<os>` | (planned) CoreAudio / WASAPI / ALSA / JACK / ASIO drivers | `backend`, `core`, `rt`, `sys/<os>` |
-| `fire:sys/<os>`  | (planned) Raw OS API bindings, no logic                    | —                   |
+| `fire:backend/<api>` | Drivers: `coreaudio` (macOS); planned WASAPI / ALSA / JACK / ASIO | `backend`, `core`, `rt`, `sys/<api>` |
+| `fire:sys/<api>` | Raw OS API bindings, no logic. Package name `<api>_sys` (Odin package names must be unique) | OS packages only |
 | `fire:graph`     | (planned) node graph, scheduler, thread pool               | `core`, `rt`        |
 
 `dsp` must never import `backend` or `graph`. Engine packages must never import `testkit`.
+
+Platform-specific files use build tags (`#+build darwin`). A test package for one
+platform adds a `#+build !<os>` stub file with one empty test, so it compiles everywhere.
 
 ## Naming
 

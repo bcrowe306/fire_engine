@@ -1,6 +1,7 @@
 # Audio & MIDI backends
 
-Status: step 1 (shared API + fake driver) implemented. Native drivers follow.
+Status: shared API, fake driver and CoreAudio driver implemented (macOS 11+).
+CoreMIDI is next, then WASAPI, ALSA, JACK, ASIO.
 
 ## Decisions
 
@@ -111,7 +112,32 @@ started. `device_stop` stops the driver first, then calls `callback.release`.
 On `Device_Lost` the application calls `device_stop` and `device_close` from
 the control thread; the layer never tears itself down.
 
-## MIDI (step 2, with CoreMIDI)
+## CoreAudio (`fire:backend/coreaudio`)
+
+- HAL `AudioDeviceIOProc` on the device itself. IOProc buffers are canonical
+  f32, one `AudioBuffer` per stream, which become one plane each.
+- Opening at a different rate or buffer size changes the device (system-wide)
+  and leaves it changed. The rate change is asynchronous, so `open` waits until
+  the device reports it.
+- Input and output must be the same device. Separate devices return
+  `.Unsupported`; the user can make an aggregate device in Audio MIDI Setup.
+- Timestamps come from the IOProc's `AudioTimeStamp`s, converted with
+  `AudioConvertHostTimeToNanos`. `backend.host_time_ns` uses the same clock
+  (`CLOCK_UPTIME_RAW`). `core:time` uses `CLOCK_MONOTONIC_RAW`, which keeps
+  counting during sleep and drifts from CoreAudio after the first sleep.
+- Xruns: a jump in the output `mSampleTime`, or the HAL's processor-overload
+  notification.
+- Listeners (on the HAL's own notification thread):
+  - device list → `Devices_Changed`
+  - default input/output → `Default_Device_Changed`
+  - `DeviceIsAlive` → `Device_Lost`
+  - nominal rate → `Format_Changed`
+- `stop` calls `AudioDeviceStop`, then waits for any callback still past its
+  entry check to return.
+- Reported latency excludes the buffer: device latency + safety offset + stream
+  latency. BlackHole reports 0 and measures a 512-frame round trip at 256-frame buffers.
+
+## MIDI (next, with CoreMIDI)
 
 - `fire:midi` defines `Midi_Port_Info`, input and output ports, and virtual
   ports (CoreMIDI, ALSA seq, Windows MIDI Services; `.Unsupported` elsewhere).
@@ -130,6 +156,8 @@ the control thread; the layer never tears itself down.
   thread. It supports jittery callback sizes, every native format and plane
   layout, loopback with a fixed latency, and injected xruns, device loss and
   format changes.
-- **Local only:** loopback through BlackHole on macOS (step 2) checks real
-  latency, drift and dropouts. Those tests skip themselves when the device is
-  absent.
+- **Local only:** `tests/coreaudio` uses BlackHole 2ch to check loopback (a
+  constant-gain copy at the measured latency, bit-exact when BlackHole's volume
+  is 100%), allocations, timestamps, start/stop cycles and rate-change events.
+  Without BlackHole (as on CI) those tests pass as skipped. They take a
+  cross-process lock, so concurrent runs never share the device.

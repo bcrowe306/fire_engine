@@ -45,7 +45,8 @@ run_with_timeout() {
 	"$@" &
 	local pid=$!
 	(
-		sleep "$secs"
+		exec 2>/dev/null # no "Terminated" noise when the watchdog is cancelled
+		sleep "$secs" || exit 0 # cancelled: the sleep was killed, do nothing
 		echo "*** killed after ${secs}s (hung?)"
 		pkill -9 -P "$pid" 2>/dev/null
 		kill -9 "$pid" 2>/dev/null
