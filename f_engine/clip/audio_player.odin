@@ -17,6 +17,7 @@ Audio_Player_Settings :: struct {
 	channels:  int,                    // the node's output channels
 	quality:   dsp.Resampler_Quality,  // for rate conversion and repitching
 	max_speed: f64,                    // fastest playback (source frames per output frame), ≥ 1
+	stretcher: ^Stretcher_VTable,      // for `.Stretch` clips (e.g. `&stretch.signalsmith`); nil: they are refused
 }
 
 // Stereo out, Medium resampling, up to 4× speed.
@@ -57,6 +58,9 @@ Audio_Player :: struct {
 	out_pos:     f64, // source frame of the next output frame
 	in_pos:      i64, // source frame of the next input frame
 	speed:       f64, // last speed used
+	// Stretch mode.
+	stretch_rate:  f64, // stretcher input per output frame, last chunk
+	stretch_carry: f64, // fraction of an input frame owed to the next chunk
 }
 
 // Frames over which starts fade in and stops and jumps crossfade.
@@ -77,6 +81,11 @@ Audio_Config :: struct {
 	rendered:  [][]f32, // per source channel: AUDIO_CHUNK resampled frames
 	views:     [][]f32, // scratch slice headers
 	views2:    [][]f32,
+	// Stretch mode: the stretcher, and the device-rate audio it is fed.
+	stretcher: rawptr,
+	stage:     [][]f32,
+	views3:    [][]f32,
+	input_latency, output_latency: int,
 }
 
 // Control thread. Creates a player node and a handle for controlling it;
@@ -94,7 +103,10 @@ audio_player_create :: proc(settings: Audio_Player_Settings, allocator := contex
 // Control thread. Plays `clip` (nil: nothing) placed as `placement`, from
 // the player's next block; the switch crossfades. Allocates the clip's
 // stream (with cues at the clip's start, its loop start and the placement's
-// start) and resampler now. Keeps its own reference to the clip.
+// start), resampler and (for `.Stretch`) stretcher now. Keeps its own
+// reference to the clip. A `.Stretch` clip needs `settings.stretcher`
+// (`.Unsupported` otherwise) and a prepared node (`.Invalid_State`: add it
+// to the graph first).
 audio_player_set :: proc(p: ^Audio_Player, clip: ^Audio_Clip, placement: Placement) -> core.Error {
 	audio_collect(p)
 	cfg := new(Audio_Config, p.allocator)
@@ -132,6 +144,24 @@ audio_config_init :: proc(p: ^Audio_Player, cfg: ^Audio_Config) -> core.Error {
 	if serr != .None do return .Out_Of_Memory
 	cfg.stream = st
 	max_input := int(f64(AUDIO_CHUNK) * p.settings.max_speed) + 2048 // plus the filter's reach
+	if c.mode == .Stretch {
+		vt := p.settings.stretcher
+		if vt == nil do return .Unsupported
+		if p.sample_rate == 0 do return .Invalid_State
+		rate_speed := c.sample_rate / p.sample_rate
+		if rate_speed > p.settings.max_speed do return .Unsupported
+		max_rate := p.settings.max_speed / rate_speed
+		cfg.stretcher = vt.create(c.channels, p.sample_rate, max_rate)
+		if cfg.stretcher == nil do return .Out_Of_Memory
+		cfg.input_latency, cfg.output_latency = vt.input_latency(cfg.stretcher), vt.output_latency(cfg.stretcher)
+		// Room for a seek's priming, or a chunk at the fastest rate plus a
+		// latency change.
+		stage := cfg.input_latency + int(max_rate * f64(cfg.output_latency)) + int(max_rate * AUDIO_CHUNK) + 64
+		cfg.stage = make([][]f32, c.channels, a)
+		cfg.views3 = make([][]f32, c.channels, a)
+		for &b in cfg.stage do b = make([]f32, stage, a)
+		max_input = max(max_input, int(f64(stage) * rate_speed) + 2048)
+	}
 	dsp.resampler_init(&cfg.resampler, c.channels, p.settings.quality, p.settings.max_speed, max_input, a) or_return
 	cfg.input = make([][]f32, c.channels, a)
 	cfg.rendered = make([][]f32, c.channels, a)
@@ -155,6 +185,10 @@ audio_config_free :: proc(p: ^Audio_Player, cfg: ^Audio_Config) {
 	delete(cfg.rendered, a)
 	delete(cfg.views, a)
 	delete(cfg.views2, a)
+	if cfg.stretcher != nil do p.settings.stretcher.destroy(cfg.stretcher)
+	for b in cfg.stage do delete(b, a)
+	delete(cfg.stage, a)
+	delete(cfg.views3, a)
 	free(cfg, a)
 }
 
@@ -261,7 +295,7 @@ audio_player_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 			p.active = false
 			return
 		}
-		if c.mode == .Repitch {
+		if c.mode != .Original {
 			// Correct any drift as well, or jump if it is too far off (an
 			// edited tempo map, say).
 			drift = target - p.out_pos
@@ -277,7 +311,7 @@ audio_player_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	// timeline moves through during it (so tempo ramps are followed within a
 	// call), plus a share of the drift.
 	plan := Speed_Plan{fixed = speed}
-	if c.mode == .Repitch {
+	if c.mode != .Original {
 		plan = {t = t, tl = tl, offset = start, frames_per_beat = frames_per_beat(c, c.bpm), drift = drift / f64(max(min(frames, stop) - start, 1)), max_speed = p.settings.max_speed}
 	}
 	envelope := Envelope{1, 0, stop}
@@ -289,6 +323,7 @@ audio_player_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 			return
 		}
 		begin(p, cfg, target)
+		if c.mode == .Stretch do stretch_seek(p, cfg, plan_speed(plan, 0, min(AUDIO_CHUNK, min(frames, stop) - start)))
 		envelope = {0, 1.0 / DECLICK_FRAMES, stop - start}
 	}
 	p.active = true
@@ -312,7 +347,7 @@ source_position :: proc "contextless" (cfg: ^Audio_Config, beat: tb.Beats, tempo
 	pl := cfg.placement
 	d := beat - pl.at
 	if d < 0 || (pl.length > 0 && d >= pl.length) do return 0, false
-	fpb := frames_per_beat(c, c.bpm if c.mode == .Repitch else tempo)
+	fpb := frames_per_beat(c, tempo if c.mode == .Original else c.bpm)
 	frame = f64(c.start) + f64(pl.offset + d) * fpb
 	if pl.loop && frame >= f64(c.loop_end) {
 		l := f64(c.loop_end - c.loop_start)
@@ -375,14 +410,12 @@ render :: proc "contextless" (p: ^Audio_Player, cfg: ^Audio_Config, out: [][]f32
 		n := min(AUDIO_CHUNK, frames - done)
 		speed := plan_speed(plan, done, n)
 		p.speed = speed
-		need := dsp.resampler_input_needed(&cfg.resampler, n, speed)
-		need = min(need, len(cfg.input[0]))
-		feed(p, cfg, need)
-		for ch in 0 ..< c.channels {
-			cfg.views[ch] = cfg.input[ch][:need]
-			cfg.views2[ch] = cfg.rendered[ch][:n]
+		made := 0
+		if c.mode == .Stretch {
+			made = stretch_chunk(p, cfg, n, speed)
+		} else {
+			made = resample(p, cfg, cfg.rendered, n, speed)
 		}
-		_, made := dsp.resampler_process(&cfg.resampler, cfg.views, cfg.views2, speed)
 		for i in 0 ..< made {
 			k := done + i
 			g := f64(c.gain) * clamp(env.start + env.step * f64(k), 0, 1) * clamp(f64(env.end - k) / DECLICK_FRAMES, 0, 1)
@@ -397,6 +430,55 @@ render :: proc "contextless" (p: ^Audio_Player, cfg: ^Audio_Config, out: [][]f32
 		if made == 0 do break
 		done += made
 	}
+}
+
+// Resamples `n` frames at `speed` (source frames per frame) into `out`
+// (one slice per source channel), reading the source as needed. Returns the
+// frames made.
+@(private)
+resample :: proc "contextless" (p: ^Audio_Player, cfg: ^Audio_Config, out: [][]f32, n: int, speed: f64) -> int {
+	need := min(dsp.resampler_input_needed(&cfg.resampler, n, speed), len(cfg.input[0]))
+	feed(p, cfg, need)
+	for ch in 0 ..< cfg.clip.channels {
+		cfg.views[ch] = cfg.input[ch][:need]
+		cfg.views2[ch] = out[ch][:n]
+	}
+	_, made := dsp.resampler_process(&cfg.resampler, cfg.views, cfg.views2, speed)
+	return made
+}
+
+// Stretch: primes the stretcher from the current source position, so its
+// next output is that position, for a start at `speed`.
+@(private)
+stretch_seek :: proc "contextless" (p: ^Audio_Player, cfg: ^Audio_Config, speed: f64) {
+	rate_speed := cfg.clip.sample_rate / p.sample_rate
+	rate := speed / rate_speed
+	frames := min(cfg.input_latency + int(math.round(rate * f64(cfg.output_latency))), len(cfg.stage[0]))
+	made := resample(p, cfg, cfg.stage, frames, rate_speed)
+	for ch in 0 ..< cfg.clip.channels do cfg.views3[ch] = cfg.stage[ch][:made]
+	p.settings.stretcher.output_seek(cfg.stretcher, cfg.views3, made)
+	p.stretch_rate, p.stretch_carry = rate, 0
+}
+
+// Stretch: makes `n` output frames that advance the heard position by
+// `speed` source frames each. The stretcher is fed device-rate audio (the
+// source converted, pitch unchanged): enough to cover the advance, plus the
+// change in its rate-dependent output latency.
+@(private)
+stretch_chunk :: proc "contextless" (p: ^Audio_Player, cfg: ^Audio_Config, n: int, speed: f64) -> int {
+	rate_speed := cfg.clip.sample_rate / p.sample_rate
+	rate := speed / rate_speed
+	want := rate * f64(n) + (rate - p.stretch_rate) * f64(cfg.output_latency) + p.stretch_carry
+	in_frames := clamp(int(math.floor(want)), 0, len(cfg.stage[0]))
+	p.stretch_carry = want - f64(in_frames)
+	p.stretch_rate = rate
+	made := resample(p, cfg, cfg.stage, in_frames, rate_speed)
+	for ch in 0 ..< cfg.clip.channels {
+		cfg.views3[ch] = cfg.stage[ch][:made]
+		cfg.views2[ch] = cfg.rendered[ch][:n]
+	}
+	p.settings.stretcher.process(cfg.stretcher, cfg.views3, made, cfg.views2, n)
+	return n
 }
 
 // Reads `need` source frames into the resampler input, wrapping at the

@@ -330,6 +330,9 @@ bad_audio_clips :: proc(t: ^testing.T) {
 	testing.expect_value(t, err, core.Error.Invalid_Argument)
 	_, err = clip.audio_clip_create(r.source, {loop_start = 500, loop_end = 400})
 	testing.expect_value(t, err, core.Error.Invalid_Argument)
-	_, err = clip.audio_clip_create(r.source, {bpm = 120, mode = .Stretch})
-	testing.expect_value(t, err, core.Error.Unsupported)
+	// A Stretch clip is fine; a player without a stretcher refuses it.
+	c, serr := clip.audio_clip_create(r.source, {bpm = 120, mode = .Stretch})
+	testing.expect_value(t, serr, core.Error.None)
+	testing.expect_value(t, clip.audio_player_set(r.player, c, {}), core.Error.Unsupported)
+	clip.audio_clip_release(c)
 }

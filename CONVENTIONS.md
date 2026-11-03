@@ -23,6 +23,7 @@ on purpose, leave a comment explaining why.
 | `fire:dsp`       | DSP primitives and simple nodes; the resampler             | `core`, `rt`        |
 | `fire:audiofile` | WAV/AIFF reading and writing (pure Odin)                   | `core`              |
 | `fire:clip`      | Clips and their players: immutable MIDI and audio clips, player nodes, Standard MIDI Files | `core`, `rt`, `timebase`, `dsp`, `stream` |
+| `fire:stretch`   | Signalsmith Stretch as a `clip.Stretcher_VTable` (C++ in `vendor/signalsmith`, built by `scripts/stretch.sh`). Only apps import it | `clip`, `sys/signalsmith` |
 | `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
@@ -36,7 +37,11 @@ on purpose, leave a comment explaining why.
 | `fire:transport` | The clock: beat grid, tempo, bars, timelines, quantized commands, block splitting, MIDI clock out, the sync hook (see `docs/design/transport.md`) | `core`, `rt`, `timebase` |
 | `fire:link`      | Optional Ableton Link sync (GPLv2+, built by `scripts/link.sh` into the gitignored `third_party/`). Nothing may import it except apps and its tests | `transport`, `core`, `rt`, `sys/abl_link` |
 
-`dsp` must never import `backend` or `graph`. Engine packages must never import `testkit` or `link`.
+`dsp` must never import `backend` or `graph`. Engine packages must never import `testkit`, `link` or `stretch`.
+
+Third-party code we ship lives in `vendor/<name>/` with its licence and a
+README giving the exact version and source; it must be MIT-compatible.
+GPL code (Ableton Link) is never committed: it is fetched into `third_party/`.
 
 A test package whose dependency is built separately has a `REQUIRES` file: globs
 that must match (else `scripts/test.sh` skips it) and `#` lines saying how to get them.

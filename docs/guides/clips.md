@@ -102,7 +102,39 @@ transport.play(clock, tl, tb.Quantize.Bar)
 |------|---------------|-------|---------|
 | `.Original` | no: plays at the file's speed | unchanged | one-shots, vocals, dialogue |
 | `.Repitch` | yes, by speed (`bpm` says the material's tempo) | moves with tempo | drum loops, vinyl-style |
-| `.Stretch` | yes, at the original pitch | unchanged | coming next |
+| `.Stretch` | yes (time-stretched) | unchanged | loops and stems at any tempo |
+
+### Time-stretching
+
+`.Stretch` clips need a stretcher in the player's settings. `fire:stretch`
+provides Signalsmith Stretch (MIT, C++, vendored). Build it once:
+
+```bash
+./scripts/stretch.sh
+```
+
+```odin
+settings := clip.default_audio_player_settings(tl, streamer)
+settings.stretcher = &stretch.signalsmith
+node, player := clip.audio_player_create(settings)
+id, _ := graph.add_node(g, node, 0, 2) // prepare first: the stretcher needs the sample rate
+loop, _ := clip.audio_clip_create(src, {bpm = 100, mode = .Stretch})
+clip.audio_player_set(player, loop, {loop = true})
+```
+
+- **Tempo without pitch change.** `examples/stretched_loop` plays the same
+  tone repitched and stretched through a tempo ramp. Repitched, it rises
+  from 407 Hz to 571 Hz; stretched, it stays at 440 Hz.
+- **On the beat.** The stretcher hears its input about 60 ms late (it
+  analyses 120 ms blocks). The player primes it at every start and jump
+  and feeds it ahead, so clicks recorded on beats land on the timeline's
+  beats. In the tests they land within about 3 ms, with no drift through
+  tempo changes and loops.
+- **Cost.** Stretching costs far more CPU than repitching (FFT analysis
+  and resynthesis), so use it where pitch must hold.
+- **Bring your own.** `fire:clip` itself has no C++. Any
+  `clip.Stretcher_VTable` works, and a pure-Odin port of Signalsmith
+  Stretch is planned.
 
 **Settings:**
 

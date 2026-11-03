@@ -10,7 +10,7 @@ import tb "fire:timebase"
 Audio_Mode :: enum u8 {
 	Original, // plays at the file's own speed whatever the tempo (one-shots, dialogue, field recordings)
 	Repitch,  // follows tempo by playing faster or slower, so pitch moves with it (turntable-style)
-	Stretch,  // follows tempo at the original pitch (time-stretching; not available yet)
+	Stretch,  // follows tempo at the original pitch (time-stretching; the player needs a `Stretcher_VTable`)
 }
 
 // How to make an audio clip from a source. Positions are in the source's
@@ -41,8 +41,7 @@ Audio_Clip :: struct {
 
 // Control thread. Makes a clip on `src` (which it keeps a reference to).
 // Fails with `.Invalid_Argument` for an empty or out-of-range region or
-// loop, or a Repitch or Stretch clip without a `bpm`; with `.Unsupported`
-// for `.Stretch` (coming in a later version).
+// loop, or a Repitch or Stretch clip without a `bpm`.
 audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, allocator := context.allocator) -> (^Audio_Clip, core.Error) {
 	info := stream.source_info(src)
 	s := settings
@@ -51,7 +50,6 @@ audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, al
 	if s.loop_start == 0 && s.loop_end == 0 do s.loop_start, s.loop_end = s.start, s.end
 	if s.loop_start < s.start || s.loop_end > s.end || s.loop_end <= s.loop_start do return nil, .Invalid_Argument
 	if s.mode != .Original && !(s.bpm > 0) do return nil, .Invalid_Argument
-	if s.mode == .Stretch do return nil, .Unsupported
 	if s.gain == 0 do s.gain = 1
 	if s.fade_in == 0 do s.fade_in = 0.005
 	if s.fade_out == 0 do s.fade_out = 0.005

@@ -40,6 +40,10 @@ jobs:
         shell: bash
         run: ./scripts/link.sh
 
+      - name: Build Signalsmith Stretch
+        shell: bash
+        run: ./scripts/stretch.sh
+
       - name: Test
         shell: bash
         env:

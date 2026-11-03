@@ -63,7 +63,7 @@ How an audio clip relates to tempo.
 |-------|-------------|
 | `Original` | plays at the file's own speed whatever the tempo (one-shots, dialogue, field recordings) |
 | `Repitch` | follows tempo by playing faster or slower, so pitch moves with it (turntable-style) |
-| `Stretch` | follows tempo at the original pitch (time-stretching; not available yet) |
+| `Stretch` | follows tempo at the original pitch (time-stretching; the player needs a `Stretcher_VTable`) |
 
 ### Audio_Clip_Settings
 
@@ -131,6 +131,7 @@ Audio_Player_Settings :: struct {
 	channels: int,
 	quality: dsp.Resampler_Quality,
 	max_speed: f64,
+	stretcher: ^Stretcher_VTable,
 }
 ```
 
@@ -143,6 +144,7 @@ Settings for `audio_player_create`. Start from `default_audio_player_settings`.
 | `channels` | the node's output channels |
 | `quality` | for rate conversion and repitching |
 | `max_speed` | fastest playback (source frames per output frame), ≥ 1 |
+| `stretcher` | for `.Stretch` clips (e.g. `&stretch.signalsmith`); nil: they are refused |
 
 ### Audio_Player
 
@@ -390,6 +392,39 @@ The contents of a Standard MIDI File. Free with `midi_file_destroy`.
 | `ppq` | the file's ticks per quarter note |
 | `allocator` |  |
 
+### Stretcher_VTable
+
+```odin
+Stretcher_VTable :: struct {
+	create: proc(channels: int, sample_rate: f64, max_rate: f64) -> rawptr,
+	destroy: proc(s: rawptr),
+	input_latency: proc(s: rawptr) -> int,
+	output_latency: proc(s: rawptr) -> int,
+	output_seek: proc "contextless"(s: rawptr, input: [][]f32, frames: int),
+	process: proc "contextless"(s: rawptr, input: [][]f32, in_frames: int, output: [][]f32, out_frames: int),
+}
+```
+
+A time-stretcher for `.Stretch` audio clips: changes duration, not pitch.
+Fire Engine's clips don't depend on any particular one; `fire:stretch`
+provides Signalsmith Stretch, and you can supply your own. Give it to the
+player in `Audio_Player_Settings.stretcher`.
+
+The player feeds it audio at the device's sample rate and keeps it in
+sync with this model: after `output_seek` with input starting at
+position P, the next output is P; from then on, the position heard is
+the input fed so far, minus `input_latency`, minus the playback rate
+(input per output frame) times `output_latency`.
+
+| Field | Description |
+|-------|-------------|
+| `create` | Control thread. A stretcher for `channels` channels at `sample_rate`, ready for rates up to `max_rate` (input frames per output frame). After this, no other proc may allocate. nil on failure. |
+| `destroy` | Control thread. |
+| `input_latency` | Frames of input ahead of the position being processed. |
+| `output_latency` | Frames by which output trails the position being processed. |
+| `output_seek` | [rt] Start over so that the next output begins at input frame 0; `frames` = input_latency + rate × output_latency. |
+| `process` | [rt] Consume `in_frames` frames and produce `out_frames`; their ratio is the playback rate. |
+
 ## Procedures
 
 ### audio_clip_create
@@ -400,8 +435,7 @@ audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, al
 
 Control thread. Makes a clip on `src` (which it keeps a reference to).
 Fails with `.Invalid_Argument` for an empty or out-of-range region or
-loop, or a Repitch or Stretch clip without a `bpm`; with `.Unsupported`
-for `.Stretch` (coming in a later version).
+loop, or a Repitch or Stretch clip without a `bpm`.
 
 ### audio_clip_retain
 
@@ -455,7 +489,10 @@ audio_player_set :: proc(p: ^Audio_Player, clip: ^Audio_Clip, placement: Placeme
 Control thread. Plays `clip` (nil: nothing) placed as `placement`, from
 the player's next block; the switch crossfades. Allocates the clip's
 stream (with cues at the clip's start, its loop start and the placement's
-start) and resampler now. Keeps its own reference to the clip.
+start), resampler and (for `.Stretch`) stretcher now. Keeps its own
+reference to the clip. A `.Stretch` clip needs `settings.stretcher`
+(`.Unsupported` otherwise) and a prepared node (`.Invalid_State`: add it
+to the graph first).
 
 ### audio_player_ready
 

@@ -14,3 +14,6 @@ secrets.env
 
 # Fetched and built by scripts/link.sh (Ableton Link is GPLv2+; never commit)
 third_party/
+
+# Built by scripts/stretch.sh
+f_engine/sys/signalsmith/lib/
