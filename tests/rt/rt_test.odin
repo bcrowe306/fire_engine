@@ -83,3 +83,97 @@ spsc_two_thread_stress :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.bad, 0)
 	testing.expect_value(t, rt.spsc_len(&s.q), 0)
 }
+
+@(test)
+mpmc_basic :: proc(t: ^testing.T) {
+	q: rt.Mpmc_Queue(int)
+	rt.mpmc_init(&q, 3)
+	defer rt.mpmc_destroy(&q)
+	testing.expect_value(t, rt.mpmc_capacity(&q), 4)
+	for i in 0 ..< 4 do testing.expect(t, rt.mpmc_push(&q, i))
+	testing.expect(t, !rt.mpmc_push(&q, 99), "push into full queue must fail")
+	for i in 0 ..< 4 {
+		v, ok := rt.mpmc_pop(&q)
+		testing.expect(t, ok)
+		testing.expect_value(t, v, i)
+	}
+	_, ok := rt.mpmc_pop(&q)
+	testing.expect(t, !ok)
+	// Wrap around several laps.
+	for lap in 0 ..< 10 {
+		for i in 0 ..< 3 do rt.mpmc_push(&q, lap * 10 + i)
+		for i in 0 ..< 3 {
+			v, _ := rt.mpmc_pop(&q)
+			testing.expect_value(t, v, lap * 10 + i)
+		}
+	}
+}
+
+Mpmc_Stress :: struct {
+	q:        rt.Mpmc_Queue(u64),
+	per:      u64,
+	seen:     []u32, // atomic counts per value
+	consumed: u64,   // atomic
+}
+
+// 4 producers and 4 consumers through a small queue: every value exactly once.
+@(test)
+mpmc_stress :: proc(t: ^testing.T) {
+	PRODUCERS :: 4
+	s: Mpmc_Stress
+	s.per = 100_000
+	rt.mpmc_init(&s.q, 64)
+	defer rt.mpmc_destroy(&s.q)
+	s.seen = make([]u32, PRODUCERS * int(s.per))
+	defer delete(s.seen)
+
+	Arg :: struct {
+		s:  ^Mpmc_Stress,
+		id: u64,
+	}
+	args: [PRODUCERS]Arg
+	threads: [2 * PRODUCERS]^thread.Thread
+	for p in 0 ..< PRODUCERS {
+		args[p] = {&s, u64(p)}
+		threads[p] = thread.create_and_start_with_data(&args[p], proc(data: rawptr) {
+			a := (^Arg)(data)
+			for i: u64 = 0; i < a.s.per; {
+				if rt.mpmc_push(&a.s.q, a.id * a.s.per + i) do i += 1
+			}
+		})
+	}
+	for c in 0 ..< PRODUCERS {
+		threads[PRODUCERS + c] = thread.create_and_start_with_data(&s, proc(data: rawptr) {
+			s := (^Mpmc_Stress)(data)
+			total := u64(len(s.seen))
+			for intrinsics.atomic_load(&s.consumed) < total {
+				if v, ok := rt.mpmc_pop(&s.q); ok {
+					intrinsics.atomic_add(&s.seen[v], 1)
+					intrinsics.atomic_add(&s.consumed, 1)
+				}
+			}
+		})
+	}
+	for th in threads {
+		thread.join(th)
+		thread.destroy(th)
+	}
+	bad := 0
+	for n in s.seen do if n != 1 do bad += 1
+	testing.expect_value(t, bad, 0)
+}
+
+// Each worker raises its own priority; on macOS this must succeed for any
+// user (a time-constraint policy needs no privileges).
+@(test)
+realtime_priority_from_thread :: proc(t: ^testing.T) {
+	ok: bool
+	th := thread.create_and_start_with_data(&ok, proc(data: rawptr) {
+		(^bool)(data)^ = rt.set_realtime_priority(80, 5_333_333)
+	})
+	thread.join(th)
+	thread.destroy(th)
+	when ODIN_OS == .Darwin || ODIN_OS == .Windows {
+		testing.expect(t, ok, "set_realtime_priority failed")
+	}
+}

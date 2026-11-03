@@ -56,6 +56,11 @@ Settings :: struct {
 	workers:              int,
 	// Delay parallel paths so they arrive aligned (see `latency`).
 	latency_compensation: bool,
+	// Installed as context.allocator on worker threads. Nodes must not
+	// allocate while processing; the default (zero) is the nil allocator, so
+	// an allocation fails instead of hitting the heap. Tests install a
+	// trapping allocator here.
+	worker_allocator:     mem.Allocator,
 	max_events:           int, // events a node may emit per block (more are dropped and counted)
 	max_pending_params:   int, // queued parameter changes per node
 	param_queue:          int, // parameter changes in flight from the control thread
