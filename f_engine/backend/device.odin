@@ -242,7 +242,7 @@ driver_process :: proc "contextless" (dev: ^Device, buf: ^Driver_Buffers) {
 	locate_channels(dev.out_refs, dev.out_channels, buf.output, dev.format.output_format)
 
 	sr := dev.format.sample_rate
-	callback_ns := buf.callback_ns != 0 ? buf.callback_ns : host_time_ns()
+	callback_ns := buf.callback_ns != 0 ? buf.callback_ns : rt.host_time_ns()
 
 	block := Io_Block {
 		inputs      = dev.in_views,

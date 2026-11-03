@@ -7,3 +7,7 @@
 JUCE/
 .build/
 tracktion_engine/
+
+# Local credentials (never commit)
+secrets.env
+*.env

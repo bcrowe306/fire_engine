@@ -1,5 +1,5 @@
 #+build darwin
-package backend
+package rt
 
 foreign import system "system:System"
 

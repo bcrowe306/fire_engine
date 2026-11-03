@@ -17,6 +17,7 @@ import "core:time"
 import "fire:backend"
 import cad "fire:backend/coreaudio"
 import "fire:core"
+import "fire:rt"
 import ca "fire:sys/coreaudio"
 import kit "fire:testkit"
 
@@ -56,7 +57,7 @@ struct_layouts_match_sdk :: proc(t: ^testing.T) {
 
 @(test)
 host_clock_matches_coreaudio :: proc(t: ^testing.T) {
-	ours := backend.host_time_ns()
+	ours := rt.host_time_ns()
 	theirs := ca.AudioConvertHostTimeToNanos(ca.AudioGetCurrentHostTime())
 	diff := abs(i64(theirs) - i64(ours))
 	testing.expectf(t, diff < 1_000_000, "host_time_ns and CoreAudio host time differ by %d ns", diff)
@@ -111,7 +112,7 @@ Recorder :: struct {
 // [rt]
 recorder_process :: proc(user: rawptr, b: ^backend.Io_Block) {
 	r := (^Recorder)(user)
-	entry := backend.host_time_ns()
+	entry := rt.host_time_ns()
 	if b.sample_time != r.next_time do r.gaps += 1
 	r.next_time = b.sample_time + i64(b.frames)
 	if b.xrun do r.xrun_blocks += 1

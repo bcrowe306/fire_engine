@@ -19,12 +19,14 @@ on purpose, leave a comment explaining why.
 |------------------|------------------------------------------------------------|---------------------|
 | `fire:core`      | Shared types: `Event`, `Transport`, `Process_Context`, `Node`, `Param_Info`, `Error` | `fire:timebase` |
 | `fire:timebase`  | Sample/second/beat/tick/BBT conversions, tempo map         | —                   |
-| `fire:rt`        | Realtime utilities: FTZ/DAZ, SPSC queue, RT thread setup   | —                   |
+| `fire:rt`        | Realtime utilities: FTZ/DAZ, SPSC queue, `host_time_ns` (the device/MIDI clock), RT thread setup | — |
 | `fire:dsp`       | DSP primitives and simple nodes                            | `core`, `rt`        |
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
 | `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/BACKEND.md`) | `core`, `rt` |
 | `fire:backend/fake` | Simulated driver for tests and headless runs           | `backend`, `core`   |
 | `fire:backend/<api>` | Drivers: `coreaudio` (macOS); planned WASAPI / ALSA / JACK / ASIO | `backend`, `core`, `rt`, `sys/<api>` |
+| `fire:midi`      | MIDI 1.0 ⇄ UMP, input scheduling into blocks, SysEx queue, output sender, driver interface | `core`, `rt` |
+| `fire:midi/<api>` | MIDI drivers: `coremidi` (macOS)                         | `midi`, `core`, `rt`, `sys/<api>` |
 | `fire:sys/<api>` | Raw OS API bindings, no logic. Package name `<api>_sys` (Odin package names must be unique) | OS packages only |
 | `fire:graph`     | (planned) node graph, scheduler, thread pool               | `core`, `rt`        |
 

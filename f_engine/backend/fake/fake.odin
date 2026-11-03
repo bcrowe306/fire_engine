@@ -11,6 +11,7 @@ import "core:time"
 
 import "fire:backend"
 import "fire:core"
+import "fire:rt"
 
 Device_Spec :: struct {
 	id, name:              string,
@@ -288,7 +289,7 @@ thread_main :: proc(data: rawptr) {
 			time.sleep(time.Millisecond)
 			continue
 		}
-		frames := cycle(f, backend.host_time_ns())
+		frames := cycle(f, rt.host_time_ns())
 		if f.cfg.realtime {
 			time.sleep(time.Duration(f64(frames) * 1e9 / f.format.sample_rate))
 		} else {

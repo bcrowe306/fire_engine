@@ -1,7 +1,7 @@
 # Audio & MIDI backends
 
-Status: shared API, fake driver and CoreAudio driver implemented (macOS 11+).
-CoreMIDI is next, then WASAPI, ALSA, JACK, ASIO.
+Status: shared API, fake driver, CoreAudio and CoreMIDI drivers implemented
+(macOS 11+). Next: WASAPI + Windows MIDI, ALSA, JACK, ASIO.
 
 ## Decisions
 
@@ -80,7 +80,7 @@ start, counting across chunks), `sample_rate`, the host-clock timestamps
 happened just before this block).
 
 Chunks inside one driver callback share `callback_ns`; `input_ns`/`output_ns`
-advance by `frames / sample_rate`. All timestamps use `backend.host_time_ns()`,
+advance by `frames / sample_rate`. All timestamps use `rt.host_time_ns()`,
 the same clock MIDI timestamps will be converted to.
 
 ### Threads and memory
@@ -122,7 +122,7 @@ the control thread; the layer never tears itself down.
 - Input and output must be the same device. Separate devices return
   `.Unsupported`; the user can make an aggregate device in Audio MIDI Setup.
 - Timestamps come from the IOProc's `AudioTimeStamp`s, converted with
-  `AudioConvertHostTimeToNanos`. `backend.host_time_ns` uses the same clock
+  `AudioConvertHostTimeToNanos`. `rt.host_time_ns` uses the same clock
   (`CLOCK_UPTIME_RAW`). `core:time` uses `CLOCK_MONOTONIC_RAW`, which keeps
   counting during sleep and drifts from CoreAudio after the first sleep.
 - Xruns: a jump in the output `mSampleTime`, or the HAL's processor-overload
@@ -137,17 +137,45 @@ the control thread; the layer never tears itself down.
 - Reported latency excludes the buffer: device latency + safety offset + stream
   latency. BlackHole reports 0 and measures a 512-frame round trip at 256-frame buffers.
 
-## MIDI (next, with CoreMIDI)
+## MIDI (`fire:midi`, `fire:midi/coremidi`)
 
-- `fire:midi` defines `Midi_Port_Info`, input and output ports, and virtual
-  ports (CoreMIDI, ALSA seq, Windows MIDI Services; `.Unsupported` elsewhere).
-- Input arrives on an OS thread with an OS timestamp, converted to
-  `host_time_ns`, and is pushed into an SPSC queue. At the start of each audio
-  block, events are placed at `offset = (t + latency - block_time) · sr`,
-  clamped to the block. Fixed latency of one driver buffer gives jitter-free
-  timing; events too late for that are placed at offset 0 and counted.
-- Output is timestamped; where the OS cannot schedule (WinMM), a sender thread
-  does it.
+- **Messages.** The engine sees MIDI 1.0 bytes (`core.Midi_Raw`). Drivers that
+  speak UMP convert at the edge with `ump_to_short` / `ump_from_short` and the
+  SysEx packet helpers. MIDI 2.0 voice messages are counted as `ignored` until
+  the engine grows MIDI 2.0 events.
+- **Input.** All drivers deliver to one `Midi_Input`, tagging each message with
+  the port index chosen at open (0–15). Driver threads push under a mutex that
+  the audio thread never takes. Each audio block calls `input_process`
+  (`[rt]`): an event received at host time `t` is placed at
+  `t + latency_ns`. With `suggested_latency_ns` (callback-to-presentation gap
+  plus one driver period) placement is exact and jitter-free. Late events go to
+  offset 0 and are counted; future ones wait for their block.
+- **SysEx.** Complete messages go to the control thread through `Sysex_Queue`
+  (a byte ring plus descriptors) and are read with `sysex_pop`. They are not
+  sample-accurate. Each port has its own reassembly buffer
+  (`max_sysex_len`, 8 KiB by default); longer messages are dropped and counted.
+- **Output.** The audio thread pushes timestamped short messages into
+  `Midi_Output` (`output_push`, `[rt]`). A sender thread passes them to the
+  driver, which schedules them (CoreMIDI) or sends them at once. SysEx is sent
+  from the control thread with `midi.send`.
+- **Ports.** `enumerate` lists sources (`.Input`) and destinations (`.Output`).
+  Virtual ports: `create_virtual_input` (a destination other apps send to) and
+  `create_virtual_output` (a source other apps receive from).
+
+CoreMIDI specifics:
+
+- Uses the UMP event-list API with the MIDI 1.0 protocol. All sources connect
+  to one input port, so input arrives on one CoreMIDI thread.
+- Port IDs are CoreMIDI unique IDs, which persist across runs.
+- The receive block is a hand-built global Clang block literal (`Receive_Block`
+  in `fire:sys/coremidi`). Odin's `NSBlock` helper only supports one parameter.
+- Received packets can be longer than the declared `words[64]`, so always read
+  `wordCount` words. SysEx over 186 bytes arrives that way.
+- One send is limited to about 1.5 KB of SysEx; larger messages return
+  `.Invalid_Argument`.
+- Not yet done: hot-plug notifications. CoreMIDI delivers them on the run loop
+  of the thread that created the client, so they need a dedicated run-loop
+  thread.
 
 ## Testing
 
@@ -156,6 +184,9 @@ the control thread; the layer never tears itself down.
   thread. It supports jittery callback sizes, every native format and plane
   layout, loopback with a fixed latency, and injected xruns, device loss and
   format changes.
+- **macOS, no hardware:** `tests/coremidi` loops MIDI through virtual ports the
+  driver creates itself (named with the process ID so concurrent runs don't
+  collide).
 - **Local only:** `tests/coreaudio` uses BlackHole 2ch to check loopback (a
   constant-gain copy at the measured latency, bit-exact when BlackHole's volume
   is 100%), allocations, timestamps, start/stop cycles and rate-change events.
