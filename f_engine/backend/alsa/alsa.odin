@@ -9,6 +9,7 @@ import "core:fmt"
 import "core:mem"
 import "core:strings"
 import "core:thread"
+import "core:time"
 
 import "fire:backend"
 import "fire:core"
@@ -37,6 +38,8 @@ Alsa :: struct {
 	in_planes:  [1]backend.Driver_Plane,
 	out_planes: [1]backend.Driver_Plane,
 	is_open:    bool,
+	watcher:    ^thread.Thread, // card hot-plug (declared before `thread`, which shadows the package)
+	watch_stop: bool,           // atomic
 	thread:     ^thread.Thread,
 
 	// Shared with the audio thread.
@@ -83,7 +86,51 @@ create :: proc(allocator := context.allocator) -> ^backend.Driver {
 	a := new(Alsa, allocator)
 	a.allocator = allocator
 	a.driver = {vtable = &alsa_vtable, name = "ALSA", data = a}
+	a.watcher = thread.create_and_start_with_data(a, watch_cards)
 	return &a.driver
+}
+
+// ALSA has no hot-plug notification API short of udev, so a thread compares
+// the card list every 500 ms and posts Devices_Changed to the open device.
+// (Losing the open device shows up in the audio thread as -ENODEV.)
+@(private)
+watch_cards :: proc(data: rawptr) {
+	a := (^Alsa)(data)
+	last := card_signature()
+	for !intrinsics.atomic_load(&a.watch_stop) {
+		for _ in 0 ..< 10 {
+			if intrinsics.atomic_load(&a.watch_stop) do return
+			time.sleep(50 * time.Millisecond)
+		}
+		now := card_signature()
+		if now != last {
+			last = now
+			if host := intrinsics.atomic_load(&a.driver.host); host != nil {
+				backend.driver_notify(host, {kind = .Devices_Changed})
+			}
+		}
+		free_all(context.temp_allocator)
+	}
+}
+
+// "0:Loopback;1:PCH;" — card numbers and IDs, in order.
+@(private)
+card_signature :: proc() -> u64 {
+	h: u64 = 14695981039346656037 // FNV-1a over the list
+	card: c.int = -1
+	for snd.snd_card_next(&card) == 0 && card >= 0 {
+		ctl: snd.snd_ctl_t
+		id := ""
+		if snd.snd_ctl_open(&ctl, fmt.ctprintf("hw:%d", card), 0) >= 0 {
+			info: snd.snd_ctl_card_info_t
+			snd.snd_ctl_card_info_malloc(&info)
+			if snd.snd_ctl_card_info(ctl, info) >= 0 do id = strings.clone(string(snd.snd_ctl_card_info_get_id(info)), context.temp_allocator)
+			snd.snd_ctl_card_info_free(info)
+			snd.snd_ctl_close(ctl)
+		}
+		for b in transmute([]u8)fmt.tprintf("%d:%s;", card, id) do h = (h ~ u64(b)) * 1099511628211
+	}
+	return h
 }
 
 Diagnostics :: struct {
@@ -125,6 +172,11 @@ alsa_destroy :: proc(d: ^backend.Driver) {
 	a := (^Alsa)(d.data)
 	alsa_stop(d)
 	alsa_close(d)
+	if a.watcher != nil {
+		intrinsics.atomic_store(&a.watch_stop, true)
+		thread.join(a.watcher)
+		thread.destroy(a.watcher)
+	}
 	free(a, a.allocator)
 }
 

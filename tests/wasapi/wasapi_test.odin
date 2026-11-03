@@ -6,6 +6,7 @@ package test_wasapi
 
 import "base:intrinsics"
 import "core:fmt"
+import "core:c/libc"
 import "core:log"
 import "core:strings"
 import "core:testing"
@@ -223,4 +224,56 @@ bad_setups_are_rejected :: proc(t: ^testing.T) {
 		testing.expectf(t, err == tc.want, "case %d: got %v want %v", i, err, tc.want)
 		if err == .None do backend.device_close(&dev)
 	}
+}
+
+// Disables and re-enables VB-CABLE (pnputil-style, via PowerShell) while its
+// render endpoint is open: Devices_Changed and Device_Lost, then
+// Devices_Changed again. Needs an elevated session (the test machine's SSH).
+@(test)
+endpoint_hotplug_is_reported :: proc(t: ^testing.T) {
+	lock := kit.device_lock("vbcable")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 90 * time.Second)
+	d, ok := make_driver(t)
+	if !ok do return
+	defer backend.driver_destroy(d)
+	c, found := find_cable(d)
+	if !found do return
+	dev: backend.Device
+	backend.device_init(&dev, d)
+	defer backend.device_destroy(&dev)
+	if err := backend.device_open(&dev, {output_device_id = c.out_id, output_channels = {0, 1}}, 512); err != .None {
+		testing.expectf(t, false, "open: %v", err)
+		return
+	}
+	for _ in backend.device_poll_event(&dev) {}
+
+	PS :: "powershell -NoProfile -Command \"Get-PnpDevice -FriendlyName 'VB-Audio Virtual Cable' | %s-PnpDevice -Confirm:$false\""
+	enable := fmt.ctprintf(PS, "Enable")
+	defer libc.system(enable) // never leave the cable disabled
+	if libc.system(fmt.ctprintf(PS, "Disable")) != 0 {
+		// Windows Server editions (the EC2 test machine) refuse to disable
+		// devices ("not supported on this OS product"); so do non-elevated runs.
+		log.info("this Windows cannot disable VB-CABLE (Server edition, or not elevated); skipping")
+		return
+	}
+	lost, changed := false, false
+	start := time.tick_now()
+	for !(lost && changed) && time.tick_since(start) < 10 * time.Second {
+		for e in backend.device_poll_event(&dev) {
+			lost ||= e.kind == .Device_Lost
+			changed ||= e.kind == .Devices_Changed
+		}
+		time.sleep(20 * time.Millisecond)
+	}
+	testing.expect(t, changed, "no Devices_Changed after disabling the cable")
+	testing.expect(t, lost, "no Device_Lost for the open endpoint")
+	testing.expect_value(t, libc.system(enable), 0)
+	back := false
+	start = time.tick_now()
+	for !back && time.tick_since(start) < 10 * time.Second {
+		for e in backend.device_poll_event(&dev) do back ||= e.kind == .Devices_Changed
+		time.sleep(20 * time.Millisecond)
+	}
+	testing.expect(t, back, "no Devices_Changed after re-enabling the cable")
 }

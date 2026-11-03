@@ -1,8 +1,8 @@
 # Audio & MIDI backends
 
-Status: audio drivers for CoreAudio (macOS 11+), ALSA (Linux) and WASAPI
-(Windows); MIDI drivers for CoreMIDI, the ALSA sequencer and WinMM. Next: JACK,
-ASIO, Windows MIDI Services, hot-plug notifications.
+Status: audio drivers for CoreAudio (macOS 11+), ALSA and JACK (Linux) and
+WASAPI (Windows); MIDI drivers for CoreMIDI, the ALSA sequencer and WinMM; hot-plug
+events on all of them. Next: ASIO, Windows MIDI Services.
 
 ## Decisions
 
@@ -113,6 +113,31 @@ started. `device_stop` stops the driver first, then calls `callback.release`.
 On `Device_Lost` the application calls `device_stop` and `device_close` from
 the control thread; the layer never tears itself down.
 
+## Hot-plug
+
+Audio devices post `Devices_Changed`, `Default_Device_Changed`, `Device_Lost` and
+`Format_Changed` (`device_poll_event`). MIDI drivers post `Ports_Changed` and
+`Port_Lost` (`midi.poll_event`). Both are polled on the control thread.
+Audio events reach only an open device: a driver posts to `Driver.host`.
+
+| Driver | Source | Tested by |
+|--------|--------|-----------|
+| CoreAudio | HAL property listeners (device list, defaults, alive, rate) | creating and destroying a private aggregate device |
+| ALSA audio | watcher thread comparing the card list every 500 ms (no API short of udev); `-ENODEV` in the audio thread → `Device_Lost` | loading and unloading `snd-dummy` (root) |
+| JACK | port and client registration, shutdown, buffer-size callbacks | a second client registering ports; killing the server |
+| WASAPI | `IMMNotificationClient` (added, removed, state, default) | disabling VB-CABLE, which Windows Server refuses, so the test skips there |
+| CoreMIDI | client notify proc on a process-wide run-loop thread | a second client adding and removing a source |
+| ALSA MIDI | System Announce port (0:1) | a second client adding and removing a port |
+| WinMM | watcher thread comparing device names every 500 ms | a teVirtualMIDI port appearing |
+
+- **CoreMIDI** delivers every client's notifications to the run loop of the
+  thread that created the *first* client in the process. So one notifier
+  thread, started on first use and alive for the rest of the process, creates
+  every client and runs its run loop in short slices.
+- **WinMM** reports arrivals only. Once a process has listed a device, WinMM
+  keeps listing it after it is gone, and an open handle gets no callback. So
+  removal and `Port_Lost` are left to the Windows MIDI Services driver.
+
 ## CoreAudio (`fire:backend/coreaudio`)
 
 - HAL `AudioDeviceIOProc` on the device itself. IOProc buffers are canonical
@@ -168,12 +193,38 @@ the control thread; the layer never tears itself down.
 - **Xruns.** `-EPIPE` or `-ESTRPIPE` restarts the streams (prepare, refill
   playback with silence, start) and flags the next block. `-ENODEV` posts
   `Device_Lost`, then the thread idles until stopped.
-- **Not yet done:** hot-plug and format-change notifications (udev), and
-  ALSA MIDI.
+- Hot-plug: see the table above. Format changes are not detected (ALSA has
+  no notification for them).
 - **On a VM:** the DigitalOcean test droplet's host stalls it for 20–35 ms at
   times. A plain C loop sees xruns there below 1024-frame periods, so the
   exact-loopback test uses 1024. Small periods need real hardware and a
   quiet machine.
+
+## JACK (`fire:backend/jack`)
+
+- libjack is loaded at run time (`fire:sys/jack`), so nothing needs JACK to
+  build or run. `create` returns `.Unsupported` without it. Loads
+  `libjack.so.0`, `libjack.0.dylib` or `libjack64.dll`.
+- **The server is the device.** It owns rate and period; requesting others
+  returns `.Unsupported`. We register one JACK port per channel (`in_1`,
+  `out_1`, ...). By default they are connected to the physical ports at
+  start; `Options.auto_connect = false` leaves routing to the app
+  (`jack.connect`, `jack.port_name`).
+- **Process thread.** JACK's own realtime thread calls us; each port's buffer
+  is one plane. `jack_deactivate` returns only after the last callback, which
+  gives `stop` its contract.
+- **Timestamps.** JACK's cycle times (µs on its clock) are mapped onto
+  `rt.host_time_ns` by reading both clocks in the callback. Input is the
+  previous period; output starts at the next one.
+- **Events.** JACK's xrun callback flags the next block. Shutdown →
+  `Device_Lost`. Port or client registration → `Devices_Changed`. A
+  buffer-size change → `Format_Changed`.
+- `create` silences libjack's stderr messages: applications see errors through
+  return values.
+- **Tests** start a private `jackd -d dummy` under a unique server name, so a
+  user's JACK is never touched. Our outputs patched to our inputs come back
+  bit-exact one period later. They use 1024-frame periods because the test VM
+  xruns below that.
 
 ## WASAPI (`fire:backend/wasapi`)
 
@@ -217,8 +268,7 @@ the control thread; the layer never tears itself down.
     `rt.host_time_ns` uses QPC on Windows too, so they line up.
   - `output_ns` = now + queued render frames, kept monotonic.
 - **Device loss.** `AUDCLNT_E_DEVICE_INVALIDATED` posts `Device_Lost`.
-- **Not yet done:** hot-plug and default-device notifications
-  (`IMMNotificationClient`), exclusive mode, and Windows MIDI.
+- **Not yet done:** exclusive mode.
 - **VB-CABLE.** It adds about 90 ms of its own latency, and it settles that
   latency during the first ~50 ms of a stream by inserting a few hundred
   frames: the delay jumps once, then holds, while the driver's sample count
@@ -271,9 +321,7 @@ CoreMIDI specifics:
   `wordCount` words. SysEx over 186 bytes arrives that way.
 - One send is limited to about 1.5 KB of SysEx; larger messages return
   `.Invalid_Argument`.
-- Not yet done: hot-plug notifications. CoreMIDI delivers them on the run loop
-  of the thread that created the client, so they need a dedicated run-loop
-  thread.
+- Hot-plug: see the table above.
 
 ALSA sequencer specifics:
 

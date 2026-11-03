@@ -426,6 +426,8 @@ output_sender_holds_until_due_when_driver_cannot_schedule :: proc(t: ^testing.T)
 	for i in 0 ..< f.count {
 		due := base + u64(i) * 10_000_000
 		late := i64(f.sent_at[i]) - i64(due)
-		testing.expectf(t, late >= 0 && late < 5_000_000, "message %d sent %d ns after its time", i, late)
+		// Never early. The lateness bound allows a loaded machine (8 parallel
+		// compiles delayed one message 11 ms before the sender ran at High).
+		testing.expectf(t, late >= 0 && late < 20_000_000, "message %d sent %d ns after its time", i, late)
 	}
 }

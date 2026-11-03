@@ -9,7 +9,10 @@ FIRE_OPT="none speed" ./scripts/test.sh # both at once (CI runs both)
 ./scripts/test.sh dsp                   # one package
 ```
 
-All packages (and opt levels) build and run concurrently. Output is printed per
+All packages (and opt levels) build and run concurrently, except packages with a
+`SERIAL` file. Those are real-device streaming tests, or tests making
+system-wide device changes. They compile in parallel and then run one at a
+time after the rest, so other work can't preempt their audio threads. Output is printed per
 package when everything finishes: one summary line on success, the full log on
 failure. Logs stay in `.test_artifacts/.run/`. `FIRE_TIMEOUT` (seconds, default
 600) kills a hung package, which then fails. `FIRE_JOBS` caps concurrency
@@ -23,6 +26,7 @@ failure. Logs stay in `.test_artifacts/.run/`. `FIRE_TIMEOUT` (seconds, default
 | `dsp`      | Smoother, gain, one-pole lowpass |
 | `backend`  | Format conversion, block splitting, timestamps, channel selection, loopback through every format and plane layout, xrun/unplug/format events, rt allocations, threaded start/stop (all on the fake driver) |
 | `alsa`     | Linux only. Header constants, enumeration; with `snd-aloop` loaded: bit-exact loopback at 1024-frame periods, no rt allocations, timestamp order, start/stop, a forced stall reported as an xrun with recovery, rejected setups (skipped without snd-aloop) |
+| `jack`     | Linux (where libjack and jackd exist). A private `jackd -d dummy`: bit-exact loopback by patching our outputs to our inputs, port/client registration → Devices_Changed, server shutdown → Device_Lost, server-owned rate and period |
 | `wasapi`   | Windows only. Endpoint listing; with VB-CABLE installed: loopback (exact scaled copy), no rt allocations, timestamp order, start/stop, a forced stall reported as an xrun with recovery, rejected setups (skipped without VB-CABLE) |
 | `coreaudio` | macOS only. SDK struct layouts, host clock vs CoreAudio, device listing; with BlackHole 2ch installed: loopback, start/stop, rate-change events (skipped without it) |
 | `midi`     | Byte-stream parser (running status, real-time inside messages and SysEx, split/aborted SysEx), sender holding messages for non-scheduling drivers, MIDI 1.0 ⇄ UMP, SysEx packets and reassembly, jitter-free input scheduling over any block split, late/future/out-of-order events, SysEx queue stress, output sender |

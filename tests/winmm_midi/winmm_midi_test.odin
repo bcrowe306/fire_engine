@@ -58,13 +58,14 @@ Loop :: struct {
 	name: string,
 }
 
-// Names stay under WinMM's 31 characters.
-loop_make :: proc() -> (l: Loop, ok: bool) {
+// One port per test (tests run in parallel in one process); names stay under
+// WinMM's 31 characters.
+loop_make :: proc(tag: string) -> (l: Loop, ok: bool) {
 	if !load_te() {
 		log.info("teVirtualMIDI64.dll not installed (loopMIDI); skipping")
 		return
 	}
-	l.name = fmt.tprintf("FireLoop%d", os.get_pid() % 100000)
+	l.name = fmt.tprintf("Fire%s%d", tag, os.get_pid() % 100000)
 	l.port = te.create_port(win.utf8_to_wstring(l.name, context.temp_allocator), echo, 0, 65536, TE_VM_FLAGS_PARSE_RX | TE_VM_FLAGS_INSTANTIATE_BOTH)
 	return l, l.port != nil
 }
@@ -167,7 +168,7 @@ midihdr_layout :: proc(t: ^testing.T) {
 @(test)
 loopback_messages_and_sysex :: proc(t: ^testing.T) {
 	testing.set_fail_timeout(t, 30 * time.Second)
-	loop, ok := loop_make()
+	loop, ok := loop_make("Lb")
 	if !ok do return
 	defer loop_destroy(loop)
 	r := rig_make(t)
@@ -212,7 +213,7 @@ loopback_messages_and_sysex :: proc(t: ^testing.T) {
 @(test)
 scheduled_output_arrives_on_time :: proc(t: ^testing.T) {
 	testing.set_fail_timeout(t, 30 * time.Second)
-	loop, ok := loop_make()
+	loop, ok := loop_make("Sc")
 	if !ok do return
 	defer loop_destroy(loop)
 	r := rig_make(t)
@@ -255,4 +256,31 @@ unsupported_and_bad_arguments :: proc(t: ^testing.T) {
 	_, err = midi.open_output(r.d, "No Such Device")
 	testing.expect_value(t, err, core.Error.Invalid_Argument)
 	testing.expect_value(t, midi.send(r.d, 999, {0x90, 1, 1}), core.Error.Invalid_Argument)
+}
+
+// A teVirtualMIDI port appears: the watcher reports Ports_Changed. That is
+// all WinMM can show. Once a process has listed a device, WinMM keeps listing
+// it after it is gone, and an open handle gets no callback when its device
+// vanishes (both measured with teVirtualMIDI). Removal and Port_Lost are left
+// to the Windows MIDI Services driver.
+@(test)
+hotplug_reports_arrivals :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 30 * time.Second)
+	if !load_te() do return
+	r := rig_make(t)
+	defer rig_destroy(r)
+	time.sleep(600 * time.Millisecond) // let the watcher take its first snapshot
+	for _ in midi.poll_event(r.d) {}
+
+	loop, ok := loop_make("Hp")
+	if !ok do return
+	defer loop_destroy(loop)
+	changed := false
+	start := time.tick_now()
+	for !changed && time.tick_since(start) < 5 * time.Second {
+		for e in midi.poll_event(r.d) do changed ||= e.kind == .Ports_Changed
+		time.sleep(20 * time.Millisecond)
+	}
+	testing.expect(t, changed, "no Ports_Changed when a port appeared")
+	testing.expect(t, wait_for_device(r.d, loop.name), "new port not listed")
 }

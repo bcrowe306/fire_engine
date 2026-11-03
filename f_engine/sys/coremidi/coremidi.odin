@@ -44,6 +44,38 @@ event_packet_next :: #force_inline proc "contextless" (p: ^MIDIEventPacket) -> ^
 	return (^MIDIEventPacket)(uintptr(p) + uintptr(offset_of(MIDIEventPacket, words)) + uintptr(p.wordCount) * size_of(u32))
 }
 
+// --- notifications ------------------------------------------------------------------
+
+kMIDIMsgSetupChanged  :: i32(1)
+kMIDIMsgObjectAdded   :: i32(2)
+kMIDIMsgObjectRemoved :: i32(3)
+
+MIDINotification :: struct {
+	messageID:   i32,
+	messageSize: u32,
+}
+
+MIDIObjectAddRemoveNotification :: struct {
+	messageID:   i32,
+	messageSize: u32,
+	parent:      MIDIObjectRef,
+	parentType:  i32,
+	child:       MIDIObjectRef,
+	childType:   i32,
+}
+
+MIDINotifyProc :: #type proc "c" (message: ^MIDINotification, refcon: rawptr)
+
+CFRunLoopRef :: distinct rawptr
+
+@(default_calling_convention = "c")
+foreign CoreFoundation {
+	CFRunLoopGetCurrent :: proc() -> CFRunLoopRef ---
+	CFRunLoopRunInMode :: proc(mode: CFStringRef, seconds: f64, return_after_source_handled: b8) -> i32 ---
+	kCFRunLoopDefaultMode: CFStringRef
+}
+kCFRunLoopRunFinished :: i32(1) // no sources: returned at once
+
 // --- Objective-C blocks ----------------------------------------------------------
 
 // A global block literal (Clang block ABI) calling `invoke(block, evtlist,
@@ -92,7 +124,7 @@ foreign System {
 
 @(default_calling_convention = "c")
 foreign CoreMIDI {
-	MIDIClientCreate :: proc(name: CFStringRef, notifyProc: rawptr, notifyRefCon: rawptr, outClient: ^MIDIClientRef) -> OSStatus ---
+	MIDIClientCreate :: proc(name: CFStringRef, notifyProc: MIDINotifyProc, notifyRefCon: rawptr, outClient: ^MIDIClientRef) -> OSStatus ---
 	MIDIClientDispose :: proc(client: MIDIClientRef) -> OSStatus ---
 
 	MIDIInputPortCreateWithProtocol :: proc(client: MIDIClientRef, portName: CFStringRef, protocol: MIDIProtocolID, outPort: ^MIDIPortRef, receiveBlock: ^Receive_Block) -> OSStatus ---

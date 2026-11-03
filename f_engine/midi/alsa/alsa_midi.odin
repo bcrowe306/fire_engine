@@ -78,6 +78,9 @@ create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 		return nil, .Device_Error
 	}
 	snd.snd_midi_event_no_status(a.decoder, 1) // every decoded message carries its status byte
+	// Hot-plug: the System Announce port (0:1) reports clients and ports
+	// coming and going.
+	snd.snd_seq_connect_from(a.seq, a.in_port, snd.SND_SEQ_CLIENT_SYSTEM, snd.SND_SEQ_PORT_SYSTEM_ANNOUNCE)
 	a.thread = thread.create_and_start_with_data(a, input_thread)
 	return &a.driver, .None
 }
@@ -326,6 +329,10 @@ input_thread :: proc(data: rawptr) {
 
 @(private)
 deliver :: proc(a: ^Alsa_Midi, ev: ^snd.snd_seq_event_t) {
+	if ev.type >= snd.SND_SEQ_EVENT_CLIENT_START && ev.type <= snd.SND_SEQ_EVENT_PORT_CHANGE {
+		announce(a, ev)
+		return
+	}
 	in_ := a.driver.input
 	if in_ == nil do return
 	index, ok := port_index(a, ev)
@@ -359,4 +366,22 @@ port_index :: proc(a: ^Alsa_Midi, ev: ^snd.snd_seq_event_t) -> (u8, bool) {
 		}
 	}
 	return 0, false
+}
+
+// System Announce: anything changed means re-enumerate; a port (or whole
+// client) we have open going away is Port_Lost for that handle.
+@(private)
+announce :: proc(a: ^Alsa_Midi, ev: ^snd.snd_seq_event_t) {
+	addr := snd.snd_seq_addr_t{ev.data[0], ev.data[1]}
+	if c.int(addr.client) == a.client do return // our own ports
+	midi.driver_notify(&a.driver, {kind = .Ports_Changed})
+	if ev.type != snd.SND_SEQ_EVENT_PORT_EXIT && ev.type != snd.SND_SEQ_EVENT_CLIENT_EXIT do return
+	sync.mutex_lock(&a.ports_lock)
+	defer sync.mutex_unlock(&a.ports_lock)
+	for p in a.ports {
+		if p.kind != .Input && p.kind != .Output do continue
+		if p.client != c.int(addr.client) do continue
+		if ev.type == snd.SND_SEQ_EVENT_PORT_EXIT && p.port != c.int(addr.port) do continue
+		midi.driver_notify(&a.driver, {kind = .Port_Lost, port = p.handle})
+	}
 }

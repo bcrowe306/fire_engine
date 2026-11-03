@@ -5,7 +5,9 @@
 package test_coreaudio
 
 import "base:intrinsics"
+import "core:fmt"
 import "core:log"
+import "core:os"
 import "core:strings"
 import CF "core:sys/darwin/CoreFoundation"
 import "core:testing"
@@ -249,4 +251,75 @@ cad_set_rate :: proc(t: ^testing.T, uid: string, rate: f64) {
 	defer backend.device_destroy(&dev)
 	err := backend.device_open(&dev, {output_device_id = uid, sample_rate = rate, output_channels = {0}}, 64)
 	testing.expectf(t, err == .None, "restore rate %v: %v", rate, err)
+}
+
+// --- hot-plug ---------------------------------------------------------------------------
+
+foreign import CoreAudioFw "system:CoreAudio.framework"
+foreign import CoreFoundationFw "system:CoreFoundation.framework"
+
+@(default_calling_convention = "c")
+foreign CoreAudioFw {
+	AudioHardwareCreateAggregateDevice :: proc(description: rawptr, out_device: ^ca.AudioObjectID) -> ca.OSStatus ---
+	AudioHardwareDestroyAggregateDevice :: proc(device: ca.AudioObjectID) -> ca.OSStatus ---
+}
+
+@(default_calling_convention = "c")
+foreign CoreFoundationFw {
+	CFDictionaryCreate :: proc(alloc: rawptr, keys: [^]rawptr, values: [^]rawptr, count: int, key_callbacks: rawptr, value_callbacks: rawptr) -> rawptr ---
+	CFNumberCreate :: proc(alloc: rawptr, type: int, value: rawptr) -> rawptr ---
+	CFStringCreateWithCString :: proc(alloc: rawptr, s: cstring, encoding: u32) -> rawptr ---
+	kCFTypeDictionaryKeyCallBacks: [6]rawptr
+	kCFTypeDictionaryValueCallBacks: [5]rawptr
+}
+
+// A private aggregate device (visible to this process only; your system is
+// untouched) is created and destroyed while BlackHole is open: each must be
+// reported as Devices_Changed.
+@(test)
+device_hotplug_is_reported :: proc(t: ^testing.T) {
+	lock := kit.device_lock("blackhole")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
+	d := cad.create()
+	defer backend.driver_destroy(d)
+	id, _, found := find_blackhole(t, d)
+	if !found do return
+	dev: backend.Device
+	backend.device_init(&dev, d)
+	defer backend.device_destroy(&dev)
+	if err := backend.device_open(&dev, {output_device_id = id, output_channels = {0, 1}}, 512); err != .None {
+		testing.expectf(t, false, "open BlackHole: %v", err)
+		return
+	}
+	time.sleep(100 * time.Millisecond)
+	for _ in backend.device_poll_event(&dev) {}
+
+	utf8 :: 0x08000100
+	uid := fmt.ctprintf("fire.test.aggregate.%d", os.get_pid())
+	keys := [3]rawptr{CFStringCreateWithCString(nil, "uid", utf8), CFStringCreateWithCString(nil, "name", utf8), CFStringCreateWithCString(nil, "private", utf8)}
+	one: i32 = 1
+	values := [3]rawptr{CFStringCreateWithCString(nil, uid, utf8), CFStringCreateWithCString(nil, "Fire Test Aggregate", utf8), CFNumberCreate(nil, 3 /* kCFNumberSInt32Type */, &one)}
+	desc := CFDictionaryCreate(nil, &keys[0], &values[0], 3, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks)
+	defer {
+		CF.CFRelease(CF.TypeRef(desc))
+		for k in keys do CF.CFRelease(CF.TypeRef(k))
+		for v in values do CF.CFRelease(CF.TypeRef(v))
+	}
+	agg: ca.AudioObjectID
+	status := AudioHardwareCreateAggregateDevice(desc, &agg)
+	testing.expectf(t, status == ca.NO_ERR, "create aggregate device: OSStatus %d", status)
+	if status != ca.NO_ERR do return
+	testing.expect(t, wait_device_event(&dev, .Devices_Changed), "no Devices_Changed after adding a device")
+	testing.expect_value(t, AudioHardwareDestroyAggregateDevice(agg), ca.NO_ERR)
+	testing.expect(t, wait_device_event(&dev, .Devices_Changed), "no Devices_Changed after removing a device")
+}
+
+wait_device_event :: proc(dev: ^backend.Device, kind: backend.Device_Event_Kind, timeout := 3 * time.Second) -> bool {
+	start := time.tick_now()
+	for time.tick_since(start) < timeout {
+		for e in backend.device_poll_event(dev) do if e.kind == kind do return true
+		time.sleep(10 * time.Millisecond)
+	}
+	return false
 }

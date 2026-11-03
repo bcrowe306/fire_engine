@@ -5,6 +5,7 @@
 package test_alsa
 
 import "base:intrinsics"
+import "core:c"
 import "core:log"
 import "core:testing"
 import "core:time"
@@ -203,4 +204,52 @@ bad_setups_are_rejected :: proc(t: ^testing.T) {
 		testing.expectf(t, err == c.want, "case %d: got %v want %v", i, err, c.want)
 		if err == .None do backend.device_close(&dev)
 	}
+}
+
+foreign import libc "system:c"
+@(default_calling_convention = "c")
+foreign libc {
+	system :: proc(command: cstring) -> c.int ---
+	getuid :: proc() -> u32 ---
+}
+
+wait_event :: proc(dev: ^backend.Device, kind: backend.Device_Event_Kind, timeout: time.Duration) -> bool {
+	start := time.tick_now()
+	for time.tick_since(start) < timeout {
+		for e in backend.device_poll_event(dev) do if e.kind == kind do return true
+		time.sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+// Loads and unloads a second sound card (snd-dummy) while a device is open:
+// both must be reported as Devices_Changed. Needs root (the test droplet).
+@(test)
+card_hotplug_is_reported :: proc(t: ^testing.T) {
+	lock := kit.device_lock("aloop")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
+	if getuid() != 0 {
+		log.info("not root: cannot load snd-dummy; skipping")
+		return
+	}
+	d := alsad.create()
+	defer backend.driver_destroy(d)
+	if !has_loopback(d) do return
+	dev: backend.Device
+	backend.device_init(&dev, d)
+	defer backend.device_destroy(&dev)
+	if err := backend.device_open(&dev, {output_device_id = OUT_ID, output_channels = {0, 1}}, 256); err != .None {
+		testing.expectf(t, false, "open: %v", err)
+		return
+	}
+	system("rmmod snd-dummy 2>/dev/null") // start without it
+	for _ in backend.device_poll_event(&dev) {}
+	if system("modprobe snd-dummy") != 0 {
+		log.info("snd-dummy module unavailable; skipping")
+		return
+	}
+	testing.expect(t, wait_event(&dev, .Devices_Changed, 3 * time.Second), "no Devices_Changed after adding a card")
+	testing.expect_value(t, system("rmmod snd-dummy"), 0)
+	testing.expect(t, wait_event(&dev, .Devices_Changed, 3 * time.Second), "no Devices_Changed after removing a card")
 }

@@ -13,6 +13,11 @@
 #   FIRE_TIMEOUT=600       seconds before a hung package is killed (default 600)
 #   FIRE_JOBS=4            packages built and run at once (default: CPU count).
 #                          Each compile takes ~300 MB, so small machines need a cap.
+#
+# Packages containing a SERIAL file run after all others, one at a time:
+# real-device streaming tests that require zero xruns (so compiles and other
+# tests don't preempt their audio threads), and tests whose system-wide device
+# changes other processes would see. The file says why.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -80,19 +85,47 @@ run_one() {
 	echo $? > "$LOGS/$tag.status"
 }
 
+# SERIAL packages: compile in the parallel phase, run later.
+build_one() {
+	local pkg="$1" opt="$2"
+	local tag="${pkg}_${opt}"
+	odin build "tests/$pkg" -build-mode:test -collection:fire=f_engine -o:"$opt" \
+		-vet -strict-style -out:"$WORK/test_$tag.bin" > "$LOGS/$tag.log" 2>&1
+	echo $? > "$LOGS/$tag.status"
+}
+
+run_built() {
+	local pkg="$1" opt="$2" artifacts="$3"
+	local tag="${pkg}_${opt}"
+	[ "$(cat "$LOGS/$tag.status")" = "0" ] || return # compile failed: log already says why
+	(cd "tests/$pkg" && FIRE_ARTIFACTS_DIR="$artifacts" run_with_timeout "$TIMEOUT" "$WORK/test_$tag.bin") \
+		>> "$LOGS/$tag.log" 2>&1
+	echo $? > "$LOGS/$tag.status"
+}
+
 start=$(date +%s)
 JOBS=()
+SERIAL=()
 for opt in "${OPTS[@]}"; do
 	artifacts="$ARTIFACTS"
 	[ "${#OPTS[@]}" -gt 1 ] && artifacts="$ARTIFACTS/$opt"
 	for pkg in "${PKGS[@]}"; do
+		JOBS+=("$pkg:$opt:$artifacts")
 		# Portable job limit (no `wait -n` in macOS's bash 3.2).
 		while [ "$(jobs -rp | wc -l)" -ge "$JOBS_MAX" ]; do sleep 0.1; done
-		run_one "$pkg" "$opt" "$artifacts" &
-		JOBS+=("$pkg:$opt:$artifacts")
+		if [ -f "tests/$pkg/SERIAL" ]; then
+			SERIAL+=("$pkg:$opt:$artifacts")
+			build_one "$pkg" "$opt" &
+		else
+			run_one "$pkg" "$opt" "$artifacts" &
+		fi
 	done
 done
 wait
+for job in ${SERIAL[@]+"${SERIAL[@]}"}; do
+	IFS=: read -r pkg opt artifacts <<< "$job"
+	run_built "$pkg" "$opt" "$artifacts"
+done
 
 failed=()
 plot_dirs=()

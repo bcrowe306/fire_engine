@@ -4,10 +4,14 @@
 // so CoreMIDI delivers it on one thread. See docs/BACKEND.md.
 package coremidi
 
+import "base:intrinsics"
 import "core:fmt"
 import "core:mem"
 import "core:strconv"
 import CF "core:sys/darwin/CoreFoundation"
+import "core:sync"
+import "core:thread"
+import "core:time"
 
 import "fire:core"
 import "fire:midi"
@@ -40,6 +44,51 @@ Core_Midi :: struct {
 	ports:       [dynamic]^Open_Port,
 	next_handle: u32,
 	timebase:    cm.mach_timebase_info_data_t,
+
+	ports_lock:    sync.Mutex, // ports is read by the notification thread
+}
+
+// CoreMIDI delivers every client's notifications on the run loop of the
+// thread that created the *first* client in the process. So one notifier
+// thread, started on first use and alive for the rest of the process, creates
+// every client and runs its run loop.
+@(private)
+Notifier :: struct {
+	lock:    sync.Mutex, // one request at a time
+	thread:  ^thread.Thread,
+	request: ^Core_Midi, // atomic: client to create
+	status:  cm.OSStatus,
+	done:    sync.Sema,
+}
+
+@(private)
+notifier: Notifier
+
+@(private)
+create_client :: proc(c: ^Core_Midi) -> cm.OSStatus {
+	sync.mutex_lock(&notifier.lock)
+	defer sync.mutex_unlock(&notifier.lock)
+	if notifier.thread == nil {
+		notifier.thread = thread.create_and_start(notifier_main, context)
+	}
+	intrinsics.atomic_store(&notifier.request, c)
+	sync.sema_wait(&notifier.done)
+	return notifier.status
+}
+
+@(private)
+notifier_main :: proc() {
+	for {
+		if c := intrinsics.atomic_exchange(&notifier.request, nil); c != nil {
+			name := cfstring("Fire Engine")
+			notifier.status = cm.MIDIClientCreate(name, on_notify, c, &c.client)
+			CF.CFRelease(CF.TypeRef(name))
+			sync.sema_post(&notifier.done)
+		}
+		if cm.CFRunLoopRunInMode(cm.kCFRunLoopDefaultMode, 0.02, false) == cm.kCFRunLoopRunFinished {
+			time.sleep(20 * time.Millisecond) // nothing attached yet
+		}
+	}
 }
 
 create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
@@ -49,9 +98,7 @@ create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 	c.ports = make([dynamic]^Open_Port, allocator)
 	cm.mach_timebase_info(&c.timebase)
 
-	name := cfstring("Fire Engine")
-	defer CF.CFRelease(CF.TypeRef(name))
-	if cm.MIDIClientCreate(name, nil, nil, &c.client) != cm.NO_ERR {
+	if create_client(c) != cm.NO_ERR {
 		cm_destroy(&c.driver)
 		return nil, .Device_Error
 	}
@@ -89,6 +136,27 @@ cm_destroy :: proc(d: ^midi.Driver) {
 	if c.client != 0 do cm.MIDIClientDispose(c.client)
 	delete(c.ports)
 	free(c, c.allocator)
+}
+
+// Run-loop thread. Setup changes mean re-enumerate; removal of an endpoint we
+// have open is Port_Lost for that handle.
+@(private)
+on_notify :: proc "c" (message: ^cm.MIDINotification, refcon: rawptr) {
+	c := (^Core_Midi)(refcon)
+	switch message.messageID {
+	case cm.kMIDIMsgSetupChanged, cm.kMIDIMsgObjectAdded:
+		midi.driver_notify(&c.driver, {kind = .Ports_Changed})
+	case cm.kMIDIMsgObjectRemoved:
+		midi.driver_notify(&c.driver, {kind = .Ports_Changed})
+		n := (^cm.MIDIObjectAddRemoveNotification)(message)
+		sync.mutex_lock(&c.ports_lock)
+		defer sync.mutex_unlock(&c.ports_lock)
+		for p in c.ports {
+			if (p.kind == .Input || p.kind == .Output) && p.endpoint == n.child {
+				midi.driver_notify(&c.driver, {kind = .Port_Lost, port = p.handle})
+			}
+		}
+	}
 }
 
 // --- enumeration -------------------------------------------------------------------
@@ -178,6 +246,8 @@ cm_create_virtual_output :: proc(d: ^midi.Driver, name: string) -> (midi.Port, c
 @(private)
 cm_close :: proc(d: ^midi.Driver, handle: midi.Port) {
 	c := (^Core_Midi)(d.data)
+	sync.mutex_lock(&c.ports_lock)
+	defer sync.mutex_unlock(&c.ports_lock)
 	for p, i in c.ports {
 		if p.handle != handle do continue
 		switch p.kind {
@@ -202,6 +272,8 @@ add_port :: proc(c: ^Core_Midi, p: Open_Port) -> midi.Port {
 
 @(private)
 register :: proc(c: ^Core_Midi, p: ^Open_Port) -> midi.Port {
+	sync.mutex_lock(&c.ports_lock)
+	defer sync.mutex_unlock(&c.ports_lock)
 	c.next_handle += 1
 	p.handle = midi.Port(c.next_handle)
 	append(&c.ports, p)
@@ -214,7 +286,9 @@ register :: proc(c: ^Core_Midi, p: ^Open_Port) -> midi.Port {
 cm_send :: proc(d: ^midi.Driver, handle: midi.Port, message: []u8, time_ns: u64) -> core.Error {
 	c := (^Core_Midi)(d.data)
 	p: ^Open_Port
+	sync.mutex_lock(&c.ports_lock)
 	for q in c.ports do if q.handle == handle do p = q
+	sync.mutex_unlock(&c.ports_lock)
 	if p == nil || (p.kind != .Output && p.kind != .Virtual_Output) do return .Invalid_Argument
 
 	words_buf: [512]u32

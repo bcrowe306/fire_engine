@@ -201,3 +201,48 @@ bad_arguments :: proc(t: ^testing.T) {
 	testing.expect_value(t, midi.send(r.d, src, {0x90, 1}), core.Error.Invalid_Argument)   // truncated
 	testing.expect_value(t, midi.send(r.d, src, {0xF0, 1, 2}), core.Error.Invalid_Argument) // unterminated SysEx
 }
+
+wait_midi_event :: proc(d: ^midi.Driver, kind: midi.Event_Kind, timeout := 2 * time.Second) -> (midi.Event, bool) {
+	start := time.tick_now()
+	for time.tick_since(start) < timeout {
+		for e in midi.poll_event(d) do if e.kind == kind do return e, true
+		time.sleep(5 * time.Millisecond)
+	}
+	return {}, false
+}
+
+// Another client (a second driver instance) adds a port, we open it, and it
+// goes away: Ports_Changed, then Port_Lost for our handle.
+@(test)
+hotplug_reports_ports_and_loss :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 20 * time.Second)
+	r, ok := rig_make(t)
+	defer rig_destroy(r)
+	if !ok do return
+	other, err := amd.create()
+	testing.expect_value(t, err, core.Error.None)
+	if err != .None do return
+	defer midi.driver_destroy(other)
+	for _ in midi.poll_event(r.d) {}
+
+	name := unique_name("Fire Test Hotplug")
+	src: midi.Port
+	src, err = midi.create_virtual_output(other, name)
+	testing.expect_value(t, err, core.Error.None)
+	_, changed := wait_midi_event(r.d, .Ports_Changed)
+	testing.expect(t, changed, "no Ports_Changed when another client added a port")
+
+	infos, _ := midi.enumerate(r.d, context.temp_allocator)
+	id := ""
+	for info in infos do if info.direction == .Input && len(info.id) >= len(name) && info.id[len(info.id) - len(name):] == name do id = info.id
+	testing.expectf(t, id != "", "new port %q not listed", name)
+	if id == "" do return
+	handle: midi.Port
+	handle, err = midi.open_input(r.d, id, 1)
+	testing.expect_value(t, err, core.Error.None)
+
+	midi.close_port(other, src)
+	lost, got := wait_midi_event(r.d, .Port_Lost)
+	testing.expect(t, got, "no Port_Lost when the open port went away")
+	testing.expect_value(t, lost.port, handle)
+}

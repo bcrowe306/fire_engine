@@ -3,7 +3,7 @@
 # sessions and powered off when idle. A powered-off droplet is still billed;
 # `down` destroys it.
 #
-#   ./scripts/cloud/linux.sh up        power on (or create: Odin, clang, ALSA loopback)
+#   ./scripts/cloud/linux.sh up        power on (or create: Odin, clang, ALSA loopback, jackd)
 #   ./scripts/cloud/linux.sh sync      copy the working tree to ~/fire_engine
 #   ./scripts/cloud/linux.sh test [..] sync, then run ./scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/linux.sh ssh [cmd] shell or command on the droplet
@@ -49,7 +49,8 @@ cloud_init() {
 set -eux
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y clang llvm python3 alsa-utils libasound2-dev "linux-modules-extra-\$(uname -r)" || apt-get install -y clang llvm python3 alsa-utils libasound2-dev
+echo "jackd2 jackd/tweak_rt_limits boolean false" | debconf-set-selections
+apt-get install -y clang llvm python3 alsa-utils libasound2-dev jackd2 "linux-modules-extra-\$(uname -r)" || apt-get install -y clang llvm python3 alsa-utils libasound2-dev jackd2
 # ALSA loopback: a virtual sound card whose playback reappears as capture,
 # the Linux counterpart of BlackHole. Load now and at boot.
 modprobe snd-aloop || true

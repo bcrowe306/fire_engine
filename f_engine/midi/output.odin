@@ -40,7 +40,9 @@ output_destroy :: proc(o: ^Midi_Output, allocator := context.allocator) {
 output_start :: proc(o: ^Midi_Output) {
 	if o.thread != nil do return
 	intrinsics.atomic_store(&o.running, true)
-	o.thread = thread.create_and_start_with_data(o, sender_main)
+	// High priority: messages held for drivers that cannot schedule leave
+	// when this thread wakes.
+	o.thread = thread.create_and_start_with_data(o, sender_main, priority = .High)
 }
 
 // Sends whatever is still queued, then joins the thread.

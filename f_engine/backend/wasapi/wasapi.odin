@@ -5,6 +5,7 @@
 package wasapi
 
 import "base:intrinsics"
+import "base:runtime"
 import "core:mem"
 import win "core:sys/windows"
 import "core:thread"
@@ -34,8 +35,20 @@ Endpoint :: struct {
 	latency_ns:    u64,
 }
 
+// Our IMMNotificationClient: a COM object whose first field is its vtable.
+// It lives inside the driver, so AddRef/Release only count.
+Notifier :: struct {
+	vtbl:  ^w.IMMNotificationClient_VTable,
+	refs:  i32, // atomic
+	owner: ^Wasapi,
+}
+
 Wasapi :: struct {
 	driver:     backend.Driver,
+	notifier:   Notifier,
+	ids_lock:   win.SRWLOCK, // open endpoint IDs, read by the notification thread
+	out_id:     string,
+	in_id:      string,
 	allocator:  mem.Allocator,
 	enumerator: ^w.IMMDeviceEnumerator,
 	out:        Endpoint,
@@ -82,7 +95,63 @@ create :: proc(allocator := context.allocator) -> (^backend.Driver, core.Error) 
 		free(a, allocator)
 		return nil, .Device_Error
 	}
+	a.notifier = {vtbl = &notifier_vtable, refs = 1, owner = a}
+	a.enumerator.vtbl.RegisterEndpointNotificationCallback(a.enumerator, &a.notifier)
 	return &a.driver, .None
+}
+
+// --- hot-plug (an MMDevice notification thread) ------------------------------------------
+
+@(private)
+notifier_vtable := w.IMMNotificationClient_VTable {
+	QueryInterface = proc "system" (this: rawptr, riid: ^w.GUID, out: ^rawptr) -> w.HRESULT {
+		if riid^ == w.IID_IUnknown || riid^ == w.IID_IMMNotificationClient {
+			out^ = this
+			intrinsics.atomic_add(&(^Notifier)(this).refs, 1)
+			return w.S_OK
+		}
+		out^ = nil
+		return w.E_NOINTERFACE
+	},
+	AddRef  = proc "system" (this: rawptr) -> u32 { return u32(intrinsics.atomic_add(&(^Notifier)(this).refs, 1) + 1) },
+	Release = proc "system" (this: rawptr) -> u32 { return u32(intrinsics.atomic_sub(&(^Notifier)(this).refs, 1) - 1) },
+	OnDeviceStateChanged = proc "system" (this: rawptr, id: win.wstring, new_state: w.DWORD) -> w.HRESULT {
+		endpoint_changed((^Notifier)(this).owner, id, new_state != w.DEVICE_STATE_ACTIVE)
+		return w.S_OK
+	},
+	OnDeviceAdded = proc "system" (this: rawptr, id: win.wstring) -> w.HRESULT {
+		endpoint_changed((^Notifier)(this).owner, id, false)
+		return w.S_OK
+	},
+	OnDeviceRemoved = proc "system" (this: rawptr, id: win.wstring) -> w.HRESULT {
+		endpoint_changed((^Notifier)(this).owner, id, true)
+		return w.S_OK
+	},
+	OnDefaultDeviceChanged = proc "system" (this: rawptr, flow: w.EDataFlow, role: w.ERole, id: win.wstring) -> w.HRESULT {
+		if role != .eConsole do return w.S_OK // reported once per role; we use the console role
+		if host := intrinsics.atomic_load(&(^Notifier)(this).owner.driver.host); host != nil {
+			context = runtime.default_context()
+			backend.driver_notify(host, {kind = .Default_Device_Changed})
+		}
+		return w.S_OK
+	},
+	OnPropertyValueChanged = proc "system" (this: rawptr, id: win.wstring, key: ^w.PROPERTYKEY) -> w.HRESULT { return w.S_OK },
+}
+
+// Devices_Changed for any endpoint; Device_Lost when it is one we have open.
+@(private)
+endpoint_changed :: proc "system" (a: ^Wasapi, id: win.wstring, gone: bool) {
+	context = runtime.default_context()
+	host := intrinsics.atomic_load(&a.driver.host)
+	if host == nil do return
+	backend.driver_notify(host, {kind = .Devices_Changed})
+	if !gone do return
+	s, _ := win.wstring_to_utf8(id, -1, context.temp_allocator)
+	win.AcquireSRWLockShared(&a.ids_lock)
+	ours := s != "" && (s == a.out_id || s == a.in_id)
+	win.ReleaseSRWLockShared(&a.ids_lock)
+	if ours do backend.driver_notify(host, {kind = .Device_Lost})
+	free_all(context.temp_allocator)
 }
 
 Diagnostics :: struct {
@@ -117,6 +186,7 @@ wasapi_destroy :: proc(d: ^backend.Driver) {
 	a := (^Wasapi)(d.data)
 	wasapi_stop(d)
 	wasapi_close(d)
+	a.enumerator.vtbl.UnregisterEndpointNotificationCallback(a.enumerator, &a.notifier)
 	w.release(a.enumerator)
 	free(a, a.allocator)
 }
@@ -234,6 +304,10 @@ wasapi_open :: proc(d: ^backend.Driver, setup: backend.Device_Setup) -> (backend
 		input_latency_frames   = int(f64(a.in_.latency_ns) * rate / 1e9),
 		output_latency_frames  = int(f64(a.out.latency_ns) * rate / 1e9),
 	}
+	win.AcquireSRWLockExclusive(&a.ids_lock)
+	if a.out.device != nil do a.out_id = device_id(a.out.device, a.allocator)
+	if a.in_.device != nil do a.in_id = device_id(a.in_.device, a.allocator)
+	win.ReleaseSRWLockExclusive(&a.ids_lock)
 	a.is_open = true
 	return a.format, .None
 }
@@ -379,6 +453,11 @@ wasapi_close :: proc(d: ^backend.Driver) {
 	a := (^Wasapi)(d.data)
 	if !a.is_open do return
 	close_endpoints(a)
+	win.AcquireSRWLockExclusive(&a.ids_lock)
+	delete(a.out_id, a.allocator)
+	delete(a.in_id, a.allocator)
+	a.out_id, a.in_id = "", ""
+	win.ReleaseSRWLockExclusive(&a.ids_lock)
 	a.is_open = false
 }
 

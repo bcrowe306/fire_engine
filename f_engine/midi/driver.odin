@@ -1,6 +1,7 @@
 package midi
 
 import "core:mem"
+import "core:sync"
 
 import "fire:core"
 
@@ -53,6 +54,53 @@ Driver :: struct {
 	// The OS delivers a timestamped send at its time (CoreMIDI, ALSA). If
 	// false (WinMM), Midi_Output's sender thread holds messages until then.
 	can_schedule: bool,
+
+	// Driver notification threads → control thread (see poll_event).
+	event_lock:     sync.Mutex,
+	events:         [EVENT_RING]Event,
+	event_head:     int,
+	event_count:    int,
+	events_dropped: int,
+}
+
+@(private) EVENT_RING :: 64
+
+Event_Kind :: enum u8 {
+	Ports_Changed, // ports appeared or disappeared: re-enumerate
+	Port_Lost,     // an open port's device went away; `port` says which. Close it.
+}
+
+Event :: struct {
+	kind: Event_Kind,
+	port: Port,
+}
+
+// Control thread. Hot-plug events in the order the driver saw them.
+poll_event :: proc(d: ^Driver) -> (e: Event, ok: bool) {
+	sync.mutex_lock(&d.event_lock)
+	defer sync.mutex_unlock(&d.event_lock)
+	if d.event_count == 0 do return {}, false
+	e = d.events[d.event_head]
+	d.event_head = (d.event_head + 1) % EVENT_RING
+	d.event_count -= 1
+	return e, true
+}
+
+// Drivers call this from their notification thread (never an audio thread).
+// Consecutive Ports_Changed events are merged.
+driver_notify :: proc "contextless" (d: ^Driver, e: Event) {
+	sync.mutex_lock(&d.event_lock)
+	defer sync.mutex_unlock(&d.event_lock)
+	if e.kind == .Ports_Changed && d.event_count > 0 {
+		last := d.events[(d.event_head + d.event_count - 1) % EVENT_RING]
+		if last.kind == .Ports_Changed do return
+	}
+	if d.event_count == EVENT_RING {
+		d.events_dropped += 1
+		return
+	}
+	d.events[(d.event_head + d.event_count) % EVENT_RING] = e
+	d.event_count += 1
 }
 
 driver_destroy :: proc(d: ^Driver) {

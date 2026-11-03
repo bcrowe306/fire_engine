@@ -1,0 +1,1 @@
+Creates system-wide virtual MIDI devices that WinMM sees in every process: scripts/test.sh runs this package alone, after the others.

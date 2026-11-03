@@ -9,6 +9,7 @@ import "base:intrinsics"
 import "core:fmt"
 import "core:mem"
 import "core:sync"
+import "core:thread"
 import win "core:sys/windows"
 import "core:time"
 
@@ -23,6 +24,7 @@ SYSEX_BUFFER_BYTES :: 4096 // a longer SysEx arrives over several buffers; the b
 In_Port :: struct {
 	owner:      ^Win_Midi,
 	handle:     midi.Port,
+	id:         string,
 	hmi:        mm.HMIDIIN,
 	port_index: u8,
 	closing:    bool, // atomic: buffers returned during close are not re-added
@@ -33,15 +35,18 @@ In_Port :: struct {
 Out_Port :: struct {
 	handle: midi.Port,
 	hmo:    mm.HMIDIOUT,
+	id:     string,
 }
 
 Win_Midi :: struct {
-	driver:    midi.Driver,
-	allocator: mem.Allocator,
-	lock:      sync.Mutex, // ports; sends to one device are serialized by WinMM
-	ins:       [dynamic]^In_Port,
-	outs:      [dynamic]Out_Port,
-	next:      u32,
+	driver:     midi.Driver,
+	allocator:  mem.Allocator,
+	lock:       sync.Mutex, // ports; sends to one device are serialized by WinMM
+	ins:        [dynamic]^In_Port,
+	outs:       [dynamic]Out_Port,
+	next:       u32,
+	watcher:    ^thread.Thread,
+	watch_stop: bool, // atomic
 }
 
 create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
@@ -50,7 +55,49 @@ create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 	w.driver = {vtable = &winmm_vtable, name = "WinMM", can_schedule = false, data = w}
 	w.ins = make([dynamic]^In_Port, allocator)
 	w.outs = make([dynamic]Out_Port, allocator)
+	w.watcher = thread.create_and_start_with_data(w, watch_devices)
 	return &w.driver, .None
+}
+
+// WinMM has no hot-plug notifications: compare device names every 500 ms.
+// In practice this reports arrivals only: once a process has listed a device,
+// WinMM keeps listing it after it is gone, and an open handle gets no callback
+// (measured with teVirtualMIDI). The Port_Lost check below is best effort for
+// devices WinMM does drop.
+@(private)
+watch_devices :: proc(data: rawptr) {
+	w := (^Win_Midi)(data)
+	last := signature()
+	for !intrinsics.atomic_load(&w.watch_stop) {
+		for _ in 0 ..< 10 {
+			if intrinsics.atomic_load(&w.watch_stop) do return
+			time.sleep(50 * time.Millisecond)
+		}
+		now := signature()
+		if now != last {
+			last = now
+			midi.driver_notify(&w.driver, {kind = .Ports_Changed})
+			ins, outs := input_names(), output_names()
+			sync.mutex_lock(&w.lock)
+			for p in w.ins do if _, ok := index_of(ins, p.id); !ok do midi.driver_notify(&w.driver, {kind = .Port_Lost, port = p.handle})
+			for o in w.outs do if _, ok := index_of(outs, o.id); !ok do midi.driver_notify(&w.driver, {kind = .Port_Lost, port = o.handle})
+			sync.mutex_unlock(&w.lock)
+		}
+		free_all(context.temp_allocator)
+	}
+}
+
+@(private)
+signature :: proc() -> u64 {
+	h: u64 = 14695981039346656037 // FNV-1a over all names
+	for list in ([][]string{input_names(), output_names()}) {
+		for n in list {
+			for b in transmute([]u8)n do h = (h ~ u64(b)) * 1099511628211
+			h = (h ~ 0xFF) * 1099511628211
+		}
+		h = (h ~ 0xFE) * 1099511628211
+	}
+	return h
 }
 
 @(private)
@@ -68,6 +115,11 @@ winmm_vtable := midi.Driver_VTable {
 @(private)
 winmm_destroy :: proc(d: ^midi.Driver) {
 	w := (^Win_Midi)(d.data)
+	if w.watcher != nil {
+		intrinsics.atomic_store(&w.watch_stop, true)
+		thread.join(w.watcher)
+		thread.destroy(w.watcher)
+	}
 	for len(w.ins) > 0 do winmm_close(d, w.ins[len(w.ins) - 1].handle)
 	for len(w.outs) > 0 do winmm_close(d, w.outs[len(w.outs) - 1].handle)
 	delete(w.ins)
@@ -140,7 +192,9 @@ winmm_open_input :: proc(d: ^midi.Driver, id: string, port_index: u8) -> (midi.P
 	if !found do return 0, .Invalid_Argument
 	p := new(In_Port, w.allocator)
 	p.owner, p.port_index = w, port_index
+	p.id = fmt.aprint(id, allocator = w.allocator)
 	if mm.midiInOpen(&p.hmi, dev, uintptr(rawptr(on_input)), uintptr(p), mm.CALLBACK_FUNCTION | mm.MIDI_IO_STATUS) != mm.MMSYSERR_NOERROR {
+		delete(p.id, w.allocator)
 		free(p, w.allocator)
 		return 0, .Device_Error // in use by another application, usually
 	}
@@ -151,6 +205,7 @@ winmm_open_input :: proc(d: ^midi.Driver, id: string, port_index: u8) -> (midi.P
 	}
 	if mm.midiInStart(p.hmi) != mm.MMSYSERR_NOERROR {
 		close_input(p)
+		delete(p.id, w.allocator)
 		free(p, w.allocator)
 		return 0, .Device_Error
 	}
@@ -172,7 +227,7 @@ winmm_open_output :: proc(d: ^midi.Driver, id: string) -> (midi.Port, core.Error
 	sync.mutex_lock(&w.lock)
 	defer sync.mutex_unlock(&w.lock)
 	w.next += 1
-	append(&w.outs, Out_Port{midi.Port(w.next), hmo})
+	append(&w.outs, Out_Port{midi.Port(w.next), hmo, fmt.aprint(id, allocator = w.allocator)})
 	return midi.Port(w.next), .None
 }
 
@@ -183,6 +238,7 @@ winmm_close :: proc(d: ^midi.Driver, handle: midi.Port) {
 	defer sync.mutex_unlock(&w.lock)
 	for p, i in w.ins do if p.handle == handle {
 		close_input(p)
+		delete(p.id, w.allocator)
 		free(p, w.allocator)
 		ordered_remove(&w.ins, i)
 		return
@@ -190,6 +246,7 @@ winmm_close :: proc(d: ^midi.Driver, handle: midi.Port) {
 	for o, i in w.outs do if o.handle == handle {
 		mm.midiOutReset(o.hmo)
 		mm.midiOutClose(o.hmo)
+		delete(o.id, w.allocator)
 		ordered_remove(&w.outs, i)
 		return
 	}

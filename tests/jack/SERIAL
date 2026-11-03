@@ -1,0 +1,1 @@
+Real-device streaming tests (a private jackd): scripts/test.sh runs this package alone, after the others.

@@ -184,6 +184,21 @@ IAudioCaptureClient_VTable :: struct {
 	GetNextPacketSize: proc "system" (this: ^IAudioCaptureClient, frames: ^UINT) -> HRESULT,
 }
 
+IID_IUnknown             := GUID{0x00000000, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}}
+IID_IMMNotificationClient := GUID{0x7991EEC9, 0x7E89, 0x4D85, {0x83, 0x90, 0x6C, 0x70, 0x3C, 0xEC, 0x60, 0xC0}}
+E_NOINTERFACE :: HRESULT(-2147467262) // 0x80004002
+
+// Implemented by us; the vtable order follows mmdeviceapi.h. A PROPERTYKEY
+// passed by value is passed by reference in the 64-bit Windows ABI.
+IMMNotificationClient_VTable :: struct {
+	using _: IUnknown_VTable,
+	OnDeviceStateChanged:   proc "system" (this: rawptr, id: win.wstring, new_state: DWORD) -> HRESULT,
+	OnDeviceAdded:          proc "system" (this: rawptr, id: win.wstring) -> HRESULT,
+	OnDeviceRemoved:        proc "system" (this: rawptr, id: win.wstring) -> HRESULT,
+	OnDefaultDeviceChanged: proc "system" (this: rawptr, flow: EDataFlow, role: ERole, id: win.wstring) -> HRESULT,
+	OnPropertyValueChanged: proc "system" (this: rawptr, id: win.wstring, key: ^PROPERTYKEY) -> HRESULT,
+}
+
 // Releases any COM interface pointer (IUnknown is first in every vtable).
 release :: proc "contextless" (p: rawptr) {
 	if p == nil do return
