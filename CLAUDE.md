@@ -6,11 +6,17 @@ rules. Read `CONVENTIONS.md` before writing code.
 ## Commands
 
 ```bash
-./scripts/test.sh                 # all test packages
+./scripts/test.sh                 # all test packages, in parallel
+FIRE_OPT="none speed" ./scripts/test.sh      # both optimization levels at once (do this before committing)
 ./scripts/test.sh dsp             # one package: tests/dsp
 FIRE_UPDATE_GOLDEN=1 ./scripts/test.sh dsp   # regenerate golden WAVs (review diffs first)
 python3 scripts/plot.py .test_artifacts/<name>   # render PNG of a failed audio comparison
 ```
+
+Packages run concurrently; each package's full log is in `.test_artifacts/.run/<pkg>_<opt>.log`
+(printed on failure). With several opt levels, artifacts go to `.test_artifacts/<opt>/<name>`.
+A package that runs longer than `FIRE_TIMEOUT` seconds (default 600) is killed and fails.
+Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 
 Builds always need `-collection:fire=f_engine`.
 
