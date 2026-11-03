@@ -14,6 +14,7 @@ FIRE_OPT=speed ./scripts/test.sh  # optimized (CI runs both)
 | `timebase` | Sample/second/beat/tick/BBT conversions, tempo ramps, meter changes |
 | `rt`       | Flush-to-zero, SPSC queue (including a 2-thread stress test) |
 | `dsp`      | Smoother, gain, one-pole lowpass |
+| `backend`  | Format conversion, block splitting, timestamps, channel selection, loopback through every format and plane layout, xrun/unplug/format events, rt allocations, threaded start/stop (all on the fake driver) |
 
 ## Writing a DSP test
 
