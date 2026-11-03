@@ -45,7 +45,7 @@ Core_Midi :: struct {
 create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 	c := new(Core_Midi, allocator)
 	c.allocator = allocator
-	c.driver = {vtable = &cm_vtable, name = "CoreMIDI", data = c}
+	c.driver = {vtable = &cm_vtable, name = "CoreMIDI", can_schedule = true, data = c}
 	c.ports = make([dynamic]^Open_Port, allocator)
 	cm.mach_timebase_info(&c.timebase)
 

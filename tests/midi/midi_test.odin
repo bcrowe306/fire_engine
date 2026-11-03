@@ -9,6 +9,7 @@ import "core:time"
 
 import "fire:core"
 import "fire:midi"
+import "fire:rt"
 import kit "fire:testkit"
 
 // --- messages and UMP ------------------------------------------------------------
@@ -294,6 +295,7 @@ Fake_Midi :: struct {
 	driver: midi.Driver,
 	sent:   [64]Sent,
 	count:  int, // atomic
+	sent_at: [64]u64, // host time when send was called
 }
 
 fake_vtable := midi.Driver_VTable {
@@ -302,6 +304,7 @@ fake_vtable := midi.Driver_VTable {
 		s := Sent{port = port, len = len(message), time_ns = time_ns}
 		copy(s.bytes[:], message)
 		f.sent[f.count] = s
+		f.sent_at[f.count] = rt.host_time_ns()
 		intrinsics.atomic_add(&f.count, 1)
 		return .None
 	},
@@ -349,4 +352,80 @@ output_push_is_realtime_safe :: proc(t: ^testing.T) {
 	for i in 0 ..< 6 do midi.output_push(&o, {u64(i), 1, {0x80, 1, 0}})
 	testing.expect_value(t, trap.violations, 0)
 	testing.expect_value(t, o.dropped, 2)
+}
+
+// --- byte-stream parser ----------------------------------------------------------------
+
+drain :: proc(in_: ^midi.Midi_Input) -> []core.Midi_Raw {
+	out := make([dynamic]core.Midi_Raw, context.temp_allocator)
+	for e in collect(in_, 0, 4096) do append(&out, e.payload.(core.Midi_Raw))
+	return out[:]
+}
+
+@(test)
+byte_parser_running_status_and_realtime :: proc(t: ^testing.T) {
+	in_ := make_input(t)
+	defer free_input(in_)
+	// Note on, running-status note on, clock inside a message, program
+	// change (2 bytes), song position (system common, cancels running status),
+	// then a stray data byte that must be ignored.
+	stream := []u8{0x90, 60, 100, 62, 0xF8, 90, 0xC3, 5, 0xF2, 0x10, 0x20, 0x33}
+	midi.input_push_bytes(in_, 1, 4, stream[:5]) // split mid-message
+	midi.input_push_bytes(in_, 1, 4, stream[5:])
+	got := drain(in_)
+	want := []core.Midi_Raw{
+		{{0x90, 60, 100}, 4}, {{0xF8, 0, 0}, 4}, {{0x90, 62, 90}, 4}, {{0xC3, 5, 0}, 4}, {{0xF2, 0x10, 0x20}, 4},
+	}
+	testing.expect_value(t, len(got), len(want))
+	for w, i in want do if i < len(got) do testing.expectf(t, got[i] == w, "message %d: got %v want %v", i, got[i], w)
+	testing.expect_value(t, midi.input_stats(in_).ignored, 1)
+}
+
+@(test)
+byte_parser_sysex_split_interleaved_and_aborted :: proc(t: ^testing.T) {
+	in_ := make_input(t)
+	defer free_input(in_)
+	// SysEx split over three calls with a clock byte inside it.
+	midi.input_push_bytes(in_, 5, 2, {0xF0, 0x7E, 0x01})
+	midi.input_push_bytes(in_, 5, 2, {0x02, 0xF8, 0x03})
+	midi.input_push_bytes(in_, 5, 2, {0x04, 0xF7})
+	msg, ok := midi.sysex_pop(&in_.sysex, context.temp_allocator)
+	testing.expect(t, ok)
+	testing.expect(t, mem.compare(msg.data, []u8{0x7E, 0x01, 0x02, 0x03, 0x04}) == 0)
+	testing.expect_value(t, msg.port, 2)
+	got := drain(in_)
+	testing.expect_value(t, len(got), 1) // the clock
+	// A status byte inside SysEx aborts it; the status byte still counts.
+	midi.input_push_bytes(in_, 6, 2, {0xF0, 0x11, 0x22, 0x80, 64, 0})
+	_, ok = midi.sysex_pop(&in_.sysex, context.temp_allocator)
+	testing.expect(t, !ok)
+	testing.expect_value(t, midi.input_stats(in_).sysex_dropped, 1)
+	got = drain(in_)
+	testing.expect_value(t, len(got), 1)
+	if len(got) == 1 do testing.expect_value(t, got[0], core.Midi_Raw{{0x80, 64, 0}, 2})
+}
+
+// WinMM-style drivers cannot schedule: the sender must hold each message
+// until its time, then send it (never early, and not much late).
+@(test)
+output_sender_holds_until_due_when_driver_cannot_schedule :: proc(t: ^testing.T) {
+	f: Fake_Midi
+	f.driver = {vtable = &fake_vtable, data = &f, can_schedule = false}
+	o: midi.Midi_Output
+	testing.expect_value(t, midi.output_init(&o, &f.driver, 64), mem.Allocator_Error.None)
+	defer midi.output_destroy(&o)
+	midi.output_start(&o)
+
+	base := rt.host_time_ns() + 20_000_000
+	for i in 0 ..< 5 do midi.output_push(&o, {base + u64(i) * 10_000_000, 1, {0x90, u8(i), 1}})
+	start := time.tick_now()
+	for intrinsics.atomic_load(&f.count) < 5 && time.tick_since(start) < 2 * time.Second do time.sleep(time.Millisecond)
+	midi.output_stop(&o)
+
+	testing.expect_value(t, f.count, 5)
+	for i in 0 ..< f.count {
+		due := base + u64(i) * 10_000_000
+		late := i64(f.sent_at[i]) - i64(due)
+		testing.expectf(t, late >= 0 && late < 5_000_000, "message %d sent %d ns after its time", i, late)
+	}
 }

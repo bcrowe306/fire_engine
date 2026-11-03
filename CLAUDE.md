@@ -29,7 +29,7 @@ Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 ### Windows test machine (AWS EC2, us-east-2)
 
 ```bash
-./scripts/cloud/windows.sh up     # start (or create: VS Build Tools, Git bash, Odin, VB-CABLE; ~30 min the first time)
+./scripts/cloud/windows.sh up     # start (or create: VS Build Tools, Git bash, Odin, VB-CABLE, loopMIDI; ~30 min the first time)
 ./scripts/cloud/windows.sh test   # copy the working tree and run the suite
 ./scripts/cloud/windows.sh off    # stop at the end of the session (`down` terminates)
 ```

@@ -1,7 +1,8 @@
 # Audio & MIDI backends
 
-Status: shared API, fake driver, CoreAudio + CoreMIDI (macOS 11+), ALSA (Linux)
-and WASAPI (Windows) drivers implemented. Next: Windows MIDI, ALSA MIDI, JACK, ASIO.
+Status: audio drivers for CoreAudio (macOS 11+), ALSA (Linux) and WASAPI
+(Windows); MIDI drivers for CoreMIDI, the ALSA sequencer and WinMM. Next: JACK,
+ASIO, Windows MIDI Services, hot-plug notifications.
 
 ## Decisions
 
@@ -225,7 +226,7 @@ the control thread; the layer never tears itself down.
   of silence, and is then exact up to float rounding in the Windows mixer
   (gain 1.0, residual 4e-6).
 
-## MIDI (`fire:midi`, `fire:midi/coremidi`)
+## MIDI (`fire:midi`, `fire:midi/coremidi`, `fire:midi/alsa`, `fire:midi/winmm`)
 
 - **Messages.** The engine sees MIDI 1.0 bytes (`core.Midi_Raw`). Drivers that
   speak UMP convert at the edge with `ump_to_short` / `ump_from_short` and the
@@ -246,6 +247,15 @@ the control thread; the layer never tears itself down.
   `Midi_Output` (`output_push`, `[rt]`). A sender thread passes them to the
   driver, which schedules them (CoreMIDI) or sends them at once. SysEx is sent
   from the control thread with `midi.send`.
+- **Byte streams.** Drivers that deliver MIDI 1.0 bytes (ALSA, WinMM) call
+  `input_push_bytes`, which keeps one parser per port. It handles running
+  status, real-time bytes anywhere (even inside SysEx), SysEx split across
+  calls, and SysEx aborted by a status byte (dropped and counted).
+- **Scheduling.** `Driver.can_schedule` says whether the OS delivers a
+  timestamped send at its time (CoreMIDI, ALSA). When it can't (WinMM), the
+  `Midi_Output` sender thread holds each message until it is due, sleeping
+  with `rt.precise_sleep`. On Windows, `time.sleep` rounds down to whole
+  milliseconds (`Sleep(0)` only yields), which sent messages up to 45 ms late.
 - **Ports.** `enumerate` lists sources (`.Input`) and destinations (`.Output`).
   Virtual ports: `create_virtual_input` (a destination other apps send to) and
   `create_virtual_output` (a source other apps receive from).
@@ -265,6 +275,31 @@ CoreMIDI specifics:
   of the thread that created the client, so they need a dedicated run-loop
   thread.
 
+ALSA sequencer specifics:
+
+- One sequencer client, "Fire Engine". Every connected source is subscribed
+  to one hidden receive port. Virtual ports are ordinary exported ports.
+- IDs are `client name:port name`, as `aconnect -l` shows them.
+- Input gets kernel timestamps (real time) from our queue. Output with a future
+  time is scheduled on that queue, so the kernel sends it on time; otherwise it
+  goes out directly. One host-clock origin is recorded when the queue starts.
+- Short messages go through `snd_midi_event` encode/decode; SysEx is one
+  variable-length event out and arrives as chunks that the byte parser joins.
+- Needs the `snd-seq` module (`create` returns `.Device_Error` without it).
+
+WinMM specifics:
+
+- No virtual ports (`.Unsupported`) and no scheduling (`can_schedule = false`).
+- IDs are device names, with ` #2` and so on for duplicates. Device numbers
+  change on hot-plug, names don't.
+- Input comes through WinMM's callback thread. Short messages are unpacked from
+  the callback's parameter; SysEx fills four 4 KB buffers that are handed back
+  for reuse, and the byte parser joins messages longer than one buffer.
+  Timestamps are arrival on the host clock (WinMM's own are whole milliseconds).
+- SysEx output blocks until WinMM releases the buffer.
+- Windows MIDI Services (virtual ports, UMP, scheduling; Windows 11 24H2+) will
+  be a separate driver.
+
 ## Testing
 
 - **CI (no sound hardware):** `fire:backend/fake` simulates devices. It can run
@@ -272,9 +307,13 @@ CoreMIDI specifics:
   thread. It supports jittery callback sizes, every native format and plane
   layout, loopback with a fixed latency, and injected xruns, device loss and
   format changes.
-- **macOS, no hardware:** `tests/coremidi` loops MIDI through virtual ports the
-  driver creates itself (named with the process ID so concurrent runs don't
-  collide).
+- **MIDI, no hardware:** `tests/coremidi` (macOS) and `tests/alsa_midi` (Linux,
+  needs `snd-seq`) loop MIDI through virtual ports the driver creates itself,
+  named with the process ID so concurrent runs don't collide.
+  `tests/alsa_midi` also checks queue scheduling: a message sent 50 ms ahead
+  arrives then. `tests/winmm_midi` (Windows) creates a loopback port with
+  teVirtualMIDI, the driver loopMIDI installs: test-only, loaded at run time,
+  never shipped. It skips when the driver is missing.
 - **Linux:** `scripts/cloud/linux.sh` manages an Ubuntu x86 droplet (kept,
   powered off between sessions) with `snd-aloop`, a virtual ALSA loopback card.
   `tests/alsa` runs there; on CI, which has no `snd-aloop`, the device tests skip.

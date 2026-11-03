@@ -3,7 +3,7 @@
 # stopped when idle (only its disk is billed while stopped; `down` terminates).
 # AWS keys come from secrets.env (AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY).
 #
-#   ./scripts/cloud/windows.sh up        start (or create: OpenSSH, VS Build Tools, Git, Odin, VB-CABLE)
+#   ./scripts/cloud/windows.sh up        start (or create: OpenSSH, VS Build Tools, Git, Odin, VB-CABLE, loopMIDI)
 #   ./scripts/cloud/windows.sh sync      copy the working tree to C:\fire
 #   ./scripts/cloud/windows.sh test [..] sync, then run scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/windows.sh ssh [cmd] PowerShell command (or shell) on the instance
@@ -106,6 +106,14 @@ Get-ChildItem C:\\vbcable -Filter *.cat | ForEach-Object {
 	}
 }
 Start-Process -FilePath C:\\vbcable\\VBCABLE_Setup_x64.exe -ArgumentList "-i","-h" -Wait
+# loopMIDI: its teVirtualMIDI driver lets the WinMM tests create a loopback
+# MIDI port. A WiX bundle: /quiet, after trusting the signer.
+Invoke-WebRequest -UseBasicParsing "https://www.tobias-erichsen.de/wp-content/uploads/2020/01/loopMIDISetup_1_0_16_27.zip" -OutFile C:\\loopmidi.zip
+Expand-Archive C:\\loopmidi.zip C:\\loopmidi -Force
+\$lm = (Get-ChildItem C:\\loopmidi -Filter *.exe | Select-Object -First 1).FullName
+\$cert = (Get-AuthenticodeSignature \$lm).SignerCertificate
+\$store = New-Object System.Security.Cryptography.X509Certificates.X509Store("TrustedPublisher", "LocalMachine"); \$store.Open("ReadWrite"); \$store.Add(\$cert); \$store.Close()
+Start-Process -FilePath \$lm -ArgumentList "/quiet","/norestart" -Wait
 New-Item -ItemType File -Path C:\\fire_setup_done -Force
 Stop-Transcript
 Restart-Computer -Force

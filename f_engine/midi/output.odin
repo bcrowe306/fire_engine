@@ -64,25 +64,49 @@ frame_time_ns :: proc "contextless" (block_ns: u64, offset: int, sample_rate: f6
 	return block_ns + u64(f64(offset) * 1e9 / sample_rate)
 }
 
+// Events leave in queue order. For drivers that cannot schedule, the sender
+// holds each one until its time (to within the ~0.5 ms polling step); the
+// audio thread pushes in time order, so holding the head holds nothing back.
 @(private)
 sender_main :: proc(data: rawptr) {
 	o := (^Midi_Output)(data)
+	held: Output_Event
+	holding := false
 	for {
 		running := intrinsics.atomic_load(&o.running)
-		for e in rt.spsc_pop(&o.queue) {
-			n := message_length(e.bytes[0])
-			if n == 0 {
-				intrinsics.atomic_add(&o.errors, 1)
-				continue
+		for {
+			if !holding {
+				e, ok := rt.spsc_pop(&o.queue)
+				if !ok do break
+				held, holding = e, true
 			}
-			bytes := e.bytes
-			if send(o.driver, e.port, bytes[:n], e.time_ns) == .None {
-				intrinsics.atomic_add(&o.sent, 1)
-			} else {
-				intrinsics.atomic_add(&o.errors, 1)
-			}
+			if !o.driver.can_schedule && running && held.time_ns > rt.host_time_ns() do break // not yet due
+			holding = false
+			send_one(o, held)
 		}
-		if !running do break
-		time.sleep(500 * time.Microsecond)
+		if !running && !holding do break
+		// Poll every 0.5 ms; while holding, wake at the held message's time
+		// instead if that is sooner.
+		wait := 500 * time.Microsecond
+		if holding {
+			now := rt.host_time_ns()
+			if held.time_ns > now do wait = min(wait, time.Duration(held.time_ns - now))
+		}
+		rt.precise_sleep(wait)
+	}
+}
+
+@(private)
+send_one :: proc(o: ^Midi_Output, e: Output_Event) {
+	n := message_length(e.bytes[0])
+	if n == 0 {
+		intrinsics.atomic_add(&o.errors, 1)
+		return
+	}
+	bytes := e.bytes
+	if send(o.driver, e.port, bytes[:n], e.time_ns) == .None {
+		intrinsics.atomic_add(&o.sent, 1)
+	} else {
+		intrinsics.atomic_add(&o.errors, 1)
 	}
 }

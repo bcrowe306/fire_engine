@@ -46,10 +46,13 @@ Driver_VTable :: struct {
 }
 
 Driver :: struct {
-	vtable: ^Driver_VTable,
-	name:   string,
-	data:   rawptr,
-	input:  ^Midi_Input, // set before opening inputs
+	vtable:       ^Driver_VTable,
+	name:         string,
+	data:         rawptr,
+	input:        ^Midi_Input, // set before opening inputs
+	// The OS delivers a timestamped send at its time (CoreMIDI, ALSA). If
+	// false (WinMM), Midi_Output's sender thread holds messages until then.
+	can_schedule: bool,
 }
 
 driver_destroy :: proc(d: ^Driver) {

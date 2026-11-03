@@ -53,7 +53,8 @@ apt-get install -y clang llvm python3 alsa-utils libasound2-dev "linux-modules-e
 # ALSA loopback: a virtual sound card whose playback reappears as capture,
 # the Linux counterpart of BlackHole. Load now and at boot.
 modprobe snd-aloop || true
-echo snd-aloop > /etc/modules-load.d/snd-aloop.conf
+modprobe snd-seq || true
+printf "snd-aloop\nsnd-seq\n" > /etc/modules-load.d/snd-aloop.conf
 mkdir -p /opt/odin
 curl -fsSL "https://github.com/odin-lang/Odin/releases/download/$ODIN_RELEASE/odin-linux-amd64-$ODIN_RELEASE.tar.gz" | tar -xz -C /opt/odin --strip-components=1
 ln -sf /opt/odin/odin /usr/local/bin/odin

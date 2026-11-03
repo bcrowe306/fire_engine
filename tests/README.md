@@ -25,8 +25,10 @@ failure. Logs stay in `.test_artifacts/.run/`. `FIRE_TIMEOUT` (seconds, default
 | `alsa`     | Linux only. Header constants, enumeration; with `snd-aloop` loaded: bit-exact loopback at 1024-frame periods, no rt allocations, timestamp order, start/stop, a forced stall reported as an xrun with recovery, rejected setups (skipped without snd-aloop) |
 | `wasapi`   | Windows only. Endpoint listing; with VB-CABLE installed: loopback (exact scaled copy), no rt allocations, timestamp order, start/stop, a forced stall reported as an xrun with recovery, rejected setups (skipped without VB-CABLE) |
 | `coreaudio` | macOS only. SDK struct layouts, host clock vs CoreAudio, device listing; with BlackHole 2ch installed: loopback, start/stop, rate-change events (skipped without it) |
-| `midi`     | MIDI 1.0 ⇄ UMP, SysEx packets and reassembly, jitter-free input scheduling over any block split, late/future/out-of-order events, SysEx queue stress, output sender |
+| `midi`     | Byte-stream parser (running status, real-time inside messages and SysEx, split/aborted SysEx), sender holding messages for non-scheduling drivers, MIDI 1.0 ⇄ UMP, SysEx packets and reassembly, jitter-free input scheduling over any block split, late/future/out-of-order events, SysEx queue stress, output sender |
 | `coremidi` | macOS only. SDK layouts; loopback through our own virtual source and destination: messages, port tags, timestamps, 300- and 1000-byte SysEx, disconnect |
+| `alsa_midi` | Linux only. Event layout; loopback through our own virtual ports: messages, port tags, 50 ms queue scheduling with kernel timestamps, 1 KB and 3 KB SysEx, unsubscribe, bad arguments (skipped without snd-seq) |
+| `winmm_midi` | Windows only. MIDIHDR layout; through a teVirtualMIDI echo port: messages, 3 KB and 10 KB SysEx (across buffers), sender-held scheduling, Unsupported virtual ports (skipped without loopMIDI's driver) |
 
 ## Writing a DSP test
 

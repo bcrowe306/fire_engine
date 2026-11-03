@@ -28,6 +28,7 @@ Midi_Input :: struct {
 	producer_lock: sync.Mutex, // driver threads; never taken by the audio thread
 	sysex:         Sysex_Queue,
 	assemblers:    [MAX_PORTS]Sysex_Assembler,
+	parsers:       [MAX_PORTS]Byte_Parser, // for drivers that deliver MIDI 1.0 bytes
 	sysex_storage: []u8,
 	latency_ns:    u64,
 
@@ -115,6 +116,77 @@ input_push_ump :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8, 
 			intrinsics.atomic_add_explicit(&in_.ignored, 1, .Relaxed)
 		}
 		i += n
+	}
+}
+
+// Running-status state for one byte-stream source. SysEx bytes go to the
+// port's Sysex_Assembler buffer.
+Byte_Parser :: struct {
+	status:   u8, // current running status (0 = none)
+	data:     [2]u8,
+	have:     int,
+	need:     int,
+	in_sysex: bool,
+}
+
+// Parses a MIDI 1.0 byte stream (as from ALSA rawmidi/sequencer decoding or
+// WinMM): running status, real-time bytes anywhere (even inside other
+// messages), SysEx split across calls. Complete SysEx goes to the SysEx queue.
+input_push_bytes :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8, bytes: []u8) {
+	sync.mutex_lock(&in_.producer_lock)
+	defer sync.mutex_unlock(&in_.producer_lock)
+	i := min(int(port), MAX_PORTS - 1)
+	p, a := &in_.parsers[i], &in_.assemblers[i]
+	for b in bytes {
+		switch {
+		case b >= 0xF8: // real-time: never disturbs the message in progress
+			if message_length(b) == 1 do push_locked(in_, {time_ns, port, {b, 0, 0}})
+		case b == 0xF0:
+			if p.in_sysex do intrinsics.atomic_add_explicit(&in_.sysex.dropped, 1, .Relaxed) // unterminated
+			p.in_sysex, p.status, p.have = true, 0, 0
+			a.len, a.overflowed, a.active = 0, false, true
+		case b == 0xF7:
+			if !p.in_sysex do continue
+			p.in_sysex, a.active = false, false
+			if a.overflowed {
+				intrinsics.atomic_add_explicit(&in_.sysex.dropped, 1, .Relaxed)
+			} else {
+				sysex_push(&in_.sysex, time_ns, port, assembler_message(a))
+			}
+		case b >= 0x80:
+			if p.in_sysex { // a status byte ends SysEx without F7: drop it
+				p.in_sysex, a.active = false, false
+				intrinsics.atomic_add_explicit(&in_.sysex.dropped, 1, .Relaxed)
+			}
+			n := message_length(b)
+			if n == 0 { // undefined status: ignore it and what follows
+				p.status = 0
+				intrinsics.atomic_add_explicit(&in_.ignored, 1, .Relaxed)
+				continue
+			}
+			p.status, p.have, p.need = b, 0, n - 1
+			if p.need == 0 {
+				push_locked(in_, {time_ns, port, {b, 0, 0}})
+				p.status = 0 // system messages cancel running status
+			}
+		case p.in_sysex:
+			if a.len < len(a.buffer) {
+				a.buffer[a.len] = b
+				a.len += 1
+			} else {
+				a.overflowed = true
+			}
+		case p.status != 0:
+			p.data[p.have] = b
+			p.have += 1
+			if p.have == p.need {
+				push_locked(in_, {time_ns, port, {p.status, p.data[0], p.data[1] if p.need == 2 else 0}})
+				p.have = 0
+				if p.status >= 0xF0 do p.status = 0 // no running status for system common
+			}
+		case:
+			intrinsics.atomic_add_explicit(&in_.ignored, 1, .Relaxed) // stray data byte
+		}
 	}
 }
 
