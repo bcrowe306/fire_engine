@@ -1,0 +1,8 @@
+.test_artifacts/
+*.bin
+*.exe
+*.pdb
+*.dSYM/
+.DS_Store
+JUCE/
+.build/
