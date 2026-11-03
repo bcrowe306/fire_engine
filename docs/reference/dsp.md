@@ -66,6 +66,43 @@ Filter Design", ch. 3). Exactly -3.01 dB at cutoff thanks to prewarping.
 | `state` | one per channel, allocated in prepare |
 | `sample_rate` |  |
 
+### Resampler_Quality
+
+```odin
+Resampler_Quality :: enum u8 {
+	Low,
+	Medium,
+	High,
+}
+```
+
+Interpolation quality: how much of the band is kept flat and how far
+aliases are pushed down, at the cost of taps (multiply-adds) per output
+sample and channel. Above speed 1 the filter widens by the speed, so the
+taps grow with it. Medium suits clip playback; High suits offline work.
+
+| Quality | Taps (speed ≤ 1) | Flat to (× Nyquist) | Aliases and images |
+|---------|------------------|---------------------|--------------------|
+| Low     | 32               | 0.75                | below −60 dB       |
+| Medium  | 80               | 0.85                | below −90 dB       |
+| High    | 160              | 0.90                | below −120 dB      |
+
+### Resampler
+
+```odin
+Resampler :: struct {...}
+```
+
+Converts a stream between sample rates, or plays it faster or slower
+(varispeed), with bandlimited interpolation: each output sample is a
+Kaiser-windowed sinc evaluated at its exact position between input
+samples (Julius O. Smith's method). The speed may change on every call.
+
+Output frame k is the input at time `k × speed` (summed over calls), with
+no added delay; the resampler only needs to see a little input ahead
+(`resampler_input_needed` says how much). Planar f32. Set up with
+`resampler_init`, free with `resampler_destroy`. Fields are internal.
+
 ### Smoothed_Value
 
 ```odin
@@ -121,6 +158,55 @@ one_pole_create :: proc(allocator: mem.Allocator = context.allocator) -> core.No
 Control thread. Allocates a `One_Pole_Lowpass` node with `allocator`. Free it
 with `core.node_destroy`. Each output channel filters the matching input
 channel (silence for extra outputs).
+
+### resampler_init
+
+```odin
+resampler_init :: proc(r: ^Resampler, channels: int, quality: Resampler_Quality = Resampler_Quality.High, max_speed: f64 = 4, max_input: int = 4096, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. Prepares `r` for `channels` channels, speeds up to
+`max_speed` (input frames per output frame; ≥ 1) and input given in pieces
+of up to `max_input` frames. Free with `resampler_destroy`.
+
+### resampler_destroy
+
+```odin
+resampler_destroy :: proc(r: ^Resampler, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `resampler_init` allocated.
+
+### resampler_reset
+
+```odin
+resampler_reset :: proc "contextless"(r: ^Resampler)
+```
+
+**Realtime-safe** (callable on the audio thread). Forgets all input: the next output frame is the next input frame,
+preceded by silence.
+
+### resampler_input_needed
+
+```odin
+resampler_input_needed :: proc "contextless"(r: ^Resampler, out_frames: int, speed: f64) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Input frames to add before `out_frames` more output frames can be
+produced at `speed` (0 if enough is buffered). For pull-style playback:
+read this many frames, then call `resampler_process` once.
+
+### resampler_process
+
+```odin
+resampler_process :: proc "contextless"(r: ^Resampler, input: [][]f32, output: [][]f32, speed: f64) -> (consumed: int, produced: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Resamples at `speed` input frames per output frame (> 0, at most
+`max_speed`): takes frames from `input` (one slice per channel, all the
+same length) and writes frames to `output` (likewise) until the input is
+used up or the output is full. Returns how many frames were consumed and
+produced. Never allocates.
 
 ### smoothed_init
 

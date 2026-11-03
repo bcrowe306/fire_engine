@@ -24,6 +24,12 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
+      # fire:audiofile/codecs uses vendor:miniaudio, prebuilt on macOS and
+      # Windows only.
+      - name: Build Odin's miniaudio
+        if: runner.os == 'Linux'
+        run: bash "$(odin root)/vendor/miniaudio/src/build_miniaudio.sh"
+
       - name: MSVC environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1

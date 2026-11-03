@@ -15,7 +15,8 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:graph`](/reference/graph/) | The audio graph: nodes and connections, processed on many threads |
 | [`fire:transport`](/reference/transport/) | The musical clock: tempo, bars, and timelines for arrangements, clips, loopers and sequencers; MIDI clock out |
 | [`fire:link`](/reference/link/) | Optional [Ableton Link](https://www.ableton.com/link/) sync (GPLv2+; built separately) |
-| [`fire:dsp`](/reference/dsp/) | DSP building blocks and simple nodes (gain, filters, smoothing) |
+| [`fire:dsp`](/reference/dsp/) | DSP building blocks and simple nodes (gain, filters, smoothing, resampling) |
+| [`fire:audiofile`](/reference/audiofile/) | Read and write WAV and AIFF; [FLAC, MP3 and Ogg](/reference/audiofile/codecs/) decoding |
 | [`fire:backend`](/reference/backend/) | Audio devices: one API over [CoreAudio](/reference/backend/coreaudio/), [ALSA](/reference/backend/alsa/), [JACK](/reference/backend/jack/), [WASAPI](/reference/backend/wasapi/) and a [simulated driver](/reference/backend/fake/) |
 | [`fire:midi`](/reference/midi/) | MIDI input and output: one API over [CoreMIDI](/reference/midi/coremidi/), the [ALSA sequencer](/reference/midi/alsa/) and [WinMM](/reference/midi/winmm/) |
 | [`fire:timebase`](/reference/timebase/) | Samples, seconds, beats, ticks, bars; tempo maps |
@@ -28,7 +29,8 @@ DAW, a headless box on a single-board computer) on top of its packages.
 2. [The audio graph](/guides/graph/): how to connect nodes and run them.
 3. [Tempo and timelines](/guides/transport/): the clock, playing, looping and quantized launching.
 4. [Audio devices](/guides/devices/) and [MIDI](/guides/midi/): talking to hardware.
-5. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
+5. [Audio files and sample rates](/guides/audio-files/): reading, writing, recording, resampling.
+6. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.
 
