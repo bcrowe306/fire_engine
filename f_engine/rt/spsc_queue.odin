@@ -3,6 +3,8 @@ package rt
 import "base:intrinsics"
 import "core:mem"
 
+// Assumed cache line size in bytes, used to pad shared atomics apart and
+// avoid false sharing.
 CACHE_LINE :: 64
 
 // Bounded lock-free single-producer / single-consumer queue.
@@ -18,7 +20,8 @@ Spsc_Queue :: struct($T: typeid) {
 	_:      [CACHE_LINE - size_of(u64)]u8,
 }
 
-// Control thread.
+// Control thread. Allocates room for at least `capacity` items (rounded up to
+// a power of two) with `allocator`. Free with `spsc_destroy`.
 spsc_init :: proc(q: ^Spsc_Queue($T), capacity: int, allocator := context.allocator) -> mem.Allocator_Error {
 	assert(capacity > 0)
 	cap := 1
@@ -30,13 +33,14 @@ spsc_init :: proc(q: ^Spsc_Queue($T), capacity: int, allocator := context.alloca
 	return nil
 }
 
-// Control thread.
+// Control thread. Frees the buffer; pass the allocator given to `spsc_init`.
+// Neither endpoint may use the queue afterwards.
 spsc_destroy :: proc(q: ^Spsc_Queue($T), allocator := context.allocator) {
 	delete(q.buffer, allocator)
 	q.buffer = nil
 }
 
-// [rt] Producer side. Returns false if full.
+// [rt] Producer side. Copies `value` in; returns false (and drops it) if full.
 spsc_push :: proc "contextless" (q: ^Spsc_Queue($T), value: T) -> bool {
 	tail := intrinsics.atomic_load_explicit(&q.tail, .Relaxed)
 	head := intrinsics.atomic_load_explicit(&q.head, .Acquire)
@@ -46,7 +50,7 @@ spsc_push :: proc "contextless" (q: ^Spsc_Queue($T), value: T) -> bool {
 	return true
 }
 
-// [rt] Consumer side. Returns false if empty.
+// [rt] Consumer side. Takes the oldest value; returns false if empty.
 spsc_pop :: proc "contextless" (q: ^Spsc_Queue($T)) -> (value: T, ok: bool) {
 	head := intrinsics.atomic_load_explicit(&q.head, .Relaxed)
 	tail := intrinsics.atomic_load_explicit(&q.tail, .Acquire)
@@ -56,13 +60,15 @@ spsc_pop :: proc "contextless" (q: ^Spsc_Queue($T)) -> (value: T, ok: bool) {
 	return value, true
 }
 
-// [rt] Approximate; exact only when called from either endpoint thread.
+// [rt] Number of queued items. Approximate; exact only when called from
+// either endpoint thread.
 spsc_len :: proc "contextless" (q: ^Spsc_Queue($T)) -> int {
 	tail := intrinsics.atomic_load_explicit(&q.tail, .Acquire)
 	head := intrinsics.atomic_load_explicit(&q.head, .Acquire)
 	return int(tail - head)
 }
 
+// [rt] Maximum number of items the queue holds (the rounded-up capacity).
 spsc_capacity :: proc "contextless" (q: ^Spsc_Queue($T)) -> int {
 	return len(q.buffer)
 }

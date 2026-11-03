@@ -1,7 +1,7 @@
 #+build darwin
 // CoreMIDI driver (macOS 11+), using the UMP event-list APIs with the MIDI 1.0
 // protocol. Input from every connected source arrives through one input port,
-// so CoreMIDI delivers it on one thread. See docs/design/backend.md.
+// so CoreMIDI delivers it on one thread. See /design/backend/.
 package coremidi
 
 import "base:intrinsics"
@@ -18,6 +18,7 @@ import "fire:midi"
 import "fire:rt"
 import cm "fire:sys/coremidi"
 
+@(private)
 Port_Kind :: enum u8 {
 	Input,
 	Output,
@@ -25,6 +26,7 @@ Port_Kind :: enum u8 {
 	Virtual_Output, // our source: others receive from us
 }
 
+@(private)
 Open_Port :: struct {
 	handle:     midi.Port,
 	kind:       Port_Kind,
@@ -34,6 +36,7 @@ Open_Port :: struct {
 	owner:      ^Core_Midi,
 }
 
+@(private)
 Core_Midi :: struct {
 	driver:      midi.Driver,
 	allocator:   mem.Allocator,
@@ -91,6 +94,9 @@ notifier_main :: proc() {
 	}
 }
 
+// Control thread. Creates the CoreMIDI driver. The caller owns the result; free
+// it with `midi.driver_destroy`. Returns .Device_Error if the
+// CoreMIDI client or its ports cannot be created.
 create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 	c := new(Core_Midi, allocator)
 	c.allocator = allocator

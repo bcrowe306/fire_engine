@@ -12,28 +12,32 @@ import tb "fire:timebase"
 // Use it to test the harness and, later, the graph and backends: anything that
 // claims to deliver events sample-accurately can be checked against a Probe.
 
+// One event as the probe received it.
 Probe_Event :: struct {
-	block:    int,
-	offset:   u32,
+	block:    int, // index of the process call
+	offset:   u32, // frame offset within the block
 	absolute: tb.Sample_Time, // transport.sample_pos + offset
 	payload:  core.Event_Payload,
 }
 
+// One process call as the probe saw it.
 Probe_Block :: struct {
-	frames:    int,
-	transport: core.Transport,
+	frames:    int,            // frames in this call
+	transport: core.Transport, // copy of the transport at this call
 }
 
+// State of a probe node. Read the log with `probe_events` and `probe_blocks`; it
+// stays valid after `render` releases the node, until the node is destroyed.
 Probe :: struct {
 	log_allocator:   mem.Allocator, // the log lives until destroy, so it can be read after release
-	events:          []Probe_Event,
+	events:          []Probe_Event, // log storage; use probe_events
 	event_count:     int,
-	blocks:          []Probe_Block,
+	blocks:          []Probe_Block, // log storage; use probe_blocks
 	block_count:     int,
-	overflow:        int,
+	overflow:        int,           // events or blocks not recorded because the log was full
 	unsorted_events: int, // events whose offset < previous offset in the same block
 	out_of_range:    int, // events whose offset >= frames
-	capacity:        int,
+	capacity:        int,           // log size, set by probe_create
 }
 
 @(private)
@@ -50,16 +54,21 @@ probe_vtable := core.Node_VTable {
 	},
 }
 
+// Creates a probe node and returns it along with its state. `capacity` is the number
+// of events and of blocks the log holds (allocated in prepare with the prepare
+// allocator). The node and state come from `allocator`; destroy with core.node_destroy.
 probe_create :: proc(capacity := 65536, allocator := context.allocator) -> (core.Node, ^Probe) {
 	p := new(Probe, allocator)
 	p.capacity = capacity
 	return core.node_make(&probe_vtable, p, allocator), p
 }
 
+// The events recorded so far, in arrival order. A view into the log, not a copy.
 probe_events :: proc(p: ^Probe) -> []Probe_Event {
 	return p.events[:p.event_count]
 }
 
+// The process calls recorded so far, in order. A view into the log, not a copy.
 probe_blocks :: proc(p: ^Probe) -> []Probe_Block {
 	return p.blocks[:p.block_count]
 }

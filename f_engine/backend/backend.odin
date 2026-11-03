@@ -1,11 +1,12 @@
 // Audio device abstraction: the driver contract and the types both sides share.
-// See docs/design/backend.md.
+// See /design/backend/.
 package backend
 
 import "core:mem"
 
 import "fire:core"
 
+// A set of device channel indices (0-based, below core.MAX_CHANNELS) to open.
 Channel_Mask :: bit_set[0 ..< core.MAX_CHANNELS; u64]
 
 // Native sample formats a driver may hand us. All are little-endian.
@@ -18,6 +19,7 @@ Sample_Format :: enum u8 {
 	I24_In_32, // 24 significant bits, LSB-aligned in 4 bytes (ASIO Int32LSB24)
 }
 
+// [rt] Bytes one sample of format `f` occupies in a driver buffer.
 sample_format_bytes :: proc "contextless" (f: Sample_Format) -> int {
 	switch f {
 	case .F32, .I32, .I24_In_32: return 4
@@ -28,19 +30,23 @@ sample_format_bytes :: proc "contextless" (f: Sample_Format) -> int {
 	return 0
 }
 
+// One device as listed by driver_enumerate. Strings and slices are owned by the
+// enumeration result; free them all with device_infos_destroy.
 Device_Info :: struct {
 	id:                    string, // stable across runs (CoreAudio UID, WASAPI endpoint ID, ...)
-	name:                  string,
-	input_channels:        int,
-	output_channels:       int,
-	sample_rates:          []f64,
-	buffer_sizes:          []int, // frames
-	default_sample_rate:   f64,
-	default_buffer_frames: int,
-	is_default_input:      bool,
-	is_default_output:     bool,
+	name:                  string, // human-readable name
+	input_channels:        int,    // number of input channels
+	output_channels:       int,    // number of output channels
+	sample_rates:          []f64,  // supported rates in Hz
+	buffer_sizes:          []int,  // supported buffer sizes in frames
+	default_sample_rate:   f64,    // Hz
+	default_buffer_frames: int,    // frames
+	is_default_input:      bool,   // the system default input device
+	is_default_output:     bool,   // the system default output device
 }
 
+// Frees a slice returned by driver_enumerate and everything in it. Pass the
+// same allocator that was given to driver_enumerate.
 device_infos_destroy :: proc(infos: []Device_Info, allocator := context.allocator) {
 	for info in infos {
 		delete(info.id, allocator)
@@ -93,6 +99,8 @@ Driver_Buffers :: struct {
 	xrun:        bool, // discontinuity before this buffer
 }
 
+// The procs a driver implements. Application code does not call these directly;
+// it goes through driver_* and device_*. All run on the control thread.
 Driver_VTable :: struct {
 	destroy:   proc(d: ^Driver),
 	enumerate: proc(d: ^Driver, allocator: mem.Allocator) -> ([]Device_Info, core.Error),
@@ -104,21 +112,28 @@ Driver_VTable :: struct {
 	close:     proc(d: ^Driver),
 }
 
+// A driver instance, made by a driver package's `create` (for example
+// coreaudio.create) and freed with driver_destroy.
 Driver :: struct {
-	vtable: ^Driver_VTable,
-	name:   string,
-	data:   rawptr,
-	host:   ^Device, // set by device_open, cleared by device_close
+	vtable: ^Driver_VTable, // the driver's implementation
+	name:   string,         // driver name, e.g. "coreaudio"
+	data:   rawptr,         // driver-private state
+	host:   ^Device,        // set by device_open, cleared by device_close
 }
 
+// Frees a driver made by a driver package's `create`. Close any Device using it
+// first. Nil-safe. Control thread.
 driver_destroy :: proc(d: ^Driver) {
 	if d != nil && d.vtable != nil do d.vtable.destroy(d)
 }
 
+// Lists the devices the driver can open. The caller owns the result and frees it
+// with device_infos_destroy using the same allocator. Control thread.
 driver_enumerate :: proc(d: ^Driver, allocator := context.allocator) -> ([]Device_Info, core.Error) {
 	return d.vtable.enumerate(d, allocator)
 }
 
+// What a Device_Event reports.
 Device_Event_Kind :: enum u8 {
 	Devices_Changed, // devices added or removed; re-enumerate
 	Default_Device_Changed, // the system default input or output changed
@@ -128,24 +143,29 @@ Device_Event_Kind :: enum u8 {
 	Error,           // driver failure; `error` says what
 }
 
+// A notification returned by device_poll_event.
 Device_Event :: struct {
-	kind:  Device_Event_Kind,
-	count: int,
-	error: core.Error,
+	kind:  Device_Event_Kind, // what happened
+	count: int,               // number of xruns, for .Xrun
+	error: core.Error,        // the failure, for .Error
 }
 
+// One block of audio handed to Device_Callback.process. Buffers are planar f32
+// and only valid during the call.
 Io_Block :: struct {
 	inputs:      [][]f32, // selected input channels, ascending device order
 	outputs:     [][]f32, // selected output channels; the callback must write all frames
 	frames:      int,     // 1 ..= max_block
 	sample_time: i64,     // frames since device_start
-	sample_rate: f64,
-	callback_ns: u64,
-	input_ns:    u64,
-	output_ns:   u64,
-	xrun:        bool,
+	sample_rate: f64,     // Hz
+	callback_ns: u64,     // host clock (rt.host_time_ns) when the OS callback began
+	input_ns:    u64,     // capture time of input frame 0; 0 = unknown
+	output_ns:   u64,     // presentation time of output frame 0; 0 = unknown
+	xrun:        bool,    // a discontinuity happened before this block
 }
 
+// The application's audio callback, passed to device_start. `user` is handed
+// back to every proc.
 Device_Callback :: struct {
 	prepare: proc(user: rawptr, cfg: core.Prepare_Config) -> core.Error, // control thread; may be nil
 	process: proc(user: rawptr, block: ^Io_Block),                       // [rt]

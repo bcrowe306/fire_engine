@@ -5,8 +5,10 @@ import "core:mem"
 
 import "fire:core"
 
+// Parameter id of the `One_Pole_Lowpass` cutoff, in Hz (10..20000, default 1000).
 ONE_POLE_PARAM_CUTOFF_HZ :: core.Param_Id(1)
 
+// Parameter table of the `One_Pole_Lowpass` node, as returned by `node_params`. Read-only.
 one_pole_params := [?]core.Param_Info {
 	{
 		id = ONE_POLE_PARAM_CUTOFF_HZ, name = "Cutoff", unit = .Hertz,
@@ -35,6 +37,9 @@ one_pole_vtable := core.Node_VTable {
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^One_Pole_Lowpass)(self), allocator) },
 }
 
+// Control thread. Allocates a `One_Pole_Lowpass` node with `allocator`. Free it
+// with `core.node_destroy`. Each output channel filters the matching input
+// channel (silence for extra outputs).
 one_pole_create :: proc(allocator := context.allocator) -> core.Node {
 	f := new(One_Pole_Lowpass, allocator)
 	return core.node_make(&one_pole_vtable, f, allocator)

@@ -21,6 +21,7 @@ import tb "fire:timebase"
 //   - output buffers pre-filled with NaN, so unwritten samples are detected
 //   - timing against the real-time budget of the block
 
+// Every block is `size` frames (must be > 0); the last one may be shorter.
 Fixed_Blocks :: struct {
 	size: int,
 }
@@ -31,6 +32,7 @@ Block_Sequence :: struct {
 	count: int,
 }
 
+// Builds a `Block_Sequence` from 1 to 16 sizes (asserts otherwise). Sizes may be 0.
 block_sequence :: proc(sizes: ..int) -> Block_Sequence {
 	assert(len(sizes) > 0 && len(sizes) <= 16)
 	s := Block_Sequence{count = len(sizes)}
@@ -44,6 +46,8 @@ Random_Blocks :: struct {
 	min, max: int,
 }
 
+// How `render` splits the signal into `process` calls. Every size is clamped to
+// [0, max_block] and to the frames remaining.
 Block_Pattern :: union {
 	Fixed_Blocks,
 	Block_Sequence,
@@ -56,25 +60,30 @@ Timed_Event :: struct {
 	payload: core.Event_Payload,
 }
 
+// Called by `render` after each process call with the context that was just
+// processed. Runs outside the trap allocator, so it may allocate.
 Block_Hook :: proc(user: rawptr, block_index: int, ctx: ^core.Process_Context)
 
+// Settings for one `render`. Start from `default_render_config` and override fields.
 Render_Config :: struct {
-	sample_rate:    f64,
-	max_block:      int,
-	out_channels:   int,
+	sample_rate:    f64,           // Hz
+	max_block:      int,           // largest block passed to process, and the prepare max_block
+	out_channels:   int,           // output channel count (input count comes from the input buffer)
 	blocks:         Block_Pattern, // nil => Fixed_Blocks{max_block}
 	events:         []Timed_Event, // any order; stable-sorted by time
 	tail_frames:    int,           // extra frames rendered after the input ends (silent input)
-	tempo_bpm:      f64,
+	tempo_bpm:      f64,           // constant tempo for the transport
 	tempo_map:      ^tb.Tempo_Map, // overrides tempo_bpm when set
-	playing:        bool,
-	ftz:            bool,
-	max_events_out: int,
+	playing:        bool,          // transport playing flag
+	ftz:            bool,          // enable flush-to-zero during process, as on a real audio thread
+	max_events_out: int,           // output event capacity per block; extra events count as dropped
 	// Called after each process call, outside the trap (it may allocate).
 	after_block:    Block_Hook,
-	user:           rawptr,
+	user:           rawptr,        // passed to after_block
 }
 
+// 48 kHz, 512-frame max block, stereo out, fixed full-size blocks, playing at
+// 120 BPM, flush-to-zero on, room for 4096 output events per block.
 default_render_config :: proc() -> Render_Config {
 	return Render_Config {
 		sample_rate = 48000,
@@ -87,29 +96,34 @@ default_render_config :: proc() -> Render_Config {
 	}
 }
 
+// Wall-clock time of the node's `process` calls over a render. Indicative only: the
+// null backend runs offline, so treat it as a rough budget check.
 Timing_Stats :: struct {
-	p50_ns, p99_ns, max_ns: i64,
+	p50_ns, p99_ns, max_ns: i64, // per-call process time percentiles, nanoseconds
 	// Worst ratio of process time to the block's real-time duration (1.0 = deadline).
 	max_load:               f64,
-	total_ns:               i64,
+	total_ns:               i64, // sum of all process calls, nanoseconds
 }
 
+// What `render` observed. Pass it to `expect_clean_render`, then free it with
+// `render_report_destroy`.
 Render_Report :: struct {
-	prepare_error:    core.Error,
-	blocks:           int,
-	frames:           int,
+	prepare_error:    core.Error, // non-.None means prepare failed and nothing was rendered
+	blocks:           int,        // process calls made (including 0-frame ones)
+	frames:           int,        // total frames rendered (input frames + tail_frames)
 	min_block_used:   int,
 	max_block_used:   int,
-	rt_allocations:   int,
-	first_rt_alloc:   runtime.Source_Code_Location,
+	rt_allocations:   int,        // allocation attempts inside process (all were refused)
+	first_rt_alloc:   runtime.Source_Code_Location, // call site of the first one
 	non_finite:       int, // NaN/Inf in output (includes samples the node never wrote)
 	first_non_finite: int, // frame index, -1 if none
-	denormals:        int,
-	events_out:       [dynamic]Timed_Event,
-	events_dropped:   int,
+	denormals:        int,                  // subnormal output samples
+	events_out:       [dynamic]Timed_Event, // events the node wrote, at absolute frames; from render's allocator
+	events_dropped:   int,                  // events lost to a full output buffer (see max_events_out)
 	timing:           Timing_Stats,
 }
 
+// Frees `events_out` and zeroes the report.
 render_report_destroy :: proc(r: ^Render_Report) {
 	delete(r.events_out)
 	r^ = {}

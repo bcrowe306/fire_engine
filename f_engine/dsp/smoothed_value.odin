@@ -7,8 +7,8 @@ import "fire:core"
 // Per-sample parameter smoother. Nodes own one per smoothed parameter.
 // Advancing is per sample, so the result never depends on block boundaries.
 Smoothed_Value :: struct {
-	current:   f64,
-	target:    f64,
+	current:   f64,                  // value at the last `smoothed_next`
+	target:    f64,                  // value being approached
 	mode:      core.Param_Smoothing,
 	// Linear
 	step:      f64,
@@ -26,11 +26,14 @@ smoothed_init :: proc(s: ^Smoothed_Value, value: f64, mode: core.Param_Smoothing
 	s.coeff = samples > 0 ? 1 - math.exp(-1 / samples) : 1
 }
 
+// Control thread (prepare). `smoothed_init` with the parameter's default value,
+// smoothing mode and smoothing time.
 smoothed_init_from_param :: proc(s: ^Smoothed_Value, p: core.Param_Info, sample_rate: f64) {
 	smoothed_init(s, p.default, p.smoothing, p.smoothing_ms, sample_rate)
 }
 
-// [rt]
+// [rt] Starts moving toward `target`. With `.None` smoothing the value jumps;
+// with `.Linear` a new ramp of the full length starts from the current value.
 smoothed_set_target :: proc "contextless" (s: ^Smoothed_Value, target: f64) {
 	s.target = target
 	switch s.mode {
@@ -48,7 +51,7 @@ smoothed_reset :: proc "contextless" (s: ^Smoothed_Value, value: f64) {
 	s.current, s.target, s.remaining = value, value, 0
 }
 
-// [rt]
+// [rt] Reports whether the value has not yet reached its target.
 smoothed_is_smoothing :: #force_inline proc "contextless" (s: ^Smoothed_Value) -> bool {
 	return s.current != s.target
 }

@@ -23,17 +23,20 @@ Node_VTable :: struct {
 	latency: proc(self: rawptr) -> int,
 }
 
+// Lifecycle state of a `Node`, tracked by `node_prepare` and `node_release`.
 Node_State :: enum u8 {
-	Initialized,
-	Prepared,
-	Released,
+	Initialized, // created, not yet prepared
+	Prepared,    // ready for process and reset
+	Released,    // prepare's allocations freed; may be prepared again
 }
 
+// Handle to a node: its vtable, its opaque state and lifecycle bookkeeping.
+// Create with a node type's `*_create` proc and free with `node_destroy`.
 Node :: struct {
 	vtable:    ^Node_VTable,
-	data:      rawptr,
+	data:      rawptr,         // the node type's own state
 	state:     Node_State,
-	config:    Prepare_Config,
+	config:    Prepare_Config, // the config of the last successful prepare
 	allocator: mem.Allocator, // the allocator `prepare` used, reused by `release`
 	create_allocator: mem.Allocator, // the allocator that owns `data`
 }
@@ -50,7 +53,10 @@ node_destroy :: proc(n: ^Node) {
 	n^ = {}
 }
 
+// Control thread. Allocates and sizes everything `process` needs for `cfg`.
 // Legal from Initialized, Released, or Prepared (re-prepare releases first).
+// Returns `.Invalid_Argument` for a bad config, or the node's own error.
+// `allocator` is kept and reused by `node_release`.
 node_prepare :: proc(n: ^Node, cfg: Prepare_Config, allocator := context.allocator) -> Error {
 	if cfg.sample_rate <= 0 || cfg.max_block < 0 || cfg.in_channels > MAX_CHANNELS || cfg.out_channels > MAX_CHANNELS {
 		return .Invalid_Argument
@@ -66,30 +72,37 @@ node_prepare :: proc(n: ^Node, cfg: Prepare_Config, allocator := context.allocat
 	return .None
 }
 
-// [rt]
+// [rt] Processes one block. The node must be prepared and `ctx.frames` must
+// not exceed the prepared `max_block` (both asserted).
 node_process :: #force_inline proc(n: ^Node, ctx: ^Process_Context) {
 	assert(n.state == .Prepared, "node_process called on a node that is not prepared")
 	assert(ctx.frames >= 0 && ctx.frames <= n.config.max_block, "process frames exceed max_block")
 	n.vtable.process(n.data, ctx)
 }
 
-// [rt]
+// [rt] Clears the node's state (delay lines, envelopes, voices) without
+// allocating. The node must be prepared.
 node_reset :: proc(n: ^Node) {
 	assert(n.state == .Prepared, "node_reset called on a node that is not prepared")
 	if n.vtable.reset != nil do n.vtable.reset(n.data)
 }
 
+// Control thread. Frees what `node_prepare` allocated; the node can be
+// prepared again. Does nothing unless the node is prepared.
 node_release :: proc(n: ^Node) {
 	if n.state != .Prepared do return
 	if n.vtable.release != nil do n.vtable.release(n.data, n.allocator)
 	n.state = .Released
 }
 
+// The node's static parameter table, or nil if it has none. The slice is owned
+// by the node type; do not free it.
 node_params :: proc(n: ^Node) -> []Param_Info {
 	if n.vtable.params == nil do return nil
 	return n.vtable.params(n.data)
 }
 
+// Looks up the parameter with `id` in `params`. Returns false if absent.
 find_param :: proc(params: []Param_Info, id: Param_Id) -> (Param_Info, bool) {
 	for p in params {
 		if p.id == id do return p, true

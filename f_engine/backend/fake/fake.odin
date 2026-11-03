@@ -1,7 +1,7 @@
 // Simulated audio driver for tests and headless runs. It produces callbacks of
 // fixed or jittery size in any native format and plane layout, can loop
 // outputs back to inputs with a fixed latency, and can inject xruns, device
-// loss and format changes. See docs/design/backend.md.
+// loss and format changes. See /design/backend/.
 package fake
 
 import "base:intrinsics"
@@ -13,20 +13,23 @@ import "fire:backend"
 import "fire:core"
 import "fire:rt"
 
+// One simulated device, as listed by enumerate. Strings and slices are borrowed
+// and must outlive the driver.
 Device_Spec :: struct {
-	id, name:              string,
+	id, name:              string, // stable ID and display name
 	input_channels:        int,
 	output_channels:       int,
-	sample_rates:          []f64,
-	buffer_sizes:          []int,
-	default_sample_rate:   f64,
-	default_buffer_frames: int,
+	sample_rates:          []f64, // Hz; open accepts only these
+	buffer_sizes:          []int, // frames; open accepts only these
+	default_sample_rate:   f64,   // Hz
+	default_buffer_frames: int,   // frames
 }
 
+// How the fake driver behaves. Start from default_config.
 Config :: struct {
 	devices:          []Device_Spec, // nil = one 2-in/2-out device, id "fake:default"
-	input_format:     backend.Sample_Format,
-	output_format:    backend.Sample_Format,
+	input_format:     backend.Sample_Format, // native format of the input planes
+	output_format:    backend.Sample_Format, // native format of the output planes
 	// Channels per plane. 0 = all channels interleaved in one plane;
 	// 1 = one plane per channel (non-interleaved).
 	input_plane_channels:  int,
@@ -34,7 +37,7 @@ Config :: struct {
 	// Callback sizes. jitter_max == 0 → every callback is buffer_frames long.
 	// Otherwise sizes are uniform in [jitter_min, jitter_max].
 	jitter_min, jitter_max: int,
-	seed:             u64,
+	seed:             u64, // seeds the jitter sequence
 	// < 0: inputs are silent. >= 0: output channel k reappears on input
 	// channel k this many frames later. Must be >= the largest callback.
 	loopback_latency: int,
@@ -47,6 +50,8 @@ Config :: struct {
 	start_ns: u64,  // manual mode: host time of frame 0 (deterministic timestamps)
 }
 
+// Defaults: the built-in 2-in/2-out device, f32 interleaved, fixed-size
+// callbacks, no loopback, manual mode with start_ns = 1 s.
 default_config :: proc() -> Config {
 	return {loopback_latency = -1, start_ns = 1_000_000_000}
 }
@@ -62,6 +67,7 @@ default_config :: proc() -> Config {
 	},
 }
 
+// A fake driver instance. Fields are internal.
 Fake :: struct {
 	driver:      backend.Driver,
 	cfg:         Config,
@@ -93,6 +99,8 @@ Fake :: struct {
 	callbacks:   u64,
 }
 
+// Makes a fake driver. Free it with backend.driver_destroy(driver(f)); that
+// frees `f` too. `cfg.devices` is borrowed, not copied. Control thread.
 create :: proc(cfg: Config, allocator := context.allocator) -> ^Fake {
 	f := new(Fake, allocator)
 	f.cfg = cfg
@@ -102,6 +110,7 @@ create :: proc(cfg: Config, allocator := context.allocator) -> ^Fake {
 	return f
 }
 
+// The backend.Driver to pass to backend.device_init. Owned by `f`.
 driver :: proc(f: ^Fake) -> ^backend.Driver {
 	return &f.driver
 }
@@ -136,6 +145,7 @@ change_format :: proc(f: ^Fake) {
 	backend.driver_notify(f.driver.host, {kind = .Format_Changed})
 }
 
+// Number of driver callbacks delivered so far. Safe from any thread.
 callback_count :: proc(f: ^Fake) -> u64 {
 	return intrinsics.atomic_load(&f.callbacks)
 }

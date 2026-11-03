@@ -1,6 +1,6 @@
 #+build darwin
 // CoreAudio HAL driver: one device, driven by an AudioDeviceIOProc.
-// See docs/design/backend.md. The HAL hands IOProcs canonical f32 buffers, one
+// See /design/backend/. The HAL hands IOProcs canonical f32 buffers, one
 // AudioBuffer per stream, so the device's AudioBufferList maps 1:1 onto planes.
 package coreaudio
 
@@ -14,6 +14,7 @@ import "fire:backend"
 import "fire:core"
 import ca "fire:sys/coreaudio"
 
+@(private)
 Core_Audio :: struct {
 	driver:     backend.Driver,
 	allocator:  mem.Allocator,
@@ -35,6 +36,9 @@ Core_Audio :: struct {
 	have_expected:        bool,
 }
 
+// Makes a CoreAudio driver. Also tells the HAL to deliver property notifications
+// on its own thread (a process-wide setting), so device events work without a
+// main run loop. Free with backend.driver_destroy. Control thread.
 create :: proc(allocator := context.allocator) -> ^backend.Driver {
 	c := new(Core_Audio, allocator)
 	c.allocator = allocator

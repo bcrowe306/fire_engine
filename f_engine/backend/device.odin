@@ -9,17 +9,19 @@ import "core:time"
 import "fire:core"
 import "fire:rt"
 
+// Lifecycle state of a Device.
 Device_State :: enum u8 {
-	Closed,
-	Open,
-	Running,
+	Closed,  // no OS device open
+	Open,    // opened with device_open, not running
+	Running, // started with device_start; callbacks may run
 }
 
+// Counters returned by device_stats. Reset by device_start.
 Device_Stats :: struct {
 	callbacks: u64, // driver callbacks
 	blocks:    u64, // Device_Callback.process calls
-	frames:    u64,
-	xruns:     u64,
+	frames:    u64, // frames processed
+	xruns:     u64, // discontinuities reported by the driver
 	overloads: u64, // driver callbacks that took longer than their real-time budget
 	load:      f64, // last driver callback: elapsed / budget
 	peak_load: f64, // since start or the last device_reset_peak_load
@@ -80,6 +82,8 @@ Device :: struct {
 	xruns_reported: u64, // control thread only
 }
 
+// Prepares `dev` to use `driver`, which must outlive it. `allocator` is used for
+// the buffers device_open allocates. Control thread.
 device_init :: proc(dev: ^Device, driver: ^Driver, allocator := context.allocator) {
 	assert(driver != nil && driver.vtable != nil)
 	dev^ = {}
@@ -93,6 +97,10 @@ device_destroy :: proc(dev: ^Device) {
 	device_close(dev)
 }
 
+// Opens the device described by `setup` and sizes buffers for blocks of at most
+// `max_block` frames. Read the negotiated format from `dev.format`. Returns
+// .Invalid_State unless closed, .Invalid_Argument for max_block <= 0 or no
+// channels, or the driver's error. Control thread.
 device_open :: proc(dev: ^Device, setup: Device_Setup, max_block: int) -> core.Error {
 	if dev.state != .Closed do return .Invalid_State
 	if max_block <= 0 do return .Invalid_Argument
@@ -122,6 +130,9 @@ device_open :: proc(dev: ^Device, setup: Device_Setup, max_block: int) -> core.E
 	return .None
 }
 
+// Calls `callback.prepare`, then starts audio callbacks. On a driver error
+// `callback.release` is called and the device stays open. Returns .Invalid_State
+// unless open, .Invalid_Argument if `callback.process` is nil. Control thread.
 device_start :: proc(dev: ^Device, callback: Device_Callback) -> core.Error {
 	if dev.state != .Open do return .Invalid_State
 	if callback.process == nil do return .Invalid_Argument
@@ -152,7 +163,8 @@ device_start :: proc(dev: ^Device, callback: Device_Callback) -> core.Error {
 	return .None
 }
 
-// Returns once no further callbacks can happen.
+// Stops callbacks and calls `callback.release`. Returns once no further callbacks
+// can happen. Does nothing unless running. Control thread.
 device_stop :: proc(dev: ^Device) {
 	if dev.state != .Running do return
 	dev.driver.vtable.stop(dev.driver)
@@ -162,6 +174,8 @@ device_stop :: proc(dev: ^Device) {
 	dev.state = .Open
 }
 
+// Stops the device if running, closes the OS device and frees the buffers.
+// Does nothing if already closed. Control thread.
 device_close :: proc(dev: ^Device) {
 	if dev.state == .Closed do return
 	device_stop(dev)
@@ -189,6 +203,7 @@ device_poll_event :: proc(dev: ^Device) -> (e: Device_Event, ok: bool) {
 	return e, true
 }
 
+// Snapshot of the device counters. Control thread; safe while running.
 device_stats :: proc(dev: ^Device) -> Device_Stats {
 	load :: proc(p: ^u64) -> u64 { return intrinsics.atomic_load_explicit(p, .Relaxed) }
 	return {

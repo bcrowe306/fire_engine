@@ -91,7 +91,7 @@ sync)
 	echo "copying working tree ($(git -C "$ROOT" rev-parse --short HEAD) + local changes) to $NAME..."
 	(cd "$ROOT" && git ls-files -z --cached --others --exclude-standard |
 		while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done |
-		tar --null -T - -cf -) |
+		COPYFILE_DISABLE=1 tar --null -T - -cf -) |
 		remote 'rm -rf ~/fire_engine && mkdir -p ~/fire_engine && tar -x -C ~/fire_engine 2>/dev/null'
 	;;
 test)

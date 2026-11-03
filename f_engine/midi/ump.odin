@@ -1,6 +1,6 @@
 // MIDI 1.0 messages, their Universal MIDI Packet (UMP) encoding, and helpers.
 // Drivers speak UMP (CoreMIDI, Windows MIDI Services) or bytes (ALSA, WinMM);
-// the engine works with MIDI 1.0 bytes. See docs/design/backend.md.
+// the engine works with MIDI 1.0 bytes. See /design/backend/.
 package midi
 
 // Length in bytes of a MIDI 1.0 message with this status byte (0 = not a
@@ -26,15 +26,19 @@ ump_word_count :: proc "contextless" (first_word: u32) -> int {
 	return int(counts[first_word >> 28])
 }
 
+// UMP message type (top 4 bits of the first word): system real-time and common.
 UMP_SYSTEM      :: 0x1
+// UMP message type: MIDI 1.0 channel voice.
 UMP_MIDI1_VOICE :: 0x2
+// UMP message type: 64-bit data, which carries 7-bit SysEx.
 UMP_DATA64      :: 0x3 // SysEx 7-bit
 
+// Status field of a UMP SysEx (data64) packet.
 Sysex_Status :: enum u8 {
-	Complete = 0,
-	Start    = 1,
-	Continue = 2,
-	End      = 3,
+	Complete = 0, // the whole message in one packet
+	Start    = 1, // first packet of several
+	Continue = 2, // a middle packet
+	End      = 3, // last packet
 }
 
 // Encodes a MIDI 1.0 short message as one UMP word. ok = false for SysEx or
@@ -84,12 +88,13 @@ ump_sysex_packet :: proc "contextless" (payload: []u8, i: int, group: u8 = 0) ->
 // Reassembles SysEx from UMP data64 packets for one source. The buffer is
 // preallocated; a message longer than it is dropped (and counted).
 Sysex_Assembler :: struct {
-	buffer:     []u8,
-	len:        int,
-	active:     bool,
-	overflowed: bool,
+	buffer:     []u8, // caller-provided storage; its length is the maximum message size
+	len:        int, // payload bytes so far
+	active:     bool, // inside a message
+	overflowed: bool, // the current message did not fit
 }
 
+// What `sysex_assemble` did with a packet.
 Sysex_Result :: enum u8 {
 	None,      // more packets needed (or nothing to do)
 	Complete,  // `assembler_message` holds a complete payload
@@ -132,6 +137,9 @@ sysex_assemble :: proc "contextless" (a: ^Sysex_Assembler, words: [2]u32) -> Sys
 	return .None
 }
 
+// [rt] The payload assembled so far: after a .Complete result, the whole
+// message (without F0/F7). It aliases the assembler's buffer, so copy it
+// before the next packet.
 assembler_message :: proc "contextless" (a: ^Sysex_Assembler) -> []u8 {
 	return a.buffer[:a.len]
 }

@@ -13,6 +13,8 @@ artifacts_root :: proc() -> string {
 	return ".test_artifacts"
 }
 
+// True when FIRE_UPDATE_GOLDEN is set to anything but "" or "0"; `expect_golden`
+// then rewrites golden files instead of comparing.
 update_golden_requested :: proc() -> bool {
 	v, ok := os.lookup_env("FIRE_UPDATE_GOLDEN", context.temp_allocator)
 	return ok && v != "" && v != "0"
@@ -32,6 +34,7 @@ write_artifact :: proc(name, label: string, b: Audio_Buffer) {
 	_ = wav_write(path, b)
 }
 
+// Writes `text` to `<artifacts>/<name>/info.txt`. Errors are ignored.
 write_artifact_note :: proc(name, text: string) {
 	dir := artifact_dir(name)
 	path, _ := filepath.join({dir, "info.txt"}, context.temp_allocator)

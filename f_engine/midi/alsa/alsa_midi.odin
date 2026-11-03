@@ -1,6 +1,6 @@
 #+build linux
 // ALSA sequencer MIDI driver: virtual ports, routing to any sequencer port,
-// kernel-timestamped input and queue-scheduled output. See docs/design/backend.md.
+// kernel-timestamped input and queue-scheduled output. See /design/backend/.
 package alsa_midi
 
 import "base:intrinsics"
@@ -16,6 +16,7 @@ import "fire:midi"
 import "fire:rt"
 import snd "fire:sys/alsa"
 
+@(private)
 Port_Kind :: enum u8 {
 	Input,          // a source we subscribed our receive port to
 	Output,         // a destination we send to
@@ -23,6 +24,7 @@ Port_Kind :: enum u8 {
 	Virtual_Output, // our port others subscribe to
 }
 
+@(private)
 Seq_Port :: struct {
 	handle:     midi.Port,
 	kind:       Port_Kind,
@@ -31,6 +33,7 @@ Seq_Port :: struct {
 	port_index: u8,
 }
 
+@(private)
 Alsa_Midi :: struct {
 	driver:     midi.Driver,
 	allocator:  mem.Allocator,
@@ -50,6 +53,10 @@ Alsa_Midi :: struct {
 	stop_flag:  bool, // atomic
 }
 
+// Control thread. Creates the ALSA sequencer driver. The caller owns the result; free
+// it with `midi.driver_destroy`. Starts its input thread.
+// Returns .Device_Error if the sequencer cannot be opened (no `snd-seq`
+// module) or set up.
 create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 	a := new(Alsa_Midi, allocator)
 	a.allocator = allocator

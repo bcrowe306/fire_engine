@@ -4,20 +4,24 @@ import "core:math"
 
 // --- levels ------------------------------------------------------------------
 
+// Converts a linear amplitude to dB (20·log10|x|). Zero maps to about -600 dB instead of -Inf.
 linear_to_db :: proc(x: f64) -> f64 {
 	return 20 * math.log10(max(abs(x), 1e-30))
 }
 
+// Converts dB to a linear amplitude factor (10^(db/20)).
 db_to_linear :: proc(db: f64) -> f64 {
 	return math.pow(10, db / 20)
 }
 
+// Largest absolute sample value (linear). 0 for an empty slice.
 peak :: proc(x: []f32) -> f64 {
 	p: f64
 	for v in x do p = max(p, abs(f64(v)))
 	return p
 }
 
+// Root-mean-square level (linear). 0 for an empty slice.
 rms :: proc(x: []f32) -> f64 {
 	if len(x) == 0 do return 0
 	sum: f64
@@ -25,6 +29,7 @@ rms :: proc(x: []f32) -> f64 {
 	return math.sqrt(sum / f64(len(x)))
 }
 
+// Mean sample value (linear). 0 for an empty slice.
 dc_offset :: proc(x: []f32) -> f64 {
 	if len(x) == 0 do return 0
 	sum: f64
@@ -34,6 +39,7 @@ dc_offset :: proc(x: []f32) -> f64 {
 
 // --- sanity ------------------------------------------------------------------
 
+// Counts NaN and Inf samples. `first_index` is the index of the first one, or -1 if none.
 count_non_finite :: proc(x: []f32) -> (count: int, first_index: int) {
 	first_index = -1
 	for v, i in x {
@@ -45,6 +51,8 @@ count_non_finite :: proc(x: []f32) -> (count: int, first_index: int) {
 	return
 }
 
+// Counts subnormal (denormal) f32 samples. Denormals are slow on most CPUs and
+// usually mean a decaying state variable was not flushed to zero.
 count_denormals :: proc(x: []f32) -> int {
 	n := 0
 	for v in x {
@@ -170,15 +178,19 @@ estimate_latency :: proc(reference, output: []f32, max_lag: int) -> int {
 	return best_lag
 }
 
+// Outcome of `compare_slices` / `compare_buffers`. Errors are absolute (linear)
+// sample differences, `actual - expected`.
 Compare_Result :: struct {
-	max_abs_error: f64,
-	max_error_at:  int, // frame index
-	max_error_ch:  int,
-	rms_error:     f64,
-	error_db:      f64, // rms_error relative to the reference RMS
-	frame_mismatch: bool,
+	max_abs_error:  f64,  // largest |actual - expected|
+	max_error_at:   int,  // frame index of max_abs_error
+	max_error_ch:   int,  // channel of max_abs_error (compare_buffers only)
+	rms_error:      f64,  // RMS of the difference
+	error_db:       f64,  // rms_error relative to the reference RMS, in dB
+	frame_mismatch: bool, // lengths or channel counts differ; only the overlap was compared
 }
 
+// Compares two mono signals sample by sample over their common length. Sets
+// `frame_mismatch` if the lengths differ. A NaN difference counts as the worst error.
 compare_slices :: proc(expected, actual: []f32) -> Compare_Result {
 	r: Compare_Result
 	r.frame_mismatch = len(expected) != len(actual)
@@ -197,6 +209,9 @@ compare_slices :: proc(expected, actual: []f32) -> Compare_Result {
 	return r
 }
 
+// Compares two multichannel buffers channel by channel and returns the result of the
+// channel with the largest `max_abs_error` (`max_error_ch` says which). Sets
+// `frame_mismatch` if channel counts or frame counts differ.
 compare_buffers :: proc(expected, actual: Audio_Buffer) -> Compare_Result {
 	worst: Compare_Result
 	if len(expected.channels) != len(actual.channels) || expected.frames != actual.frames {

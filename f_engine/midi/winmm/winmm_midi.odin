@@ -2,7 +2,7 @@
 // WinMM MIDI driver: works on every Windows version. No virtual ports (returns
 // .Unsupported) and no scheduling: Midi_Output holds messages until their time.
 // Windows MIDI Services (Windows 11 24H2+) will be a separate driver.
-// See docs/design/backend.md.
+// See /design/backend/.
 package winmm_midi
 
 import "base:intrinsics"
@@ -18,9 +18,12 @@ import "fire:midi"
 import "fire:rt"
 import mm "fire:sys/winmm"
 
+@(private)
 SYSEX_BUFFERS :: 4
+@(private)
 SYSEX_BUFFER_BYTES :: 4096 // a longer SysEx arrives over several buffers; the byte parser joins them
 
+@(private)
 In_Port :: struct {
 	owner:      ^Win_Midi,
 	handle:     midi.Port,
@@ -32,12 +35,14 @@ In_Port :: struct {
 	buffers:    [SYSEX_BUFFERS][SYSEX_BUFFER_BYTES]u8,
 }
 
+@(private)
 Out_Port :: struct {
 	handle: midi.Port,
 	hmo:    mm.HMIDIOUT,
 	id:     string,
 }
 
+@(private)
 Win_Midi :: struct {
 	driver:     midi.Driver,
 	allocator:  mem.Allocator,
@@ -49,6 +54,9 @@ Win_Midi :: struct {
 	watch_stop: bool, // atomic
 }
 
+// Control thread. Creates the WinMM driver. The caller owns the result; free
+// it with `midi.driver_destroy`. Starts a thread that checks for
+// device changes every 500 ms. Always succeeds.
 create :: proc(allocator := context.allocator) -> (^midi.Driver, core.Error) {
 	w := new(Win_Midi, allocator)
 	w.allocator = allocator

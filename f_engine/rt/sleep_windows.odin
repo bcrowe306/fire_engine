@@ -17,10 +17,9 @@ foreign kernel32 {
 	SetWaitableTimer :: proc(timer: win.HANDLE, due: ^i64, period: i32, routine: rawptr, arg: rawptr, resume: win.BOOL) -> win.BOOL ---
 }
 
-// Sleeps for `d` with sub-millisecond precision. time.sleep on Windows rounds
-// down to whole milliseconds (Sleep(0) for anything shorter, which only
-// yields). Uses a high-resolution waitable timer (Windows 10 1803+), falling
-// back to Sleep. Not for the audio thread.
+// Sleeps for `d` with sub-millisecond precision, without spinning: nanosleep,
+// or on Windows a high-resolution waitable timer (time.sleep there rounds down
+// to whole milliseconds, and Sleep(0) only yields). Not for the audio thread.
 precise_sleep :: proc(d: time.Duration) {
 	if d <= 0 do return
 	timer := CreateWaitableTimerExW(nil, nil, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS)

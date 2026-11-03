@@ -1,6 +1,6 @@
 // JACK driver: the JACK server is the device. We register one JACK port per
 // channel; JACK's realtime thread calls us once per period. libjack is loaded
-// at run time (create returns .Unsupported without it). See docs/design/backend.md.
+// at run time (create returns .Unsupported without it). See /design/backend/.
 package jack
 
 import "base:intrinsics"
@@ -15,6 +15,7 @@ import "fire:core"
 import "fire:rt"
 import j "fire:sys/jack"
 
+// Settings for create. Start from default_options.
 Options :: struct {
 	client_name:  string, // "" = "Fire Engine"
 	server_name:  string, // "" = the default server
@@ -23,10 +24,12 @@ Options :: struct {
 	auto_connect: bool,
 }
 
+// Defaults: client "Fire Engine" on the default server, auto_connect on.
 default_options :: proc() -> Options {
 	return {auto_connect = true}
 }
 
+@(private)
 Jack :: struct {
 	driver:     backend.Driver,
 	allocator:  mem.Allocator,
@@ -44,6 +47,9 @@ Jack :: struct {
 	xrun_next: bool, // atomic
 }
 
+// Makes a JACK driver. Returns .Unsupported if libjack cannot be loaded; a
+// missing server shows up later (enumerate lists no devices, open fails).
+// Free with backend.driver_destroy. Control thread.
 create :: proc(opts := Options{auto_connect = true}, allocator := context.allocator) -> (^backend.Driver, core.Error) {
 	a := new(Jack, allocator)
 	a.allocator = allocator

@@ -5,6 +5,8 @@ import "core:testing"
 
 import "fire:core"
 
+// Fails the test if |actual - expected| > tolerance, printing both values, the
+// difference and `what`. Returns whether the check passed.
 expect_near :: proc(t: ^testing.T, actual, expected, tolerance: f64, what := "", loc := #caller_location) -> bool {
 	ok := abs(actual - expected) <= tolerance
 	testing.expectf(t, ok, "%s: got %.9g, expected %.9g ± %.3g (off by %.3g)", what, actual, expected, tolerance, abs(actual - expected), loc = loc)
@@ -34,6 +36,8 @@ expect_clean_render :: proc(t: ^testing.T, r: Render_Report, loc := #caller_loca
 	return ok
 }
 
+// Creates a fresh node for each render in `expect_block_invariant`. `create` is
+// called with `user`; the caller of the check destroys each node it returns.
 Node_Factory :: struct {
 	create: proc(user: rawptr) -> core.Node,
 	user:   rawptr,

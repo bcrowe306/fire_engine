@@ -56,6 +56,11 @@ Settings :: struct {
 	workers:              int,
 	// Delay parallel paths so they arrive aligned (see `latency`).
 	latency_compensation: bool,
+	// Run a block on several threads only when the graph has parallel paths
+	// and its nodes take more than this much CPU per block (measured as it
+	// runs). Below it, waking workers costs more than it saves. 0 = always
+	// when there are parallel paths.
+	parallel_min_us:      f64,
 	// Installed as context.allocator on worker threads. Nodes must not
 	// allocate while processing; the default (zero) is the nil allocator, so
 	// an allocation fails instead of hitting the heap. Tests install a
@@ -75,6 +80,7 @@ default_settings :: proc(sample_rate: f64, max_block: int) -> Settings {
 		output_channels      = 2,
 		workers              = -1,
 		latency_compensation = true,
+		parallel_min_us      = 50,
 		max_events           = 1024,
 		max_pending_params   = 64,
 		param_queue          = 4096,
@@ -89,7 +95,7 @@ Stats :: struct {
 }
 
 // A graph. Create with `create`; all procs except `process` are control
-// thread only.
+// thread only. Fields are internal.
 Graph :: struct {
 	settings:  Settings,
 	allocator: mem.Allocator,

@@ -61,6 +61,7 @@ output_is_identical_for_any_thread_count :: proc(t: ^testing.T) {
 			trap: kit.Trap_Allocator
 			st := graph.default_settings(SR, MAX_BLOCK)
 			st.workers = workers
+			st.parallel_min_us = 0 // always parallel when the graph allows it
 			st.worker_allocator = kit.trap_allocator(&trap)
 			g, err := graph.create(st)
 			testing.expect_value(t, err, core.Error.None)
@@ -96,6 +97,7 @@ live_edits_under_load :: proc(t: ^testing.T) {
 	testing.set_fail_timeout(t, 120 * time.Second)
 	st := graph.default_settings(SR, 128)
 	st.workers = 3
+	st.parallel_min_us = 0
 	s: Stress
 	st.worker_allocator = kit.trap_allocator(&s.trap)
 	g, err := graph.create(st)
@@ -197,7 +199,9 @@ render_parallel :: proc(t: ^testing.T, workers: int) -> (kit.Audio_Buffer, time.
 	return out, time.tick_since(start)
 }
 
-// 16 independent chains: more threads finish sooner, with identical output.
+// 16 independent chains of heavy nodes: with default settings the graph
+// measures its work, switches to parallel by itself, and finishes sooner with
+// identical output.
 @(test)
 parallel_chains_speed_up :: proc(t: ^testing.T) {
 	testing.set_fail_timeout(t, 120 * time.Second)

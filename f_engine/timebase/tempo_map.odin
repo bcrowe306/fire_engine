@@ -8,13 +8,14 @@ import "core:mem"
 // the tempo is constant. The last segment extends forever at bpm_start, and any
 // ramp on it is ignored.
 Tempo_Point :: struct {
-	start:     Beats,
-	bpm_start: f64,
-	bpm_end:   f64, // tempo reached at the *next* point's start
+	start:     Beats, // where the segment begins
+	bpm_start: f64,   // tempo at `start`
+	bpm_end:   f64,   // tempo reached at the *next* point's start
 }
 
+// A time signature, e.g. {6, 8} for 6/8.
 Meter :: struct {
-	numerator:   i32,
+	numerator:   i32, // beats per bar, in units of the denominator
 	denominator: i32, // 2, 4, 8, 16 ...
 }
 
@@ -24,6 +25,8 @@ Meter_Point :: struct {
 	meter: Meter,
 }
 
+// A musical position as bar, beat and tick, all 0-based. Beats count in the
+// meter's denominator (eighths in 6/8), unlike `Beats`, which are quarter notes.
 Bar_Beat_Tick :: struct {
 	bar:  i64, // 0-based
 	beat: i64, // 0-based, in units of the meter denominator
@@ -33,14 +36,16 @@ Bar_Beat_Tick :: struct {
 // Built and edited on the control thread. The audio thread may read a map that
 // is no longer being mutated (publish a new one with an atomic swap).
 Tempo_Map :: struct {
-	tempos: [dynamic]Tempo_Point,
-	meters: [dynamic]Meter_Point,
+	tempos: [dynamic]Tempo_Point, // sorted by start; the first starts at beat 0
+	meters: [dynamic]Meter_Point, // sorted by bar; the first starts at bar 0
 	// Derived: seconds at each tempo point. Rebuilt by `tempo_map_rebuild`.
 	seconds_at: [dynamic]Seconds,
 	// Derived: start beat of each meter point.
 	meter_beats: [dynamic]Beats,
 }
 
+// Control thread. Initializes `m` with one tempo (`bpm`) and one meter, both
+// starting at zero. Allocates with `allocator`; free with `tempo_map_destroy`.
 tempo_map_init :: proc(m: ^Tempo_Map, bpm: f64 = 120, meter := Meter{4, 4}, allocator := context.allocator) -> mem.Allocator_Error {
 	m.tempos      = make([dynamic]Tempo_Point, allocator) or_return
 	m.meters      = make([dynamic]Meter_Point, allocator) or_return
@@ -52,6 +57,7 @@ tempo_map_init :: proc(m: ^Tempo_Map, bpm: f64 = 120, meter := Meter{4, 4}, allo
 	return nil
 }
 
+// Control thread. Frees everything `tempo_map_init` allocated and zeroes `m`.
 tempo_map_destroy :: proc(m: ^Tempo_Map) {
 	delete(m.tempos)
 	delete(m.meters)
@@ -60,7 +66,9 @@ tempo_map_destroy :: proc(m: ^Tempo_Map) {
 	m^ = {}
 }
 
-// Inserts or replaces a tempo point. `ramp_to` < 0 means constant until the next point.
+// Control thread. Inserts or replaces the tempo point at beat `at` with `bpm`.
+// `ramp_to` > 0 ramps linearly (in beats) to that tempo at the next point; < 0
+// means constant until the next point. May grow the map's arrays.
 tempo_map_set_tempo :: proc(m: ^Tempo_Map, at: Beats, bpm: f64, ramp_to: f64 = -1) -> mem.Allocator_Error {
 	assert(bpm > 0)
 	p := Tempo_Point{at, bpm, ramp_to > 0 ? ramp_to : bpm}
@@ -75,6 +83,8 @@ tempo_map_set_tempo :: proc(m: ^Tempo_Map, at: Beats, bpm: f64, ramp_to: f64 = -
 	return nil
 }
 
+// Control thread. Inserts or replaces the meter change at 0-based `bar`.
+// May grow the map's arrays.
 tempo_map_set_meter :: proc(m: ^Tempo_Map, bar: i64, meter: Meter) -> mem.Allocator_Error {
 	assert(meter.numerator > 0 && meter.denominator > 0)
 	p := Meter_Point{bar, meter}
@@ -89,6 +99,9 @@ tempo_map_set_meter :: proc(m: ^Tempo_Map, bar: i64, meter: Meter) -> mem.Alloca
 	return nil
 }
 
+// Control thread. Recomputes the derived tables (`seconds_at`, `meter_beats`).
+// The setters call it; call it yourself only after editing `tempos` or
+// `meters` directly.
 tempo_map_rebuild :: proc(m: ^Tempo_Map) {
 	resize(&m.seconds_at, len(m.tempos))
 	t := Seconds(0)
@@ -109,13 +122,14 @@ tempo_map_rebuild :: proc(m: ^Tempo_Map) {
 	}
 }
 
+// [rt] Length of one bar of `meter` in quarter notes (6/8 gives 3).
 beats_per_bar :: #force_inline proc "contextless" (meter: Meter) -> f64 {
 	return f64(meter.numerator) * 4.0 / f64(meter.denominator)
 }
 
 // --- tempo-map conversions ([rt]-safe: read-only, no allocation) -------------
 
-// [rt]
+// [rt] Tempo in BPM at beat `b`, following ramps.
 tempo_at :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> f64 {
 	i := tempo_index(m, b)
 	p := m.tempos[i]
@@ -123,7 +137,8 @@ tempo_at :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> f64 {
 	return p.bpm_start + ramp_slope(p, m.tempos[i + 1].start - p.start) * f64(b - p.start)
 }
 
-// [rt]
+// [rt] Converts a beat position to seconds since transport zero, following
+// tempo changes and ramps.
 beats_to_seconds :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> Seconds {
 	i := tempo_index(m, b)
 	p := m.tempos[i]
@@ -131,7 +146,8 @@ beats_to_seconds :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> Seconds {
 	return m.seconds_at[i] + segment_seconds(p, b - p.start, length)
 }
 
-// [rt]
+// [rt] Converts seconds since transport zero to a beat position. Inverse of
+// `beats_to_seconds`.
 seconds_to_beats :: proc "contextless" (m: ^Tempo_Map, t: Seconds) -> Beats {
 	i := len(m.tempos) - 1
 	for i > 0 && m.seconds_at[i] > t do i -= 1
@@ -148,24 +164,27 @@ seconds_to_beats :: proc "contextless" (m: ^Tempo_Map, t: Seconds) -> Beats {
 	return p.start + Beats((p.bpm_start * math.exp(k * dt / 60.0) - p.bpm_start) / k)
 }
 
-// [rt]
+// [rt] Converts a frame position at `sample_rate` (Hz) to a beat position.
 samples_to_beats :: proc "contextless" (m: ^Tempo_Map, s: Sample_Time, sample_rate: f64) -> Beats {
 	return seconds_to_beats(m, samples_to_seconds(s, sample_rate))
 }
 
-// [rt]
+// [rt] Converts a beat position to frames at `sample_rate` (Hz), rounding to
+// the nearest frame.
 beats_to_samples :: proc "contextless" (m: ^Tempo_Map, b: Beats, sample_rate: f64) -> Sample_Time {
 	return seconds_to_samples(beats_to_seconds(m, b), sample_rate)
 }
 
-// [rt]
+// [rt] The meter in effect at beat `b`, with the 0-based bar and the beat
+// position where that meter begins.
 meter_at_beat :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> (meter: Meter, bar_start: i64, beat_start: Beats) {
 	i := len(m.meters) - 1
 	for i > 0 && m.meter_beats[i] > b do i -= 1
 	return m.meters[i].meter, m.meters[i].bar, m.meter_beats[i]
 }
 
-// [rt]
+// [rt] Converts a beat position to bar/beat/tick, with `ppq` ticks per quarter
+// note. Ticks are rounded to the nearest whole tick.
 beats_to_bbt :: proc "contextless" (m: ^Tempo_Map, b: Beats, ppq: i64 = DEFAULT_PPQ) -> Bar_Beat_Tick {
 	meter, bar0, beat0 := meter_at_beat(m, b)
 	quarters_per_unit := 4.0 / f64(meter.denominator)
@@ -178,7 +197,8 @@ beats_to_bbt :: proc "contextless" (m: ^Tempo_Map, b: Beats, ppq: i64 = DEFAULT_
 	return {bar0 + bar, rem / ticks_per_unit, rem % ticks_per_unit}
 }
 
-// [rt]
+// [rt] Converts bar/beat/tick (with `ppq` ticks per quarter note) to a beat
+// position. Inverse of `beats_to_bbt`.
 bbt_to_beats :: proc "contextless" (m: ^Tempo_Map, bbt: Bar_Beat_Tick, ppq: i64 = DEFAULT_PPQ) -> Beats {
 	i := len(m.meters) - 1
 	for i > 0 && m.meters[i].bar > bbt.bar do i -= 1

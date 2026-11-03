@@ -129,6 +129,33 @@ init  →  prepare(sample_rate, max_block)  →  process* / reset*  →  release
 - Golden files live in `tests/golden/`. Regenerate them only on purpose, with
   `FIRE_UPDATE_GOLDEN=1`, and review the diff plot first.
 
+## Documentation
+
+Fire Engine is a library: its documentation is part of the API.
+
+- **Every exported symbol has a doc comment**: a `//` block directly above it.
+  `scripts/docs.sh --check` fails CI otherwise. Say what it does, its units,
+  which thread may call it, who owns what it returns, and how it fails.
+  Usually 1–3 sentences.
+- **Hide internals with `@(private)`.** Anything a library user should not
+  call or construct is private: driver state structs, helpers, internal
+  constants. A public struct users hold but shouldn't poke into says
+  "Fields are internal." in its doc (the reference then hides its fields).
+- **Struct fields** users set or read get trailing `// comments`; they become
+  the field table in the reference.
+- **Audio-thread-safe procedures** start their doc with `[rt]`.
+- **Code examples** in doc comments are tab-indented lines (rendered as
+  `odin` code blocks).
+- **Package docs**: a comment above `package x` in one file: what the package
+  is for, plus a short example for the commonly used parts.
+- The reference (`docs/reference/`) is generated: run `scripts/docs.sh` after
+  changing doc comments and commit the result. Guides (`docs/guides/`) and
+  design notes (`docs/design/`) are written by hand. All pages are Starlight
+  Markdown (front matter `title` and `description`; site-root links such as
+  `/guides/graph/`).
+- Frequently used features get a runnable program in `examples/`, which CI
+  builds and runs (`scripts/examples.sh`). Guides quote from them.
+
 ## Style
 
 - Tabs for indentation, as `odin` and the core library do.

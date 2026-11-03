@@ -89,6 +89,7 @@ new_graph :: proc(t: ^testing.T, channels := 2, compensation := true, workers :=
 	st.input_channels, st.output_channels = channels, channels
 	st.latency_compensation = compensation
 	st.workers = workers
+	st.parallel_min_us = 0 // exercise the parallel path whenever there are workers
 	g, err := graph.create(st)
 	testing.expect_value(t, err, core.Error.None)
 	return g

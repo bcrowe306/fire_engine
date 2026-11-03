@@ -16,6 +16,13 @@ Plan :: struct {
 	input:      i32,
 	output:     i32,
 	delays:     []^Delay_Line, // used by this plan (refcounted)
+	// Most processing nodes that can ever run at once (INPUT and OUTPUT are
+	// not counted). At 1 the plan runs serially on the audio thread: waking
+	// workers would only add latency.
+	width:      int,
+	// Smoothed CPU time all nodes took per block (ns), whichever threads ran
+	// them; decides serial vs parallel. Audio thread.
+	work_ns:    f64,
 	sched:      Schedule,
 }
 
@@ -132,6 +139,18 @@ plan_compile :: proc(g: ^Graph) -> (p: ^Plan, err: core.Error) {
 		p.nodes[i].consumers = consumers[:]
 	}
 	p.delays = delays[:]
+
+	// Width: processing nodes per dependency level (a node's level is one
+	// more than its deepest source's).
+	level := make([]int, len(order), context.temp_allocator)
+	per_level := make([]int, len(order) + 1, context.temp_allocator)
+	for n, i in order {
+		for c in g.conns do if c.dst == n do level[i] = max(level[i], level[p.slot_node[c.src]] + 1)
+		if g.slots[n].kind == .Node {
+			per_level[level[i]] += 1
+			p.width = max(p.width, per_level[level[i]])
+		}
+	}
 	sched_init(g, p, a) or_return
 	return p, .None
 }

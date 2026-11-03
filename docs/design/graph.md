@@ -99,12 +99,26 @@ lock-free player:
   remaining" counter reaches zero. *Unlike Tracktion*, which waits for one
   root node: we also process nodes that do not reach the output, such as
   meters and sends to elsewhere.
+- **When to go parallel.** A block runs on several threads only if the plan
+  has parallel paths (its *width*, measured when compiling, is above 1) and
+  the nodes' measured CPU time per block exceeds `Settings.parallel_min_us`
+  (50 µs by default). Otherwise it runs serially on the audio thread.
+  Measured on an M-series Mac, a 4-chain graph of light nodes took 8.8 µs per
+  block serially and 101 µs with all cores, because waking workers cost more
+  than the work. A graph of heavy nodes ran 4× faster in parallel. The
+  threshold handles both automatically. *Unlike Tracktion*, which always uses
+  its thread pool.
 - **Waking.** Idle workers spin briefly, then sleep on a semaphore.
-  - *Unlike Tracktion*, which only signals at the start of a block, pushing
-    ready work posts the semaphore when a worker is asleep. Mid-block
-    parallelism therefore does not depend on spinning.
-  - The audio thread never waits on an OS primitive; it only spins (and
-    posts).
+  - The audio thread posts at most once per block, and only when every
+    worker is asleep.
+  - A worker that takes a node while more are queued wakes one more worker,
+    so wake-ups cascade on worker threads rather than costing the audio
+    thread a system call per node.
+  - *Unlike Tracktion*, which only signals at the start of a block,
+    mid-block work wakes workers too, so parallelism does not depend on
+    spinning.
+  - The audio thread never waits on an OS primitive; it only spins (and posts
+    at most once).
 - **Threads.** The default is CPU cores − 1 workers, configurable from 0
   (single-threaded) up. Workers get realtime priority where the OS allows
   (`rt.set_realtime_priority`), set by each worker on itself. *Unlike
@@ -166,7 +180,10 @@ the trapping allocator.
   split.
 - **Latency:** a delayed path summed with an inverted direct path cancels
   exactly when compensation is on, and does not when it is off.
-- **Threads:** random DAGs give bit-identical output at 0, 1, 3 and 7 workers.
+- **Threads:** random DAGs give bit-identical output at 0, 1, 3 and 7 workers
+  (with the threshold at 0, so every block runs in parallel). ThreadSanitizer
+  is clean on the threaded tests. A heavy 16-chain graph switches to
+  parallel by itself and runs about 4× faster.
 - **Live edits:** one thread commits random graphs while another processes
   blocks: no crash, no allocation, every block complete.
 - **The graph as a node:** `graph_node(g)` adapts a graph to `core.Node`, so

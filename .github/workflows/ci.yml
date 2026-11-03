@@ -34,6 +34,16 @@ jobs:
           FIRE_OPT: ${{ matrix.opt }}
         run: ./scripts/test.sh
 
+      - name: Examples build and run
+        if: matrix.opt == 'none'
+        shell: bash
+        run: ./scripts/examples.sh
+
+      - name: API reference is current and complete
+        if: matrix.opt == 'none' && runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/docs.sh --check
+
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

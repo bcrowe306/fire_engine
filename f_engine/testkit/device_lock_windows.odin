@@ -24,6 +24,8 @@ Device_Lock :: struct {
 @(private)
 device_mutex: sync.Mutex
 
+// Blocks until this process and thread hold the lock for the shared device `name`
+// (a short identifier, used in a file or mutex name). Release with `device_unlock`.
 device_lock :: proc(name: string) -> Device_Lock {
 	sync.mutex_lock(&device_mutex)
 	h := CreateMutexW(nil, false, win.utf8_to_wstring(fmt.tprintf("Local\\fire_engine_%s", name), context.temp_allocator))
@@ -31,6 +33,7 @@ device_lock :: proc(name: string) -> Device_Lock {
 	return {h}
 }
 
+// Releases a lock taken by `device_lock`.
 device_unlock :: proc(l: Device_Lock) {
 	if l.handle != nil {
 		ReleaseMutex(l.handle)

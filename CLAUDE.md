@@ -39,6 +39,18 @@ The AWS account allows EC2 only in us-east-2, and only Free-plan instance types
 
 Credentials live in `secrets.env` (gitignored, never commit or print it).
 
+### Docs and examples
+
+```bash
+./scripts/docs.sh            # regenerate docs/reference from doc comments (commit the result)
+./scripts/docs.sh --check    # CI: reference current + every exported symbol documented
+./scripts/examples.sh        # build and run examples/ headless (fake audio driver)
+```
+
+Every exported symbol needs a doc comment; internals are `@(private)`. See the
+Documentation section of CONVENTIONS.md. Docs are Starlight Markdown
+(`docs/_integration.md`).
+
 Builds always need `-collection:fire=f_engine`.
 
 ## Non-negotiables

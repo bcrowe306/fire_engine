@@ -5,23 +5,28 @@ import "core:math"
 // Deterministic generators. Each writes into `out` (one channel); use
 // `buffer_mono_to_all` to copy to the other channels.
 
+// Fills `out` with zeros.
 silence :: proc(out: []f32) {
 	for &s in out do s = 0
 }
 
+// Fills `out` with the constant `value`.
 dc :: proc(out: []f32, value: f32) {
 	for &s in out do s = value
 }
 
+// Zeros `out` and sets frame `at` to `amplitude`. An out-of-range `at` leaves pure silence.
 impulse :: proc(out: []f32, at := 0, amplitude: f32 = 1) {
 	silence(out)
 	if at >= 0 && at < len(out) do out[at] = amplitude
 }
 
+// 0 before frame `at`, `amplitude` from `at` on.
 step :: proc(out: []f32, at := 0, amplitude: f32 = 1) {
 	for &s, i in out do s = i >= at ? amplitude : 0
 }
 
+// Sine of `freq_hz` and peak `amplitude` (linear), starting at `phase` radians at frame 0.
 sine :: proc(out: []f32, sample_rate, freq_hz: f64, amplitude: f64 = 1, phase: f64 = 0) {
 	w := math.TAU * freq_hz / sample_rate
 	for &s, i in out do s = f32(amplitude * math.sin(w * f64(i) + phase))
@@ -45,6 +50,7 @@ Rng :: struct {
 	state: u64,
 }
 
+// Next 64 random bits; advances `r`.
 rng_next_u64 :: proc(r: ^Rng) -> u64 {
 	r.state += 0x9E3779B97F4A7C15
 	z := r.state
@@ -58,6 +64,8 @@ rng_next_f64 :: proc(r: ^Rng) -> f64 {
 	return f64(rng_next_u64(r) >> 11) * (1.0 / f64(u64(1) << 53))
 }
 
+// Uniform integer in [lo, hi] inclusive (lo if hi <= lo). Has a tiny modulo bias,
+// fine for tests.
 rng_range :: proc(r: ^Rng, lo, hi: int) -> int {
 	if hi <= lo do return lo
 	return lo + int(rng_next_u64(r) % u64(hi - lo + 1))

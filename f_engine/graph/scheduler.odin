@@ -6,6 +6,7 @@ import "core:mem"
 import "core:os"
 import "core:sync"
 import "core:thread"
+import "core:time"
 
 import "fire:core"
 import "fire:rt"
@@ -107,13 +108,27 @@ sched_quiesce :: proc(g: ^Graph, p: ^Plan) {
 	}
 }
 
-// [rt] Processes one block of `p`, on the calling (audio) thread and the pool.
+// [rt] Processes one block of `p`: serially on the calling (audio) thread when
+// that's cheaper (no parallel paths, or too little work to be worth waking
+// workers), else on the calling thread and the pool.
 @(private)
 sched_run :: proc(g: ^Graph, p: ^Plan, frames: int, t0: i64, transport: ^core.Transport) {
-	if len(g.pool.threads) == 0 || len(p.nodes) < 2 {
-		for i in 0 ..< i32(len(p.nodes)) do run_node(g, p, i, frames, t0, transport)
+	parallel := len(g.pool.threads) > 0 && p.width > 1 && p.work_ns >= g.settings.parallel_min_us * 1000
+	start := time.tick_now()
+	if parallel {
+		run_parallel(g, p, frames, t0, transport)
+		// Wall time × threads that could have been busy overestimates the
+		// work; the serial measurement below corrects it when it switches.
+		measured := f64(time.tick_since(start)) * f64(min(p.width, len(g.pool.threads) + 1))
+		p.work_ns += (measured - p.work_ns) * 0.05
 		return
 	}
+	for i in 0 ..< i32(len(p.nodes)) do run_node(g, p, i, frames, t0, transport)
+	p.work_ns += (f64(time.tick_since(start)) - p.work_ns) * 0.05
+}
+
+@(private)
+run_parallel :: proc(g: ^Graph, p: ^Plan, frames: int, t0: i64, transport: ^core.Transport) {
 	s := &p.sched
 	s.frames, s.t0, s.transport = frames, t0, transport
 	for &pn in p.nodes do intrinsics.atomic_store_explicit(&pn.deps, pn.num_deps, .Relaxed)
@@ -160,19 +175,27 @@ run_chain :: proc(g: ^Graph, p: ^Plan, i: i32) {
 	}
 }
 
-// [rt] Queues a ready node and wakes a sleeping worker for it, if any.
+// [rt] Queues a ready node. Wakes a worker only if every worker is asleep:
+// an awake worker will take it, and wakes the next if more is waiting (see
+// `ready_pop`). So the audio thread posts the semaphore at most once a block.
 @(private)
 ready_push :: proc "contextless" (g: ^Graph, p: ^Plan, i: i32) {
 	ok := rt.mpmc_push(&p.sched.queue, i)
 	assert_contextless(ok, "graph ready queue full") // capacity >= node count
 	intrinsics.atomic_add(&g.pool.queued, 1)
-	if claim_sleeper(&g.pool) do sync.sema_post(&g.pool.sema)
+	if int(intrinsics.atomic_load(&g.pool.sleepers)) == len(g.pool.threads) && claim_sleeper(&g.pool) {
+		sync.sema_post(&g.pool.sema)
+	}
 }
 
+// Takes a ready node; if more are waiting, wakes one more worker (the
+// cascade that spreads wake-ups over the workers instead of the audio thread).
 @(private)
-ready_pop :: proc "contextless" (g: ^Graph, p: ^Plan) -> (i32, bool) {
+ready_pop :: proc "contextless" (g: ^Graph, p: ^Plan, waker := false) -> (i32, bool) {
 	i, ok := rt.mpmc_pop(&p.sched.queue)
-	if ok do intrinsics.atomic_sub(&g.pool.queued, 1)
+	if !ok do return i, ok
+	left := intrinsics.atomic_sub(&g.pool.queued, 1) - 1
+	if waker && left > 0 && claim_sleeper(&g.pool) do sync.sema_post(&g.pool.sema)
 	return i, ok
 }
 
@@ -208,7 +231,7 @@ worker_main :: proc(data: rawptr) {
 		if p != nil {
 			intrinsics.atomic_store(&hazard.plan, p) // seq_cst: see sched_quiesce
 			if intrinsics.atomic_load(&pool.work) == p {
-				for i in ready_pop(g, p) {
+				for i in ready_pop(g, p, waker = true) {
 					run_chain(g, p, i)
 					worked = true
 				}

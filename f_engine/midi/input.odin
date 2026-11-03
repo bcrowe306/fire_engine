@@ -7,12 +7,14 @@ import "core:sync"
 import "fire:core"
 import "fire:rt"
 
+// Number of input port indices: ports are tagged 0 ..< MAX_PORTS.
 MAX_PORTS :: 16
 
+// One short message received by a driver, on its way to the audio thread.
 Input_Event :: struct {
 	time_ns: u64, // host clock (rt.host_time_ns)
-	port:    u8,
-	bytes:   [3]u8,
+	port:    u8, // port index given at open
+	bytes:   [3]u8, // MIDI 1.0 message; unused bytes are 0
 }
 
 // Collects MIDI input from driver threads and places it, sample-accurately,
@@ -23,37 +25,45 @@ Input_Event :: struct {
 // before its block is rendered, so timing is jitter-free at a fixed latency.
 // Use `suggested_latency_ns`. Events that arrive too late for their slot are
 // placed at offset 0 and counted in `late`.
+//
+// Set up with `input_init`, free with `input_destroy`. Read SysEx from
+// `sysex` with `sysex_pop` (control thread) and counters with `input_stats`.
 Midi_Input :: struct {
-	queue:         rt.Spsc_Queue(Input_Event),
+	queue:         rt.Spsc_Queue(Input_Event), // driver threads → audio thread
 	producer_lock: sync.Mutex, // driver threads; never taken by the audio thread
-	sysex:         Sysex_Queue,
-	assemblers:    [MAX_PORTS]Sysex_Assembler,
+	sysex:         Sysex_Queue, // complete SysEx for the control thread (sysex_pop)
+	assemblers:    [MAX_PORTS]Sysex_Assembler, // per-port SysEx reassembly
 	parsers:       [MAX_PORTS]Byte_Parser, // for drivers that deliver MIDI 1.0 bytes
-	sysex_storage: []u8,
-	latency_ns:    u64,
+	sysex_storage: []u8, // backing memory for the assemblers
+	latency_ns:    u64, // atomic; see input_set_latency
 
 	// Audio thread only.
 	pending:     []Input_Event, // sorted by time
-	pending_len: int,
+	pending_len: int, // events in use at the start of pending
 
 	// Counters (atomic).
-	late:    u64,
+	late:    u64, // events placed at offset 0 because they arrived too late
 	dropped: u64, // short messages lost to a full queue or pending buffer
 	ignored: u64, // UMP messages with no MIDI 1.0 meaning (MIDI 2.0 voice, utility...)
 }
 
+// Sizes for `input_init`. A zero config means `default_input_config()`.
 Input_Config :: struct {
 	queue_capacity:   int, // short messages in flight
 	pending_capacity: int, // messages waiting for a future block
 	sysex_bytes:      int, // SysEx byte ring to the control thread
-	sysex_messages:   int,
-	max_sysex_len:    int, // longer SysEx messages are dropped
+	sysex_messages:   int, // SysEx messages in flight to the control thread
+	max_sysex_len:    int, // bytes per port; longer SysEx messages are dropped
 }
 
+// Queue and pending capacity 4096, a 64 KiB SysEx ring holding up to 256
+// messages, and 8 KiB per SysEx message.
 default_input_config :: proc() -> Input_Config {
 	return {4096, 4096, 1 << 16, 256, 8192}
 }
 
+// Control thread. Allocates the queues and buffers; a zero `cfg` uses
+// `default_input_config()`. Free with `input_destroy` and the same allocator.
 input_init :: proc(in_: ^Midi_Input, cfg := Input_Config{}, allocator := context.allocator) -> (err: mem.Allocator_Error) {
 	cfg := cfg
 	if cfg == {} do cfg = default_input_config()
@@ -65,6 +75,8 @@ input_init :: proc(in_: ^Midi_Input, cfg := Input_Config{}, allocator := context
 	return nil
 }
 
+// Control thread. Frees what `input_init` allocated. Close every input port
+// that delivers to it and stop calling `input_process` first.
 input_destroy :: proc(in_: ^Midi_Input, allocator := context.allocator) {
 	rt.spsc_destroy(&in_.queue, allocator)
 	sysex_queue_destroy(&in_.sysex, allocator)
@@ -79,12 +91,17 @@ suggested_latency_ns :: proc "contextless" (output_offset_ns: u64, buffer_frames
 	return output_offset_ns + u64(f64(buffer_frames) * 1e9 / sample_rate)
 }
 
+// [rt] Sets the delay, in nanoseconds, between an event's arrival time and the
+// time it is placed in a block. Any thread; takes effect on the next block.
 input_set_latency :: proc "contextless" (in_: ^Midi_Input, latency_ns: u64) {
 	intrinsics.atomic_store_explicit(&in_.latency_ns, latency_ns, .Relaxed)
 }
 
 // --- driver side (any non-realtime thread) -------------------------------------
 
+// Driver threads. Queues one short message received at host time `time_ns` on
+// port index `port`. Never call it from the audio thread (it takes a mutex).
+// A full queue counts a drop.
 input_push_short :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8, bytes: [3]u8) {
 	sync.mutex_lock(&in_.producer_lock)
 	defer sync.mutex_unlock(&in_.producer_lock)
@@ -243,10 +260,15 @@ insert_pending :: proc "contextless" (in_: ^Midi_Input, e: Input_Event) {
 	in_.pending_len += 1
 }
 
+// Counters since `input_init`, read with `input_stats`.
 Input_Stats :: struct {
-	late, dropped, ignored, sysex_dropped: u64,
+	late:          u64, // events placed at offset 0 because they arrived too late
+	dropped:       u64, // short messages lost to a full queue or pending buffer
+	ignored:       u64, // messages with no MIDI 1.0 meaning, stray data bytes
+	sysex_dropped: u64, // SysEx too long, malformed, or lost to a full queue
 }
 
+// [rt] Any thread. A snapshot of the input's counters.
 input_stats :: proc "contextless" (in_: ^Midi_Input) -> Input_Stats {
 	return {
 		late          = intrinsics.atomic_load_explicit(&in_.late, .Relaxed),

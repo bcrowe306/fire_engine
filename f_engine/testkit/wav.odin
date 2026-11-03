@@ -2,12 +2,13 @@ package testkit
 
 import "core:os"
 
+// Result of `wav_read` and `wav_write`.
 Wav_Error :: enum {
 	None,
-	Io,
-	Not_Riff_Wave,
-	Missing_Chunk,
-	Unsupported_Format,
+	Io,                 // file could not be read or written
+	Not_Riff_Wave,      // not a RIFF/WAVE file
+	Missing_Chunk,      // no fmt or data chunk
+	Unsupported_Format, // sample format other than those wav_read lists
 }
 
 // Writes 32-bit IEEE float WAV.

@@ -1,0 +1,39 @@
+---
+title: Fire Engine
+description: A realtime audio engine library in Odin — devices, MIDI, a multithreaded audio graph, DSP and a test kit — for everything from embedded boxes to full DAWs.
+---
+
+Fire Engine is a realtime audio engine written in [Odin](https://odin-lang.org).
+It is a library: you build your application (a plugin host, an instrument, a
+DAW, a headless box on a single-board computer) on top of its packages.
+
+## Packages
+
+| Package | What it is |
+|---------|------------|
+| [`fire:core`](/reference/core/) | Shared types: nodes, events, parameters, transport, errors |
+| [`fire:graph`](/reference/graph/) | The audio graph: nodes and connections, processed on many threads |
+| [`fire:dsp`](/reference/dsp/) | DSP building blocks and simple nodes (gain, filters, smoothing) |
+| [`fire:backend`](/reference/backend/) | Audio devices: one API over [CoreAudio](/reference/backend/coreaudio/), [ALSA](/reference/backend/alsa/), [JACK](/reference/backend/jack/), [WASAPI](/reference/backend/wasapi/) and a [simulated driver](/reference/backend/fake/) |
+| [`fire:midi`](/reference/midi/) | MIDI input and output: one API over [CoreMIDI](/reference/midi/coremidi/), the [ALSA sequencer](/reference/midi/alsa/) and [WinMM](/reference/midi/winmm/) |
+| [`fire:timebase`](/reference/timebase/) | Samples, seconds, beats, ticks, bars; tempo maps |
+| [`fire:rt`](/reference/rt/) | Realtime utilities: lock-free queues, flush-to-zero, thread priority, the host clock |
+| [`fire:testkit`](/reference/testkit/) | Testing your own nodes: render without a device, trap allocations, analyse audio |
+
+## Where to start
+
+1. [Getting started](/guides/getting-started/): build setup and a first program.
+2. [The audio graph](/guides/graph/): how to connect nodes and run them.
+3. [Audio devices](/guides/devices/) and [MIDI](/guides/midi/): talking to hardware.
+4. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
+
+The [design notes](/design/graph/) explain how the engine works inside and why.
+
+## Rules that hold everywhere
+
+- **The audio thread never allocates, locks or blocks.** Procedures safe to
+  call there are marked *Realtime-safe* in the reference.
+- **Everything else happens on a control thread** (your main or UI thread):
+  creating things, editing the graph, opening devices.
+- **Audio is planar `f32`**: one `[]f32` per channel. Blocks may be any size
+  from 0 up to the `max_block` you prepared for.

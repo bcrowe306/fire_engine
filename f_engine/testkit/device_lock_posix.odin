@@ -17,6 +17,8 @@ Device_Lock :: struct {
 @(private)
 device_mutex: sync.Mutex
 
+// Blocks until this process and thread hold the lock for the shared device `name`
+// (a short identifier, used in a file or mutex name). Release with `device_unlock`.
 device_lock :: proc(name: string) -> Device_Lock {
 	sync.mutex_lock(&device_mutex)
 	path := fmt.ctprintf("/tmp/fire_engine_%s.lock", name)
@@ -28,6 +30,7 @@ device_lock :: proc(name: string) -> Device_Lock {
 	return {fd}
 }
 
+// Releases a lock taken by `device_lock`.
 device_unlock :: proc(l: Device_Lock) {
 	if l.fd >= 0 do posix.close(l.fd) // closing releases the record lock
 	sync.mutex_unlock(&device_mutex)

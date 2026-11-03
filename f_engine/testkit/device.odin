@@ -10,12 +10,12 @@ import "fire:rt"
 // output) and records every input, both indexed by sample_time, and checks the
 // block contract and timestamps as it goes.
 Loop_Recorder :: struct {
-	play:           []f32,
-	rec:            [2][]f32,
+	play:           []f32,    // mono signal played on every output, indexed by sample_time
+	rec:            [2][]f32, // first two inputs, indexed by sample_time
 	next_time:      i64, // atomic
 	gaps:           int, // sample_time discontinuities
-	blocks:         u64, // atomic
-	xrun_blocks:    int,
+	blocks:         u64, // atomic: callbacks so far
+	xrun_blocks:    int, // blocks with the xrun flag set
 	max_entry_skew: i64, // |host_time_ns() at entry − callback_ns|
 	time_order_bad: int, // blocks where input_ns ≤ callback_ns ≤ output_ns fails (known times only)
 	non_monotonic:  int, // output_ns did not increase
@@ -23,6 +23,9 @@ Loop_Recorder :: struct {
 	stall_ns:       i64, // atomic: sleep this long once, in the next block (forces an xrun)
 }
 
+// Allocates a recorder (and its `play` and two `rec` channels of `frames` frames each)
+// from `allocator`. Fill `play` before starting the device. Free with
+// `loop_recorder_destroy` using the same allocator.
 loop_recorder_make :: proc(frames: int, allocator := context.allocator) -> ^Loop_Recorder {
 	r := new(Loop_Recorder, allocator)
 	r.play = make([]f32, frames, allocator)
@@ -30,12 +33,15 @@ loop_recorder_make :: proc(frames: int, allocator := context.allocator) -> ^Loop
 	return r
 }
 
+// Frees a recorder made by `loop_recorder_make`. Pass the allocator it was made with.
 loop_recorder_destroy :: proc(r: ^Loop_Recorder, allocator := context.allocator) {
 	delete(r.play, allocator)
 	for c in r.rec do delete(c, allocator)
 	free(r, allocator)
 }
 
+// The `backend.Device_Callback` to hand to the device; it runs `loop_recorder_process`
+// with `r` as its user pointer. `r` must outlive the stream.
 loop_recorder_callback :: proc(r: ^Loop_Recorder) -> backend.Device_Callback {
 	return {process = loop_recorder_process, user = r}
 }
@@ -82,12 +88,13 @@ loop_recorder_wait :: proc(r: ^Loop_Recorder, frames: i64, timeout: time.Duratio
 	return true
 }
 
+// Outcome of `analyze_loopback`. Only meaningful when `found` is true.
 Loopback_Result :: struct {
 	latency:  int, // frames from play to rec
 	gain:     f64, // least-squares rec / play
 	residual: f64, // max |rec − gain·play| after alignment
 	at:       int, // where the residual peaks
-	found:    bool,
+	found:    bool, // false if no positive latency within max_lag, or `play` is silent
 }
 
 // Aligns `rec` to `play` and measures how exactly it is a scaled copy.

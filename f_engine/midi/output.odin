@@ -7,36 +7,46 @@ import "core:time"
 
 import "fire:rt"
 
+// One short message for `output_push`.
 Output_Event :: struct {
 	time_ns: u64, // host clock; when the message should leave the port
-	port:    Port,
-	bytes:   [3]u8,
+	port:    Port, // an output or virtual output of the Midi_Output's driver
+	bytes:   [3]u8, // MIDI 1.0 short message; unused bytes are ignored
 }
 
 // Short messages from the audio thread to the OS. The audio thread pushes
 // timestamped events; a sender thread hands them to the driver, which
 // schedules them (CoreMIDI) or sends them at once. Timestamps should lead the
 // wall clock by at least the output latency, so sending is never late.
+//
+// Set up with `output_init`, then `output_start`; free with `output_destroy`.
+// The counters may be read atomically from any thread.
 Midi_Output :: struct {
-	driver:  ^Driver,
-	queue:   rt.Spsc_Queue(Output_Event),
-	thread:  ^thread.Thread,
+	driver:  ^Driver, // driver the sender thread sends through
+	queue:   rt.Spsc_Queue(Output_Event), // audio thread → sender thread
+	thread:  ^thread.Thread, // sender thread; nil when stopped
 	running: bool, // atomic
 	dropped: u64,  // atomic: queue full
 	errors:  u64,  // atomic: driver send failed
 	sent:    u64,  // atomic
 }
 
+// Control thread. Allocates a queue of `capacity` events for sending through
+// driver `d`. Does not start the sender thread (see `output_start`).
 output_init :: proc(o: ^Midi_Output, d: ^Driver, capacity := 4096, allocator := context.allocator) -> mem.Allocator_Error {
 	o.driver = d
 	return rt.spsc_init(&o.queue, capacity, allocator)
 }
 
+// Control thread. Stops the sender (sending what is queued) and frees the
+// queue. Use the allocator given to `output_init`.
 output_destroy :: proc(o: ^Midi_Output, allocator := context.allocator) {
 	output_stop(o)
 	rt.spsc_destroy(&o.queue, allocator)
 }
 
+// Control thread. Starts the high-priority sender thread. Does nothing if it
+// is already running.
 output_start :: proc(o: ^Midi_Output) {
 	if o.thread != nil do return
 	intrinsics.atomic_store(&o.running, true)
@@ -45,7 +55,7 @@ output_start :: proc(o: ^Midi_Output) {
 	o.thread = thread.create_and_start_with_data(o, sender_main, priority = .High)
 }
 
-// Sends whatever is still queued, then joins the thread.
+// Control thread. Sends whatever is still queued, then joins the thread.
 output_stop :: proc(o: ^Midi_Output) {
 	if o.thread == nil do return
 	intrinsics.atomic_store(&o.running, false)

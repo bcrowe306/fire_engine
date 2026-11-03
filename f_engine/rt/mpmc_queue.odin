@@ -22,7 +22,8 @@ Mpmc_Cell :: struct($T: typeid) {
 	value:    T,
 }
 
-// Control thread.
+// Control thread. Allocates room for at least `capacity` items (rounded up to
+// a power of two, minimum 2) with `allocator`. Free with `mpmc_destroy`.
 mpmc_init :: proc(q: ^Mpmc_Queue($T), capacity: int, allocator := context.allocator) -> mem.Allocator_Error {
 	assert(capacity > 0)
 	cap := 2
@@ -34,13 +35,15 @@ mpmc_init :: proc(q: ^Mpmc_Queue($T), capacity: int, allocator := context.alloca
 	return nil
 }
 
-// Control thread.
+// Control thread. Frees the cells; pass the allocator given to `mpmc_init`.
+// No thread may use the queue afterwards.
 mpmc_destroy :: proc(q: ^Mpmc_Queue($T), allocator := context.allocator) {
 	delete(q.cells, allocator)
 	q.cells = nil
 }
 
-// [rt] Any thread. Returns false if full.
+// [rt] Any thread. Copies `value` in; returns false (and drops it) if full.
+// Lock-free: may retry under contention but never blocks.
 mpmc_push :: proc "contextless" (q: ^Mpmc_Queue($T), value: T) -> bool {
 	pos := intrinsics.atomic_load_explicit(&q.head, .Relaxed)
 	for {
@@ -60,7 +63,8 @@ mpmc_push :: proc "contextless" (q: ^Mpmc_Queue($T), value: T) -> bool {
 	}
 }
 
-// [rt] Any thread. Returns false if empty.
+// [rt] Any thread. Takes the oldest value; returns false if empty.
+// Lock-free: may retry under contention but never blocks.
 mpmc_pop :: proc "contextless" (q: ^Mpmc_Queue($T)) -> (value: T, ok: bool) {
 	pos := intrinsics.atomic_load_explicit(&q.tail, .Relaxed)
 	for {
@@ -80,6 +84,7 @@ mpmc_pop :: proc "contextless" (q: ^Mpmc_Queue($T)) -> (value: T, ok: bool) {
 	}
 }
 
+// [rt] Maximum number of items the queue holds (the rounded-up capacity).
 mpmc_capacity :: proc "contextless" (q: ^Mpmc_Queue($T)) -> int {
 	return len(q.cells)
 }

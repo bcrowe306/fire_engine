@@ -164,7 +164,7 @@ sync)
 	tmp="$(mktemp -t fire_sync).tar"
 	(cd "$ROOT" && git ls-files -z --cached --others --exclude-standard |
 		while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done |
-		tar --null -T - -cf "$tmp")
+		COPYFILE_DISABLE=1 tar --null -T - -cf "$tmp")
 	scp -q "${SSH_OPTS[@]}" "$tmp" "Administrator@$(ip "$(instance_id)"):C:/fire.tar"
 	rm -f "$tmp"
 	remote 'if (Test-Path C:\fire) { Remove-Item -Recurse -Force C:\fire }; New-Item -ItemType Directory C:\fire | Out-Null; tar.exe -xf C:\fire.tar -C C:\fire'

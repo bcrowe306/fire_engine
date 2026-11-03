@@ -5,8 +5,11 @@ import "core:mem"
 
 import "fire:core"
 
+// Parameter id of the `Gain` node's gain, in dB (-96..24, default 0).
+// -96 dB and below is silence.
 GAIN_PARAM_DB :: core.Param_Id(1)
 
+// Parameter table of the `Gain` node, as returned by `node_params`. Read-only.
 gain_params := [?]core.Param_Info {
 	{
 		id = GAIN_PARAM_DB, name = "Gain", unit = .Decibels,
@@ -32,11 +35,14 @@ gain_vtable := core.Node_VTable {
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Gain)(self), allocator) },
 }
 
+// Control thread. Allocates a `Gain` node with `allocator`. Free it with
+// `core.node_destroy`.
 gain_create :: proc(allocator := context.allocator) -> core.Node {
 	g := new(Gain, allocator)
 	return core.node_make(&gain_vtable, g, allocator)
 }
 
+// [rt] Converts decibels to linear gain. Returns exactly 0 at -96 dB and below.
 db_to_gain :: #force_inline proc "contextless" (db: f64) -> f64 {
 	return db <= -96 ? 0 : math.pow(10, db / 20)
 }

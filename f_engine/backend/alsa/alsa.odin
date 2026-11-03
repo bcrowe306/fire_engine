@@ -1,6 +1,6 @@
 #+build linux
 // ALSA driver: playback and capture PCMs (linked, same card) serviced by a
-// thread of our own. See docs/design/backend.md.
+// thread of our own. See /design/backend/.
 package alsa
 
 import "base:intrinsics"
@@ -16,9 +16,12 @@ import "fire:core"
 import "fire:rt"
 import snd "fire:sys/alsa"
 
+@(private)
 PERIODS :: 2         // playback buffer: one period playing, one being filled (sets latency)
+@(private)
 CAPTURE_PERIODS :: 4 // capture slack; free in latency terms because we read as soon as a period is ready
 
+@(private)
 Stream :: struct {
 	pcm:      snd.snd_pcm_t,
 	format:   snd.snd_pcm_format_t,
@@ -27,6 +30,7 @@ Stream :: struct {
 	buffer:   []u8, // one period, interleaved
 }
 
+@(private)
 Alsa :: struct {
 	driver:     backend.Driver,
 	allocator:  mem.Allocator,
@@ -60,6 +64,7 @@ Alsa :: struct {
 // by the thread's wake-up latency, milliseconds on a busy machine. Like JACK's
 // DLL: predict one period ahead, then pull 5% toward each measurement, so
 // timestamps advance steadily and follow drift. Reset after every restart.
+@(private)
 Period_Clock :: struct {
 	output_ns, input_ns: f64,
 	valid:               bool,
@@ -82,6 +87,8 @@ clock_update :: proc "contextless" (k: ^Period_Clock, measured_out, measured_in,
 	return u64(k.output_ns), u64(k.input_ns)
 }
 
+// Makes an ALSA driver and starts a thread that watches for sound cards being
+// added or removed. Free with backend.driver_destroy. Control thread.
 create :: proc(allocator := context.allocator) -> ^backend.Driver {
 	a := new(Alsa, allocator)
 	a.allocator = allocator
@@ -133,14 +140,17 @@ card_signature :: proc() -> u64 {
 	return h
 }
 
+// Audio-thread health counters, for debugging driver problems. See diagnostics.
 Diagnostics :: struct {
 	recoveries: u64, // xrun/suspend restarts
 	last_error: i64, // last negative ALSA result (-EPIPE = -32: xrun)
 	last_op:    i32, // 1 read, 2 write
 	states:     [2]i32, // playback, capture snd_pcm_state_t at the failure
-	realtime:   bool,
+	realtime:   bool, // the audio thread got SCHED_FIFO
 }
 
+// Snapshot of the driver's Diagnostics. `d` must come from create. Safe from
+// any thread while the device runs.
 diagnostics :: proc(d: ^backend.Driver) -> Diagnostics {
 	a := (^Alsa)(d.data)
 	return {

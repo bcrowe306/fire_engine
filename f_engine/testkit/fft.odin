@@ -3,12 +3,14 @@ package testkit
 import "core:math"
 import "core:math/cmplx"
 
+// Analysis window for `spectrum` and `window_value`.
 Window :: enum {
-	Rectangular,
-	Hann,
+	Rectangular, // no window
+	Hann,        // good general choice, ~-31 dB sidelobes
 	Blackman_Harris, // 4-term, ~-92 dB sidelobes
 }
 
+// Coefficient of window `w` at sample `i` of an `n`-sample (symmetric) window. 1 when n <= 1.
 window_value :: proc(w: Window, i, n: int) -> f64 {
 	if n <= 1 do return 1
 	x := math.TAU * f64(i) / f64(n - 1)
@@ -20,6 +22,7 @@ window_value :: proc(w: Window, i, n: int) -> f64 {
 	return 1
 }
 
+// Smallest power of two >= n (1 for n <= 1).
 next_pow2 :: proc(n: int) -> int {
 	p := 1
 	for p < n do p <<= 1
@@ -65,10 +68,12 @@ fft :: proc(data: []complex128, inverse := false) {
 // The signal is zero-padded to a power of two. Bin k is at k * sample_rate / n_fft.
 Spectrum :: struct {
 	magnitude:   []f64, // n_fft/2 + 1 bins, linear amplitude
-	n_fft:       int,
-	sample_rate: f64,
+	n_fft:       int, // FFT length (power of two)
+	sample_rate: f64, // Hz
 }
 
+// Windowed, zero-padded FFT of `x`. The magnitudes are allocated from `allocator`
+// (free with `spectrum_destroy`); FFT scratch comes from context.temp_allocator.
 spectrum :: proc(x: []f32, sample_rate: f64, window := Window.Hann, allocator := context.allocator) -> Spectrum {
 	n := next_pow2(max(len(x), 2))
 	buf := make([]complex128, n, context.temp_allocator)
@@ -87,15 +92,19 @@ spectrum :: proc(x: []f32, sample_rate: f64, window := Window.Hann, allocator :=
 	return Spectrum{mag, n, sample_rate}
 }
 
+// Frees a spectrum's magnitudes with the allocator `spectrum` used, and zeroes it.
 spectrum_destroy :: proc(s: ^Spectrum, allocator := context.allocator) {
 	delete(s.magnitude, allocator)
 	s^ = {}
 }
 
+// Center frequency in Hz of bin `k`.
 spectrum_bin_hz :: proc(s: Spectrum, k: int) -> f64 {
 	return f64(k) * s.sample_rate / f64(s.n_fft)
 }
 
+// The bin with the largest magnitude, ignoring DC (bin 0), with its frequency in Hz
+// and linear amplitude.
 spectrum_peak :: proc(s: Spectrum) -> (bin: int, freq_hz: f64, magnitude: f64) {
 	for m, k in s.magnitude {
 		if k > 0 && m > magnitude {

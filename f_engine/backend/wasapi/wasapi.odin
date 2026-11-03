@@ -1,7 +1,7 @@
 #+build windows
 // WASAPI driver: shared mode, event-driven, render and capture endpoints of
 // one physical device, serviced by an MMCSS "Pro Audio" thread of our own.
-// See docs/design/backend.md.
+// See /design/backend/.
 package wasapi
 
 import "base:intrinsics"
@@ -19,8 +19,10 @@ import w "fire:sys/wasapi"
 // and capture events are not phase-aligned, and capture can arrive in bursts
 // (VB-CABLE on the test VM fell more than 2 periods behind). 4 periods = 40 ms
 // at the default 10 ms period. Revisit on real hardware.
+@(private)
 CUSHION_PERIODS := 4
 
+@(private)
 Endpoint :: struct {
 	device:        ^w.IMMDevice,
 	client:        ^w.IAudioClient,
@@ -37,12 +39,14 @@ Endpoint :: struct {
 
 // Our IMMNotificationClient: a COM object whose first field is its vtable.
 // It lives inside the driver, so AddRef/Release only count.
+@(private)
 Notifier :: struct {
 	vtbl:  ^w.IMMNotificationClient_VTable,
 	refs:  i32, // atomic
 	owner: ^Wasapi,
 }
 
+@(private)
 Wasapi :: struct {
 	driver:     backend.Driver,
 	notifier:   Notifier,
@@ -83,6 +87,10 @@ Wasapi :: struct {
 	last_frames:    int,
 }
 
+// Makes a WASAPI driver. Initializes COM (multithreaded) on the calling thread
+// and registers for endpoint notifications. Returns .Device_Error if the
+// MMDevice enumerator cannot be created. Free with backend.driver_destroy.
+// Control thread.
 create :: proc(allocator := context.allocator) -> (^backend.Driver, core.Error) {
 	hr := win.CoInitializeEx(nil, .MULTITHREADED)
 	// S_FALSE: already initialized. RPC_E_CHANGED_MODE: the app chose STA; the
@@ -154,13 +162,16 @@ endpoint_changed :: proc "system" (a: ^Wasapi, id: win.wstring, gone: bool) {
 	free_all(context.temp_allocator)
 }
 
+// Audio-thread health counters, for debugging driver problems. See diagnostics.
 Diagnostics :: struct {
-	mmcss:       bool,
-	last_error:  i64,
-	min_padding: i64,
-	min_ring:    i64,
+	mmcss:       bool, // the audio thread joined the MMCSS "Pro Audio" task
+	last_error:  i64,  // last failing HRESULT; 0 = none
+	min_padding: i64,  // lowest render padding seen at a wake since start, in frames
+	min_ring:    i64,  // lowest captured backlog seen at a wake since start, in frames; 0 = input ran dry
 }
 
+// Snapshot of the driver's Diagnostics. `d` must come from create. Safe from
+// any thread while the device runs.
 diagnostics :: proc(d: ^backend.Driver) -> Diagnostics {
 	a := (^Wasapi)(d.data)
 	return {

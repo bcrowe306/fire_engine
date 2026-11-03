@@ -12,6 +12,9 @@ Trap_Allocator :: struct {
 	first_mode: mem.Allocator_Mode,
 }
 
+// An allocator backed by `t`: every request except feature queries and free(nil)
+// fails with .Out_Of_Memory and is counted in `t.violations`. Install it as
+// context.allocator around code that must not allocate (for example a device callback).
 trap_allocator :: proc(t: ^Trap_Allocator) -> mem.Allocator {
 	return mem.Allocator{procedure = trap_allocator_proc, data = t}
 }
