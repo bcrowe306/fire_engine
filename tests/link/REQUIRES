@@ -1,0 +1,2 @@
+# Run ./scripts/link.sh first (fetches and builds Ableton Link).
+third_party/link/lib/*abl_link*

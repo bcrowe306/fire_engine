@@ -87,6 +87,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 [System.Net.ServicePointManager]::SecurityProtocol = 3072
 iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 C:\\ProgramData\\chocolatey\\bin\\choco.exe install -y --no-progress git python3
+C:\\ProgramData\\chocolatey\\bin\\choco.exe install -y --no-progress cmake --installargs "ADD_CMAKE_TO_PATH=System"
 C:\\ProgramData\\chocolatey\\bin\\choco.exe install -y --no-progress visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart"
 # Odin
 Invoke-WebRequest -UseBasicParsing "https://github.com/odin-lang/Odin/releases/download/$ODIN_RELEASE/odin-windows-amd64-$ODIN_RELEASE.zip" -OutFile C:\\odin.zip

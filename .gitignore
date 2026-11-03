@@ -11,3 +11,6 @@ tracktion_engine/
 # Local credentials (never commit)
 secrets.env
 *.env
+
+# Fetched and built by scripts/link.sh (Ableton Link is GPLv2+; never commit)
+third_party/

@@ -64,6 +64,10 @@ Timed_Event :: struct {
 // processed. Runs outside the trap allocator, so it may allocate.
 Block_Hook :: proc(user: rawptr, block_index: int, ctx: ^core.Process_Context)
 
+// The one timeline in `render`'s transport snapshot. It leads, and when
+// `Render_Config.playing` is set its position equals the grid.
+RENDER_TIMELINE :: core.Timeline_Id{0, 1}
+
 // Settings for one `render`. Start from `default_render_config` and override fields.
 Render_Config :: struct {
 	sample_rate:    f64,           // Hz
@@ -74,7 +78,7 @@ Render_Config :: struct {
 	tail_frames:    int,           // extra frames rendered after the input ends (silent input)
 	tempo_bpm:      f64,           // constant tempo for the transport
 	tempo_map:      ^tb.Tempo_Map, // overrides tempo_bpm when set
-	playing:        bool,          // transport playing flag
+	playing:        bool,          // RENDER_TIMELINE is playing (it leads, and follows the grid from beat 0)
 	ftz:            bool,          // enable flush-to-zero during process, as on a real audio thread
 	max_events_out: int,           // output event capacity per block; extra events count as dropped
 	// Called after each process call, outside the trap (it may allocate).
@@ -163,11 +167,12 @@ render :: proc(node: ^core.Node, input: Audio_Buffer, cfg: Render_Config, alloca
 	rng := Rng{}
 	if r, ok := blocks.(Random_Blocks); ok do rng.state = r.seed
 
+	timeline := [1]core.Timeline_State{{id = RENDER_TIMELINE, playing = cfg.playing, rate = 1, tempo_map = cfg.tempo_map}}
 	transport := core.Transport {
-		playing     = cfg.playing,
 		sample_rate = cfg.sample_rate,
 		meter       = {4, 4},
-		tempo_map   = cfg.tempo_map,
+		leader      = RENDER_TIMELINE,
+		timelines   = timeline[:],
 	}
 
 	pos := 0
@@ -267,19 +272,23 @@ process_trapped :: proc(node: ^core.Node, ctx: ^core.Process_Context, trap: ^Tra
 
 @(private)
 update_transport :: proc(t: ^core.Transport, cfg: Render_Config, pos: int) {
-	t.sample_pos = tb.Sample_Time(pos)
+	t.frame = tb.Sample_Time(pos)
 	if cfg.tempo_map != nil {
-		t.beat_pos = tb.samples_to_beats(cfg.tempo_map, t.sample_pos, cfg.sample_rate)
-		t.tempo_bpm = tb.tempo_at(cfg.tempo_map, t.beat_pos)
-		meter, _, _ := tb.meter_at_beat(cfg.tempo_map, t.beat_pos)
+		t.grid = tb.samples_to_beats(cfg.tempo_map, t.frame, cfg.sample_rate)
+		t.tempo_bpm = tb.tempo_at(cfg.tempo_map, t.grid)
+		t.tempo_slope = tb.tempo_slope_at(cfg.tempo_map, t.grid)
+		meter, _, _ := tb.meter_at_beat(cfg.tempo_map, t.grid)
 		t.meter = meter
-		bbt := tb.beats_to_bbt(cfg.tempo_map, t.beat_pos)
+		bbt := tb.beats_to_bbt(cfg.tempo_map, t.grid)
+		t.bar = bbt.bar
 		t.bar_start = tb.bbt_to_beats(cfg.tempo_map, {bbt.bar, 0, 0})
 	} else {
 		t.tempo_bpm = cfg.tempo_bpm
-		t.beat_pos = tb.seconds_to_beats_at(tb.samples_to_seconds(t.sample_pos, cfg.sample_rate), cfg.tempo_bpm)
-		t.bar_start = tb.Beats(math.floor(f64(t.beat_pos) / 4) * 4)
+		t.grid = tb.seconds_to_beats_at(tb.samples_to_seconds(t.frame, cfg.sample_rate), cfg.tempo_bpm)
+		t.bar = i64(math.floor(f64(t.grid) / 4))
+		t.bar_start = tb.Beats(t.bar * 4)
 	}
+	t.timelines[0].position = t.grid if cfg.playing else 0
 }
 
 @(private)

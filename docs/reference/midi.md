@@ -701,6 +701,21 @@ output_push :: proc "contextless"(o: ^Midi_Output, e: Output_Event) -> bool
 
 **Realtime-safe** (callable on the audio thread). Audio thread. Returns false (and counts a drop) when the queue is full.
 
+### output_push_events
+
+```odin
+output_push_events :: proc "contextless"(o: ^Midi_Output, events: []core.Event, ports: []Port, block_ns: u64, sample_rate: f64) -> (pushed: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Pushes the `core.Midi_Raw` events among `events` (offsets into a
+block presented at `block_ns`) to `o`, each to `ports[raw.port]`. Other
+event kinds, and port indexes outside `ports`, are skipped. Returns how
+many were queued. Use it to send a graph's MIDI output:
+
+```odin
+midi.output_push_events(&out, core.event_writer_events(&writer), ports[:], block.output_ns, sample_rate)
+```
+
 ### frame_time_ns
 
 ```odin

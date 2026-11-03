@@ -103,6 +103,22 @@ run_built() {
 	echo $? > "$LOGS/$tag.status"
 }
 
+# A package with a REQUIRES file runs only when every glob on its non-comment
+# lines matches a file (an optional, separately built dependency). The
+# comment lines say how to get it.
+requirements_met() {
+	local f="tests/$1/REQUIRES" pattern
+	[ -f "$f" ] || return 0
+	while read -r pattern; do
+		case "$pattern" in ''|'#'*) continue ;; esac
+		compgen -G "$pattern" > /dev/null || return 1
+	done < "$f"
+	return 0
+}
+requirements_hint() {
+	grep '^#' "tests/$1/REQUIRES" | sed 's/^# *//' | tr '\n' ' '
+}
+
 start=$(date +%s)
 JOBS=()
 SERIAL=()
@@ -110,6 +126,10 @@ for opt in "${OPTS[@]}"; do
 	artifacts="$ARTIFACTS"
 	[ "${#OPTS[@]}" -gt 1 ] && artifacts="$ARTIFACTS/$opt"
 	for pkg in "${PKGS[@]}"; do
+		if ! requirements_met "$pkg"; then
+			[ "$opt" = "${OPTS[0]}" ] && echo "=== tests/$pkg skipped: $(requirements_hint "$pkg")"
+			continue
+		fi
 		JOBS+=("$pkg:$opt:$artifacts")
 		# Portable job limit (no `wait -n` in macOS's bash 3.2).
 		while [ "$(jobs -rp | wc -l)" -ge "$JOBS_MAX" ]; do sleep 0.1; done
@@ -129,7 +149,7 @@ done
 
 failed=()
 plot_dirs=()
-for job in "${JOBS[@]}"; do
+for job in ${JOBS[@]+"${JOBS[@]}"}; do
 	IFS=: read -r pkg opt artifacts <<< "$job"
 	tag="${pkg}_${opt}"
 	status="$(cat "$LOGS/$tag.status" 2>/dev/null || echo 1)"

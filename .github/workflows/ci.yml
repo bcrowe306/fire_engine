@@ -28,6 +28,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # Optional fire:link (GPL Ableton Link, fetched at a pinned tag and never
+      # committed). Without it tests/link is skipped.
+      - name: Build Ableton Link
+        shell: bash
+        run: ./scripts/link.sh
+
       - name: Test
         shell: bash
         env:

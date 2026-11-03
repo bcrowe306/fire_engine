@@ -66,3 +66,76 @@ seconds_to_beats_at :: #force_inline proc "contextless" (t: Seconds, bpm: f64) -
 samples_per_beat :: #force_inline proc "contextless" (bpm, sample_rate: f64) -> f64 {
 	return sample_rate * 60.0 / bpm
 }
+
+// --- ramps -------------------------------------------------------------------
+
+// [rt] Beats travelled in `t` seconds from a tempo of `bpm` that changes by
+// `slope` bpm per beat (a linear ramp in beats, as in `Tempo_Map`). `slope` 0
+// is a constant tempo.
+ramp_beats :: proc "contextless" (bpm, slope: f64, t: Seconds) -> Beats {
+	if abs(slope) < 1e-12 do return Beats(f64(t) * bpm / 60.0)
+	// tempo(b) = bpm + slope·b and dt/db = 60/tempo  ⇒  b(t) = bpm·(e^(slope·t/60) − 1)/slope
+	return Beats(bpm * (math.exp(slope * f64(t) / 60.0) - 1) / slope)
+}
+
+// [rt] Seconds taken to travel `b` beats from a tempo of `bpm` changing by
+// `slope` bpm per beat. Inverse of `ramp_beats`.
+ramp_seconds :: proc "contextless" (bpm, slope: f64, b: Beats) -> Seconds {
+	if abs(slope) < 1e-12 do return Seconds(f64(b) * 60.0 / bpm)
+	return Seconds(60.0 / slope * math.ln(1.0 + slope * f64(b) / bpm))
+}
+
+// --- quantization ------------------------------------------------------------
+
+// A musical grid length for quantizing launches and edits. `_T` is a triplet
+// (2/3 of the length), `_D` dotted (3/2). Bar lengths follow the meter.
+Quantize :: enum u8 {
+	None,
+	Bars_8,
+	Bars_4,
+	Bars_2,
+	Bar,
+	Half_T,
+	Half,
+	Half_D,
+	Quarter_T,
+	Quarter,
+	Quarter_D,
+	Eighth_T,
+	Eighth,
+	Eighth_D,
+	Sixteenth_T,
+	Sixteenth,
+	Sixteenth_D,
+	Thirty_Second_T,
+	Thirty_Second,
+	Thirty_Second_D,
+}
+
+// [rt] The length of `q` as whole bars (`bars` > 0; `beats` is 0), or as
+// quarter notes (`bars` is 0). `.None` gives both 0.
+quantize_length :: proc "contextless" (q: Quantize) -> (bars: int, beats: Beats) {
+	switch q {
+	case .None:            return 0, 0
+	case .Bars_8:          return 8, 0
+	case .Bars_4:          return 4, 0
+	case .Bars_2:          return 2, 0
+	case .Bar:             return 1, 0
+	case .Half_T:          return 0, 4.0 / 3
+	case .Half:            return 0, 2
+	case .Half_D:          return 0, 3
+	case .Quarter_T:       return 0, 2.0 / 3
+	case .Quarter:         return 0, 1
+	case .Quarter_D:       return 0, 1.5
+	case .Eighth_T:        return 0, 1.0 / 3
+	case .Eighth:          return 0, 0.5
+	case .Eighth_D:        return 0, 0.75
+	case .Sixteenth_T:     return 0, 1.0 / 6
+	case .Sixteenth:       return 0, 0.25
+	case .Sixteenth_D:     return 0, 0.375
+	case .Thirty_Second_T: return 0, 1.0 / 12
+	case .Thirty_Second:   return 0, 0.125
+	case .Thirty_Second_D: return 0, 0.1875
+	}
+	return 0, 0
+}

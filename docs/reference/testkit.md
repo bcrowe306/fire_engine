@@ -39,6 +39,17 @@ takes events, and `expect_golden` to pin down exact output.
 
 Engine packages must never import testkit.
 
+## Constants
+
+### RENDER_TIMELINE
+
+```odin
+RENDER_TIMELINE : core.Timeline_Id : core.Timeline_Id{0, 1}
+```
+
+The one timeline in `render`'s transport snapshot. It leads, and when
+`Render_Config.playing` is set its position equals the grid.
+
 ## Types
 
 ### Compare_Result
@@ -308,7 +319,7 @@ Settings for one `render`. Start from `default_render_config` and override field
 | `tail_frames` | extra frames rendered after the input ends (silent input) |
 | `tempo_bpm` | constant tempo for the transport |
 | `tempo_map` | overrides tempo_bpm when set |
-| `playing` | transport playing flag |
+| `playing` | RENDER_TIMELINE is playing (it leads, and follows the grid from beat 0) |
 | `ftz` | enable flush-to-zero during process, as on a real audio thread |
 | `max_events_out` | output event capacity per block; extra events count as dropped |
 | `after_block` | Called after each process call, outside the trap (it may allocate). |
@@ -393,7 +404,7 @@ One event as the probe received it.
 |-------|-------------|
 | `block` | index of the process call |
 | `offset` | frame offset within the block |
-| `absolute` | transport.sample_pos + offset |
+| `absolute` | transport.frame + offset |
 | `payload` |  |
 
 ### Probe_Block
@@ -410,7 +421,7 @@ One process call as the probe saw it.
 | Field | Description |
 |-------|-------------|
 | `frames` | frames in this call |
-| `transport` | copy of the transport at this call |
+| `transport` | copy of the transport at this call, with `timelines` set to nil (it would dangle) |
 
 ### Probe
 

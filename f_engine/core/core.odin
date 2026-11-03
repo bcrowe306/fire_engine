@@ -2,7 +2,6 @@
 package core
 
 import "core:mem"
-import tb "fire:timebase"
 
 // Maximum number of input or output channels a node may be prepared with.
 MAX_CHANNELS :: 64
@@ -125,24 +124,6 @@ event_writer_events :: proc "contextless" (w: ^Event_Writer) -> []Event {
 event_writer_clear :: proc "contextless" (w: ^Event_Writer) {
 	w.count = 0
 	w.dropped = 0
-}
-
-// --- transport -----------------------------------------------------------------
-
-// Snapshot of the transport at the first frame of the current block.
-Transport :: struct {
-	playing:     bool,
-	recording:   bool,
-	looping:     bool,
-	sample_pos:  tb.Sample_Time, // frames since transport zero
-	beat_pos:    tb.Beats,       // quarter notes since transport zero
-	tempo_bpm:   f64,            // tempo at the block start
-	meter:       tb.Meter,       // time signature at the block start
-	bar_start:   tb.Beats,       // beat position of the current bar's downbeat
-	loop_start:  tb.Beats,
-	loop_end:    tb.Beats,
-	sample_rate: f64,            // Hz
-	tempo_map:   ^tb.Tempo_Map,  // read-only on the audio thread; may be nil
 }
 
 // --- parameters ----------------------------------------------------------------

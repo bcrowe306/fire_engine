@@ -156,12 +156,7 @@ seconds_to_beats :: proc "contextless" (m: ^Tempo_Map, t: Seconds) -> Beats {
 	if i + 1 >= len(m.tempos) {
 		return p.start + Beats(dt * p.bpm_start / 60.0)
 	}
-	k := ramp_slope(p, m.tempos[i + 1].start - p.start)
-	if abs(k) < 1e-12 {
-		return p.start + Beats(dt * p.bpm_start / 60.0)
-	}
-	// Inverse of t = 60/k * ln(tempo(b)/t0): b = (t0 * e^(k t / 60) - t0) / k
-	return p.start + Beats((p.bpm_start * math.exp(k * dt / 60.0) - p.bpm_start) / k)
+	return p.start + ramp_beats(p.bpm_start, ramp_slope(p, m.tempos[i + 1].start - p.start), Seconds(dt))
 }
 
 // [rt] Converts a frame position at `sample_rate` (Hz) to a beat position.
@@ -212,6 +207,27 @@ bbt_to_beats :: proc "contextless" (m: ^Tempo_Map, bbt: Bar_Beat_Tick, ppq: i64 
 	return Beats(b)
 }
 
+// [rt] Tempo ramp at beat `b`, in bpm per beat (0 when constant).
+tempo_slope_at :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> f64 {
+	i := tempo_index(m, b)
+	if i + 1 >= len(m.tempos) do return 0
+	return ramp_slope(m.tempos[i], m.tempos[i + 1].start - m.tempos[i].start)
+}
+
+// [rt] The first tempo point or meter change strictly after beat `b`, or
+// ok = false if there is none.
+next_change_after :: proc "contextless" (m: ^Tempo_Map, b: Beats) -> (at: Beats, ok: bool) {
+	for p in m.tempos do if p.start > b {
+		at, ok = p.start, true
+		break
+	}
+	for mb in m.meter_beats do if mb > b {
+		if !ok || mb < at do at, ok = mb, true
+		break
+	}
+	return
+}
+
 // --- internals ---------------------------------------------------------------
 
 @(private)
@@ -232,9 +248,5 @@ ramp_slope :: #force_inline proc "contextless" (p: Tempo_Point, length: Beats) -
 // dt/db = 60/tempo(b), tempo(b) = t0 + k*b  =>  t = 60/k * ln(1 + k*b/t0)
 @(private)
 segment_seconds :: proc "contextless" (p: Tempo_Point, db: Beats, length: Beats) -> Seconds {
-	k := ramp_slope(p, length)
-	if abs(k) < 1e-12 {
-		return Seconds(f64(db) * 60.0 / p.bpm_start)
-	}
-	return Seconds(60.0 / k * math.ln(1.0 + k * f64(db) / p.bpm_start))
+	return ramp_seconds(p.bpm_start, ramp_slope(p, length), db)
 }

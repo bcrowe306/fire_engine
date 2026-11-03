@@ -239,42 +239,6 @@ Fixed-capacity output event sink handed to `process`. Never allocates.
 | `count` | events written so far |
 | `dropped` | events that did not fit; reported by the control thread |
 
-### Transport
-
-```odin
-Transport :: struct {
-	playing: bool,
-	recording: bool,
-	looping: bool,
-	sample_pos: timebase.Sample_Time,
-	beat_pos: timebase.Beats,
-	tempo_bpm: f64,
-	meter: timebase.Meter,
-	bar_start: timebase.Beats,
-	loop_start: timebase.Beats,
-	loop_end: timebase.Beats,
-	sample_rate: f64,
-	tempo_map: ^timebase.Tempo_Map,
-}
-```
-
-Snapshot of the transport at the first frame of the current block.
-
-| Field | Description |
-|-------|-------------|
-| `playing` |  |
-| `recording` |  |
-| `looping` |  |
-| `sample_pos` | frames since transport zero |
-| `beat_pos` | quarter notes since transport zero |
-| `tempo_bpm` | tempo at the block start |
-| `meter` | time signature at the block start |
-| `bar_start` | beat position of the current bar's downbeat |
-| `loop_start` |  |
-| `loop_end` |  |
-| `sample_rate` | Hz |
-| `tempo_map` | read-only on the audio thread; may be nil |
-
 ### Param_Unit
 
 ```odin
@@ -480,6 +444,143 @@ Create with a node type's `*_create` proc and free with `node_destroy`.
 | `allocator` | the allocator `prepare` used, reused by `release` |
 | `create_allocator` | the allocator that owns `data` |
 
+### Timeline_Id
+
+```odin
+Timeline_Id :: struct {
+	index: u32,
+	generation: u32,
+}
+```
+
+A timeline of the engine's clock (see `fire:transport`). The zero value
+means "none". Stays valid until the timeline is removed.
+
+### Transport_Flag
+
+```odin
+Transport_Flag :: enum u8 {
+	Grid_Jumped,
+	Tempo_Changed,
+	Meter_Changed,
+}
+```
+
+Changes since the previous `process` call, in `Transport.flags`.
+
+| Value | Description |
+|-------|-------------|
+| `Grid_Jumped` | the grid position is not continuous with the previous call (e.g. an external sync correction) |
+| `Tempo_Changed` | the tempo or its ramp differs from where the previous call ended |
+| `Meter_Changed` | the meter or bar grid changed |
+
+### Transport_Flags
+
+```odin
+Transport_Flags :: bit_set[Transport_Flag; u8]
+```
+
+Set of `Transport_Flag`.
+
+### Timeline_Flag
+
+```odin
+Timeline_Flag :: enum u8 {
+	Started,
+	Stopped,
+	Jumped,
+	Wrapped,
+}
+```
+
+Changes to one timeline since the previous `process` call, in
+`Timeline_State.flags`.
+
+| Value | Description |
+|-------|-------------|
+| `Started` | began playing at frame 0 of this call |
+| `Stopped` | stopped at frame 0 of this call |
+| `Jumped` | `position` is not continuous with the previous call: a locate or a loop wrap |
+| `Wrapped` | the jump was a loop wrap (also sets `Jumped`) |
+
+### Timeline_Flags
+
+```odin
+Timeline_Flags :: bit_set[Timeline_Flag; u8]
+```
+
+Set of `Timeline_Flag`.
+
+### Timeline_State
+
+```odin
+Timeline_State :: struct {
+	id: Timeline_Id,
+	playing: bool,
+	position: timebase.Beats,
+	rate: f64,
+	looping: bool,
+	loop_start: timebase.Beats,
+	loop_end: timebase.Beats,
+	tempo_map: ^timebase.Tempo_Map,
+	flags: bit_set[Timeline_Flag; u8],
+}
+```
+
+One timeline at frame 0 of the current call. Within a call a timeline never
+wraps, jumps, starts or stops: the clock splits blocks at those points.
+
+| Field | Description |
+|-------|-------------|
+| `id` | zero for an unused slot |
+| `playing` |  |
+| `position` | local position in quarter notes |
+| `rate` | local beats per grid beat while playing |
+| `looping` |  |
+| `loop_start` | loop range in local beats, when `looping` |
+| `loop_end` |  |
+| `tempo_map` | the timeline's own map (bars, meters); read-only, may be nil |
+| `flags` |  |
+
+### Transport
+
+```odin
+Transport :: struct {
+	sample_rate: f64,
+	frame: timebase.Sample_Time,
+	host_ns: u64,
+	grid: timebase.Beats,
+	tempo_bpm: f64,
+	tempo_slope: f64,
+	meter: timebase.Meter,
+	bar: i64,
+	bar_start: timebase.Beats,
+	flags: bit_set[Transport_Flag; u8],
+	leader: Timeline_Id,
+	timelines: []Timeline_State,
+}
+```
+
+The clock at the first frame of the current `process` call. Nodes read it
+through `Process_Context.transport`; it may be nil when a node runs without
+a clock. Within one call time is continuous and the meter is fixed; the
+tempo is constant or follows one linear ramp (`tempo_slope`).
+
+| Field | Description |
+|-------|-------------|
+| `sample_rate` | Hz |
+| `frame` | reference frames since the clock started; never stops or jumps |
+| `host_ns` | presentation time of frame 0 (rt.host_time_ns clock); 0 = unknown |
+| `grid` | the clock's beat grid at frame 0; always advances |
+| `tempo_bpm` | tempo at frame 0 |
+| `tempo_slope` | bpm change per grid beat during this call (map ramps); usually 0 |
+| `meter` | meter of the bar grid |
+| `bar` | 0-based index of the bar containing frame 0 |
+| `bar_start` | grid beat of that bar's downbeat |
+| `flags` |  |
+| `leader` | the timeline setting tempo and bars; zero = none |
+| `timelines` | one per slot; slots with a zero `id` are unused |
+
 ## Procedures
 
 ### from_allocator_error
@@ -594,4 +695,86 @@ node_latency :: proc(n: ^Node) -> int
 ```
 
 Frames of latency the node reports (0 if it doesn't). Control thread.
+
+### transport_grid_at
+
+```odin
+transport_grid_at :: proc "contextless"(t: ^Transport, offset: int) -> timebase.Beats
+```
+
+**Realtime-safe** (callable on the audio thread). The grid beat `offset` frames into the call, following a tempo ramp
+exactly.
+
+### transport_tempo_at
+
+```odin
+transport_tempo_at :: proc "contextless"(t: ^Transport, offset: int) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The tempo `offset` frames into the call.
+
+### transport_timeline
+
+```odin
+transport_timeline :: proc "contextless"(t: ^Transport, id: Timeline_Id) -> ^Timeline_State
+```
+
+**Realtime-safe** (callable on the audio thread). The state of timeline `id`, or nil if it does not exist (removed, or
+never added). Cheap: an index and a generation check.
+
+### timeline_position_at
+
+```odin
+timeline_position_at :: proc "contextless"(t: ^Transport, tl: ^Timeline_State, offset: int) -> timebase.Beats
+```
+
+**Realtime-safe** (callable on the audio thread). Timeline `tl`'s local position `offset` frames into the call. Stopped
+timelines stay put.
+
+### transport_offset_of
+
+```odin
+transport_offset_of :: proc "contextless"(t: ^Transport, beat: timebase.Beats) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). The first frame offset in this call at which the grid reaches `beat`:
+0 if it already has, and `frames` or more if it does not within the call.
+
+### timeline_offset_of
+
+```odin
+timeline_offset_of :: proc "contextless"(t: ^Transport, tl: ^Timeline_State, beat: timebase.Beats) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). The first frame offset in this call at which playing timeline `tl`
+reaches local position `beat` (see `transport_offset_of`). A stopped
+timeline never moves: 0 if it is at or past `beat`, otherwise never.
+
+### transport_next_multiple
+
+```odin
+transport_next_multiple :: proc "contextless"(t: ^Transport, step: timebase.Beats) -> timebase.Beats
+```
+
+**Realtime-safe** (callable on the audio thread). The first multiple of `step` beats on the grid that is due in this
+call or later. A beat is due on the first frame at or after it, so a beat
+that fell just after the previous call's last frame is due at frame 0 of
+this one. Pair with `transport_offset_of` to find its frame:
+
+```odin
+for b := core.transport_next_multiple(t, 1); ; b += 1 {
+	offset := core.transport_offset_of(t, b)
+	if offset >= ctx.frames do break
+	click(offset)
+}
+```
+
+### timeline_next_multiple
+
+```odin
+timeline_next_multiple :: proc "contextless"(t: ^Transport, tl: ^Timeline_State, step: timebase.Beats) -> timebase.Beats
+```
+
+**Realtime-safe** (callable on the audio thread). Like `transport_next_multiple`, on playing timeline `tl`'s local
+beats; pair with `timeline_offset_of`.
 

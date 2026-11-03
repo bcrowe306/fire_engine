@@ -16,14 +16,14 @@ import tb "fire:timebase"
 Probe_Event :: struct {
 	block:    int, // index of the process call
 	offset:   u32, // frame offset within the block
-	absolute: tb.Sample_Time, // transport.sample_pos + offset
+	absolute: tb.Sample_Time, // transport.frame + offset
 	payload:  core.Event_Payload,
 }
 
 // One process call as the probe saw it.
 Probe_Block :: struct {
 	frames:    int,            // frames in this call
-	transport: core.Transport, // copy of the transport at this call
+	transport: core.Transport, // copy of the transport at this call, with `timelines` set to nil (it would dangle)
 }
 
 // State of a probe node. Read the log with `probe_events` and `probe_blocks`; it
@@ -95,7 +95,11 @@ probe_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	p := (^Probe)(self)
 	block := p.block_count
 	if p.block_count < len(p.blocks) {
-		p.blocks[p.block_count] = {ctx.frames, ctx.transport^}
+		p.blocks[p.block_count] = {frames = ctx.frames}
+		if ctx.transport != nil {
+			p.blocks[p.block_count].transport = ctx.transport^
+			p.blocks[p.block_count].transport.timelines = nil
+		}
 		p.block_count += 1
 	} else {
 		p.overflow += 1
@@ -107,7 +111,7 @@ probe_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		if int(e.offset) >= ctx.frames do p.out_of_range += 1
 		prev = e.offset
 		if p.event_count < len(p.events) {
-			p.events[p.event_count] = {block, e.offset, ctx.transport.sample_pos + tb.Sample_Time(e.offset), e.payload}
+			p.events[p.event_count] = {block, e.offset, (ctx.transport.frame if ctx.transport != nil else 0) + tb.Sample_Time(e.offset), e.payload}
 			p.event_count += 1
 		} else {
 			p.overflow += 1

@@ -29,8 +29,13 @@ on purpose, leave a comment explaining why.
 | `fire:midi/<api>` | MIDI drivers: `coremidi` (macOS), `alsa` (Linux sequencer), `winmm` (Windows) | `midi`, `core`, `rt`, `sys/<api>` |
 | `fire:sys/<api>` | Raw OS API bindings, no logic. Package name `<api>_sys` (Odin package names must be unique) | OS packages only |
 | `fire:graph`     | Audio graph: nodes + connections, compiled plans, multithreaded scheduler, latency compensation (see `docs/design/graph.md`) | `core`, `rt` |
+| `fire:transport` | The clock: beat grid, tempo, bars, timelines, quantized commands, block splitting, MIDI clock out, the sync hook (see `docs/design/transport.md`) | `core`, `rt`, `timebase` |
+| `fire:link`      | Optional Ableton Link sync (GPLv2+, built by `scripts/link.sh` into the gitignored `third_party/`). Nothing may import it except apps and its tests | `transport`, `core`, `rt`, `sys/abl_link` |
 
-`dsp` must never import `backend` or `graph`. Engine packages must never import `testkit`.
+`dsp` must never import `backend` or `graph`. Engine packages must never import `testkit` or `link`.
+
+A test package whose dependency is built separately has a `REQUIRES` file: globs
+that must match (else `scripts/test.sh` skips it) and `#` lines saying how to get them.
 
 Platform-specific files use build tags (`#+build darwin`). A test package for one
 platform adds a `#+build !<os>` stub file with one empty test, so it compiles everywhere.

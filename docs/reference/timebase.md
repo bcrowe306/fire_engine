@@ -159,6 +159,36 @@ Ticks :: i64
 
 Musical time in whole ticks; `ppq` ticks make one quarter note.
 
+### Quantize
+
+```odin
+Quantize :: enum u8 {
+	None,
+	Bars_8,
+	Bars_4,
+	Bars_2,
+	Bar,
+	Half_T,
+	Half,
+	Half_D,
+	Quarter_T,
+	Quarter,
+	Quarter_D,
+	Eighth_T,
+	Eighth,
+	Eighth_D,
+	Sixteenth_T,
+	Sixteenth,
+	Sixteenth_D,
+	Thirty_Second_T,
+	Thirty_Second,
+	Thirty_Second_D,
+}
+```
+
+A musical grid length for quantizing launches and edits. `_T` is a triplet
+(2/3 of the length), `_D` dotted (3/2). Bar lengths follow the meter.
+
 ## Procedures
 
 ### tempo_map_init
@@ -285,6 +315,23 @@ bbt_to_beats :: proc "contextless"(m: ^Tempo_Map, bbt: Bar_Beat_Tick, ppq: i64 =
 **Realtime-safe** (callable on the audio thread). Converts bar/beat/tick (with `ppq` ticks per quarter note) to a beat
 position. Inverse of `beats_to_bbt`.
 
+### tempo_slope_at
+
+```odin
+tempo_slope_at :: proc "contextless"(m: ^Tempo_Map, b: Beats) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). Tempo ramp at beat `b`, in bpm per beat (0 when constant).
+
+### next_change_after
+
+```odin
+next_change_after :: proc "contextless"(m: ^Tempo_Map, b: Beats) -> (at: Beats, ok: bool)
+```
+
+**Realtime-safe** (callable on the audio thread). The first tempo point or meter change strictly after beat `b`, or
+ok = false if there is none.
+
 ### samples_to_seconds
 
 ```odin
@@ -340,4 +387,32 @@ samples_per_beat :: proc "contextless"(bpm: f64, sample_rate: f64) -> f64
 ```
 
 **Realtime-safe** (callable on the audio thread). Frames per quarter note at a constant tempo of `bpm` and `sample_rate` (Hz). Not rounded.
+
+### ramp_beats
+
+```odin
+ramp_beats :: proc "contextless"(bpm: f64, slope: f64, t: Seconds) -> Beats
+```
+
+**Realtime-safe** (callable on the audio thread). Beats travelled in `t` seconds from a tempo of `bpm` that changes by
+`slope` bpm per beat (a linear ramp in beats, as in `Tempo_Map`). `slope` 0
+is a constant tempo.
+
+### ramp_seconds
+
+```odin
+ramp_seconds :: proc "contextless"(bpm: f64, slope: f64, b: Beats) -> Seconds
+```
+
+**Realtime-safe** (callable on the audio thread). Seconds taken to travel `b` beats from a tempo of `bpm` changing by
+`slope` bpm per beat. Inverse of `ramp_beats`.
+
+### quantize_length
+
+```odin
+quantize_length :: proc "contextless"(q: Quantize) -> (bars: int, beats: Beats)
+```
+
+**Realtime-safe** (callable on the audio thread). The length of `q` as whole bars (`bars` > 0; `beats` is 0), or as
+quarter notes (`bars` is 0). `.None` gives both 0.
 

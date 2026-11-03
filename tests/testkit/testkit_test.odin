@@ -181,7 +181,7 @@ probe_sees_sample_accurate_events_under_any_block_pattern :: proc(t: ^testing.T)
 		// Transport sample_pos must equal the running frame count.
 		running := 0
 		for blk in kit.probe_blocks(p) {
-			testing.expect_value(t, int(blk.transport.sample_pos), running)
+			testing.expect_value(t, int(blk.transport.frame), running)
 			running += blk.frames
 		}
 		testing.expect_value(t, running, 4096)
