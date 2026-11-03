@@ -6,11 +6,8 @@ package test_coreaudio
 
 import "base:intrinsics"
 import "core:log"
-import "core:c"
 import "core:strings"
 import CF "core:sys/darwin/CoreFoundation"
-import "core:sync"
-import "core:sys/posix"
 import "core:testing"
 import "core:time"
 
@@ -20,27 +17,6 @@ import "fire:core"
 import "fire:rt"
 import ca "fire:sys/coreaudio"
 import kit "fire:testkit"
-
-// Device tests share one physical device, so they run one at a time: a mutex
-// within this process, and a lock file across processes (test.sh runs the
-// package once per optimization level, concurrently). POSIX record locks
-// belong to the process, hence both. The OS drops the file lock if we crash.
-blackhole_mutex: sync.Mutex
-
-blackhole_lock :: proc() -> posix.FD {
-	sync.mutex_lock(&blackhole_mutex)
-	fd := posix.open("/tmp/fire_engine_blackhole.lock", {.CREAT, .RDWR}, posix.mode_t{.IRUSR, .IWUSR, .IRGRP, .IROTH})
-	if fd >= 0 {
-		lock := posix.flock{l_type = .WRLCK, l_whence = c.short(posix.Whence.SET)}
-		posix.fcntl(fd, .SETLKW, &lock)
-	}
-	return fd
-}
-
-blackhole_unlock :: proc(fd: posix.FD) {
-	if fd >= 0 do posix.close(fd) // closing releases the record lock
-	sync.mutex_unlock(&blackhole_mutex)
-}
 
 @(test)
 struct_layouts_match_sdk :: proc(t: ^testing.T) {
@@ -96,63 +72,11 @@ find_blackhole :: proc(t: ^testing.T, d: ^backend.Driver) -> (id: string, rate: 
 	return "", 0, false
 }
 
-Recorder :: struct {
-	play:            []f32, // mono source, played on both outputs
-	rec:             [2][]f32,
-	next_time:       i64,
-	gaps:            int,
-	blocks:          u64, // atomic
-	xrun_blocks:     int,
-	max_entry_skew:  i64, // host_time_ns() at entry − block.callback_ns
-	time_order_bad:  int, // input_ns ≤ callback_ns ≤ output_ns violated
-	last_output_ns:  u64,
-	non_monotonic:   int,
-}
-
-// [rt]
-recorder_process :: proc(user: rawptr, b: ^backend.Io_Block) {
-	r := (^Recorder)(user)
-	entry := rt.host_time_ns()
-	if b.sample_time != r.next_time do r.gaps += 1
-	r.next_time = b.sample_time + i64(b.frames)
-	if b.xrun do r.xrun_blocks += 1
-	r.max_entry_skew = max(r.max_entry_skew, abs(i64(entry) - i64(b.callback_ns)))
-	if !(b.input_ns <= b.callback_ns && b.callback_ns <= b.output_ns) do r.time_order_bad += 1
-	if b.output_ns <= r.last_output_ns do r.non_monotonic += 1
-	r.last_output_ns = b.output_ns
-	for out in b.outputs {
-		for &s, i in out {
-			t := int(b.sample_time) + i
-			s = r.play[t] if t < len(r.play) else 0
-		}
-	}
-	for input, c in b.inputs {
-		for s, i in input {
-			t := int(b.sample_time) + i
-			if c < 2 && t < len(r.rec[c]) do r.rec[c][t] = s
-		}
-	}
-	intrinsics.atomic_add(&r.blocks, 1)
-}
-
-recorder_callback :: proc(r: ^Recorder) -> backend.Device_Callback {
-	return {process = recorder_process, user = r}
-}
-
-wait_for :: proc(cond: proc(user: rawptr) -> bool, user: rawptr, timeout: time.Duration) -> bool {
-	start := time.tick_now()
-	for !cond(user) {
-		if time.tick_since(start) > timeout do return false
-		time.sleep(time.Millisecond)
-	}
-	return true
-}
-
 @(test)
 blackhole_loopback_is_bit_exact :: proc(t: ^testing.T) {
-	lock := blackhole_lock()
-	defer blackhole_unlock(lock)
-	testing.set_fail_timeout(t, 30 * time.Second)
+	lock := kit.device_lock("blackhole")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
 
 	d := cad.create()
 	defer backend.driver_destroy(d)
@@ -174,16 +98,11 @@ blackhole_loopback_is_bit_exact :: proc(t: ^testing.T) {
 	log.infof("BlackHole: %v Hz, %d frames, latency in %d out %d", f.sample_rate, f.buffer_frames, f.input_latency_frames, f.output_latency_frames)
 
 	FRAMES :: 72_000 // 1.5 s at 48 kHz
-	r: Recorder
-	r.play = make([]f32, FRAMES, context.temp_allocator)
-	for &c in r.rec do c = make([]f32, FRAMES, context.temp_allocator)
+	r := kit.loop_recorder_make(FRAMES, context.temp_allocator)
 	kit.white_noise(r.play[:FRAMES / 2], 31, 0.5) // noise, then silence
 
-	testing.expect_value(t, backend.device_start(&dev, recorder_callback(&r)), core.Error.None)
-	done := wait_for(proc(u: rawptr) -> bool {
-		r := (^Recorder)(u)
-		return intrinsics.atomic_load(&r.next_time) >= FRAMES
-	}, &r, 10 * time.Second)
+	testing.expect_value(t, backend.device_start(&dev, kit.loop_recorder_callback(r)), core.Error.None)
+	done := kit.loop_recorder_wait(r, FRAMES, 10 * time.Second)
 	backend.device_stop(&dev)
 	testing.expect(t, done, "BlackHole did not deliver 1.5 s of audio within 10 s")
 	stats := backend.device_stats(&dev)
@@ -195,33 +114,18 @@ blackhole_loopback_is_bit_exact :: proc(t: ^testing.T) {
 	testing.expectf(t, r.max_entry_skew < 5_000_000, "callback_ns is %d ns from host_time_ns at entry", r.max_entry_skew)
 	testing.expectf(t, stats.xruns == 0, "%d xruns (machine busy?)", stats.xruns)
 
-	latency := kit.estimate_latency(r.play[:FRAMES / 2], r.rec[0][:FRAMES / 2], FRAMES / 4)
-	log.infof("measured round trip %d frames (%.2f ms); %d callbacks, peak load %.3f", latency, f64(latency) * 1000 / f.sample_rate, stats.callbacks, stats.peak_load)
-	testing.expect(t, latency > 0 && latency < FRAMES / 4, "no loopback signal found")
 	// BlackHole has its own output and input volume controls (macOS may have
 	// turned them down). At 100% the loopback must be bit-exact; otherwise it
 	// must be exactly the input times one constant gain.
 	unity := volume_scalar(id, ca.kAudioObjectPropertyScopeOutput) == 1 && volume_scalar(id, ca.kAudioObjectPropertyScopeInput) == 1
-	n := FRAMES / 2 - latency
 	for c in 0 ..< 2 {
-		played, recorded := r.play[:n], r.rec[c][latency:][:n]
-		pp, pr: f64
-		for i in 0 ..< n {
-			pp += f64(played[i]) * f64(played[i])
-			pr += f64(played[i]) * f64(recorded[i])
-		}
-		gain := pr / pp
-		worst, worst_at := 0.0, 0
-		for i in 0 ..< n {
-			e := abs(f64(recorded[i]) - gain * f64(played[i]))
-			if e > worst do worst, worst_at = e, i
-		}
-		if c == 0 do log.infof("BlackHole gain %.4f (%.2f dB)%s", gain, kit.linear_to_db(gain), "" if unity else " (its volume controls are below 100%)")
-		testing.expectf(t, worst <= 1e-6, "ch%d: recording is not a scaled copy of the input: residual %v at %d", c, worst, worst_at)
-		if unity {
-			cmp := kit.compare_slices(played, recorded)
-			testing.expectf(t, cmp.max_abs_error == 0, "ch%d: loopback at unity volume not bit-exact: %v at %d", c, cmp.max_abs_error, cmp.max_error_at)
-		}
+		res := kit.analyze_loopback(r.play[:FRAMES / 2], r.rec[c][:], 8192)
+		testing.expectf(t, res.found, "ch%d: no loopback signal found", c)
+		if c == 0 do log.infof("round trip %d frames (%.2f ms), gain %.4f (%.2f dB)%s; %d callbacks, peak load %.3f",
+			res.latency, f64(res.latency) * 1000 / f.sample_rate, res.gain, kit.linear_to_db(res.gain),
+			"" if unity else " (BlackHole volume below 100%)", stats.callbacks, stats.peak_load)
+		testing.expectf(t, res.residual <= 1e-6, "ch%d: recording is not a scaled copy of the input: residual %v at %d", c, res.residual, res.at)
+		if unity do testing.expectf(t, res.gain == 1 && res.residual == 0, "ch%d: loopback at unity volume not bit-exact (gain %v)", c, res.gain)
 	}
 }
 
@@ -255,9 +159,9 @@ device_object :: proc(uid: string) -> ca.AudioObjectID {
 
 @(test)
 blackhole_start_stop_cycles :: proc(t: ^testing.T) {
-	lock := blackhole_lock()
-	defer blackhole_unlock(lock)
-	testing.set_fail_timeout(t, 30 * time.Second)
+	lock := kit.device_lock("blackhole")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
 
 	d := cad.create()
 	defer backend.driver_destroy(d)
@@ -272,15 +176,12 @@ blackhole_start_stop_cycles :: proc(t: ^testing.T) {
 		testing.expectf(t, false, "open BlackHole: %v", err)
 		return
 	}
-	r: Recorder
+	r := kit.loop_recorder_make(0, context.temp_allocator)
 	for cycle in 0 ..< 10 {
-		r.next_time = 0
+		intrinsics.atomic_store(&r.next_time, 0)
 		before := intrinsics.atomic_load(&r.blocks)
-		testing.expect_value(t, backend.device_start(&dev, recorder_callback(&r)), core.Error.None)
-		ok := wait_for(proc(u: rawptr) -> bool {
-			r := (^Recorder)(u)
-			return intrinsics.atomic_load(&r.next_time) >= 128 * 10
-		}, &r, 5 * time.Second)
+		testing.expect_value(t, backend.device_start(&dev, kit.loop_recorder_callback(r)), core.Error.None)
+		ok := kit.loop_recorder_wait(r, 128 * 10, 5 * time.Second)
 		backend.device_stop(&dev)
 		testing.expectf(t, ok, "cycle %d: no callbacks", cycle)
 		after := intrinsics.atomic_load(&r.blocks)
@@ -293,9 +194,9 @@ blackhole_start_stop_cycles :: proc(t: ^testing.T) {
 
 @(test)
 blackhole_rate_change_is_reported :: proc(t: ^testing.T) {
-	lock := blackhole_lock()
-	defer blackhole_unlock(lock)
-	testing.set_fail_timeout(t, 30 * time.Second)
+	lock := kit.device_lock("blackhole")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
 
 	d := cad.create()
 	defer backend.driver_destroy(d)

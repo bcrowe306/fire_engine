@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Temporary Linux test machine on DigitalOcean (doctl must be authenticated).
-# Create per session, destroy afterwards.
+# Linux test machine on DigitalOcean (doctl must be authenticated). Kept between
+# sessions and powered off when idle. A powered-off droplet is still billed;
+# `down` destroys it.
 #
-#   ./scripts/cloud/linux.sh up        create the droplet and install Odin, clang, ALSA loopback
-#   ./scripts/cloud/linux.sh sync      copy the committed tree (git archive HEAD) to ~/fire_engine
+#   ./scripts/cloud/linux.sh up        power on (or create: Odin, clang, ALSA loopback)
+#   ./scripts/cloud/linux.sh sync      copy the working tree to ~/fire_engine
 #   ./scripts/cloud/linux.sh test [..] sync, then run ./scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/linux.sh ssh [cmd] shell or command on the droplet
+#   ./scripts/cloud/linux.sh off       power off (end of session)
 #   ./scripts/cloud/linux.sh down      destroy the droplet
 #   ./scripts/cloud/linux.sh status
 #
@@ -13,8 +15,8 @@
 #      FIRE_DO_SIZE (s-2vcpu-4gb), FIRE_DO_IMAGE (ubuntu-24-04-x64),
 #      FIRE_SSH_KEY (~/.ssh/fire_engine_do; its .pub must be registered at DigitalOcean)
 #
-# Only `git archive HEAD` is copied: untracked files (secrets.env, JUCE/, ...)
-# never leave this machine. Commit before testing.
+# Only files git would consider (tracked, or untracked and not ignored) are
+# copied, so ignored files (secrets.env, JUCE/, build output) never leave this machine.
 set -euo pipefail
 
 NAME="${FIRE_DROPLET:-fire-engine-linux}"
@@ -29,6 +31,10 @@ SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$
 
 ip() {
 	doctl compute droplet list --format Name,PublicIPv4 --no-header | awk -v n="$NAME" '$1 == n { print $2 }'
+}
+
+droplet_id() {
+	doctl compute droplet list --format Name,ID --no-header | awk -v n="$NAME" '$1 == n { print $2 }'
 }
 
 remote() {
@@ -57,7 +63,17 @@ EOF
 
 case "${1:-}" in
 up)
-	if [ -n "$(ip)" ]; then echo "$NAME already exists at $(ip)"; exit 0; fi
+	if [ -n "$(ip)" ]; then
+		status="$(doctl compute droplet list --format Name,Status --no-header | awk -v n="$NAME" '$1 == n { print $2 }')"
+		if [ "$status" = "off" ]; then
+			echo "powering on $NAME..."
+			doctl compute droplet-action power-on "$(droplet_id)" --wait >/dev/null
+		fi
+		for _ in $(seq 1 60); do remote true 2>/dev/null && break; sleep 3; done
+		echo "$NAME is up at $(ip)"
+		remote 'lsmod | grep -q snd_aloop && echo "snd-aloop loaded" || echo "snd-aloop NOT loaded"'
+		exit 0
+	fi
 	fp="$(ssh-keygen -l -E md5 -f "$KEY.pub" | awk '{print $2}' | sed 's/^MD5://')"
 	echo "creating $NAME ($SIZE, $IMAGE, $REGION)..."
 	doctl compute droplet create "$NAME" --region "$REGION" --size "$SIZE" --image "$IMAGE" \
@@ -70,9 +86,11 @@ up)
 	remote 'odin version && clang --version | head -1 && (lsmod | grep -q snd_aloop && echo "snd-aloop loaded" || echo "snd-aloop NOT loaded")'
 	;;
 sync)
-	echo "copying HEAD ($(git -C "$ROOT" rev-parse --short HEAD)) to $NAME..."
-	git -C "$ROOT" diff --quiet HEAD || echo "note: uncommitted changes are not copied"
-	git -C "$ROOT" archive --format=tar HEAD | remote 'rm -rf ~/fire_engine && mkdir -p ~/fire_engine && tar -x -C ~/fire_engine'
+	echo "copying working tree ($(git -C "$ROOT" rev-parse --short HEAD) + local changes) to $NAME..."
+	(cd "$ROOT" && git ls-files -z --cached --others --exclude-standard |
+		while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done |
+		tar --null -T - -cf -) |
+		remote 'rm -rf ~/fire_engine && mkdir -p ~/fire_engine && tar -x -C ~/fire_engine 2>/dev/null'
 	;;
 test)
 	shift
@@ -83,6 +101,11 @@ ssh)
 	shift
 	remote "$@"
 	;;
+off)
+	if [ -z "$(ip)" ]; then echo "no droplet named $NAME"; exit 0; fi
+	doctl compute droplet-action power-off "$(droplet_id)" --wait >/dev/null
+	echo "$NAME powered off (still billed while it exists; '$0 down' destroys it)"
+	;;
 down)
 	if [ -z "$(ip)" ]; then echo "no droplet named $NAME"; exit 0; fi
 	doctl compute droplet delete "$NAME" --force
@@ -92,7 +115,7 @@ status)
 	doctl compute droplet list --tag-name fire-engine --format Name,PublicIPv4,Status,Memory,VCPUs,Region
 	;;
 *)
-	sed -n '2,15p' "$0"
+	sed -n '2,16p' "$0"
 	exit 1
 	;;
 esac

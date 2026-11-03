@@ -21,9 +21,9 @@ Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 ### Linux test machine (DigitalOcean)
 
 ```bash
-./scripts/cloud/linux.sh up      # Ubuntu x86 droplet: Odin, clang, snd-aloop (ALSA loopback card)
-./scripts/cloud/linux.sh test    # copy HEAD (git archive: committed files only) and run the suite
-./scripts/cloud/linux.sh down    # always destroy at the end of the session
+./scripts/cloud/linux.sh up      # power on (or create) the Ubuntu x86 droplet: Odin, clang, snd-aloop
+./scripts/cloud/linux.sh test    # copy the working tree (ignored files excluded) and run the suite
+./scripts/cloud/linux.sh off     # power off at the end of the session (keep it; `down` destroys)
 ```
 
 Credentials live in `secrets.env` (gitignored, never commit or print it). Windows

@@ -1,7 +1,7 @@
 # Audio & MIDI backends
 
-Status: shared API, fake driver, CoreAudio and CoreMIDI drivers implemented
-(macOS 11+). Next: WASAPI + Windows MIDI, ALSA, JACK, ASIO.
+Status: shared API, fake driver, CoreAudio + CoreMIDI (macOS 11+) and ALSA
+(Linux) drivers implemented. Next: WASAPI + Windows MIDI, ALSA MIDI, JACK, ASIO.
 
 ## Decisions
 
@@ -137,6 +137,43 @@ the control thread; the layer never tears itself down.
 - Reported latency excludes the buffer: device latency + safety offset + stream
   latency. BlackHole reports 0 and measures a 512-frame round trip at 256-frame buffers.
 
+## ALSA (`fire:backend/alsa`)
+
+- **Devices.** Hardware PCMs are listed as `hw:CARD=<id>,DEV=<n>`. That name
+  survives reboots, unlike card numbers. Any ALSA PCM name (`default`,
+  `plughw:0`, `…,SUBDEV=0`) also works as a device ID.
+- **Duplex.** Playback and capture are separate PCMs. Input and output may name
+  different devices on the same card (one clock), which covers `snd-aloop`:
+  device 0 playback comes back as device 1 capture. Different cards return
+  `.Unsupported`.
+- **Format.** RW interleaved, exact rate (no ALSA resampling). The format is the
+  first the device supports of f32, s32, packed s24, s24-in-32 and s16; the
+  shared layer converts. Period = `buffer_frames`. Playback keeps 2 periods,
+  which sets latency. Capture keeps 4, which is free slack.
+- **Thread.** The driver runs its own audio thread and asks for SCHED_FIFO 80 with
+  `rt.set_realtime_priority`. That needs CAP_SYS_NICE or an rtprio limit;
+  `alsa.has_realtime_priority` reports whether it was granted. Streams open
+  non-blocking and every wait is at most 100 ms, so `stop` never hangs on a
+  stalled device.
+- **Pacing.** Each cycle waits for a period of playback space, then reads the
+  matching capture period. Pacing on capture alone fails on `snd-aloop`: it
+  signals capture periods late, and playback underruns while we wait. The
+  streams are not `snd_pcm_link`ed, because linking `snd-aloop`'s two devices
+  left capture silent.
+- **Timestamps.** Measured each cycle as now ± `snd_pcm_delay`, then smoothed
+  like JACK's DLL: predict one period ahead and pull 5% toward the measurement.
+  Raw readings jitter by the thread's wake-up latency and could make
+  `output_ns` go backwards.
+- **Xruns.** `-EPIPE` or `-ESTRPIPE` restarts the streams (prepare, refill
+  playback with silence, start) and flags the next block. `-ENODEV` posts
+  `Device_Lost`, then the thread idles until stopped.
+- **Not yet done:** hot-plug and format-change notifications (udev), and
+  ALSA MIDI.
+- **On a VM:** the DigitalOcean test droplet's host stalls it for 20–35 ms at
+  times. A plain C loop sees xruns there below 1024-frame periods, so the
+  exact-loopback test uses 1024. Small periods need real hardware and a
+  quiet machine.
+
 ## MIDI (`fire:midi`, `fire:midi/coremidi`)
 
 - **Messages.** The engine sees MIDI 1.0 bytes (`core.Midi_Raw`). Drivers that
@@ -187,10 +224,9 @@ CoreMIDI specifics:
 - **macOS, no hardware:** `tests/coremidi` loops MIDI through virtual ports the
   driver creates itself (named with the process ID so concurrent runs don't
   collide).
-- **Linux:** `scripts/cloud/linux.sh` creates an Ubuntu x86 droplet per session
-  with `snd-aloop`, a virtual ALSA loopback card. It was checked bit-exact with
-  `aplay`/`arecord`, about 14.4k frames of delay at default settings. The
-  ALSA driver tests will run there.
+- **Linux:** `scripts/cloud/linux.sh` manages an Ubuntu x86 droplet (kept,
+  powered off between sessions) with `snd-aloop`, a virtual ALSA loopback card.
+  `tests/alsa` runs there; on CI, which has no `snd-aloop`, the device tests skip.
 - **Local only:** `tests/coreaudio` uses BlackHole 2ch to check loopback (a
   constant-gain copy at the measured latency, bit-exact when BlackHole's volume
   is 100%), allocations, timestamps, start/stop cycles and rate-change events.
