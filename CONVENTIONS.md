@@ -22,6 +22,7 @@ on purpose, leave a comment explaining why.
 | `fire:rt`        | Realtime utilities: FTZ/DAZ, SPSC queue, `host_time_ns` (the device/MIDI clock), `set_realtime_priority`, `precise_sleep` | — |
 | `fire:dsp`       | DSP primitives and simple nodes; the resampler             | `core`, `rt`        |
 | `fire:audiofile` | WAV/AIFF reading and writing (pure Odin)                   | `core`              |
+| `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
 | `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/design/backend.md`) | `core`, `rt` |

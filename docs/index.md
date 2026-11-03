@@ -17,6 +17,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:link`](/reference/link/) | Optional [Ableton Link](https://www.ableton.com/link/) sync (GPLv2+; built separately) |
 | [`fire:dsp`](/reference/dsp/) | DSP building blocks and simple nodes (gain, filters, smoothing, resampling) |
 | [`fire:audiofile`](/reference/audiofile/) | Read and write WAV and AIFF; [FLAC, MP3 and Ogg](/reference/audiofile/codecs/) decoding |
+| [`fire:stream`](/reference/stream/) | Disk streaming: files read ahead on background threads, instant jumps to cue points |
 | [`fire:backend`](/reference/backend/) | Audio devices: one API over [CoreAudio](/reference/backend/coreaudio/), [ALSA](/reference/backend/alsa/), [JACK](/reference/backend/jack/), [WASAPI](/reference/backend/wasapi/) and a [simulated driver](/reference/backend/fake/) |
 | [`fire:midi`](/reference/midi/) | MIDI input and output: one API over [CoreMIDI](/reference/midi/coremidi/), the [ALSA sequencer](/reference/midi/alsa/) and [WinMM](/reference/midi/winmm/) |
 | [`fire:timebase`](/reference/timebase/) | Samples, seconds, beats, ticks, bars; tempo maps |

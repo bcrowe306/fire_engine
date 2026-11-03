@@ -31,7 +31,9 @@ defer audiofile.close(r)
 audiofile.read(r, channels, frames)
 ```
 
-Seeking is sample-exact in every format.
+Seeking is sample-exact in every format. In MP3 it decodes from the start
+of the file, so it takes time proportional to the position: prefer FLAC or
+Ogg for long files that are jumped around in.
 
 ## Constants
 

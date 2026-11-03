@@ -17,7 +17,9 @@ AIFF (through `audiofile.open`), so it can be the one call an app uses:
 	defer audiofile.close(r)
 	audiofile.read(r, channels, frames)
 
-Seeking is sample-exact in every format.
+Seeking is sample-exact in every format. In MP3 it decodes from the start
+of the file, so it takes time proportional to the position: prefer FLAC or
+Ogg for long files that are jumped around in.
 */
 package codecs
 
@@ -104,6 +106,8 @@ open_miniaudio :: proc(path: string, encoding: ma.encoding_format, format: audio
 	cpath := strings.clone_to_cstring(path, context.temp_allocator)
 	config := ma.decoder_config_init(.f32, 0, 0) // native channels and rate
 	config.encodingFormat = encoding
+	// No seek table (seekPointCount): with one, miniaudio's MP3 seeks land
+	// hundreds of frames off. Exactness matters more here.
 	if ma.decoder_init_file(cpath, &config, &m.decoder) != .SUCCESS {
 		free(m, allocator)
 		return nil, .Unsupported_Format

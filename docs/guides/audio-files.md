@@ -1,6 +1,6 @@
 ---
 title: Audio files and sample rates
-description: Read WAV, AIFF, FLAC, MP3 and Ogg Vorbis; write crash-safe WAV and AIFF; convert sample rates and play at any speed with the resampler.
+description: Read WAV, AIFF, FLAC, MP3 and Ogg Vorbis; write crash-safe WAV and AIFF; stream from disk with instant cue jumps; convert sample rates and play at any speed.
 ---
 
 Three packages cover files and rate conversion:
@@ -69,6 +69,43 @@ Writers are built for long recordings:
 - **Dither:** 16-bit output gets TPDF dither unless `dither` is off. Integer
   encodings clip at full scale.
 
+## Streaming from disk
+
+Audio threads must never touch the disk. `fire:stream` reads ahead on
+background threads, so the audio thread just copies:
+
+```odin
+settings := stream.default_settings()
+settings.open = codecs.open // to stream FLAC, MP3 and Ogg as well
+s, _ := stream.create(settings)
+defer stream.destroy(s)
+
+src, _ := stream.source_open(s, "song.flac") // shared: same path, same source
+defer stream.source_release(src)
+st, _ := stream.stream_create(s, src, cues = {0, loop_start})
+defer stream.stream_destroy(st)
+
+// Control thread, before a quantized launch: wait for stream.stream_ready(st).
+
+// Audio thread:
+stream.stream_read(st, out, frames) // planar f32 at the file's sample rate
+stream.stream_seek(st, loop_start)  // a cue: plays on from memory at once
+```
+
+- **Small files load into memory.** Files that decode to at most
+  `ram_bytes` (16 MB by default, about 45 s of stereo at 48 kHz) are
+  decoded once in the background and shared by every stream that plays
+  them.
+- **Longer files are streamed.** Each stream keeps `buffer_seconds` read
+  ahead. The disk threads serve whichever stream has the least buffered.
+- **Cues** are the positions a stream jumps to: a clip's start and loop
+  start, slice points. Each has `cue_seconds` decoded in memory, so a jump
+  is instant while the disk refills from after the cue. A jump anywhere else
+  plays silence until the data arrives.
+- **The audio thread never waits.** Missing data plays as silence and is
+  counted (`stream_underruns`, `stats`). `stream_ready` tells the control
+  thread when a stream can start without a dropout.
+
 ## Converting sample rates
 
 `dsp.Resampler` uses bandlimited interpolation. `speed` is input frames per
@@ -103,6 +140,7 @@ accounts for. The output is bit-identical however you split the input.
 
 ## See also
 
-- [`fire:audiofile`](/reference/audiofile/),
+- [`fire:stream`](/reference/stream/),
+  [`fire:audiofile`](/reference/audiofile/),
   [`fire:audiofile/codecs`](/reference/audiofile/codecs/) and
   [`dsp.Resampler`](/reference/dsp/#resampler)
