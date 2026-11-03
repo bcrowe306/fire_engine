@@ -18,6 +18,17 @@ Packages run concurrently; each package's full log is in `.test_artifacts/.run/<
 A package that runs longer than `FIRE_TIMEOUT` seconds (default 600) is killed and fails.
 Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 
+### Linux test machine (DigitalOcean)
+
+```bash
+./scripts/cloud/linux.sh up      # Ubuntu x86 droplet: Odin, clang, snd-aloop (ALSA loopback card)
+./scripts/cloud/linux.sh test    # copy HEAD (git archive: committed files only) and run the suite
+./scripts/cloud/linux.sh down    # always destroy at the end of the session
+```
+
+Credentials live in `secrets.env` (gitignored, never commit or print it). Windows
+testing will use an AWS Windows Server instance, with the AWS keys from `secrets.env`.
+
 Builds always need `-collection:fire=f_engine`.
 
 ## Non-negotiables

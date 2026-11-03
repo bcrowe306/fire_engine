@@ -187,6 +187,10 @@ CoreMIDI specifics:
 - **macOS, no hardware:** `tests/coremidi` loops MIDI through virtual ports the
   driver creates itself (named with the process ID so concurrent runs don't
   collide).
+- **Linux:** `scripts/cloud/linux.sh` creates an Ubuntu x86 droplet per session
+  with `snd-aloop`, a virtual ALSA loopback card. It was checked bit-exact with
+  `aplay`/`arecord`, about 14.4k frames of delay at default settings. The
+  ALSA driver tests will run there.
 - **Local only:** `tests/coreaudio` uses BlackHole 2ch to check loopback (a
   constant-gain copy at the measured latency, bit-exact when BlackHole's volume
   is 100%), allocations, timestamps, start/stop cycles and rate-change events.

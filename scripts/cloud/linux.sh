@@ -89,7 +89,7 @@ down)
 	echo "destroyed $NAME"
 	;;
 status)
-	doctl compute droplet list --tag-name fire-engine --format Name,PublicIPv4,Status,Memory,VCPUs,Region,Created
+	doctl compute droplet list --tag-name fire-engine --format Name,PublicIPv4,Status,Memory,VCPUs,Region
 	;;
 *)
 	sed -n '2,15p' "$0"

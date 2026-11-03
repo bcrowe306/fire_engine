@@ -12,7 +12,8 @@ FIRE_OPT="none speed" ./scripts/test.sh # both at once (CI runs both)
 All packages (and opt levels) build and run concurrently. Output is printed per
 package when everything finishes: one summary line on success, the full log on
 failure. Logs stay in `.test_artifacts/.run/`. `FIRE_TIMEOUT` (seconds, default
-600) kills a hung package, which then fails.
+600) kills a hung package, which then fails. `FIRE_JOBS` caps concurrency
+(default: CPU count). Each compile needs about 300 MB.
 
 | Package    | Covers |
 |------------|--------|
