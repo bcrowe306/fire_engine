@@ -255,6 +255,12 @@ source_open :: proc(s: ^Streamer, path: string) -> (result: ^Source, err: audiof
 	return src, .None
 }
 
+// Control thread. Adds a reference, for something else that keeps the
+// source (a clip, say). Each reference is dropped with `source_release`.
+source_retain :: proc(src: ^Source) {
+	if src != nil do src.refs += 1
+}
+
 // Control thread. Drops a reference; the source is freed with the last one.
 // Streams keep their own reference, so a source can be released while its
 // streams play.

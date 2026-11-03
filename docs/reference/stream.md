@@ -237,6 +237,15 @@ Control thread. Opens `path`, or returns the source already open for it
 (counting another reference). Small files start loading into memory in
 the background; check `source_state`. Release with `source_release`.
 
+### source_retain
+
+```odin
+source_retain :: proc(src: ^Source)
+```
+
+Control thread. Adds a reference, for something else that keeps the
+source (a clip, say). Each reference is dropped with `source_release`.
+
 ### source_release
 
 ```odin

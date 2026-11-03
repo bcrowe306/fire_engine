@@ -1,12 +1,17 @@
 ---
-title: MIDI clips
-description: Build MIDI clips with notes, per-note expression and controllers, play them on timelines as launcher loops or arranged regions, and read and write MIDI files.
+title: Clips
+description: MIDI and audio clips on timelines, as launcher loops or arranged regions; per-note expression, tempo-following audio, seamless loops, and MIDI files.
 ---
 
 `fire:clip` turns the clock's timelines into music. A **clip** holds the
-content in beats. A **player** is a graph node that plays one clip on one
-timeline, sample-accurately. `examples/midi_clips` plays a launcher loop and
-an arranged clip together, then saves them as a MIDI file.
+content. A **player** is a graph node that plays one clip on one timeline,
+sample-accurately. There are MIDI clips (notes in beats) and audio clips
+(regions of files).
+
+- `examples/midi_clips` plays a launcher loop and an arranged clip
+  together, then saves them as a MIDI file.
+- `examples/audio_clips` plays a 100 BPM loop repitched into a 120 BPM
+  session.
 
 ## Building a clip
 
@@ -72,6 +77,59 @@ edits reach a playing clip.
 - **Cuts.** Notes end at the clip's loop end and at the end of the
   placement.
 - Notes from before a clip's loop start are not replayed by the loop.
+
+## Audio clips
+
+An audio clip is a region of a file, read through
+[disk streaming](/guides/audio-files/#streaming-from-disk), plus how to play
+it:
+
+```odin
+src, _ := stream.source_open(streamer, "drums_100bpm.wav")
+loop, _ := clip.audio_clip_create(src, {bpm = 100, mode = .Repitch})
+defer clip.audio_clip_release(loop)
+
+node, player := clip.audio_player_create(clip.default_audio_player_settings(tl, streamer))
+id, _ := graph.add_node(g, node, 0, 2) // stereo out
+clip.audio_player_set(player, loop, {loop = true})
+for !clip.audio_player_ready(player) do time.sleep(time.Millisecond) // preroll
+transport.play(clock, tl, tb.Quantize.Bar)
+```
+
+**Modes:**
+
+| Mode | Follows tempo | Pitch | Use for |
+|------|---------------|-------|---------|
+| `.Original` | no: plays at the file's speed | unchanged | one-shots, vocals, dialogue |
+| `.Repitch` | yes, by speed (`bpm` says the material's tempo) | moves with tempo | drum loops, vinyl-style |
+| `.Stretch` | yes, at the original pitch | unchanged | coming next |
+
+**Settings:**
+
+- `start` and `end` choose the region of the file.
+- `loop_start` and `loop_end` choose what a looping placement repeats.
+- `gain` is linear.
+- `fade_in` and `fade_out` default to 5 ms. They apply only to clips that
+  don't loop, because a loop is assumed to be seamless.
+
+**What the player does:**
+
+- **Converts the sample rate.** A 44.1 kHz file on a 48 kHz device just
+  works.
+- **Stays locked to the timeline.** In `.Repitch`, each 256-frame chunk
+  plays exactly the source frames for the beats the timeline covers in that
+  chunk. It follows tempo changes and ramps to within a frame, with no
+  seeking.
+- **Loops seamlessly:** the resampler is fed audio that already wraps at the
+  loop points.
+- **Never clicks.** Starts fade in over `DECLICK_FRAMES` (128). Stops,
+  jumps and clip swaps crossfade over the same length.
+- **Jumps instantly to cues.** The player's stream has cues at the clip's
+  start, its loop start and the placement's offset. Other jumps may play
+  silence until the disk delivers (`stream.stats` counts it).
+
+Output mapping: a mono file plays on every output, a stereo file averages
+into a mono output, and otherwise channels map one to one.
 
 ## MIDI files
 

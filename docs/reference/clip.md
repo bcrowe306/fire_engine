@@ -31,9 +31,142 @@ clip.midi_player_set(player, c, {loop = true}) // loops the clip from the timeli
 clip.midi_clip_release(c)                     // the player keeps its own reference
 ```
 
-See /guides/clips/ for placing clips in arrangements and launchers.
+Audio clips (`Audio_Clip`, `audio_player_create`) play regions of files
+through `fire:stream`, at their own speed or following the tempo. See
+/guides/clips/ for placing clips in arrangements and launchers.
+
+## Constants
+
+### DECLICK_FRAMES
+
+```odin
+DECLICK_FRAMES :: 128
+```
+
+Frames over which starts fade in and stops and jumps crossfade.
 
 ## Types
+
+### Audio_Mode
+
+```odin
+Audio_Mode :: enum u8 {
+	Original,
+	Repitch,
+	Stretch,
+}
+```
+
+How an audio clip relates to tempo.
+
+| Value | Description |
+|-------|-------------|
+| `Original` | plays at the file's own speed whatever the tempo (one-shots, dialogue, field recordings) |
+| `Repitch` | follows tempo by playing faster or slower, so pitch moves with it (turntable-style) |
+| `Stretch` | follows tempo at the original pitch (time-stretching; not available yet) |
+
+### Audio_Clip_Settings
+
+```odin
+Audio_Clip_Settings :: struct {
+	start: i64,
+	end: i64,
+	loop_start: i64,
+	loop_end: i64,
+	bpm: f64,
+	mode: Audio_Mode,
+	gain: f32,
+	fade_in: f64,
+	fade_out: f64,
+}
+```
+
+How to make an audio clip from a source. Positions are in the source's
+frames.
+
+| Field | Description |
+|-------|-------------|
+| `start` | first frame used |
+| `end` | one past the last frame used; 0 = the end of the file |
+| `loop_start` | part repeated by a looping placement; 0 and 0 = all of start..end |
+| `loop_end` |  |
+| `bpm` | the material's tempo, to place it in beats; needed by Repitch and Stretch |
+| `mode` |  |
+| `gain` | linear; 0 is taken as 1 |
+| `fade_in` | seconds, at the clip's start; negative = none, 0 = 5 ms |
+| `fade_out` | seconds, at the clip's end; negative = none, 0 = 5 ms |
+
+### Audio_Clip
+
+```odin
+Audio_Clip :: struct {
+	source: ^stream.Source,
+	using settings: Audio_Clip_Settings,
+	sample_rate: f64,
+	channels: int,
+	refs: int,
+	allocator: mem.Allocator,
+}
+```
+
+An immutable audio clip: a region of a streamed or in-memory source and
+how to play it. Create with `audio_clip_create`; release with
+`audio_clip_release`. Read its fields freely, never change them.
+
+| Field | Description |
+|-------|-------------|
+| `source` |  |
+| `settings` | with `end`, the loop and the fades resolved |
+| `sample_rate` | the source's |
+| `channels` |  |
+| `refs` | control thread |
+| `allocator` |  |
+
+### Audio_Player_Settings
+
+```odin
+Audio_Player_Settings :: struct {
+	timeline: core.Timeline_Id,
+	streamer: ^stream.Streamer,
+	channels: int,
+	quality: dsp.Resampler_Quality,
+	max_speed: f64,
+}
+```
+
+Settings for `audio_player_create`. Start from `default_audio_player_settings`.
+
+| Field | Description |
+|-------|-------------|
+| `timeline` |  |
+| `streamer` | reads the clips' sources |
+| `channels` | the node's output channels |
+| `quality` | for rate conversion and repitching |
+| `max_speed` | fastest playback (source frames per output frame), ≥ 1 |
+
+### Audio_Player
+
+```odin
+Audio_Player :: struct {...}
+```
+
+Plays an `Audio_Clip` on a timeline, as a graph node with `channels`
+audio outputs (no inputs). Uses the same `Placement`s as MIDI clips.
+
+- Converts the source's sample rate to the device's, and in `.Repitch`
+  mode follows the tempo (and timeline rate) by playing faster or slower.
+  A small continuous correction keeps it locked to the timeline through
+  tempo changes, with no seeking.
+- Loops are seamless: the resampler is fed audio that already wraps at
+  the loop points.
+- Never clicks: starts fade in, and stops and jumps crossfade over
+  `DECLICK_FRAMES`.
+- Reads through `fire:stream`: jumps to the clip start, its loop start and
+  the placement's offset are instant; others are silent until the disk
+  delivers (see `audio_player_ready`).
+
+Mono sources play on every output; with a mono output, channels are
+averaged; otherwise channel c plays on output c. Fields are internal.
 
 ### Note
 
@@ -258,6 +391,81 @@ The contents of a Standard MIDI File. Free with `midi_file_destroy`.
 | `allocator` |  |
 
 ## Procedures
+
+### audio_clip_create
+
+```odin
+audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, allocator: mem.Allocator = context.allocator) -> (^Audio_Clip, core.Error)
+```
+
+Control thread. Makes a clip on `src` (which it keeps a reference to).
+Fails with `.Invalid_Argument` for an empty or out-of-range region or
+loop, or a Repitch or Stretch clip without a `bpm`; with `.Unsupported`
+for `.Stretch` (coming in a later version).
+
+### audio_clip_retain
+
+```odin
+audio_clip_retain :: proc(c: ^Audio_Clip)
+```
+
+Control thread. Adds a reference.
+
+### audio_clip_release
+
+```odin
+audio_clip_release :: proc(c: ^Audio_Clip)
+```
+
+Control thread. Drops a reference; the clip (and its hold on the source)
+goes with the last one.
+
+### audio_clip_beats
+
+```odin
+audio_clip_beats :: proc "contextless"(c: ^Audio_Clip) -> timebase.Beats
+```
+
+The clip's length in beats at its `bpm` (0 without one).
+
+### default_audio_player_settings
+
+```odin
+default_audio_player_settings :: proc(timeline: core.Timeline_Id, streamer: ^stream.Streamer) -> Audio_Player_Settings
+```
+
+Stereo out, Medium resampling, up to 4× speed.
+
+### audio_player_create
+
+```odin
+audio_player_create :: proc(settings: Audio_Player_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, player: ^Audio_Player)
+```
+
+Control thread. Creates a player node and a handle for controlling it;
+the handle stays valid until the graph destroys the node. Add it with
+`graph.add_node(g, node, 0, settings.channels)`.
+
+### audio_player_set
+
+```odin
+audio_player_set :: proc(p: ^Audio_Player, clip: ^Audio_Clip, placement: Placement) -> core.Error
+```
+
+Control thread. Plays `clip` (nil: nothing) placed as `placement`, from
+the player's next block; the switch crossfades. Allocates the clip's
+stream (with cues at the clip's start, its loop start and the placement's
+start) and resampler now. Keeps its own reference to the clip.
+
+### audio_player_ready
+
+```odin
+audio_player_ready :: proc(p: ^Audio_Player) -> bool
+```
+
+Control thread. Whether the clip given to the last `audio_player_set` can
+start without a dropout (its stream's start and cues are buffered). Poll
+it before a quantized launch.
 
 ### midi_builder_init
 
