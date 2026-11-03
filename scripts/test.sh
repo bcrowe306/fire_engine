@@ -11,6 +11,8 @@
 #                          go to $FIRE_ARTIFACTS_DIR/<opt>/.
 #   FIRE_NO_PLOT=1         skip plotting failure artifacts
 #   FIRE_TIMEOUT=600       seconds before a hung package is killed (default 600)
+#   FIRE_MAX_RSS_MB=3072   memory (MB) at which a package's processes are killed
+#                          (macOS and Linux), so a runaway test can't exhaust RAM
 #   FIRE_JOBS=4            packages built and run at once (default: CPU count).
 #                          Each compile takes ~300 MB, so small machines need a cap.
 #
@@ -55,10 +57,42 @@ run_with_timeout() {
 	local pid=$!
 	(
 		exec 2>/dev/null
-		trap 'kill "$sp" 2>/dev/null; exit 0' TERM
-		sleep "$secs" & sp=$!
-		wait "$sp" || exit 0
-		echo "*** killed after ${secs}s (hung?)"
+		trap 'exit 0' TERM
+		# Also a memory cap: a runaway test (an infinite loop that allocates)
+		# can otherwise exhaust the machine's RAM. Needs `ps -o rss=`
+		# (macOS, Linux); elsewhere only the timeout applies.
+		limit_kb=$(( ${FIRE_MAX_RSS_MB:-3072} * 1024 ))
+		measure=0
+		ps -o rss= -p $$ > /dev/null 2>&1 && command -v pgrep > /dev/null && measure=1
+		waited=0
+		ticks=0
+		reason=""
+		while kill -0 "$pid"; do
+			if [ "$waited" -ge "$secs" ]; then
+				reason="killed after ${secs}s (hung?)"
+				break
+			fi
+			if [ "$measure" = 1 ]; then
+				# The process and its descendants (odin test runs the test binary).
+				tree="$pid"
+				level="$pid"
+				for _ in 1 2 3; do
+					level="$(for p in $level; do pgrep -P "$p"; done | tr '\n' ' ')"
+					[ -z "${level// /}" ] && break
+					tree="$tree $level"
+				done
+				rss="$(ps -o rss= -p "$(echo $tree | tr ' ' ',')" | awk '{s += $1} END {print s + 0}')"
+				if [ "$rss" -gt "$limit_kb" ]; then
+					reason="killed: using $((rss / 1024)) MB, over FIRE_MAX_RSS_MB=${FIRE_MAX_RSS_MB:-3072} (runaway allocation?)"
+					break
+				fi
+			fi
+			sleep 0.25 # often: a runaway can allocate a gigabyte a second
+			ticks=$((ticks + 1))
+			[ $((ticks % 4)) = 0 ] && waited=$((waited + 1))
+		done
+		[ -z "$reason" ] && exit 0
+		echo "*** $reason"
 		if command -v pkill >/dev/null; then
 			pkill -9 -P "$pid"
 		elif [ -r "/proc/$pid/winpid" ] && command -v taskkill >/dev/null; then

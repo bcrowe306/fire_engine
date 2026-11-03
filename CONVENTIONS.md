@@ -173,5 +173,9 @@ Fire Engine is a library: its documentation is part of the API.
 ## Style
 
 - Tabs for indentation, as `odin` and the core library do.
+- `do` takes exactly one statement: `for x do a; b` runs only `a` in the loop,
+  and `b` once after it. Use braces whenever a body has two statements. (A
+  `for rest % 4 == 0 do append(...); rest /= 4` looped forever and used up the
+  machine's memory.) `scripts/test.sh` kills packages above `FIRE_MAX_RSS_MB`.
 - Keep procs short. If it needs a long comment to explain *what* it does, split it.
 - Comments explain *why* and give units or references (paper, equation, RFC).

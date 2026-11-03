@@ -30,6 +30,64 @@ Parameter id of the `One_Pole_Lowpass` cutoff, in Hz (10..20000, default 1000).
 
 ## Types
 
+### Fft
+
+```odin
+Fft :: struct {...}
+```
+
+A complex FFT of a fixed size whose only prime factors are 2, 3 and 5
+(see `fft_fast_size_above`). Unnormalised both ways: the forward
+transform uses e^(−2πi·kn/N), the inverse e^(+2πi·kn/N), and an inverse
+after a forward multiplies by N. f32 data, twiddles computed in f64.
+
+A transform can run in one call or in `fft_steps` pieces (one per radix
+stage), to spread its cost over several audio blocks. Set up with
+`fft_init`; free with `fft_destroy`. One transform at a time per Fft.
+Fields are internal.
+
+### Real_Fft
+
+```odin
+Real_Fft :: struct {
+	size: int,
+	half_bin: bool,
+	split: bool,
+	complex: Fft,
+	twiddles: []complex64,
+	twists: []complex64,
+	time: []complex64,
+	freq: []complex64,
+}
+```
+
+An FFT of `size` real samples (even; size/2 a fast size), giving size/2
+complex bins. Same conventions as `Fft` (unnormalised; inverse after
+forward multiplies by `size`). Two spectrum layouts:
+
+- Normal: bin k is X[k] for 1 ≤ k < size/2, and bin 0 packs DC (real
+  part) with Nyquist (imaginary part).
+- Half-bin (`half_bin`): bin k is the spectrum at k + ½, for 0 ≤ k <
+  size/2: X[k+½] = Σ x[n]·e^(−2πi·(k+½)n/size). No packing; the bins sit
+  symmetrically around the frequencies that matter (used by STFTs).
+
+With `split`, the final (forward) or first (inverse) twiddle pass is done
+in two halves, for one more step and smaller pieces. Laid out as
+Signalsmith Linear's RealFFT, so ported code steps through it the same
+way. Set up with `real_fft_init`; free with `real_fft_destroy`. Fields are
+internal.
+
+| Field | Description |
+|-------|-------------|
+| `size` |  |
+| `half_bin` |  |
+| `split` |  |
+| `complex` |  |
+| `twiddles` |  |
+| `twists` | half-bin: e^(−2πi·n/size), applied to the input pairs |
+| `time` |  |
+| `freq` |  |
+
 ### Gain
 
 ```odin
@@ -131,6 +189,142 @@ Advancing is per sample, so the result never depends on block boundaries.
 | `coeff` | One-pole |
 
 ## Procedures
+
+### fft_fast_size_above
+
+```odin
+fft_fast_size_above :: proc "contextless"(size: int) -> int
+```
+
+The smallest size ≥ `size` that `Fft` handles quickly: a power of two
+times 1, 3, 5, 6 or 8 (as Signalsmith Linear chooses, so ported code gets
+the same sizes).
+
+### fft_init
+
+```odin
+fft_init :: proc(f: ^Fft, size: int, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. Prepares an FFT of `size` (≥ 1, prime factors 2, 3, 5
+only; `.Invalid_Argument` otherwise). Free with `fft_destroy`.
+
+### fft_destroy
+
+```odin
+fft_destroy :: proc(f: ^Fft, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `fft_init` allocated.
+
+### fft_steps
+
+```odin
+fft_steps :: proc "contextless"(f: ^Fft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). The number of steps a transform takes with `fft_forward_step` or
+`fft_inverse_step`.
+
+### fft_forward
+
+```odin
+fft_forward :: proc "contextless"(f: ^Fft, input: []complex64, output: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Forward transform of `input` into `output` (both `size` long; they
+may be the same slice).
+
+### fft_inverse
+
+```odin
+fft_inverse :: proc "contextless"(f: ^Fft, input: []complex64, output: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Inverse transform (unnormalised: scale by 1/size yourself).
+
+### fft_forward_step
+
+```odin
+fft_forward_step :: proc "contextless"(f: ^Fft, step: int, input: []complex64, output: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Step `step` (0 ..< fft_steps) of a forward transform. Run every step
+in order, with the same slices, before using `output`.
+
+### fft_inverse_step
+
+```odin
+fft_inverse_step :: proc "contextless"(f: ^Fft, step: int, input: []complex64, output: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Step `step` of an inverse transform (see `fft_forward_step`).
+
+### real_fft_fast_size_above
+
+```odin
+real_fft_fast_size_above :: proc "contextless"(size: int) -> int
+```
+
+The smallest even size ≥ `size` that `Real_Fft` handles quickly.
+
+### real_fft_init
+
+```odin
+real_fft_init :: proc(r: ^Real_Fft, size: int, half_bin: bool = false, split: bool = false, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. Prepares a real FFT of `size` (even, size/2 with prime
+factors 2, 3 and 5 only). Free with `real_fft_destroy`.
+
+### real_fft_destroy
+
+```odin
+real_fft_destroy :: proc(r: ^Real_Fft, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `real_fft_init` allocated.
+
+### real_fft_steps
+
+```odin
+real_fft_steps :: proc "contextless"(r: ^Real_Fft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Steps per transform (forward or inverse).
+
+### real_fft_forward
+
+```odin
+real_fft_forward :: proc "contextless"(r: ^Real_Fft, time: []f32, freq: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Forward transform: `size` samples to `size`/2 bins.
+
+### real_fft_inverse
+
+```odin
+real_fft_inverse :: proc "contextless"(r: ^Real_Fft, freq: []complex64, time: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Inverse transform: `size`/2 bins to `size` samples (unnormalised).
+
+### real_fft_forward_step
+
+```odin
+real_fft_forward_step :: proc "contextless"(r: ^Real_Fft, step: int, time: []f32, freq: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Step `step` of a forward transform (0 ..< real_fft_steps). Run every
+step in order, with the same slices.
+
+### real_fft_inverse_step
+
+```odin
+real_fft_inverse_step :: proc "contextless"(r: ^Real_Fft, step: int, freq: []complex64, time: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Step `step` of an inverse transform (see `real_fft_forward_step`).
 
 ### gain_create
 

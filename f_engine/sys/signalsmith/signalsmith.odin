@@ -23,4 +23,8 @@ foreign lib {
 	reset          :: proc(s: ^Stretch) ---
 	output_seek    :: proc(s: ^Stretch, input: [^][^]f32, frames: i32) ---
 	process        :: proc(s: ^Stretch, input: [^][^]f32, in_frames: i32, output: [^][^]f32, out_frames: i32) ---
+
+	// Test only: Signalsmith Linear's real FFT, as a reference for fire:dsp.
+	test_real_fft       :: proc(size: i32, half_bin: i32, input: [^]f32, output: [^]f32) ---
+	test_bench_real_fft :: proc(size: i32, count: i32) -> f64 ---
 }
