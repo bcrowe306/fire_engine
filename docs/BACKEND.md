@@ -1,7 +1,7 @@
 # Audio & MIDI backends
 
-Status: shared API, fake driver, CoreAudio + CoreMIDI (macOS 11+) and ALSA
-(Linux) drivers implemented. Next: WASAPI + Windows MIDI, ALSA MIDI, JACK, ASIO.
+Status: shared API, fake driver, CoreAudio + CoreMIDI (macOS 11+), ALSA (Linux)
+and WASAPI (Windows) drivers implemented. Next: Windows MIDI, ALSA MIDI, JACK, ASIO.
 
 ## Decisions
 
@@ -174,6 +174,57 @@ the control thread; the layer never tears itself down.
   exact-loopback test uses 1024. Small periods need real hardware and a
   quiet machine.
 
+## WASAPI (`fire:backend/wasapi`)
+
+- **Shared mode, event-driven.** Windows mixes all apps at the endpoint's mix
+  format, which is float32 almost everywhere. A requested rate other than the
+  mix rate returns `.Unsupported`; we never let Windows resample silently.
+  Exclusive mode is not supported yet.
+- **Periods.** A requested `buffer_frames` uses `IAudioClient3` and must lie in
+  the endpoint's shared-mode range, in steps of its fundamental period.
+  Without `IAudioClient3` only the default period (usually 10 ms) is accepted.
+  Otherwise `.Unsupported`.
+- **Endpoints.** Each endpoint has one direction, so `enumerate` lists render
+  endpoints (outputs only) and capture endpoints (inputs only). IDs are the
+  WASAPI endpoint ID strings, which persist. Input and output must be
+  endpoints of one physical device (equal `PKEY_Device_ContainerId`); other
+  pairs return `.Unsupported`, because they run on different clocks.
+- **Thread.** The driver runs its own audio thread in the COM multithreaded
+  apartment, registered with MMCSS as "Pro Audio";
+  `wasapi.diagnostics(d).mmcss` reports whether that worked. It wakes on the
+  render event (the ALSA lesson: pace on playback), at most 100 ms per wait.
+- **Duplex.** Capture packets go into a FIFO. Each cycle processes
+  `min(render space, captured frames)`, which the shared layer handles at any
+  size. Three things keep it glitch-free. Each was found as a dropout on
+  VB-CABLE, and each is guarded by a test that fails when it's removed:
+  - **Prefill.** The whole render buffer starts as silence. Capture needs a
+    few periods to get going, and Windows does not report shared-mode render
+    underruns; the endpoint just plays a gap.
+  - **Input cushion.** The FIFO starts with `CUSHION_PERIODS` (4) periods of
+    silence. The render and capture events are not phase-aligned, and capture
+    can arrive in bursts (more than 2 periods late on the test VM). It costs
+    about 40 ms of input latency at 10 ms periods; revisit on real hardware.
+  - **Output first.** If render is about to run dry while capture is still
+    behind, the cycle renders anyway, fills the missing input with silence,
+    and flags an xrun.
+
+  FIFO overflow and capture packets flagged `DATA_DISCONTINUITY` are xruns too.
+  `wasapi.diagnostics` reports MMCSS, the last failing HRESULT, and the lowest
+  render padding and capture backlog seen.
+- **Timestamps.**
+  - `input_ns` comes from the capture packets' QPC positions (100-ns units).
+    `rt.host_time_ns` uses QPC on Windows too, so they line up.
+  - `output_ns` = now + queued render frames, kept monotonic.
+- **Device loss.** `AUDCLNT_E_DEVICE_INVALIDATED` posts `Device_Lost`.
+- **Not yet done:** hot-plug and default-device notifications
+  (`IMMNotificationClient`), exclusive mode, and Windows MIDI.
+- **VB-CABLE.** It adds about 90 ms of its own latency, and it settles that
+  latency during the first ~50 ms of a stream by inserting a few hundred
+  frames: the delay jumps once, then holds, while the driver's sample count
+  stays continuous. The loopback test therefore starts its noise after 0.25 s
+  of silence, and is then exact up to float rounding in the Windows mixer
+  (gain 1.0, residual 4e-6).
+
 ## MIDI (`fire:midi`, `fire:midi/coremidi`)
 
 - **Messages.** The engine sees MIDI 1.0 bytes (`core.Midi_Raw`). Drivers that
@@ -227,6 +278,14 @@ CoreMIDI specifics:
 - **Linux:** `scripts/cloud/linux.sh` manages an Ubuntu x86 droplet (kept,
   powered off between sessions) with `snd-aloop`, a virtual ALSA loopback card.
   `tests/alsa` runs there; on CI, which has no `snd-aloop`, the device tests skip.
+- **Load:** real-device tests require zero xruns, so heavy machine load
+  (parallel builds, other jobs) can occasionally fail one. Rerun before
+  suspecting the driver.
+- **Windows:** `scripts/cloud/windows.sh` manages an EC2 Windows Server 2022
+  instance (us-east-2, kept, stopped between sessions) with VS Build Tools, Git
+  bash, Odin and VB-CABLE, a virtual cable where "CABLE Input" playback
+  reappears on "CABLE Output". `tests/wasapi` runs there; elsewhere, and on
+  CI, its device tests skip.
 - **Local only:** `tests/coreaudio` uses BlackHole 2ch to check loopback (a
   constant-gain copy at the measured latency, bit-exact when BlackHole's volume
   is 100%), allocations, timestamps, start/stop cycles and rate-change events.

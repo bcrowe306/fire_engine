@@ -41,23 +41,29 @@ WORK="$ARTIFACTS/.run"
 LOGS="$WORK"
 mkdir -p "$WORK"
 
-# Portable timeout (GNU `timeout` is missing on stock macOS). `odin test` runs
-# the test binary as its child, so the children are killed first.
+# Portable timeout (GNU `timeout` is missing on stock macOS; `pkill` is missing
+# in Git bash on Windows). The watchdog cancels by trapping TERM and killing
+# its own sleep. On timeout it kills `odin test` and the test binary it runs.
 run_with_timeout() {
 	local secs="$1"; shift
 	"$@" &
 	local pid=$!
 	(
-		exec 2>/dev/null # no "Terminated" noise when the watchdog is cancelled
-		sleep "$secs" || exit 0 # cancelled: the sleep was killed, do nothing
+		exec 2>/dev/null
+		trap 'kill "$sp" 2>/dev/null; exit 0' TERM
+		sleep "$secs" & sp=$!
+		wait "$sp" || exit 0
 		echo "*** killed after ${secs}s (hung?)"
-		pkill -9 -P "$pid" 2>/dev/null
-		kill -9 "$pid" 2>/dev/null
+		if command -v pkill >/dev/null; then
+			pkill -9 -P "$pid"
+		elif [ -r "/proc/$pid/winpid" ] && command -v taskkill >/dev/null; then
+			taskkill //F //T //PID "$(cat "/proc/$pid/winpid")" >/dev/null
+		fi
+		kill -9 "$pid"
 	) &
 	local watchdog=$!
 	wait "$pid"
 	local status=$?
-	pkill -P "$watchdog" 2>/dev/null
 	kill "$watchdog" 2>/dev/null
 	wait "$watchdog" 2>/dev/null
 	return "$status"

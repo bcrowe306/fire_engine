@@ -24,7 +24,7 @@ on purpose, leave a comment explaining why.
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
 | `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/BACKEND.md`) | `core`, `rt` |
 | `fire:backend/fake` | Simulated driver for tests and headless runs           | `backend`, `core`   |
-| `fire:backend/<api>` | Drivers: `coreaudio` (macOS), `alsa` (Linux); planned WASAPI / JACK / ASIO | `backend`, `core`, `rt`, `sys/<api>` |
+| `fire:backend/<api>` | Drivers: `coreaudio` (macOS), `alsa` (Linux), `wasapi` (Windows); planned JACK / ASIO | `backend`, `core`, `rt`, `sys/<api>` |
 | `fire:midi`      | MIDI 1.0 ⇄ UMP, input scheduling into blocks, SysEx queue, output sender, driver interface | `core`, `rt` |
 | `fire:midi/<api>` | MIDI drivers: `coremidi` (macOS)                         | `midi`, `core`, `rt`, `sys/<api>` |
 | `fire:sys/<api>` | Raw OS API bindings, no logic. Package name `<api>_sys` (Odin package names must be unique) | OS packages only |
@@ -102,6 +102,11 @@ init  →  prepare(sample_rate, max_block)  →  process* / reset*  →  release
 
 - Control-thread procs return `(value, core.Error)` or just `core.Error`.
   Propagate with `or_return`.
+- A proc that builds something in steps and cleans up on failure fills a
+  caller-owned pointer (`open_x(a, &a.thing, ...) -> Error`) instead of
+  returning the struct. A `defer` that cleans up a named result is not reliably
+  visible to the caller: in the WASAPI driver at `-o:speed`, the caller got the
+  pre-cleanup value and released COM objects twice.
 - `assert` is for invariants (bugs), not for expected failures. Asserts stay on
   in debug builds and in tests.
 - `panic` is for unrecoverable programmer errors only, and never on the audio thread.

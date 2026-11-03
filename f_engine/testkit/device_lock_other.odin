@@ -3,11 +3,12 @@
 #+build !freebsd
 #+build !openbsd
 #+build !netbsd
+#+build !windows
 package testkit
 
 import "core:sync"
 
-// Process-local only for now; Windows gets a named mutex with the WASAPI tests.
+// Process-local only: no cross-process lock on this platform yet.
 Device_Lock :: struct {}
 
 @(private)

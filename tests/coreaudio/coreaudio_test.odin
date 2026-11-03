@@ -31,12 +31,23 @@ struct_layouts_match_sdk :: proc(t: ^testing.T) {
 	testing.expect_value(t, size_of(ca.AudioValueRange), 16)
 }
 
+// CoreAudio's clock, read between two reads of ours, must fall inside that
+// bracket (± a tick of rounding). A preempted read only widens the bracket,
+// so the tightest of ten tries is used: no timing assumption.
 @(test)
 host_clock_matches_coreaudio :: proc(t: ^testing.T) {
-	ours := rt.host_time_ns()
-	theirs := ca.AudioConvertHostTimeToNanos(ca.AudioGetCurrentHostTime())
-	diff := abs(i64(theirs) - i64(ours))
-	testing.expectf(t, diff < 1_000_000, "host_time_ns and CoreAudio host time differ by %d ns", diff)
+	best_width := max(i64)
+	inside := false
+	for _ in 0 ..< 10 {
+		before := rt.host_time_ns()
+		theirs := ca.AudioConvertHostTimeToNanos(ca.AudioGetCurrentHostTime())
+		after := rt.host_time_ns()
+		if width := i64(after - before); width < best_width {
+			best_width = width
+			inside = theirs + 100 >= before && theirs <= after + 100
+		}
+	}
+	testing.expectf(t, inside, "CoreAudio host time is outside [before, after] of rt.host_time_ns (bracket %d ns)", best_width)
 }
 
 @(test)

@@ -26,8 +26,18 @@ Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 ./scripts/cloud/linux.sh off     # power off at the end of the session (keep it; `down` destroys)
 ```
 
-Credentials live in `secrets.env` (gitignored, never commit or print it). Windows
-testing will use an AWS Windows Server instance, with the AWS keys from `secrets.env`.
+### Windows test machine (AWS EC2, us-east-2)
+
+```bash
+./scripts/cloud/windows.sh up     # start (or create: VS Build Tools, Git bash, Odin, VB-CABLE; ~30 min the first time)
+./scripts/cloud/windows.sh test   # copy the working tree and run the suite
+./scripts/cloud/windows.sh off    # stop at the end of the session (`down` terminates)
+```
+
+The AWS account allows EC2 only in us-east-2, and only Free-plan instance types
+(hence m7i-flex.large rather than t3.large).
+
+Credentials live in `secrets.env` (gitignored, never commit or print it).
 
 Builds always need `-collection:fire=f_engine`.
 
