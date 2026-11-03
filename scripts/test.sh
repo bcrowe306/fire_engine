@@ -11,6 +11,8 @@
 #                          go to $FIRE_ARTIFACTS_DIR/<opt>/.
 #   FIRE_NO_PLOT=1         skip plotting failure artifacts
 #   FIRE_TIMEOUT=600       seconds before a hung package is killed (default 600)
+#   FIRE_JOBS=4            packages built and run at once (default: CPU count).
+#                          Each compile takes ~300 MB, so small machines need a cap.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,6 +21,7 @@ cd "$ROOT"
 read -r -a OPTS <<< "${FIRE_OPT:-none}"
 ARTIFACTS="${FIRE_ARTIFACTS_DIR:-$ROOT/.test_artifacts}"
 TIMEOUT="${FIRE_TIMEOUT:-600}"
+JOBS_MAX="${FIRE_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 rm -rf "$ARTIFACTS"
 
 if [ "$#" -gt 0 ]; then
@@ -77,6 +80,8 @@ for opt in "${OPTS[@]}"; do
 	artifacts="$ARTIFACTS"
 	[ "${#OPTS[@]}" -gt 1 ] && artifacts="$ARTIFACTS/$opt"
 	for pkg in "${PKGS[@]}"; do
+		# Portable job limit (no `wait -n` in macOS's bash 3.2).
+		while [ "$(jobs -rp | wc -l)" -ge "$JOBS_MAX" ]; do sleep 0.1; done
 		run_one "$pkg" "$opt" "$artifacts" &
 		JOBS+=("$pkg:$opt:$artifacts")
 	done
