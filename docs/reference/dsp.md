@@ -32,6 +32,80 @@ See /guides/effects/.
 
 ## Constants
 
+### COMPRESSOR_PARAM_THRESHOLD_DB
+
+```odin
+COMPRESSOR_PARAM_THRESHOLD_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Compressor`'s threshold, in dB (−60..0, default −20).
+
+### COMPRESSOR_PARAM_RATIO
+
+```odin
+COMPRESSOR_PARAM_RATIO : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Compressor`'s ratio (1..20, default 4).
+
+### COMPRESSOR_PARAM_KNEE_DB
+
+```odin
+COMPRESSOR_PARAM_KNEE_DB : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Compressor`'s knee width, in dB (0..24, default 6).
+
+### COMPRESSOR_PARAM_ATTACK_MS
+
+```odin
+COMPRESSOR_PARAM_ATTACK_MS : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the `Compressor`'s attack, in ms (0.05..200, default 10).
+
+### COMPRESSOR_PARAM_RELEASE_MS
+
+```odin
+COMPRESSOR_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the `Compressor`'s release, in ms (5..3000, default 100).
+
+### COMPRESSOR_PARAM_MAKEUP_DB
+
+```odin
+COMPRESSOR_PARAM_MAKEUP_DB : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the `Compressor`'s makeup gain, in dB (0..30, default 0).
+
+### COMPRESSOR_PARAM_MIX
+
+```odin
+COMPRESSOR_PARAM_MIX : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of the `Compressor`'s mix of compressed with dry signal, in
+percent (0..100, default 100): below 100 is parallel compression.
+
+### COMPRESSOR_PARAM_DETECTOR
+
+```odin
+COMPRESSOR_PARAM_DETECTOR : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of the `Compressor`'s detector: a `Detector` as a number
+(default Peak).
+
+### RMS_MS
+
+```odin
+RMS_MS :: 10.0
+```
+
+RMS window of the detectors, in ms.
+
 ### EQ_MAX_BANDS
 
 ```odin
@@ -91,6 +165,90 @@ GAIN_PARAM_DB : core.Param_Id : core.Param_Id(1)
 Parameter id of the `Gain` node's gain, in dB (-96..24, default 0).
 -96 dB and below is silence.
 
+### GATE_PARAM_THRESHOLD_DB
+
+```odin
+GATE_PARAM_THRESHOLD_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Gate`'s threshold, in dB (−90..0, default −40): it opens above it.
+
+### GATE_PARAM_RANGE_DB
+
+```odin
+GATE_PARAM_RANGE_DB : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Gate`'s range, in dB (0..96, default 96): how far it turns down.
+
+### GATE_PARAM_RATIO
+
+```odin
+GATE_PARAM_RATIO : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Gate`'s ratio below the threshold (1..100, default
+100): 2..4 is a gentle expander, 100 a gate.
+
+### GATE_PARAM_ATTACK_MS
+
+```odin
+GATE_PARAM_ATTACK_MS : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the `Gate`'s attack (opening time), in ms (0.05..100, default 0.5).
+
+### GATE_PARAM_HOLD_MS
+
+```odin
+GATE_PARAM_HOLD_MS : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the `Gate`'s hold after the level falls, in ms (0..2000, default 20).
+
+### GATE_PARAM_RELEASE_MS
+
+```odin
+GATE_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the `Gate`'s release (closing time), in ms (5..3000, default 100).
+
+### GATE_PARAM_HYSTERESIS_DB
+
+```odin
+GATE_PARAM_HYSTERESIS_DB : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of the `Gate`'s hysteresis, in dB (0..20, default 4): it
+closes only this far below the threshold, so it doesn't chatter.
+
+### LIMITER_PARAM_CEILING_DB
+
+```odin
+LIMITER_PARAM_CEILING_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Limiter`'s ceiling, in dB (−30..0, default −0.3):
+no output sample exceeds it.
+
+### LIMITER_PARAM_INPUT_DB
+
+```odin
+LIMITER_PARAM_INPUT_DB : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Limiter`'s input gain, in dB (0..30, default 0): to
+push the signal into it.
+
+### LIMITER_PARAM_RELEASE_MS
+
+```odin
+LIMITER_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Limiter`'s release, in ms (1..2000, default 100).
+
 ### ONE_POLE_PARAM_CUTOFF_HZ
 
 ```odin
@@ -125,6 +283,99 @@ Biquad_State :: struct {
 ```
 
 One channel's state of a biquad (transposed direct form II).
+
+### Compressor
+
+```odin
+Compressor :: struct {
+	threshold_db: f64,
+	ratio: f64,
+	knee_db: f64,
+	attack_ms: f64,
+	release_ms: f64,
+	makeup: Smoothed_Value,
+	mix: Smoothed_Value,
+	detector: Level_Detector,
+	gain: Gain_Smoother,
+	sample_rate: f64,
+	meter: u64,
+}
+```
+
+A feed-forward compressor node, stereo-linked: one gain for all
+channels, from the loudest. Input channels beyond the outputs are the
+sidechain (add it with 4 inputs and 2 outputs for a stereo sidechain):
+when there are any, they are detected instead of the main inputs.
+
+| Field | Description |
+|-------|-------------|
+| `threshold_db` |  |
+| `ratio` |  |
+| `knee_db` |  |
+| `attack_ms` |  |
+| `release_ms` |  |
+| `makeup` | dB |
+| `mix` | percent |
+| `detector` |  |
+| `gain` |  |
+| `sample_rate` |  |
+| `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
+
+### Detector
+
+```odin
+Detector :: enum u8 {
+	Peak,
+	Rms,
+}
+```
+
+How a dynamics processor measures level.
+
+| Value | Description |
+|-------|-------------|
+| `Peak` | the largest sample of any detected channel |
+| `Rms` | mean square over `rms_ms` |
+
+### Gain_Smoother
+
+```odin
+Gain_Smoother :: struct {
+	reduction_db: f64,
+	attack: f64,
+	release: f64,
+}
+```
+
+The state of a compressor or expander's gain smoothing: the gain
+reduction in dB moving towards its target with separate attack and
+release (the "smooth branching" detector of Giannoulis et al., in the
+log domain).
+
+| Field | Description |
+|-------|-------------|
+| `reduction_db` |  |
+| `attack` | from `time_coeff` |
+| `release` |  |
+
+### Level_Detector
+
+```odin
+Level_Detector :: struct {
+	mode: Detector,
+	coeff: f64,
+	power: f64,
+}
+```
+
+A level detector across channels: the peak, or the mean square over a
+window (as a one-pole of `rms_ms`).
+
+| Field | Description |
+|-------|-------------|
+| `mode` |  |
+| `coeff` | Rms: from `time_coeff` |
+| `power` | Rms: mean square so far |
 
 ### Eq_Band_Field
 
@@ -285,6 +536,103 @@ any block size.
 | `gain` | linear gain: values and their smoothing |
 | `ramp` | dB: an automation ramp, while `ramping` |
 | `ramping` |  |
+
+### Gate
+
+```odin
+Gate :: struct {
+	threshold_db: f64,
+	range_db: f64,
+	ratio: f64,
+	hysteresis_db: f64,
+	attack_ms: f64,
+	hold_ms: f64,
+	release_ms: f64,
+	open: bool,
+	hold_left: int,
+	detector: Level_Detector,
+	gain: Gain_Smoother,
+	sample_rate: f64,
+	meter: u64,
+}
+```
+
+A noise gate or downward expander node, stereo-linked. It opens when the
+peak level rises above the threshold, and once it falls `hysteresis`
+below it, closes after the hold time, turning down by up to `range` (by
+`ratio` dB per dB under the threshold). Input channels beyond the
+outputs are the sidechain, as for `Compressor`.
+
+| Field | Description |
+|-------|-------------|
+| `threshold_db` |  |
+| `range_db` |  |
+| `ratio` |  |
+| `hysteresis_db` |  |
+| `attack_ms` |  |
+| `hold_ms` |  |
+| `release_ms` |  |
+| `open` |  |
+| `hold_left` | frames |
+| `detector` |  |
+| `gain` |  |
+| `sample_rate` |  |
+| `meter` | atomic: f64 bits of the reduction in dB at the end of the last block |
+
+### Limiter
+
+```odin
+Limiter :: struct {
+	ceiling_db: f64,
+	release_ms: f64,
+	input: Smoothed_Value,
+	lookahead: int,
+	delay: []f32,
+	need: []f64,
+	window: Min_Window,
+	sum: f64,
+	box: []f64,
+	gain: f64,
+	release: f64,
+	at: int,
+	frames_since_sum: int,
+	channels: int,
+	lookahead_ms: f64,
+	sample_rate: f64,
+	meter: u64,
+}
+```
+
+A lookahead peak limiter: no output sample is above the ceiling, ever.
+It looks `lookahead_ms` ahead (reported as the node's latency, which the
+graph compensates), finds the smallest gain any sample in that window
+needs, and smooths it with a moving average of the same length, which
+can never rise above what a sample needs while it plays; a slower
+release then lets the gain recover. Stereo-linked.
+
+The ceiling holds for samples, not for the waveform between them: after
+a DAC or a sample-rate conversion, inter-sample peaks can be up to about
+0.5 dB higher on dense material.
+
+| Field | Description |
+|-------|-------------|
+| `ceiling_db` |  |
+| `release_ms` |  |
+| `input` | dB |
+| `lookahead` | frames |
+| `delay` | per channel ring of `lookahead`, flattened |
+| `need` | ring of each frame's needed gain, `lookahead` long |
+| `window` |  |
+| `sum` | of the window minimums in the box, `lookahead` long |
+| `box` | ring of the window minimums |
+| `gain` | after the release |
+| `release` | per-frame recovery coefficient |
+| `at` | ring position |
+| `frames_since_sum` |  |
+| `channels` |  |
+| `lookahead_ms` |  |
+| `sample_rate` |  |
+| `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
 
 ### One_Pole_Lowpass
 
@@ -614,6 +962,72 @@ biquad_response :: proc "contextless"(c: ^Biquad_Coeffs, freq_hz: f64, sample_ra
 
 **Realtime-safe** (callable on the audio thread). The response at `freq_hz`: gain (linear) and phase in radians.
 
+### compressor_create
+
+```odin
+compressor_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. Allocates a `Compressor` node at its defaults. Free it
+with `core.node_destroy`.
+
+### compressor_gain_reduction_db
+
+```odin
+compressor_gain_reduction_db :: proc "contextless"(c: ^Compressor) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The compressor's gain reduction in dB at the end of its last block,
+for a meter. Any thread.
+
+### compressor_curve
+
+```odin
+compressor_curve :: proc "contextless"(level_db: f64, threshold_db: f64, ratio: f64, knee_db: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The static curve of a downward compressor: the gain reduction in dB
+(≥ 0) for a level of `level_db`, with a soft knee `knee_db` wide centred
+on the threshold (Giannoulis, Massberg and Reiss, "Digital Dynamic Range
+Compressor Design — A Tutorial and Analysis", JAES 2012, eq. 4).
+
+### expander_curve
+
+```odin
+expander_curve :: proc "contextless"(level_db: f64, threshold_db: f64, ratio: f64, knee_db: f64, range_db: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The static curve of a downward expander (a gate at infinite ratio):
+the gain reduction in dB (≥ 0, at most `range_db`) for a level of
+`level_db`, with the same soft knee as `compressor_curve`.
+
+### time_coeff
+
+```odin
+time_coeff :: proc "contextless"(time_ms: f64, sample_rate: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The per-sample coefficient of a one-pole smoother that covers
+1 − 1/e (63%) of a step in `time_ms`.
+
+### gain_smoother_next
+
+```odin
+gain_smoother_next :: proc "contextless"(s: ^Gain_Smoother, target_db: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). Moves towards a gain reduction of `target_db`: attacking when it
+must reduce more, releasing when less. Returns the new reduction in dB.
+
+### level_detector_next
+
+```odin
+level_detector_next :: proc "contextless"(d: ^Level_Detector, frame: []f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The detector's level in dB for one frame, from the samples of every
+detected channel at that frame.
+
 ### eq_band_param
 
 ```odin
@@ -804,6 +1218,41 @@ db_to_gain :: proc "contextless"(db: f64) -> f64
 ```
 
 **Realtime-safe** (callable on the audio thread). Converts decibels to linear gain. Returns exactly 0 at -96 dB and below.
+
+### gate_create
+
+```odin
+gate_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. Allocates a `Gate` node at its defaults. Free it with
+`core.node_destroy`.
+
+### gate_reduction_db
+
+```odin
+gate_reduction_db :: proc "contextless"(g: ^Gate) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The gate's gain reduction in dB at the end of its last block. Any thread.
+
+### limiter_create
+
+```odin
+limiter_create :: proc(lookahead_ms: f64 = 5.0, allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. Allocates a `Limiter` node looking `lookahead_ms` ahead
+(0.1..50; its latency, fixed for the node's life). Free it with
+`core.node_destroy`.
+
+### limiter_gain_reduction_db
+
+```odin
+limiter_gain_reduction_db :: proc "contextless"(l: ^Limiter) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The limiter's gain reduction in dB at the end of its last block. Any thread.
 
 ### one_pole_create
 
@@ -1326,6 +1775,14 @@ radians. For drawing EQ curves.
 
 ## Variables
 
+### compressor_params
+
+```odin
+compressor_params: [8]core.Param_Info
+```
+
+Parameter table of the `Compressor` node, as returned by `node_params`. Read-only.
+
 ### filter_params
 
 ```odin
@@ -1341,6 +1798,22 @@ gain_params: [1]core.Param_Info
 ```
 
 Parameter table of the `Gain` node, as returned by `node_params`. Read-only.
+
+### gate_params
+
+```odin
+gate_params: [7]core.Param_Info
+```
+
+Parameter table of the `Gate` node, as returned by `node_params`. Read-only.
+
+### limiter_params
+
+```odin
+limiter_params: [3]core.Param_Info
+```
+
+Parameter table of the `Limiter` node, as returned by `node_params`. Read-only.
 
 ### one_pole_params
 
