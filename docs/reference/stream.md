@@ -280,6 +280,17 @@ source_in_memory :: proc "contextless"(src: ^Source) -> bool
 
 Any thread. Whether the source is held in memory (rather than streamed).
 
+### source_frames
+
+```odin
+source_frames :: proc "contextless"(src: ^Source) -> [][]f32
+```
+
+**Realtime-safe** (callable on the audio thread). The source's decoded frames (planar, at the file's sample rate),
+once it is in memory and `Ready`; nil while loading, for streamed
+sources, and when it failed. Read-only. For players that need random
+access, such as a sampler.
+
 ### stream_create
 
 ```odin

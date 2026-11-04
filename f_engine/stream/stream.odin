@@ -294,6 +294,15 @@ source_in_memory :: proc "contextless" (src: ^Source) -> bool {
 	return src.ram != nil
 }
 
+// [rt] The source's decoded frames (planar, at the file's sample rate),
+// once it is in memory and `Ready`; nil while loading, for streamed
+// sources, and when it failed. Read-only. For players that need random
+// access, such as a sampler.
+source_frames :: proc "contextless" (src: ^Source) -> [][]f32 {
+	if src == nil || intrinsics.atomic_load(&src.state) != .Ready do return nil
+	return src.ram
+}
+
 @(private)
 free_source :: proc(src: ^Source) {
 	a := src.streamer.allocator

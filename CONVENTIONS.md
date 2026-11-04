@@ -20,10 +20,11 @@ on purpose, leave a comment explaining why.
 | `fire:core`      | Shared types: `Event`, `Transport`, `Process_Context`, `Node`, `Param_Info`, `Error` | `fire:timebase` |
 | `fire:timebase`  | Sample/second/beat/tick/BBT conversions, tempo map         | —                   |
 | `fire:rt`        | Realtime utilities: FTZ/DAZ, SPSC queue, `host_time_ns` (the device/MIDI clock), `set_realtime_priority`, `precise_sleep` | — |
-| `fire:dsp`       | DSP primitives and simple nodes; the resampler             | `core`, `rt`        |
+| `fire:dsp`       | DSP primitives and effect and instrument nodes: filters, EQ, dynamics, delay, modulation, reverb, convolution, saturation, the synth; the resampler and FFT | `core`, `rt`        |
 | `fire:audiofile` | WAV/AIFF reading and writing (pure Odin)                   | `core`              |
 | `fire:clip`      | Clips and their players: immutable MIDI, audio and automation clips, player nodes, Standard MIDI Files | `core`, `rt`, `timebase`, `dsp`, `stream` |
 | `fire:record`    | Recording: audio takes to disk (disk writer thread), MIDI and automation recorders, loop recording, latency compensation and the latency probe | `audiofile`, `clip`, `core`, `dsp`, `rt`, `timebase` |
+| `fire:sampler`   | A sampler: sample maps (zones by key and velocity, loops, one-shots) and the polyphonic sampler node | `core`, `dsp`, `rt`, `stream` |
 | `fire:stretch`   | Signalsmith Stretch, ported to Odin, also as a `clip.Stretcher_VTable`. Only apps import it | `clip`, `dsp` |
 | `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |

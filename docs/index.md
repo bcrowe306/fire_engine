@@ -19,6 +19,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:audiofile`](/reference/audiofile/) | Read and write WAV and AIFF; [FLAC, MP3 and Ogg](/reference/audiofile/codecs/) decoding |
 | [`fire:clip`](/reference/clip/) | Clips on timelines: MIDI clips with per-note expression, tempo-following audio clips, parameter automation, players for launchers and arrangements, MIDI files |
 | [`fire:record`](/reference/record/) | Recording: audio takes to disk, MIDI and automation recording, overdub and loop recording, latency compensation and measurement |
+| [`fire:sampler`](/reference/sampler/) | A sampler: multi-sample instruments with key and velocity zones, loops and one-shots, band-limited pitch-shifting |
 | [`fire:stretch`](/reference/stretch/) | Time-stretching for audio clips: Signalsmith Stretch, ported to Odin |
 | [`fire:stream`](/reference/stream/) | Disk streaming: files read ahead on background threads, instant jumps to cue points |
 | [`fire:backend`](/reference/backend/) | Audio devices: one API over [CoreAudio](/reference/backend/coreaudio/), [ALSA](/reference/backend/alsa/), [JACK](/reference/backend/jack/), [WASAPI](/reference/backend/wasapi/) and a [simulated driver](/reference/backend/fake/) |
@@ -37,7 +38,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 4. [Audio devices](/guides/devices/) and [MIDI](/guides/midi/): talking to hardware.
 5. [Audio files and sample rates](/guides/audio-files/): reading, writing, recording, resampling.
 6. [Effects](/guides/effects/): the filters, EQ, dynamics, delay, modulation, reverb and convolution in `fire:dsp`.
-   And [instruments](/guides/instruments/): the synth, and what it is made of.
+   And [instruments](/guides/instruments/): the synth and the sampler.
 7. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.

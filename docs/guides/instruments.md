@@ -1,13 +1,14 @@
 ---
 title: Instruments
-description: A polyphonic, MPE-aware synth node, and the oscillators, envelopes and noise it is built from.
+description: A polyphonic, MPE-aware synth and a multi-sample sampler, and the oscillators, envelopes and noise they are built from.
 ---
 
 `fire:dsp` has instruments as nodes that play the notes they receive,
 and as the primitives they are made of.
 
 `examples/clip_launcher` and `examples/arrangement` play their MIDI clips
-through `synth_create`.
+through the synth; `examples/sampler` plays a drum kit and a pluck from
+generated samples.
 
 ## The synth
 
@@ -41,6 +42,54 @@ graph.set_param(g, synth, dsp.SYNTH_PARAM_AMP_SUSTAIN, 0) // plucked
 - Cost on an Apple M1: about 26 ns per voice per frame, so 16 sounding
   voices are 2% of a 512-frame block.
 
+## The sampler
+
+`fire:sampler` plays recorded sounds. A `Sample_Map` is the instrument: a
+list of zones, each a sample with the keys and velocities it answers.
+
+```odin
+kit, _ := sampler.sample_map_create({
+	{source = kick, root_key = 36, key_lo = 36, key_hi = 36, one_shot = true},
+	{source = piano_soft, root_key = 60, key_lo = 48, key_hi = 72, vel_hi = 0.6},
+	{source = piano_hard, root_key = 60, key_lo = 48, key_hi = 72, vel_lo = 0.6001},
+	{source = pad, root_key = 48, loop = true, loop_start = 12_000, loop_end = 96_000},
+})
+node, s := sampler.sampler_create({voices = 32})
+id, _ := graph.add_node(g, node, 0, 2)
+sampler.sampler_set_map(s, kit)
+sampler.sample_map_release(kit) // the sampler keeps its own reference
+```
+
+- **Zones.** A note plays every zone whose key and velocity ranges hold
+  it (so zones can be layered), pitched from the zone's `root_key`, with
+  its `tune_cents` and `gain_db`. Unset ranges mean every key and every
+  velocity.
+- **Loops** are sustain loops: the sample plays from `start`, loops
+  between `loop_start` and `loop_end` for as long as the note sounds
+  (through its release too), and stops at `end` otherwise. A `one_shot`
+  zone plays to its end whatever the note-off: drums.
+- **Samples are held in memory.** The streamer decodes files up to its
+  `ram_bytes` (16 MB by default) into memory when they're opened; wait
+  for `stream.source_state` to be `Ready`. Larger files play silent.
+- **Changing instruments.** `sampler_set_map` swaps maps at the next
+  block. Notes already sounding finish on the old map, which is released
+  once they have.
+- **Expression and parameters:** per-note tuning, volume and pan; an amp
+  ADSR, velocity sensitivity, transpose and gain (`SAMPLER_PARAM_*`).
+
+**Quality.** `Sampler_Settings.quality` picks how a voice reads between
+frames when it plays a sample at another pitch:
+
+| `Sampler_Quality` | Method | Aliasing (6 kHz sample, up 5 semitones) | 32 voices, 512 frames (M1) |
+|---|---|---|---|
+| `Cubic` (default) | 4-point Hermite | −44 dB | 0.21 ms (1.9%) |
+| `Sinc_Low` | `dsp.Resampler`, band-limited | −84 dB | 1.1 ms (10%) |
+| `Sinc_Medium` | | −87 dB | 2.5 ms (23%) |
+| `Sinc_High` | | −87 dB | 4.9 ms (46%) |
+
+Cubic is fine for most material, and for anything played near its root
+key; use a sinc mode for bright samples pitched far up, or for rendering.
+
 ## Oscillators, envelopes and noise
 
 - **`Oscillator`**: sine, saw, square, triangle and pulse, from −1 to 1.
@@ -68,4 +117,4 @@ for &x in out do x = f32(dsp.osc_next(&o) * dsp.adsr_next(&env))
 
 - [Effects](/guides/effects/): filters, dynamics, delay, reverb
 - [Clips](/guides/clips/): the notes that play them
-- [`fire:dsp` reference](/reference/dsp/)
+- [`fire:dsp` reference](/reference/dsp/), [`fire:sampler` reference](/reference/sampler/)
