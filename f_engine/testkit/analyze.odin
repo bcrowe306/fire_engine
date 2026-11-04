@@ -249,3 +249,31 @@ solve3 :: proc(m: [3][3]f64, r: [3]f64) -> (x: [3]f64, ok: bool) {
 	for i in 0 ..< 3 do x[i] = b[i] / a[i][i]
 	return x, true
 }
+
+// How different two signals sound, ignoring phase: the mean over
+// `frame`-sample frames (Hann-windowed, hopping by `frame`) of the RMS
+// difference in dB between their magnitude spectra, over bins where either
+// is above −100 dBFS. 0 for identical spectra. Use it where waveforms may
+// legitimately diverge (a phase vocoder amplifies the last bit of rounding)
+// but the sound must not. Compares the common length of `a` and `b`.
+spectral_distance :: proc(a, b: []f32, sample_rate: f64, frame := 2048) -> f64 {
+	n := min(len(a), len(b))
+	total, frames := 0.0, 0
+	for at := 0; at + frame <= n; at += frame {
+		sa := spectrum(a[at:at + frame], sample_rate, allocator = context.temp_allocator)
+		sb := spectrum(b[at:at + frame], sample_rate, allocator = context.temp_allocator)
+		sum, count := 0.0, 0
+		for k in 1 ..< len(sa.magnitude) {
+			ma, mb := sa.magnitude[k], sb.magnitude[k]
+			if ma < 1e-5 && mb < 1e-5 do continue
+			d := linear_to_db(max(ma, 1e-9)) - linear_to_db(max(mb, 1e-9))
+			sum += d * d
+			count += 1
+		}
+		if count > 0 {
+			total += math.sqrt(sum / f64(count))
+			frames += 1
+		}
+	}
+	return total / f64(max(frames, 1))
+}

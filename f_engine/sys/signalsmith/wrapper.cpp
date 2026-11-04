@@ -161,3 +161,90 @@ void fss_test_stft(int block, int interval, int extra, int kind, const int *hops
 }
 
 }
+
+// --- test only: render a reference case (testkit.Stretch_Case) -------------
+
+#include <cmath>
+
+extern "C" {
+
+// Mirrors testkit.Stretch_Case (field for field, same order and types).
+struct fss_case {
+	const char *name;
+	int32_t signal;
+	float sample_rate;
+	int32_t channels, in_frames, out_frames;
+	int32_t cheaper, split;
+	float rate, transpose, tonality_limit, formant;
+	int32_t formant_compensate;
+	float formant_base;
+	int32_t freq_map, mode, flush_frames, seek_at_out, seek_to_in;
+	int32_t chunks[4];
+};
+
+// Renders case `c` from `input` (c->channels × c->in_frames) into `output`
+// (c->channels × c->out_frames) through Signalsmith Stretch, seeded as in
+// fss_create. Modes: 0 stream, 1 stream + flush, 2 stream with a seek,
+// 3 exact. Streaming starts with outputSeek, then processes chunks of
+// output (c->chunks, repeated), taking input at `rate` per output frame
+// (rounded down, carrying the fraction); input past the end is silence.
+// Returns the seconds spent in the library.
+double fss_test_render(const fss_case *c, const float *const *input, float *const *output) {
+	int ch = c->channels;
+	Stretch s(0x5eed);
+	if (c->cheaper) {
+		s.presetCheaper(ch, c->sample_rate, c->split != 0);
+	} else {
+		s.presetDefault(ch, c->sample_rate, c->split != 0);
+	}
+	s.setTransposeFactor(c->transpose, c->tonality_limit);
+	if (c->freq_map == 1) {
+		s.setFreqMap([](float f) { return f < 0.02f ? f : 0.02f + (f - 0.02f)*1.25f; });
+	}
+	s.setFormantFactor(c->formant, c->formant_compensate != 0);
+	s.setFormantBase(c->formant_base);
+
+	// Input padded with silence, so reads past the end are simple.
+	int padded = c->in_frames + int(c->out_frames*c->rate) + s.outputSeekLength(c->rate) + s.seekLength() + 8192;
+	std::vector<std::vector<float>> in(ch, std::vector<float>(padded, 0.0f));
+	for (int k = 0; k < ch; ++k) std::copy(input[k], input[k] + c->in_frames, in[k].begin());
+	std::vector<const float *> ip(ch);
+	std::vector<float *> op(ch);
+	auto at_in = [&](int frame) { for (int k = 0; k < ch; ++k) ip[k] = in[k].data() + frame; return Pointers{ip.data()}; };
+	auto at_out = [&](int frame) { for (int k = 0; k < ch; ++k) op[k] = output[k] + frame; return Mut_Pointers{op.data()}; };
+
+	auto start = std::chrono::steady_clock::now();
+	if (c->mode == 3) {
+		s.exact(at_in(0), c->in_frames, at_out(0), c->out_frames);
+	} else {
+		int main_out = c->out_frames - (c->mode == 1 ? c->flush_frames : 0);
+		int seek_len = s.outputSeekLength(c->rate);
+		s.outputSeek(at_in(0), seek_len);
+		int in_pos = seek_len, out_pos = 0, k = 0;
+		double in_acc = seek_len;
+		bool sought = false;
+		int nchunks = 0;
+		while (nchunks < 4 && c->chunks[nchunks] > 0) ++nchunks;
+		while (out_pos < main_out) {
+			if (c->mode == 2 && !sought && out_pos >= c->seek_at_out) {
+				int pre = std::min(s.seekLength(), c->seek_to_in);
+				s.seek(at_in(c->seek_to_in - pre), pre, c->rate);
+				in_pos = c->seek_to_in;
+				in_acc = in_pos;
+				sought = true;
+			}
+			int n = c->chunks[k++ % nchunks];
+			if (c->mode == 2 && !sought) n = std::min(n, c->seek_at_out - out_pos);
+			n = std::min(n, main_out - out_pos);
+			in_acc += n*double(c->rate);
+			int n_in = int(std::floor(in_acc)) - in_pos;
+			s.process(at_in(in_pos), n_in, at_out(out_pos), n);
+			in_pos += n_in;
+			out_pos += n;
+		}
+		if (c->mode == 1) s.flush(at_out(main_out), c->flush_frames, c->rate);
+	}
+	return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+}

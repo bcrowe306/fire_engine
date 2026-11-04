@@ -454,6 +454,102 @@ stays valid after `render` releases the node, until the node is destroyed.
 | `out_of_range` | events whose offset >= frames |
 | `capacity` | log size, set by probe_create |
 
+### Stretch_Signal
+
+```odin
+Stretch_Signal :: enum i32 {
+	Sweep,
+	Drums,
+	Voice,
+}
+```
+
+The test signals for time-stretch reference cases.
+
+| Value | Description |
+|-------|-------------|
+| `Sweep` | a log sine sweep, 50 Hz to 12 kHz, at −6 dBFS |
+| `Drums` | synthetic kick, snare and hi-hats at 120 BPM |
+| `Voice` | a gliding pulse train through three formant resonators (an "ah") |
+
+### Stretch_Mode
+
+```odin
+Stretch_Mode :: enum i32 {
+	Stream,
+	Stream_Flush,
+	Stream_Seek,
+	Exact,
+}
+```
+
+How a reference case drives the stretcher.
+
+| Value | Description |
+|-------|-------------|
+| `Stream` | output_seek at the start, then process in chunks |
+| `Stream_Flush` | as Stream, then flush the last `flush_frames` |
+| `Stream_Seek` | as Stream, seeking to `seek_to_in` once `seek_at_out` frames are out |
+| `Exact` | the whole input to the whole output in one exact() call |
+
+### Stretch_Case
+
+```odin
+Stretch_Case :: struct {
+	name: cstring,
+	signal: Stretch_Signal,
+	sample_rate: f32,
+	channels: i32,
+	in_frames: i32,
+	out_frames: i32,
+	cheaper: b32,
+	split: b32,
+	rate: f32,
+	transpose: f32,
+	tonality_limit: f32,
+	formant: f32,
+	formant_compensate: b32,
+	formant_base: f32,
+	freq_map: i32,
+	mode: Stretch_Mode,
+	flush_frames: i32,
+	seek_at_out: i32,
+	seek_to_in: i32,
+	chunks: [4]i32,
+	tolerance: f32,
+}
+```
+
+One reference case for the time-stretcher: its input, settings and how
+it is driven. Laid out as the C struct `fss_case` (f_engine/sys/
+signalsmith/wrapper.cpp), which renders it through Signalsmith Stretch's
+C++; the pure-Odin port renders the same cases and is compared with the
+recordings in tests/golden/stretch.
+
+| Field | Description |
+|-------|-------------|
+| `name` |  |
+| `signal` |  |
+| `sample_rate` |  |
+| `channels` |  |
+| `in_frames` |  |
+| `out_frames` | total output, including any flush |
+| `cheaper` | presetCheaper instead of presetDefault |
+| `split` | split computation |
+| `rate` | input frames per output frame |
+| `transpose` | frequency factor; 1 = none |
+| `tonality_limit` | as a fraction of the sample rate; 0 = none |
+| `formant` | formant factor; 1 = none |
+| `formant_compensate` |  |
+| `formant_base` | Hz; 0 = detect |
+| `freq_map` | 0 = none, 1 = `stretch_case_freq_map` |
+| `mode` |  |
+| `flush_frames` |  |
+| `seek_at_out` |  |
+| `seek_to_in` |  |
+| `chunks` | output frames per process call, repeated; zero entries end the list |
+| `tolerance` | Not seen by the C++ (it comes after the fields fss_case mirrors): the largest spectral distance (`spectral_distance`, dB) allowed from the recording. Twice the C++'s own spread across macOS, Linux and Windows, and at least 0.05 dB (tests/golden/stretch/README.md). |
+
 ### Trap_Allocator
 
 ```odin
@@ -643,6 +739,19 @@ compare_buffers :: proc(expected: Audio_Buffer, actual: Audio_Buffer) -> Compare
 Compares two multichannel buffers channel by channel and returns the result of the
 channel with the largest `max_abs_error` (`max_error_ch` says which). Sets
 `frame_mismatch` if channel counts or frame counts differ.
+
+### spectral_distance
+
+```odin
+spectral_distance :: proc(a: []f32, b: []f32, sample_rate: f64, frame: int = 2048) -> f64
+```
+
+How different two signals sound, ignoring phase: the mean over
+`frame`-sample frames (Hann-windowed, hopping by `frame`) of the RMS
+difference in dB between their magnitude spectra, over bins where either
+is above −100 dBFS. 0 for identical spectra. Use it where waveforms may
+legitimately diverge (a phase vocoder amplifies the last bit of rounding)
+but the sound must not. Compares the common length of `a` and `b`.
 
 ### buffer_make
 
@@ -1077,6 +1186,25 @@ probe_destroy :: proc(n: ^core.Node, p: ^Probe)
 
 Frees the probe's log and the probe itself (the same as core.node_destroy).
 
+### stretch_case_freq_map
+
+```odin
+stretch_case_freq_map :: proc "contextless"(f: f32) -> f32
+```
+
+The custom frequency map case 1 uses (frequencies as fractions of the
+sample rate): unchanged below 0.02, then spread out by 1.25.
+
+### stretch_case_input
+
+```odin
+stretch_case_input :: proc(c: Stretch_Case, allocator: mem.Allocator = context.allocator) -> [][]f32
+```
+
+The input for a reference case: `c.channels` channels of `c.in_frames`
+frames (channel 1 of a stereo case is the signal delayed by 7 ms at 70%).
+Deterministic. Allocates with `allocator`.
+
 ### trap_allocator
 
 ```odin
@@ -1102,4 +1230,17 @@ wav_read :: proc(path: string, allocator: mem.Allocator = context.allocator) -> 
 ```
 
 Reads PCM 16/24/32-bit int and 32/64-bit float WAV (including WAVE_FORMAT_EXTENSIBLE).
+
+## Variables
+
+### stretch_reference_cases
+
+```odin
+stretch_reference_cases: [26]Stretch_Case
+```
+
+The reference cases. Ratios above 2 (and below 0.5) make Signalsmith
+Stretch randomise phases with the C++ standard library's generator, so
+those recordings are only reproducible with the same library (they were
+made with macOS's libc++).
 
