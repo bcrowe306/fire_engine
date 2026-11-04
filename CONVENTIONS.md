@@ -25,6 +25,8 @@ on purpose, leave a comment explaining why.
 | `fire:clip`      | Clips and their players: immutable MIDI, audio and automation clips, player nodes, Standard MIDI Files | `core`, `rt`, `timebase`, `dsp`, `stream` |
 | `fire:record`    | Recording: audio takes to disk (disk writer thread), MIDI and automation recorders, loop recording, latency compensation and the latency probe | `audiofile`, `clip`, `core`, `dsp`, `rt`, `timebase` |
 | `fire:sampler`   | A sampler: sample maps (zones by key and velocity, loops, one-shots) and the polyphonic sampler node | `core`, `dsp`, `rt`, `stream` |
+| `fire:clap`      | Hosting CLAP plug-ins as nodes: libraries (shared per path), instances, parameters, state, editors | `core`, `sys/clap` |
+| `fire:clap/sdk`  | Making CLAP plug-ins from nodes: the entry, factory and extensions a plug-in library exports | `core`, `rt`, `sys/clap` |
 | `fire:stretch`   | Signalsmith Stretch, ported to Odin, also as a `clip.Stretcher_VTable`. Only apps import it | `clip`, `dsp` |
 | `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |
@@ -43,6 +45,9 @@ on purpose, leave a comment explaining why.
 
 Third-party code we ship lives in `vendor/<name>/` with its licence and a
 README giving the exact version and source; it must be MIT-compatible.
+`vendor/clap` holds CLAP's headers (MIT), which only the C test plug-in
+compiles; `fire:sys/clap` declares the ABI in Odin and `tests/clap` checks
+every struct's layout against them.
 GPL code (Ableton Link) is never committed: it is fetched into `third_party/`.
 
 A test package whose dependency is built separately has a `REQUIRES` file: globs

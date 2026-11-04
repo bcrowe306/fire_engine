@@ -40,6 +40,12 @@ jobs:
         shell: bash
         run: ./scripts/link.sh
 
+      # The CLAP test plug-ins (C against vendor/clap, and Odin with
+      # fire:clap/sdk). Without them tests/clap is skipped.
+      - name: Build the CLAP test plug-ins
+        shell: bash
+        run: ./scripts/clap.sh
+
       - name: Test
         shell: bash
         env:

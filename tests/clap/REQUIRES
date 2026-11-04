@@ -1,0 +1,3 @@
+# The test plug-ins: build them with ./scripts/clap.sh
+.build/clap/FireTest.clap
+.build/clap/FireOdin.clap
