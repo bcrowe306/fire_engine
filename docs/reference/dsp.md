@@ -547,6 +547,166 @@ REVERB_PARAM_WIDTH : core.Param_Id : core.Param_Id(8)
 Parameter id of the `Reverb`'s stereo width, in percent (0..100,
 default 100; 0 is mono).
 
+### SYNTH_PARAM_OSC1_SHAPE
+
+```odin
+SYNTH_PARAM_OSC1_SHAPE : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the first oscillator's shape: an `Osc_Shape` (default Saw).
+
+### SYNTH_PARAM_OSC2_SHAPE
+
+```odin
+SYNTH_PARAM_OSC2_SHAPE : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the second oscillator's shape (default Square).
+
+### SYNTH_PARAM_OSC2_DETUNE
+
+```odin
+SYNTH_PARAM_OSC2_DETUNE : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the second oscillator's detune, in cents (−1200..1200, default 7).
+
+### SYNTH_PARAM_OSC_MIX
+
+```odin
+SYNTH_PARAM_OSC_MIX : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the oscillator mix, in percent: 0 is the first only, 100 the second (default 40).
+
+### SYNTH_PARAM_CUTOFF_HZ
+
+```odin
+SYNTH_PARAM_CUTOFF_HZ : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the filter cutoff, in Hz (20..20000, default 2000).
+
+### SYNTH_PARAM_RESONANCE
+
+```odin
+SYNTH_PARAM_RESONANCE : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the filter resonance, as Q (0.5..20, default 0.9).
+
+### SYNTH_PARAM_FILTER_ENV
+
+```odin
+SYNTH_PARAM_FILTER_ENV : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of the filter envelope's reach, in octaves above the cutoff (0..8, default 3).
+
+### SYNTH_PARAM_KEYTRACK
+
+```odin
+SYNTH_PARAM_KEYTRACK : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of the filter's key tracking, in percent (0..100, default 50; 100 follows the note).
+
+### SYNTH_PARAM_AMP_ATTACK
+
+```odin
+SYNTH_PARAM_AMP_ATTACK : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of the amp envelope's attack (0.0005..10, default 0.005).
+
+### SYNTH_PARAM_AMP_DECAY
+
+```odin
+SYNTH_PARAM_AMP_DECAY : core.Param_Id : core.Param_Id(10)
+```
+
+Parameter id of the amp envelope's decay (0.005..10, default 0.3).
+
+### SYNTH_PARAM_AMP_SUSTAIN
+
+```odin
+SYNTH_PARAM_AMP_SUSTAIN : core.Param_Id : core.Param_Id(11)
+```
+
+Parameter id of the amp envelope's sustain, in percent (0..100, default 70).
+
+### SYNTH_PARAM_AMP_RELEASE
+
+```odin
+SYNTH_PARAM_AMP_RELEASE : core.Param_Id : core.Param_Id(12)
+```
+
+Parameter id of the amp envelope's release (0.005..20, default 0.4).
+
+### SYNTH_PARAM_FILTER_ATTACK
+
+```odin
+SYNTH_PARAM_FILTER_ATTACK : core.Param_Id : core.Param_Id(13)
+```
+
+Parameter id of the filter envelope's attack (0.0005..10, default 0.002).
+
+### SYNTH_PARAM_FILTER_DECAY
+
+```odin
+SYNTH_PARAM_FILTER_DECAY : core.Param_Id : core.Param_Id(14)
+```
+
+Parameter id of the filter envelope's decay (0.005..10, default 0.4).
+
+### SYNTH_PARAM_FILTER_SUSTAIN
+
+```odin
+SYNTH_PARAM_FILTER_SUSTAIN : core.Param_Id : core.Param_Id(15)
+```
+
+Parameter id of the filter envelope's sustain, in percent (0..100, default 30).
+
+### SYNTH_PARAM_FILTER_RELEASE
+
+```odin
+SYNTH_PARAM_FILTER_RELEASE : core.Param_Id : core.Param_Id(16)
+```
+
+Parameter id of the filter envelope's release (0.005..20, default 0.5).
+
+### SYNTH_PARAM_VELOCITY
+
+```odin
+SYNTH_PARAM_VELOCITY : core.Param_Id : core.Param_Id(17)
+```
+
+Parameter id of the velocity sensitivity, in percent (0..100, default 70).
+
+### SYNTH_PARAM_GAIN_DB
+
+```odin
+SYNTH_PARAM_GAIN_DB : core.Param_Id : core.Param_Id(18)
+```
+
+Parameter id of the output gain, in dB (−60..12, default −12).
+
+### SYNTH_PARAM_PULSE_WIDTH
+
+```odin
+SYNTH_PARAM_PULSE_WIDTH : core.Param_Id : core.Param_Id(19)
+```
+
+Parameter id of the pulse width of `.Pulse` oscillators, in percent (1..99, default 50).
+
+### SYNTH_MAX_VOICES
+
+```odin
+SYNTH_MAX_VOICES :: 64
+```
+
+Most voices a `Synth` may have.
+
 ## Types
 
 ### Biquad_Coeffs
@@ -1131,6 +1291,118 @@ Filter Design", ch. 3). Exactly -3.01 dB at cutoff thanks to prewarping.
 | `state` | one per channel, allocated in prepare |
 | `sample_rate` |  |
 
+### Osc_Shape
+
+```odin
+Osc_Shape :: enum u8 {
+	Sine,
+	Saw,
+	Square,
+	Triangle,
+	Pulse,
+}
+```
+
+The waveform of an `Oscillator`.
+
+| Value | Description |
+|-------|-------------|
+| `Sine` |  |
+| `Saw` | falling ramps' opposite: rises, then drops |
+| `Square` |  |
+| `Triangle` |  |
+| `Pulse` | a square with `pulse_width` |
+
+### Oscillator
+
+```odin
+Oscillator :: struct {
+	shape: Osc_Shape,
+	phase: f64,
+	step: f64,
+	pulse_width: f64,
+	integrated: f64,
+}
+```
+
+A band-limited oscillator, −1..1. Saw, square and pulse use polyBLEP
+(Välimäki and Huovilainen, "Antialiasing Oscillators in Subtractive
+Synthesis", IEEE Signal Processing Magazine 2007): each jump is smoothed
+by a two-sample polynomial step, which removes most of the aliasing a
+naive waveform has. The triangle is that square, integrated.
+
+| Field | Description |
+|-------|-------------|
+| `shape` |  |
+| `phase` | 0..1 |
+| `step` | cycles per frame |
+| `pulse_width` | Pulse: the high part of the cycle, 0.01..0.99 |
+| `integrated` | Triangle: the integrator |
+
+### Noise
+
+```odin
+Noise :: struct {
+	seed: u32,
+	b: [7]f64,
+}
+```
+
+White and pink noise, −1..1 (pink: Paul Kellet's filtered white noise,
+within 0.05 dB of −3 dB per octave above 10 Hz at 44.1 kHz).
+
+| Field | Description |
+|-------|-------------|
+| `seed` |  |
+| `b` | pink filter states |
+
+### Adsr_Stage
+
+```odin
+Adsr_Stage :: enum u8 {
+	Idle,
+	Attack,
+	Decay,
+	Sustain,
+	Release,
+}
+```
+
+Where an `Adsr` envelope is.
+
+### Adsr
+
+```odin
+Adsr :: struct {
+	attack_s: f64,
+	decay_s: f64,
+	sustain: f64,
+	release_s: f64,
+	stage: Adsr_Stage,
+	level: f64,
+	attack_step: f64,
+	decay_coeff: f64,
+	release_coeff: f64,
+}
+```
+
+An ADSR envelope, 0..1: a linear attack to 1 in `attack_s`, then
+exponential moves to `sustain` and, on release, to silence, each
+covering all but 60 dB of the way in its time (as analog envelopes
+sound, with a definite length).
+
+| Field | Description |
+|-------|-------------|
+| `attack_s` |  |
+| `decay_s` |  |
+| `sustain` |  |
+| `release_s` |  |
+| `stage` |  |
+| `level` |  |
+| `attack_step` | per frame |
+| `decay_coeff` |  |
+| `release_coeff` |  |
+
 ### Resampler_Quality
 
 ```odin
@@ -1452,6 +1724,40 @@ Svf_State :: struct {
 ```
 
 One channel's state of a state-variable filter.
+
+### Synth
+
+```odin
+Synth :: struct {
+	voices: []Synth_Voice,
+	settings: [19]f64,
+	cutoff: Smoothed_Value,
+	gain: Smoothed_Value,
+	clock: u64,
+	sample_rate: f64,
+	allocator: mem.Allocator,
+}
+```
+
+A polyphonic subtractive synth node: per voice, two band-limited
+oscillators into a resonant lowpass with its own envelope and key
+tracking, and an amp envelope with velocity. It plays the notes it
+receives (`core.Note_On`, `core.Note_Off`) and follows per-note
+expression (MPE, MIDI 2.0, or clips' `add_expression`): tuning bends the
+note, volume and pan place it, vibrato wobbles its pitch, and
+brightness and pressure open its filter. Stereo out (mono with one
+output). When every voice is busy, a new note takes the quietest voice
+that is releasing, or else the oldest note's.
+
+| Field | Description |
+|-------|-------------|
+| `voices` |  |
+| `settings` | indexed by id − 1 |
+| `cutoff` |  |
+| `gain` | dB |
+| `clock` | notes started, for "oldest" |
+| `sample_rate` |  |
+| `allocator` |  |
 
 ## Procedures
 
@@ -1957,6 +2263,73 @@ one_pole_create :: proc(allocator: mem.Allocator = context.allocator) -> core.No
 Control thread. Allocates a `One_Pole_Lowpass` node with `allocator`. Free it
 with `core.node_destroy`. Each output channel filters the matching input
 channel (silence for extra outputs).
+
+### osc_set_freq
+
+```odin
+osc_set_freq :: proc "contextless"(o: ^Oscillator, hz: f64, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets the frequency in Hz (up to just below Nyquist).
+
+### poly_blep
+
+```odin
+poly_blep :: proc "contextless"(t: f64, dt: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The two-sample polyBLEP correction at phase `t` for a jump at phase
+0, with `dt` cycles per frame: subtract it (times the jump's size / 2)
+from the naive waveform.
+
+### osc_next
+
+```odin
+osc_next :: proc "contextless"(o: ^Oscillator) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The value now, then advances one frame.
+
+### noise_white
+
+```odin
+noise_white :: proc "contextless"(n: ^Noise) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). White noise, uniform in −1..1.
+
+### noise_pink
+
+```odin
+noise_pink :: proc "contextless"(n: ^Noise) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). Pink noise, about −1..1.
+
+### adsr_set
+
+```odin
+adsr_set :: proc "contextless"(a: ^Adsr, attack_s: f64, decay_s: f64, sustain: f64, release_s: f64, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets the times (seconds) and sustain level (0..1).
+
+### adsr_gate
+
+```odin
+adsr_gate :: proc "contextless"(a: ^Adsr, on: bool)
+```
+
+**Realtime-safe** (callable on the audio thread). Starts (gate on: from the current level, without a click) or
+releases (gate off) the envelope.
+
+### adsr_next
+
+```odin
+adsr_next :: proc "contextless"(a: ^Adsr) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The level now, then advances one frame.
 
 ### resampler_init
 
@@ -2476,6 +2849,15 @@ svf_response :: proc "contextless"(c: ^Svf_Coeffs, freq_hz: f64, sample_rate: f6
 **Realtime-safe** (callable on the audio thread). The filter's exact response at `freq_hz`: gain (linear) and phase in
 radians. For drawing EQ curves.
 
+### synth_create
+
+```odin
+synth_create :: proc(voices: int = 16, allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A `Synth` node with `voices` voices (1..SYNTH_MAX_VOICES)
+at its default sound. Free it with `core.node_destroy`.
+
 ## Variables
 
 ### compressor_params
@@ -2573,4 +2955,12 @@ reverb_params: [8]core.Param_Info
 ```
 
 Parameter table of the `Reverb` node, as returned by `node_params`. Read-only.
+
+### synth_params
+
+```odin
+synth_params: [19]core.Param_Info
+```
+
+Parameter table of the `Synth` node, as returned by `node_params`. Read-only.
 

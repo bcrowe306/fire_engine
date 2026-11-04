@@ -15,7 +15,6 @@ package clip_launcher
 
 import "core:fmt"
 import "core:math"
-import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:time"
@@ -123,7 +122,10 @@ main :: proc() {
 
 	// 3. Bass: one synth and filter for the track. Each slot has a MIDI
 	//    player for its notes and an automation player for the filter.
-	synth, _ := graph.add_node(g, synth_create(), 0, 1)
+	synth, _ := graph.add_node(g, dsp.synth_create(8), 0, 1)
+	graph.set_param(g, synth, dsp.SYNTH_PARAM_AMP_SUSTAIN, 0) // plucked: decays while held
+	graph.set_param(g, synth, dsp.SYNTH_PARAM_AMP_DECAY, 0.35)
+	graph.set_param(g, synth, dsp.SYNTH_PARAM_GAIN_DB, -6)
 	filter, _ := graph.add_node(g, dsp.one_pole_create(), 1, 1)
 	graph.connect(g, synth, 0, filter, 0)
 	graph.connect(g, filter, 0, graph.OUTPUT, 0)
@@ -259,83 +261,4 @@ build_envelope :: proc(sweep: bool) -> ^clip.Automation_Clip {
 	}
 	c, _ := clip.automation_build(&b)
 	return c
-}
-
-// --- a small synth -------------------------------------------------------------------------
-
-// Eight voices of a decaying sawtooth: just enough to hear the bass clips.
-Synth :: struct {
-	voices:      [8]Voice,
-	sample_rate: f64,
-}
-
-Voice :: struct {
-	id:    core.Note_Id,
-	key:   u8,
-	phase: f64,
-	step:  f64, // cycles per frame
-	level: f64, // velocity times the envelope
-	decay: f64, // per-frame multiplier
-}
-
-synth_vtable := core.Node_VTable {
-	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
-		s := (^Synth)(self)
-		s^ = {sample_rate = cfg.sample_rate}
-		return .None
-	},
-	process = synth_process,
-	reset   = proc(self: rawptr) { s := (^Synth)(self); s.voices = {} },
-	destroy = proc(self: rawptr, a: mem.Allocator) { free(self, a) },
-}
-
-synth_create :: proc() -> core.Node {
-	return core.node_make(&synth_vtable, new(Synth), context.allocator)
-}
-
-// [rt]
-synth_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
-	s := (^Synth)(self)
-	out := ctx.outputs[0]
-	pos := 0
-	for e in ctx.events_in {
-		synth_render(s, out[pos:e.offset])
-		pos = int(e.offset)
-		#partial switch v in e.payload {
-		case core.Note_On:
-			quietest := 0
-			for voice, i in s.voices do if voice.level < s.voices[quietest].level do quietest = i
-			s.voices[quietest] = {
-				id    = v.id,
-				key   = v.key,
-				step  = 440 * math.pow(2, (f64(v.key) - 69) / 12) / s.sample_rate,
-				level = 0.3 * f64(v.velocity),
-				decay = math.exp(-3 / s.sample_rate), // a third of a second
-			}
-		case core.Note_Off:
-			for &voice in s.voices {
-				if voice.level > 0 && (voice.id == v.id || (v.id == core.NOTE_ID_ANY && voice.key == v.key)) {
-					voice.decay = math.exp(-60 / s.sample_rate) // a quick release
-				}
-			}
-		}
-	}
-	synth_render(s, out[pos:ctx.frames])
-}
-
-// [rt]
-synth_render :: proc(s: ^Synth, out: []f32) {
-	for &x in out do x = 0
-	for &v in s.voices {
-		if v.level < 1e-4 {
-			v.level = 0
-			continue
-		}
-		for &x in out {
-			x += f32(v.level * (2 * v.phase - 1))
-			v.phase += v.step
-			if v.phase >= 1 do v.phase -= 1
-			v.level *= v.decay
-		}
-	}
 }

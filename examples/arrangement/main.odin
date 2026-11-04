@@ -18,7 +18,6 @@ package arrangement
 
 import "core:fmt"
 import "core:math"
-import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -94,7 +93,10 @@ main :: proc() {
 
 	// 3. Bass: a MIDI region into a synth and filter, and an automation lane
 	//    for the filter placed over the whole song.
-	bass_synth, _ := graph.add_node(g, synth_create(decay_s = 0.3), 0, 1)
+	bass_synth, _ := graph.add_node(g, dsp.synth_create(8), 0, 1)
+	graph.set_param(g, bass_synth, dsp.SYNTH_PARAM_AMP_SUSTAIN, 0) // plucked
+	graph.set_param(g, bass_synth, dsp.SYNTH_PARAM_AMP_DECAY, 0.3)
+	graph.set_param(g, bass_synth, dsp.SYNTH_PARAM_GAIN_DB, -11)
 	bass_filter, _ := graph.add_node(g, dsp.one_pole_create(), 1, 1)
 	graph.connect(g, bass_synth, 0, bass_filter, 0)
 	graph.connect(g, bass_filter, 0, graph.OUTPUT, 0)
@@ -121,7 +123,12 @@ main :: proc() {
 	append(&regions, Region{"Bass", "filter cutoff (automation)", 0, 32})
 
 	// 4. Pad: chords into a gain, faded in by an automation region in dB.
-	pad_synth, _ := graph.add_node(g, synth_create(decay_s = 4), 0, 1)
+	pad_synth, _ := graph.add_node(g, dsp.synth_create(8), 0, 1)
+	graph.set_param(g, pad_synth, dsp.SYNTH_PARAM_AMP_ATTACK, 0.2) // swells in, holds, fades out
+	graph.set_param(g, pad_synth, dsp.SYNTH_PARAM_AMP_RELEASE, 1.5)
+	graph.set_param(g, pad_synth, dsp.SYNTH_PARAM_OSC1_SHAPE, f64(dsp.Osc_Shape.Triangle))
+	graph.set_param(g, pad_synth, dsp.SYNTH_PARAM_CUTOFF_HZ, 1200)
+	graph.set_param(g, pad_synth, dsp.SYNTH_PARAM_GAIN_DB, -14)
 	pad_gain, _ := graph.add_node(g, dsp.gain_create(), 1, 1)
 	graph.connect(g, pad_synth, 0, pad_gain, 0)
 	graph.connect(g, pad_gain, 0, graph.OUTPUT, 0)
@@ -252,86 +259,4 @@ build_chords :: proc() -> ^clip.Midi_Clip {
 	for key in ([]u8{57, 60, 64, 67}) do clip.add_note(&b, 4, 4, key, 0.5)
 	c, _ := clip.midi_build(&b)
 	return c
-}
-
-// --- a small synth -------------------------------------------------------------------------
-
-// Eight voices of a decaying sawtooth: just enough to hear the clips.
-Synth :: struct {
-	voices:      [8]Voice,
-	decay_s:     f64,
-	sample_rate: f64,
-}
-
-Voice :: struct {
-	id:    core.Note_Id,
-	key:   u8,
-	phase: f64,
-	step:  f64, // cycles per frame
-	level: f64, // velocity times the envelope
-	decay: f64, // per-frame multiplier
-}
-
-synth_vtable := core.Node_VTable {
-	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
-		s := (^Synth)(self)
-		s.voices, s.sample_rate = {}, cfg.sample_rate
-		return .None
-	},
-	process = synth_process,
-	reset   = proc(self: rawptr) { s := (^Synth)(self); s.voices = {} },
-	destroy = proc(self: rawptr, a: mem.Allocator) { free(self, a) },
-}
-
-synth_create :: proc(decay_s: f64) -> core.Node {
-	s := new(Synth)
-	s.decay_s = decay_s
-	return core.node_make(&synth_vtable, s, context.allocator)
-}
-
-// [rt]
-synth_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
-	s := (^Synth)(self)
-	out := ctx.outputs[0]
-	pos := 0
-	for e in ctx.events_in {
-		synth_render(s, out[pos:e.offset])
-		pos = int(e.offset)
-		#partial switch v in e.payload {
-		case core.Note_On:
-			quietest := 0
-			for voice, i in s.voices do if voice.level < s.voices[quietest].level do quietest = i
-			s.voices[quietest] = {
-				id    = v.id,
-				key   = v.key,
-				step  = 440 * math.pow(2, (f64(v.key) - 69) / 12) / s.sample_rate,
-				level = 0.2 * f64(v.velocity),
-				decay = math.exp(-1 / (s.decay_s * s.sample_rate)),
-			}
-		case core.Note_Off:
-			for &voice in s.voices {
-				if voice.level > 0 && (voice.id == v.id || (v.id == core.NOTE_ID_ANY && voice.key == v.key)) {
-					voice.decay = math.exp(-60 / s.sample_rate) // a quick release
-				}
-			}
-		}
-	}
-	synth_render(s, out[pos:ctx.frames])
-}
-
-// [rt]
-synth_render :: proc(s: ^Synth, out: []f32) {
-	for &x in out do x = 0
-	for &v in s.voices {
-		if v.level < 1e-4 {
-			v.level = 0
-			continue
-		}
-		for &x in out {
-			x += f32(v.level * (2 * v.phase - 1))
-			v.phase += v.step
-			if v.phase >= 1 do v.phase -= 1
-			v.level *= v.decay
-		}
-	}
 }

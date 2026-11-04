@@ -15,7 +15,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:graph`](/reference/graph/) | The audio graph: nodes and connections, processed on many threads |
 | [`fire:transport`](/reference/transport/) | The musical clock: tempo, bars, and timelines for arrangements, clips, loopers and sequencers; MIDI clock out |
 | [`fire:link`](/reference/link/) | Optional [Ableton Link](https://www.ableton.com/link/) sync (GPLv2+; built separately) |
-| [`fire:dsp`](/reference/dsp/) | DSP primitives and effect nodes: filters and parametric EQ, compressor, gate, limiter, delay, chorus, flanger, phaser, reverb, convolution, LFOs, gain, smoothing, resampling, FFT |
+| [`fire:dsp`](/reference/dsp/) | DSP primitives and effect nodes: filters and parametric EQ, compressor, gate, limiter, delay, chorus, flanger, phaser, reverb, convolution, LFOs; a polyphonic synth with oscillators, envelopes and noise; gain, smoothing, resampling, FFT |
 | [`fire:audiofile`](/reference/audiofile/) | Read and write WAV and AIFF; [FLAC, MP3 and Ogg](/reference/audiofile/codecs/) decoding |
 | [`fire:clip`](/reference/clip/) | Clips on timelines: MIDI clips with per-note expression, tempo-following audio clips, parameter automation, players for launchers and arrangements, MIDI files |
 | [`fire:record`](/reference/record/) | Recording: audio takes to disk, MIDI and automation recording, overdub and loop recording, latency compensation and measurement |
@@ -37,6 +37,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 4. [Audio devices](/guides/devices/) and [MIDI](/guides/midi/): talking to hardware.
 5. [Audio files and sample rates](/guides/audio-files/): reading, writing, recording, resampling.
 6. [Effects](/guides/effects/): the filters, EQ, dynamics, delay, modulation, reverb and convolution in `fire:dsp`.
+   And [instruments](/guides/instruments/): the synth, and what it is made of.
 7. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.

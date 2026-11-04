@@ -1,4 +1,4 @@
-package test_dsp
+package test_effects
 
 import "core:testing"
 
