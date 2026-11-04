@@ -1,8 +1,9 @@
 /*
 Effects from fire:dsp in a graph: noise through a resonant lowpass whose
 cutoff sweeps up and back down (an automation ramp, followed exactly), a
-parametric EQ, a ping-pong delay (which makes it stereo), a compressor and
-a limiter. Renders four seconds offline,
+parametric EQ, a ping-pong delay (which makes it stereo), a reverb, a
+compressor and a limiter. Then convolves the result with a generated room
+response using the `Convolver` primitive directly. Renders four seconds offline,
 prints the level and the dynamics' gain reduction as the filter opens, the
 EQ's curve, and writes a WAV file.
 
@@ -15,6 +16,7 @@ import "core:math"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
+import "core:time"
 
 import "fire:audiofile"
 import "fire:core"
@@ -35,7 +37,7 @@ main :: proc() {
 	g, _ := graph.create(settings)
 	defer graph.destroy(g)
 
-	// noise → lowpass (Q 6) → 4-band EQ → ping-pong delay → compressor → limiter
+	// noise → lowpass (Q 6) → 4-band EQ → ping-pong delay → reverb → compressor → limiter
 	noise, _ := graph.add_node(g, core.node_make(&noise_vtable, new(Noise), context.allocator), 0, 1)
 	filter, _ := graph.add_node(g, dsp.filter_create(.Lowpass), 1, 1)
 	eq_node := dsp.eq_create(4)
@@ -49,10 +51,12 @@ main :: proc() {
 	lim := (^dsp.Limiter)(lim_node.data)
 	l, _ := graph.add_node(g, lim_node, 2, 2)
 	d, _ := graph.add_node(g, dsp.delay_create(), 1, 2) // mono in, ping-pong out
+	rv, _ := graph.add_node(g, dsp.reverb_create(), 2, 2)
 	graph.connect(g, filter, 0, e, 0)
 	graph.connect(g, e, 0, d, 0)
 	for ch in 0 ..< 2 {
-		graph.connect(g, d, ch, c, ch)
+		graph.connect(g, d, ch, rv, ch)
+		graph.connect(g, rv, ch, c, ch)
 		graph.connect(g, c, ch, l, ch)
 		graph.connect(g, l, ch, graph.OUTPUT, ch)
 	}
@@ -70,6 +74,8 @@ main :: proc() {
 	graph.set_param(g, d, dsp.DELAY_PARAM_FEEDBACK, 45)
 	graph.set_param(g, d, dsp.DELAY_PARAM_HIGH_CUT_HZ, 4000)        // darker echoes
 	graph.set_param(g, d, dsp.DELAY_PARAM_MIX, 50)
+	graph.set_param(g, rv, dsp.REVERB_PARAM_DECAY_S, 2.5)
+	graph.set_param(g, rv, dsp.REVERB_PARAM_MIX, 25)
 	graph.set_param(g, c, dsp.COMPRESSOR_PARAM_THRESHOLD_DB, -24)  // evens out the sweep...
 	graph.set_param(g, c, dsp.COMPRESSOR_PARAM_RATIO, 3)
 	graph.set_param(g, c, dsp.COMPRESSOR_PARAM_MAKEUP_DB, 6)
@@ -78,6 +84,8 @@ main :: proc() {
 	graph.commit(g)
 
 	w, _ := audiofile.writer_create(path, audiofile.default_writer_settings(SAMPLE_RATE, 2))
+	bounce := make([]f32, int(4 * SAMPLE_RATE)) // the left channel, for the convolution below
+	defer delete(bounce)
 	left, right: [BLOCK]f32
 	frames := int(4 * SAMPLE_RATE)
 	sum_l, sum_r, count, peak := 0.0, 0.0, 0, f32(0)
@@ -91,6 +99,7 @@ main :: proc() {
 		ctx := core.Process_Context{outputs = {left[:], right[:]}, frames = BLOCK}
 		graph.process(g, &ctx)
 		audiofile.writer_write(w, {left[:], right[:]}, BLOCK)
+		copy(bounce[at:], left[:])
 		for i in 0 ..< BLOCK {
 			sum_l += f64(left[i]) * f64(left[i])
 			sum_r += f64(right[i]) * f64(right[i])
@@ -106,6 +115,23 @@ main :: proc() {
 	}
 	audiofile.writer_close(w)
 	fmt.printf("peak %.2f dBFS (the limiter's ceiling is −1)\n", 20 * math.log10(f64(peak)))
+
+	// The Convolver primitive, outside any graph: the bounce in a "room"
+	// whose response is noise decaying by 60 dB in 1.5 s.
+	ir := make([]f32, int(1.5 * SAMPLE_RATE))
+	defer delete(ir)
+	seed := u32(7)
+	for &x, i in ir {
+		seed = seed * 1664525 + 1013904223
+		x = 0.05 * (f32(seed >> 8) / f32(1 << 24) * 2 - 1) * f32(math.pow(10, -3 * f64(i) / f64(len(ir))))
+	}
+	ir[0] = 1 // the direct sound
+	conv: dsp.Convolver
+	dsp.convolver_init(&conv, ir)
+	defer dsp.convolver_destroy(&conv)
+	t0 := time.tick_now()
+	dsp.convolver_process(&conv, bounce, bounce) // in place, any length
+	fmt.printf("convolved 4 s with a 1.5 s response in %.1f ms (%.0f× real time)\n", time.duration_milliseconds(time.tick_since(t0)), 4000 / time.duration_milliseconds(time.tick_since(t0)))
 
 	fmt.print("EQ curve:")
 	for f in ([]f64{50, 100, 300, 1000, 3000, 8000, 16000}) do fmt.printf("  %.0f Hz %+.1f dB", f, 20 * math.log10(dsp.eq_response(eq, f)))

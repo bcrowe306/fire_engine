@@ -1,6 +1,6 @@
 ---
 title: Effects
-description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limiter), delay and modulation (chorus, flanger, phaser), as primitives for your own nodes and as ready-made nodes with automatable parameters.
+description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limiter), delay and modulation (chorus, flanger, phaser), algorithmic reverb and zero-latency convolution, as primitives for your own nodes and as ready-made nodes with automatable parameters.
 ---
 
 `fire:dsp` has effects in two forms:
@@ -12,7 +12,8 @@ description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limit
   and sample-accurate automation (`filter_create`, `eq_create`).
 
 `examples/effects` runs noise through a swept filter, an EQ, a ping-pong
-delay, a compressor and a limiter, offline.
+delay, a reverb, a compressor and a limiter, offline, then convolves the
+result with a room response.
 
 ## Filters
 
@@ -151,6 +152,59 @@ cancels 1 kHz, as the tests check.
 
 Costs per 512-frame stereo block on an Apple M1: delay 11 µs, chorus
 27 µs, flanger 16 µs, phaser 40 µs (0.1% to 0.4% of the block).
+
+## Reverb
+
+**`reverb_create()`** is an algorithmic reverb: an 8-line feedback delay
+network (Jot and Chaigne, 1991). Input is summed to mono, predelayed and
+diffused by four allpass filters. The lines feed each other through a
+Hadamard matrix, which mixes them without loss. Output is stereo, from two
+orthogonal mixes of the lines, narrowed by `width`.
+
+```odin
+rv, _ := graph.add_node(g, dsp.reverb_create(), 2, 2)
+graph.set_param(g, rv, dsp.REVERB_PARAM_DECAY_S, 2.5)   // RT60
+graph.set_param(g, rv, dsp.REVERB_PARAM_HF_DECAY, 40)   // highs die in 40% of that
+graph.set_param(g, rv, dsp.REVERB_PARAM_SIZE, 70)
+graph.set_param(g, rv, dsp.REVERB_PARAM_MIX, 100)       // fully wet, for a send
+```
+
+- **The decay time is what you set.** Each line has an absorption filter
+  that sets its loss at low and high frequencies from its length, so the
+  measured RT60 is within 2% of `decay` at any size and modulation, and
+  highs decay in `hf_decay` percent of it.
+- **Modulation** wobbles the lines slowly against metallic ringing. The
+  lines are read through allpass interpolation, which loses nothing, so it
+  doesn't shorten the decay.
+- **Size** scales the lines from a quarter to twice their length, gliding
+  when changed while playing.
+- Cost: 58 µs per 512-frame stereo block on an Apple M1 (0.5%).
+
+## Convolution
+
+**`convolution_create(ir)`** convolves with a recorded impulse response:
+a real room, a speaker cabinet, any long FIR filter. There is no latency:
+the first 64 taps run directly, and the rest in FFT partitions sized so
+each one is finished before its output is due.
+
+```odin
+ir := your_load_ir("hall.wav") // planar [][]f32 at the graph's sample rate (audiofile, then Resampler)
+v, _ := graph.add_node(g, dsp.convolution_create(ir), 2, 2) // a stereo IR: one channel each
+graph.set_param(g, v, dsp.CONVOLUTION_PARAM_MIX, 30)
+```
+
+- An impulse response with one channel is used for every output; with
+  several, output channel i uses channel i.
+- Long responses don't cost spikes. Partitions after the first 2048 taps
+  are 1024 frames long and their work is spread over the 1024 frames after
+  each block arrives, so every frame costs about the same. On an Apple M1,
+  with 64-frame blocks, one channel of a 2 s response averages 0.6% of a
+  block (worst 3%), and a 10 s response 1.9% (worst 4.3%).
+- The result matches direct convolution (within 2 × 10⁻⁶ of the peak in
+  the tests) and doesn't depend on block sizes.
+
+The primitive is `Convolver` (`convolver_init`, `convolver_process`): one
+channel, any length per call, also useful offline.
 
 ## See also
 

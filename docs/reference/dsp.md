@@ -106,6 +106,39 @@ RMS_MS :: 10.0
 
 RMS window of the detectors, in ms.
 
+### CONVOLVER_HEAD
+
+```odin
+CONVOLVER_HEAD :: 64
+```
+
+Taps of the impulse response convolved directly (no latency).
+
+### CONVOLVER_SPLIT
+
+```odin
+CONVOLVER_SPLIT :: 2048
+```
+
+Where the large partitions start, and their size: taps from
+CONVOLVER_SPLIT on use CONVOLVER_SPLIT / 2-frame partitions.
+
+### CONVOLUTION_PARAM_MIX
+
+```odin
+CONVOLUTION_PARAM_MIX : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Convolution` node's mix, in percent (0..100, default 100).
+
+### CONVOLUTION_PARAM_WET_DB
+
+```odin
+CONVOLUTION_PARAM_WET_DB : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Convolution` node's wet level, in dB (−60..12, default 0).
+
 ### DELAY_PARAM_TIME_MS
 
 ```odin
@@ -444,6 +477,76 @@ ONE_POLE_PARAM_CUTOFF_HZ : core.Param_Id : core.Param_Id(1)
 
 Parameter id of the `One_Pole_Lowpass` cutoff, in Hz (10..20000, default 1000).
 
+### REVERB_PARAM_SIZE
+
+```odin
+REVERB_PARAM_SIZE : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Reverb`'s size, in percent (0..100, default 50):
+the delay lines scale from a quarter to twice their base lengths.
+
+### REVERB_PARAM_DECAY_S
+
+```odin
+REVERB_PARAM_DECAY_S : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Reverb`'s decay time (RT60, the time to fall 60 dB),
+in seconds (0.1..30, default 2).
+
+### REVERB_PARAM_HF_DECAY
+
+```odin
+REVERB_PARAM_HF_DECAY : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Reverb`'s high-frequency decay, in percent of the
+decay time (5..100, default 50): lower is darker.
+
+### REVERB_PARAM_PREDELAY_MS
+
+```odin
+REVERB_PARAM_PREDELAY_MS : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the `Reverb`'s predelay, in ms (0..250, default 10).
+
+### REVERB_PARAM_DIFFUSION
+
+```odin
+REVERB_PARAM_DIFFUSION : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the `Reverb`'s input diffusion, in percent (0..100,
+default 70): how quickly echoes become dense.
+
+### REVERB_PARAM_MODULATION
+
+```odin
+REVERB_PARAM_MODULATION : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the `Reverb`'s modulation, in percent (0..100, default
+30): slow wobble of the lines, against metallic ringing.
+
+### REVERB_PARAM_MIX
+
+```odin
+REVERB_PARAM_MIX : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of the `Reverb`'s mix, in percent (0..100, default 30).
+
+### REVERB_PARAM_WIDTH
+
+```odin
+REVERB_PARAM_WIDTH : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of the `Reverb`'s stereo width, in percent (0..100,
+default 100; 0 is mono).
+
 ## Types
 
 ### Biquad_Coeffs
@@ -507,6 +610,48 @@ when there are any, they are detected instead of the main inputs.
 | `gain` |  |
 | `sample_rate` |  |
 | `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
+
+### Convolver
+
+```odin
+Convolver :: struct {...}
+```
+
+Zero-latency convolution with one impulse response, for one channel.
+The first `CONVOLVER_HEAD` taps are a direct FIR; taps up to
+`CONVOLVER_SPLIT` use 64-frame FFT partitions; the rest use 1024-frame
+partitions whose work is spread over the 1024 frames after each block
+arrives, so a long response costs the same every frame instead of in
+spikes (uniformly partitioned overlap-save at two sizes, after
+Gardner, "Efficient Convolution without Input-Output Delay", JAES 1995).
+Set up with `convolver_init`. Fields are internal.
+
+### Convolution
+
+```odin
+Convolution :: struct {
+	ir: [][]f32,
+	convolvers: []Convolver,
+	wet: []f32,
+	mix: Smoothed_Value,
+	wet_db: Smoothed_Value,
+	allocator: mem.Allocator,
+}
+```
+
+A convolution node (reverb from a recorded space, cabinet and speaker
+simulation, any long FIR) with no latency. Its impulse response has one
+channel for every output, or one per output channel. The response is
+used as given: at the graph's sample rate (convert it with `Resampler`).
+
+| Field | Description |
+|-------|-------------|
+| `ir` | copied at create |
+| `convolvers` |  |
+| `wet` | a block of one channel's convolution |
+| `mix` |  |
+| `wet_db` |  |
+| `allocator` |  |
 
 ### Delay
 
@@ -1023,6 +1168,62 @@ no added delay; the resampler only needs to see a little input ahead
 (`resampler_input_needed` says how much). Planar f32. Set up with
 `resampler_init`, free with `resampler_destroy`. Fields are internal.
 
+### Reverb
+
+```odin
+Reverb :: struct {
+	size: f64,
+	decay_s: f64,
+	hf_ratio: f64,
+	predelay_ms: f64,
+	diffusion: f64,
+	modulation: f64,
+	mix: Smoothed_Value,
+	width: Smoothed_Value,
+	lengths: [8]Smoothed_Value,
+	gains: [8][2]f64,
+	absorb: [8]f64,
+	interp: [8]f64,
+	primed: bool,
+	lines: [8]Delay_Line,
+	diffusers: [4]Delay_Line,
+	diffuser_frames: [4]int,
+	pre: Delay_Line,
+	lfo_phase: [8]f64,
+	sample_rate: f64,
+}
+```
+
+An algorithmic reverb node: an 8-line feedback delay network (Jot and
+Chaigne, "Digital Delay Networks for Designing Artificial Reverberators",
+AES 1991). The lines feed back through a Hadamard matrix, which mixes
+them losslessly, and each line's absorption filter sets the decay time
+at low and at high frequencies exactly. Input is summed to mono,
+delayed and diffused by allpass filters; output is stereo (every output
+channel past the second is silent), the reverb mixed with the dry input.
+
+| Field | Description |
+|-------|-------------|
+| `size` |  |
+| `decay_s` |  |
+| `hf_ratio` |  |
+| `predelay_ms` |  |
+| `diffusion` |  |
+| `modulation` |  |
+| `mix` |  |
+| `width` | percent |
+| `lengths` | frames, gliding when the size changes |
+| `gains` | absorption filter b, a |
+| `absorb` | filter states |
+| `interp` | allpass interpolator states |
+| `primed` | has rendered: before that, size changes jump instead of gliding |
+| `lines` |  |
+| `diffusers` |  |
+| `diffuser_frames` |  |
+| `pre` |  |
+| `lfo_phase` |  |
+| `sample_rate` |  |
+
 ### Smoothed_Value
 
 ```odin
@@ -1308,6 +1509,51 @@ compressor_gain_reduction_db :: proc "contextless"(c: ^Compressor) -> f64
 
 **Realtime-safe** (callable on the audio thread). The compressor's gain reduction in dB at the end of its last block,
 for a meter. Any thread.
+
+### convolver_init
+
+```odin
+convolver_init :: proc(c: ^Convolver, ir: []f32, allocator: mem.Allocator = context.allocator) -> (err: core.Error)
+```
+
+Control thread. Prepares a convolver for impulse response `ir` (any
+length ≥ 1; copied). Free with `convolver_destroy`.
+
+### convolver_destroy
+
+```odin
+convolver_destroy :: proc(c: ^Convolver, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `convolver_init` allocated.
+
+### convolver_reset
+
+```odin
+convolver_reset :: proc "contextless"(c: ^Convolver)
+```
+
+**Realtime-safe** (callable on the audio thread). Silences the convolver's memory of past input.
+
+### convolver_process
+
+```odin
+convolver_process :: proc "contextless"(c: ^Convolver, input: []f32, output: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Convolves `input` into `output` (the same length; they may be the
+same slice). Any length per call: the result never depends on how the
+signal is split into calls.
+
+### convolution_create
+
+```odin
+convolution_create :: proc(ir: [][]f32, allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A `Convolution` node with impulse response `ir` (planar,
+copied). The FFTs of the response are made when the node is prepared.
+Free it with `core.node_destroy`.
 
 ### delay_create
 
@@ -1760,6 +2006,15 @@ resampler_process :: proc "contextless"(r: ^Resampler, input: [][]f32, output: [
 same length) and writes frames to `output` (likewise) until the input is
 used up or the output is full. Returns how many frames were consumed and
 produced. Never allocates.
+
+### reverb_create
+
+```odin
+reverb_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. Allocates a `Reverb` node at its defaults. Free it with
+`core.node_destroy`.
 
 ### smoothed_init
 
@@ -2231,6 +2486,14 @@ compressor_params: [8]core.Param_Info
 
 Parameter table of the `Compressor` node, as returned by `node_params`. Read-only.
 
+### convolution_params
+
+```odin
+convolution_params: [2]core.Param_Info
+```
+
+Parameter table of the `Convolution` node, as returned by `node_params`. Read-only.
+
 ### delay_params
 
 ```odin
@@ -2302,4 +2565,12 @@ one_pole_params: [1]core.Param_Info
 ```
 
 Parameter table of the `One_Pole_Lowpass` node, as returned by `node_params`. Read-only.
+
+### reverb_params
+
+```odin
+reverb_params: [8]core.Param_Info
+```
+
+Parameter table of the `Reverb` node, as returned by `node_params`. Read-only.
 
