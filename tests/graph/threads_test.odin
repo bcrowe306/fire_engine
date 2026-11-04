@@ -4,6 +4,7 @@ import "base:intrinsics"
 import "core:log"
 import "core:math"
 import "core:mem"
+import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
@@ -11,6 +12,14 @@ import "core:time"
 import "fire:core"
 import "fire:graph"
 import kit "fire:testkit"
+
+// Held by each test here that runs graph workers flat out, so the test
+// runner (which runs tests in parallel) never runs two at once. On a
+// 2-core machine two of them, each with a spinning audio thread and
+// elevated workers, starve each other: the control thread's 200 µs sleeps
+// took 0.8 s, an audio thread stalled for over 10 s, and the speed-up
+// measured 0.84×.
+cpu_heavy: sync.Mutex
 
 // Builds the same random DAG for the same seed: scale and delay nodes, mono
 // and stereo, each input channel fed by 1–3 earlier nodes, several feeding
@@ -53,6 +62,7 @@ build_random :: proc(g: ^graph.Graph, seed: u64, count: int) {
 // summing and event merging run in a fixed order, not in thread order.
 @(test)
 output_is_identical_for_any_thread_count :: proc(t: ^testing.T) {
+	sync.guard(&cpu_heavy)
 	testing.set_fail_timeout(t, 60 * time.Second)
 	in_ := noise(2, 20_000, 9)
 	reference: kit.Audio_Buffer
@@ -94,18 +104,23 @@ Stress :: struct {
 // or produce non-finite output.
 @(test)
 live_edits_under_load :: proc(t: ^testing.T) {
+	sync.guard(&cpu_heavy)
 	testing.set_fail_timeout(t, 120 * time.Second)
 	st := graph.default_settings(SR, 128)
 	st.workers = 3
 	st.parallel_min_us = 0
-	s: Stress
+	// On the heap: if the runner ever stops this test (a timeout), the audio
+	// thread and workers keep running, and must not be left pointing into
+	// this thread's stack.
+	s := new(Stress)
+	defer free(s)
 	st.worker_allocator = kit.trap_allocator(&s.trap)
 	g, err := graph.create(st)
 	testing.expect_value(t, err, core.Error.None)
 	s.g = g
 	build_random(g, 42, 40)
 
-	audio := thread.create_and_start_with_data(&s, proc(data: rawptr) {
+	audio := thread.create_and_start_with_data(s, proc(data: rawptr) {
 		s := (^Stress)(data)
 		context.allocator = kit.trap_allocator(&s.trap)
 		context.temp_allocator = context.allocator
@@ -124,7 +139,13 @@ live_edits_under_load :: proc(t: ^testing.T) {
 
 	rng := kit.Rng{state = 7}
 	ids := make([dynamic]graph.Node_Id, context.temp_allocator)
+	// Up to 300 edits, for at most 30 s: on a loaded 2-core machine the
+	// control thread's short sleeps can take most of a second each.
+	start := time.tick_now()
+	edits := 0
 	for edit in 0 ..< 300 {
+		if time.tick_since(start) > 30 * time.Second do break
+		edits += 1
 		switch kit.rng_range(&rng, 0, 2) {
 		case 0: // add a node in series with something
 			id, _ := graph.add_node(g, scale(0.5), 2, 2)
@@ -151,7 +172,8 @@ live_edits_under_load :: proc(t: ^testing.T) {
 	thread.destroy(audio)
 	graph.destroy(g)
 
-	log.infof("%d blocks processed during 300 edits", s.blocks)
+	log.infof("%d blocks processed during %d edits", s.blocks, edits)
+	testing.expectf(t, edits >= 50, "only %d edits in 30 s", edits)
 	testing.expect(t, s.blocks > 100, "the audio thread barely ran")
 	testing.expect_value(t, s.bad, 0)
 	testing.expect_value(t, s.trap.violations, 0)
@@ -204,6 +226,7 @@ render_parallel :: proc(t: ^testing.T, workers: int) -> (kit.Audio_Buffer, time.
 // identical output.
 @(test)
 parallel_chains_speed_up :: proc(t: ^testing.T) {
+	sync.guard(&cpu_heavy)
 	testing.set_fail_timeout(t, 120 * time.Second)
 	single, t1 := render_parallel(t, 0)
 	multi, tn := render_parallel(t, -1)
