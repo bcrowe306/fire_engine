@@ -20,6 +20,21 @@ norm :: #force_inline proc "contextless" (a: complex64) -> f32 {
 	return real(a) * real(a) + imag(a) * imag(a)
 }
 
+// a × k for real k: what multiplying by complex(k, 0) gives, without the
+// cross terms.
+@(private)
+scale :: #force_inline proc "contextless" (a: complex64, k: f32) -> complex64 {
+	return complex(real(a) * k, imag(a) * k)
+}
+
+// floor(x) as an int, for |x| < 2^31 (math.floor checks for NaN and
+// infinity and goes through modf).
+@(private)
+floor_int :: #force_inline proc "contextless" (x: f32) -> int {
+	i := int(x)
+	return i - 1 if f32(i) > x else i
+}
+
 @(private)
 polar :: #force_inline proc "contextless" (phase: f32) -> complex64 {
 	return complex(math.cos(phase), math.sin(phase))
@@ -54,12 +69,12 @@ get_band :: #force_inline proc "contextless" (s: ^Stretch, field: Band_Field, c,
 get_fractional :: #force_inline proc "contextless" (s: ^Stretch, field: Band_Field, c, low: int, frac: f32) -> complex64 {
 	lo := get_band(s, field, c, low)
 	hi := get_band(s, field, c, low + 1)
-	return lo + (hi - lo) * complex(frac, 0)
+	return lo + scale(hi - lo, frac)
 }
 
 @(private)
 get_fractional_at :: #force_inline proc "contextless" (s: ^Stretch, field: Band_Field, c: int, index: f32) -> complex64 {
-	low := int(math.floor(index))
+	low := floor_int(index)
 	return get_fractional(s, field, c, low, index - f32(low))
 }
 
@@ -84,7 +99,7 @@ make_output :: #force_inline proc "contextless" (p: ^Prediction, phase_: complex
 		phase = p.input
 		phase_norm = norm(p.input) + NOISE_FLOOR
 	}
-	return phase * complex(math.sqrt(p.energy / phase_norm), 0)
+	return scale(phase, math.sqrt(p.energy / phase_norm))
 }
 
 @(private)
@@ -118,13 +133,9 @@ process_spectrum :: proc "contextless" (s: ^Stretch, step_: int) {
 
 	if bp.new_spectrum {
 		if step < s.channels {
-			rot := polar(band_to_freq(s, 0) * f32(interval) * f32(2 * math.PI))
-			freq_step := band_to_freq(s, 1) - band_to_freq(s, 0)
-			rot_step := polar(freq_step * f32(interval) * f32(2 * math.PI))
-			for &bin in bands_for(s, step) {
-				bin.output = mul(bin.output, rot)
-				bin.prev_input = mul(bin.prev_input, rot)
-				rot = mul(rot, rot_step)
+			for &bin, b in bands_for(s, step) {
+				bin.output = mul(bin.output, s.rotations[b])
+				bin.prev_input = mul(bin.prev_input, s.rotations[b])
 			}
 			return
 		}
@@ -166,7 +177,7 @@ process_spectrum :: proc "contextless" (s: ^Stretch, step_: int) {
 		preds := s.predictions[c * s.bands:][:s.bands]
 		for b in 0 ..< s.bands {
 			mp := s.output_map[b]
-			low := int(math.floor(mp.input_bin))
+			low := floor_int(mp.input_bin)
 			frac := mp.input_bin - f32(low)
 			pred := &preds[b]
 			prev_energy := pred.energy
@@ -177,7 +188,8 @@ process_spectrum :: proc "contextless" (s: ^Stretch, step_: int) {
 			prev_input := get_fractional(s, .Prev_Input, c, low, frac)
 			freq_twist := mul_conj(pred.input, prev_input)
 			phase := mul(out.output, freq_twist)
-			out.output = phase / complex(max(prev_energy, pred.energy) + NOISE_FLOOR, 0)
+			d := max(prev_energy, pred.energy) + NOISE_FLOOR // what dividing by complex(d, 0) gives
+			out.output = complex(real(phase) / d, imag(phase) / d)
 		}
 		return
 	}
@@ -423,7 +435,7 @@ update_formants :: proc "contextless" (s: ^Stretch, step: int) {
 		get_formant :: proc "contextless" (s: ^Stretch, band_: f32) -> f32 {
 			if band_ < 0 do return 0
 			band := min(band_, f32(s.bands))
-			floor_band := int(math.floor(band))
+			floor_band := floor_int(band)
 			frac := band - f32(floor_band)
 			lo, hi := s.formant_metric[floor_band], s.formant_metric[floor_band + 1]
 			return lo + (hi - lo) * frac

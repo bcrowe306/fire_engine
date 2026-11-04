@@ -430,16 +430,25 @@ stft_analyse_step :: proc "contextless" (s: ^Stft, step: int, samples_in_past :=
 		s.since_analysis = samples_in_past
 		size := len(s.time) // not the FFT size, so an undersized FFT works
 		buffer := s.input.buffer[channel * s.input_length:][:s.input_length]
+		// In runs where neither the ring buffer wraps nor the window's
+		// centre is crossed, so the loops vectorise.
 		pos := start
-		for i in 0 ..< s.block {
-			w := s.analysis_window[i]
+		for i := 0; i < s.block; {
+			n := min(s.input_length - pos, (s.analysis_offset if i < s.analysis_offset else s.block) - i)
+			src, win := buffer[pos:][:n], s.analysis_window[i:][:n]
 			if i < s.analysis_offset {
-				if s.kind == .Half_Bin do w = -w // the half-bin spectrum wraps with a sign change
-				s.time[i + size - s.analysis_offset] = buffer[pos] * w
+				dst := s.time[i + size - s.analysis_offset:][:n]
+				if s.kind == .Half_Bin { // the half-bin spectrum wraps with a sign change
+					for k in 0 ..< n do #no_bounds_check dst[k] = src[k] * -win[k]
+				} else {
+					for k in 0 ..< n do #no_bounds_check dst[k] = src[k] * win[k]
+				}
 			} else {
-				s.time[i - s.analysis_offset] = buffer[pos] * w
+				dst := s.time[i - s.analysis_offset:][:n]
+				for k in 0 ..< n do #no_bounds_check dst[k] = src[k] * win[k]
 			}
-			pos += 1
+			i += n
+			pos += n
 			if pos == s.input_length do pos = 0
 		}
 		if s.fft_size >= s.block {
@@ -499,15 +508,22 @@ stft_synthesise_step :: proc "contextless" (s: ^Stft, step: int) {
 	// Window and add into the output, un-rotating around the window's centre.
 	buffer := s.output.buffer[channel * s.block:][:s.block]
 	pos := s.output.pos
-	for i in 0 ..< s.block {
-		w := s.synthesis_window[i]
+	for i := 0; i < s.block; { // in runs, as in stft_analyse_step
+		n := min(s.block - pos, (s.synthesis_offset if i < s.synthesis_offset else s.block) - i)
+		dst, win := buffer[pos:][:n], s.synthesis_window[i:][:n]
 		if i < s.synthesis_offset {
-			if s.kind == .Half_Bin do w = -w
-			buffer[pos] += s.time[i + s.fft_size - s.synthesis_offset] * w
+			src := s.time[i + s.fft_size - s.synthesis_offset:][:n]
+			if s.kind == .Half_Bin {
+				for k in 0 ..< n do #no_bounds_check dst[k] += src[k] * -win[k]
+			} else {
+				for k in 0 ..< n do #no_bounds_check dst[k] += src[k] * win[k]
+			}
 		} else {
-			buffer[pos] += s.time[i - s.synthesis_offset] * w
+			src := s.time[i - s.synthesis_offset:][:n]
+			for k in 0 ..< n do #no_bounds_check dst[k] += src[k] * win[k]
 		}
-		pos += 1
+		i += n
+		pos += n
 		if pos == s.block do pos = 0
 	}
 }

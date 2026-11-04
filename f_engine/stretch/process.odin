@@ -188,7 +188,7 @@ process :: proc "contextless" (s: ^Stretch, input: Io, in_frames: int, output: I
 		s.silence_first = true
 	}
 
-	for out_index in 0 ..< out_frames {
+	for out_index := 0; out_index < out_frames; {
 		bp := &s.block
 		new_block := bp.samples_since_last >= interval
 		if new_block {
@@ -231,15 +231,15 @@ process :: proc "contextless" (s: ^Stretch, input: Io, in_frames: int, output: I
 			run_step(s, step)
 		}
 
-		bp.samples_since_last += 1
+		// Without split computation nothing more happens until the next
+		// block, so read up to it at once.
+		n := 1 if s.split_computation else min(interval - bp.samples_since_last, out_frames - out_index)
+		bp.samples_since_last += n
 		if s.split_computation do dsp.stft_swap_output(st, &s.stashed_output)
-		for c in 0 ..< s.channels {
-			v: [1]f32
-			dsp.stft_read_output(st, c, 0, v[:])
-			io_set(output, c, out_index, v[0])
-		}
-		dsp.stft_move_output(st, 1)
+		for c in 0 ..< s.channels do dsp.stft_read_output(st, c, 0, output.channels[c][out_index + output.offset:][:n])
+		dsp.stft_move_output(st, n)
 		if s.split_computation do dsp.stft_swap_output(st, &s.stashed_output)
+		out_index += n
 	}
 	copy_input(s, input, in_frames, &prev_copied)
 	s.prev_input_offset -= in_frames

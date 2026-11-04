@@ -1,7 +1,9 @@
 package dsp
 
+import "base:intrinsics"
 import "core:math"
 import "core:mem"
+import "core:simd"
 
 import "fire:core"
 
@@ -26,7 +28,7 @@ Fft_Stage :: struct {
 	radix:   int,
 	n:       int,         // length of the sub-transforms this stage splits
 	stride:  int,         // product of the radices before it
-	twiddle: []complex64, // e^(−2πi·p·k/n) for p < n/radix, 1 ≤ k < radix, as [p*(radix-1) + k-1]
+	twiddle: []complex64, // e^(−2πi·p·k/n) for p < n/radix, 1 ≤ k < radix, as [(k-1)*(n/radix) + p]
 }
 
 // The smallest size ≥ `size` that `Fft` handles quickly: a power of two
@@ -73,7 +75,7 @@ fft_init :: proc(f: ^Fft, size: int, allocator := context.allocator) -> core.Err
 		for p in 0 ..< m {
 			for k in 1 ..< r {
 				angle := -math.TAU * f64(p * k) / f64(n)
-				st.twiddle[p * (r - 1) + k - 1] = complex(f32(math.cos(angle)), f32(math.sin(angle)))
+				st.twiddle[(k - 1) * m + p] = complex(f32(math.cos(angle)), f32(math.sin(angle)))
 			}
 		}
 		n = m
@@ -149,108 +151,165 @@ fft_step :: proc "contextless" (f: ^Fft, step: int, input, output: []complex64, 
 	dst := output if (count - 1 - step) % 2 == 0 else f.work
 	st := &f.stages[step]
 	switch st.radix {
-	case 2: radix2(st, src, dst, inverse)
-	case 3: radix3(st, src, dst, inverse)
-	case 4: radix4(st, src, dst, inverse)
-	case 5: radix5(st, src, dst, inverse)
+	case 2: radix(st, src, dst, inverse, 2)
+	case 3: radix(st, src, dst, inverse, 3)
+	case 4: radix(st, src, dst, inverse, 4)
+	case 5: radix(st, src, dst, inverse, 5)
 	}
 }
 
 // With m = n/r and s = stride, each stage computes, for p < m and q < s:
 //   a_j = x[q + s(p + jm)],  y[q + s(rp + k)] = (Σ_j a_j·W_r^(jk)) · w_n^(pk)
 // where W_r and w_n are e^(∓2πi/r) and e^(∓2πi/n).
+//
+// Two transforms at a time, in 4-lane vectors (re, im, re, im): along q
+// when the stride is even, along p in the first stage (stride 1). The
+// arithmetic is the scalar butterfly's, operation for operation, so results
+// don't depend on which path ran.
 
 @(private)
-twiddle :: #force_inline proc "contextless" (st: ^Fft_Stage, p, k: int, inverse: bool) -> complex64 {
-	w := st.twiddle[p * (st.radix - 1) + k - 1]
+V :: #simd[4]f32
+
+// A twiddle as a vector multiply: a·w = a·re + swap(a)·im.
+@(private)
+Tw :: struct {
+	re, im: V,
+}
+
+@(private)
+twiddle :: #force_inline proc "contextless" (st: ^Fft_Stage, p, k: int, inverse: bool) -> complex64 #no_bounds_check {
+	w := st.twiddle[(k - 1) * (st.n / st.radix) + p]
 	return conj(w) if inverse else w
 }
 
+// The same twiddle in both lanes.
 @(private)
-radix2 :: proc "contextless" (st: ^Fft_Stage, x, y: []complex64, inverse: bool) {
-	m, s := st.n / 2, st.stride
-	for p in 0 ..< m {
-		w := twiddle(st, p, 1, inverse)
-		for q in 0 ..< s {
-			a, b := x[q + s * p], x[q + s * (p + m)]
-			y[q + s * (2 * p)] = a + b
-			y[q + s * (2 * p + 1)] = (a - b) * w
-		}
-	}
+tw_splat :: #force_inline proc "contextless" (w: complex64) -> Tw {
+	return {V{real(w), real(w), real(w), real(w)}, V{-imag(w), imag(w), -imag(w), imag(w)}}
+}
+
+// Twiddles p and p+1 of factor k.
+@(private)
+tw_pair :: #force_inline proc "contextless" (st: ^Fft_Stage, p, k: int, inverse: bool) -> Tw #no_bounds_check {
+	w := intrinsics.unaligned_load((^V)(&st.twiddle[(k - 1) * (st.n / st.radix) + p]))
+	sign := V{1, -1, 1, -1} if inverse else V{-1, 1, -1, 1}
+	return {simd.swizzle(w, 0, 0, 2, 2), simd.swizzle(w, 1, 1, 3, 3) * sign}
 }
 
 @(private)
-radix4 :: proc "contextless" (st: ^Fft_Stage, x, y: []complex64, inverse: bool) {
-	m, s := st.n / 4, st.stride
-	for p in 0 ..< m {
-		w1, w2, w3 := twiddle(st, p, 1, inverse), twiddle(st, p, 2, inverse), twiddle(st, p, 3, inverse)
-		for q in 0 ..< s {
-			a0, a1 := x[q + s * p], x[q + s * (p + m)]
-			a2, a3 := x[q + s * (p + 2 * m)], x[q + s * (p + 3 * m)]
-			t0, t1 := a0 + a2, a0 - a2
-			t2, t3 := a1 + a3, a1 - a3
-			// W_4 = −i forward, +i inverse: multiplying t3 by it rotates a quarter turn.
-			jt3 := complex(imag(t3), -real(t3)) if !inverse else complex(-imag(t3), real(t3))
-			base := q + s * 4 * p
-			y[base] = t0 + t2
-			y[base + s] = (t1 + jt3) * w1
-			y[base + 2 * s] = (t0 - t2) * w2
-			y[base + 3 * s] = (t1 - jt3) * w3
-		}
-	}
+cmul :: #force_inline proc "contextless" (a: V, w: Tw) -> V {
+	return a * w.re + simd.swizzle(a, 1, 0, 3, 2) * w.im
+}
+
+// i·a times `sign` (±1): (−im, re)·sign.
+@(private)
+rot90 :: #force_inline proc "contextless" (a: V, sign: f32) -> V {
+	return simd.swizzle(a, 1, 0, 3, 2) * V{-sign, sign, -sign, sign}
 }
 
 @(private)
-radix3 :: proc "contextless" (st: ^Fft_Stage, x, y: []complex64, inverse: bool) {
-	m, s := st.n / 3, st.stride
-	SIN_60 :: f32(0.86602540378443864676)
-	sn := -SIN_60 if !inverse else SIN_60 // imag(W_3)
-	for p in 0 ..< m {
-		w1, w2 := twiddle(st, p, 1, inverse), twiddle(st, p, 2, inverse)
-		for q in 0 ..< s {
-			a0, a1, a2 := x[q + s * p], x[q + s * (p + m)], x[q + s * (p + 2 * m)]
-			sum := a1 + a2
-			dif := a1 - a2
-			mid := a0 - sum * 0.5
-			rot := complex(-imag(dif) * sn, real(dif) * sn) // i·sn·dif
-			base := q + s * 3 * p
-			y[base] = a0 + sum
-			y[base + s] = (mid + rot) * w1
-			y[base + 2 * s] = (mid - rot) * w2
-		}
-	}
+load2 :: #force_inline proc "contextless" (x: []complex64, i: int) -> V #no_bounds_check {
+	return intrinsics.unaligned_load((^V)(&x[i]))
 }
 
 @(private)
-radix5 :: proc "contextless" (st: ^Fft_Stage, x, y: []complex64, inverse: bool) {
-	m, s := st.n / 5, st.stride
-	C1 :: 0.30901699437494742410  // cos(2π/5)
-	C2 :: -0.80901699437494742410 // cos(4π/5)
-	S1 :: 0.95105651629515357212  // sin(2π/5)
-	S2 :: 0.58778525229247312917  // sin(4π/5)
-	sign := f32(-1) if !inverse else 1 // sign of the imaginary part of W_5
-	for p in 0 ..< m {
-		w1, w2 := twiddle(st, p, 1, inverse), twiddle(st, p, 2, inverse)
-		w3, w4 := twiddle(st, p, 3, inverse), twiddle(st, p, 4, inverse)
-		for q in 0 ..< s {
-			a0 := x[q + s * p]
-			a1, a2 := x[q + s * (p + m)], x[q + s * (p + 2 * m)]
-			a3, a4 := x[q + s * (p + 3 * m)], x[q + s * (p + 4 * m)]
-			b1, b4 := a1 + a4, a1 - a4
-			b2, b3 := a2 + a3, a2 - a3
-			c1 := a0 + b1 * C1 + b2 * C2
-			c2 := a0 + b1 * C2 + b2 * C1
-			// sign·i·(S1·b4 + S2·b3) and sign·i·(S2·b4 − S1·b3)
-			d1v := b4 * S1 + b3 * S2
-			d2v := b4 * S2 - b3 * S1
-			d1 := complex(-imag(d1v) * sign, real(d1v) * sign)
-			d2 := complex(-imag(d2v) * sign, real(d2v) * sign)
-			base := q + s * 5 * p
-			y[base] = a0 + b1 + b2
-			y[base + s] = (c1 + d1) * w1
-			y[base + 2 * s] = (c2 + d2) * w2
-			y[base + 3 * s] = (c2 - d2) * w3
-			y[base + 4 * s] = (c1 - d1) * w4
+store2 :: #force_inline proc "contextless" (y: []complex64, i: int, v: V) #no_bounds_check {
+	intrinsics.unaligned_store((^V)(&y[i]), v)
+}
+
+@(private)
+load1 :: #force_inline proc "contextless" (x: []complex64, i: int) -> V #no_bounds_check {
+	return V{real(x[i]), imag(x[i]), 0, 0}
+}
+
+@(private)
+lo :: #force_inline proc "contextless" (v: V) -> complex64 {
+	return complex(simd.extract(v, 0), simd.extract(v, 1))
+}
+
+@(private)
+hi :: #force_inline proc "contextless" (v: V) -> complex64 {
+	return complex(simd.extract(v, 2), simd.extract(v, 3))
+}
+
+// The butterflies. `w[k]` multiplies output k (w[0] is unused: 1).
+@(private)
+butterfly :: #force_inline proc "contextless" (a: ^[$R]V, w: ^[R]Tw, inverse: bool) -> (y: [R]V) {
+	when R == 2 {
+		y[0] = a[0] + a[1]
+		y[1] = cmul(a[0] - a[1], w[1])
+	} else when R == 4 {
+		t0, t1 := a[0] + a[2], a[0] - a[2]
+		t2, t3 := a[1] + a[3], a[1] - a[3]
+		// W_4 = −i forward, +i inverse: multiplying t3 by it rotates a quarter turn.
+		jt3 := rot90(t3, 1 if inverse else -1)
+		y[0] = t0 + t2
+		y[1] = cmul(t1 + jt3, w[1])
+		y[2] = cmul(t0 - t2, w[2])
+		y[3] = cmul(t1 - jt3, w[3])
+	} else when R == 3 {
+		SIN_60 :: f32(0.86602540378443864676)
+		sum := a[1] + a[2]
+		dif := a[1] - a[2]
+		mid := a[0] - sum * 0.5
+		rot := rot90(dif, SIN_60 if inverse else -SIN_60) // i·imag(W_3)·dif
+		y[0] = a[0] + sum
+		y[1] = cmul(mid + rot, w[1])
+		y[2] = cmul(mid - rot, w[2])
+	} else when R == 5 {
+		C1 :: f32(0.30901699437494742410)  // cos(2π/5)
+		C2 :: f32(-0.80901699437494742410) // cos(4π/5)
+		S1 :: f32(0.95105651629515357212)  // sin(2π/5)
+		S2 :: f32(0.58778525229247312917)  // sin(4π/5)
+		sign := f32(1) if inverse else -1 // sign of the imaginary part of W_5
+		b1, b4 := a[1] + a[4], a[1] - a[4]
+		b2, b3 := a[2] + a[3], a[2] - a[3]
+		c1 := a[0] + b1 * C1 + b2 * C2
+		c2 := a[0] + b1 * C2 + b2 * C1
+		// sign·i·(S1·b4 + S2·b3) and sign·i·(S2·b4 − S1·b3)
+		d1 := rot90(b4 * S1 + b3 * S2, sign)
+		d2 := rot90(b4 * S2 - b3 * S1, sign)
+		y[0] = a[0] + b1 + b2
+		y[1] = cmul(c1 + d1, w[1])
+		y[2] = cmul(c2 + d2, w[2])
+		y[3] = cmul(c2 - d2, w[3])
+		y[4] = cmul(c1 - d1, w[4])
+	}
+	return
+}
+
+@(private)
+radix :: proc "contextless" (st: ^Fft_Stage, x, y: []complex64, inverse: bool, $R: int) #no_bounds_check {
+	m, s := st.n / R, st.stride
+	a: [R]V
+	w: [R]Tw
+	if s % 2 == 0 { // pairs along q
+		for p in 0 ..< m {
+			#unroll for k in 1 ..< R do w[k] = tw_splat(twiddle(st, p, k, inverse))
+			for q := 0; q < s; q += 2 {
+				#unroll for j in 0 ..< R do a[j] = load2(x, q + s * (p + j * m))
+				out := butterfly(&a, &w, inverse)
+				#unroll for k in 0 ..< R do store2(y, q + s * (R * p + k), out[k])
+			}
+		}
+	} else if s == 1 && m % 2 == 0 { // pairs along p
+		for p := 0; p < m; p += 2 {
+			#unroll for k in 1 ..< R do w[k] = tw_pair(st, p, k, inverse)
+			#unroll for j in 0 ..< R do a[j] = load2(x, p + j * m)
+			out := butterfly(&a, &w, inverse)
+			#unroll for k in 0 ..< R {
+				y[R * p + k] = lo(out[k])
+				y[R * p + R + k] = hi(out[k])
+			}
+		}
+	} else { // one at a time
+		for p in 0 ..< m {
+			#unroll for k in 1 ..< R do w[k] = tw_splat(twiddle(st, p, k, inverse))
+			for q in 0 ..< s {
+				#unroll for j in 0 ..< R do a[j] = load1(x, q + s * (p + j * m))
+				out := butterfly(&a, &w, inverse)
+				#unroll for k in 0 ..< R do y[q + s * (R * p + k)] = lo(out[k])
+			}
 		}
 	}
 }

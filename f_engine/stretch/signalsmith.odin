@@ -69,6 +69,7 @@ Stretch :: struct {
 	did_seek:          bool,
 	seek_time_factor:  f32,
 	channel_bands:     []Band,
+	rotations:         []complex64, // per band: its phase advance over one interval
 	peaks:             []Peak,
 	peak_count:        int,
 	energy:            []f32,
@@ -164,7 +165,7 @@ stretch_configure :: proc(s: ^Stretch, channels, block_samples, interval_samples
 	s.bands = dsp.stft_bands(&s.stft)
 	s.block = {samples_since_last = max(int)}
 	ae: mem.Allocator_Error
-	e1, e2, e3, e4, e5, e6, e7, e8, e9: mem.Allocator_Error
+	e1, e2, e3, e4, e5, e6, e7, e8, e9, e10: mem.Allocator_Error
 	s.channel_bands, e1 = make([]Band, s.bands * channels, allocator)
 	s.peaks, e2 = make([]Peak, s.bands / 2 + 1, allocator) // peaks are runs of bands: at most one per two
 	s.energy, e3 = make([]f32, s.bands, allocator)
@@ -174,10 +175,19 @@ stretch_configure :: proc(s: ^Stretch, channels, block_samples, interval_samples
 	s.formant_metric, e7 = make([]f32, s.bands + 2, allocator)
 	s.tmp_process, e8 = make([]f32, block_samples + interval_samples, allocator)
 	s.tmp_pre_roll, e9 = make([]f32, stretch_output_latency(s) * channels, allocator)
-	for e in ([]mem.Allocator_Error{e1, e2, e3, e4, e5, e6, e7, e8, e9}) do if e != nil do ae = e
+	s.rotations, e10 = make([]complex64, s.bands, allocator)
+	for e in ([]mem.Allocator_Error{e1, e2, e3, e4, e5, e6, e7, e8, e9, e10}) do if e != nil do ae = e
 	if ae != nil || s.stashed_input.buffer == nil || s.stashed_output.buffer == nil {
 		stretch_destroy(s)
 		return .Out_Of_Memory
+	}
+	// As Signalsmith steps them each block, rot ← rot × rot_step from band 0,
+	// so the values are the same.
+	rot := polar(band_to_freq(s, 0) * f32(interval_samples) * f32(2 * math.PI))
+	rot_step := polar((band_to_freq(s, 1) - band_to_freq(s, 0)) * f32(interval_samples) * f32(2 * math.PI))
+	for &r in s.rotations {
+		r = rot
+		rot = mul(rot, rot_step)
 	}
 	return .None
 }
@@ -190,6 +200,7 @@ stretch_destroy :: proc(s: ^Stretch) {
 	dsp.stft_input_free(&s.stashed_input, a)
 	dsp.stft_output_free(&s.stashed_output, a)
 	delete(s.channel_bands, a)
+	delete(s.rotations, a)
 	delete(s.peaks, a)
 	delete(s.energy, a)
 	delete(s.smoothed_energy, a)

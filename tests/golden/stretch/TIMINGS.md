@@ -37,4 +37,22 @@ The C++ was built by `scripts/stretch.sh` (CMake Release). Times are the best of
 
 **Benchmark:** 10 s of stereo drums at 48 kHz, default preset, rate 1, 512-frame chunks: 70.5 ms of CPU (142× real time, 0.70% of one core).
 
-**Odin port (`tests/stretch_port`, `port_speed`), same benchmark and Mac, `-o:speed`:** 155 ms (64× real time), 2.2× the C++. Optimising it is the next stage of the port.
+## The Odin port
+
+Same benchmark, same Mac, `-o:speed`, run alone (best of 5):
+
+| Version | ms | × real time |
+|---|---|---|
+| First port (scalar) | 130.5 | 77 |
+| Optimised (bit-identical output) | 70.7 | 141 |
+
+Profiled with spall zones around each stage (one per `run_step`, plus the FFT calls), the first port spent 37% of its time in FFTs and 46% in the phase-vocoder loops. The changes, none of which alters a single output bit:
+
+- **FFT stages in `#simd[4]f32`** (two transforms per vector, the scalar arithmetic operation for operation): 2.9× faster, 26.7 µs per forward + inverse pair at 6144 points against Linear's 39.3 µs. `tests/dsp` checks it bit for bit against the scalar stages.
+- **Per-band phase rotations precomputed** at configure time (the same multiply chain the C++ runs every block): 9.1 → 2.3 ms.
+- **STFT windowing in runs** that neither wrap the ring buffer nor cross the window's centre, so they vectorise: analysis and synthesis windowing 11.9 → 5 ms.
+- **Cheaper exact forms** of `math.floor`, scaling by `complex(k, 0)` and dividing by it.
+
+What remains is mostly the phase-locked prediction (about 24 ms), a chain from each band's output to the next through a division and a square root, and (when pitch-shifting) the energy smoothing, a recursive filter across bands. Both are inherently serial and kept exactly as in the C++.
+
+`port_speed` in `tests/stretch_port` logs this benchmark too, but runs alongside the package's other tests, so it reads higher.
