@@ -12,6 +12,8 @@ sample-accurately. There are MIDI clips (notes in beats) and audio clips
   together, then saves them as a MIDI file.
 - `examples/audio_clips` plays a 100 BPM loop repitched into a 120 BPM
   session.
+- `examples/clip_launcher` and `examples/arrangement` are the two ways of
+  making a session out of them, described at the end of this guide.
 
 ## Building a clip
 
@@ -229,6 +231,64 @@ clip.automation_player_resume(player, dsp.ONE_POLE_PARAM_CUTOFF_HZ, glide_ms = 5
 
 Recording parameter moves into new curves is left to the app for now: it
 can collect the values it sets and build a clip from them.
+
+## Building a clip launcher
+
+`examples/clip_launcher` is a grid of two tracks by two scenes, played by
+a script of mid-bar presses. Its pattern:
+
+- **One timeline per slot.** Launching a slot locates its timeline to the
+  start and plays it on the next bar, and stops the track's other slots on
+  that same bar:
+
+  ```odin
+  for s, i in track.slots {
+  	if i == scene {
+  		transport.locate(clock, s.timeline, 0, tb.Quantize.Bar)
+  		transport.play(clock, s.timeline, tb.Quantize.Bar)
+  	} else {
+  		transport.stop(clock, s.timeline, tb.Quantize.Bar)
+  	}
+  }
+  ```
+
+  The clock applies all of them on the bar's frame, so the old clip ends
+  exactly where the new one starts. A scene is the same for every track.
+  Swapping clips under one timeline with `midi_player_set` would not work
+  for this: a swap takes effect at the next block, not on a bar.
+- **Players per slot, nodes per track.** Each slot has its players (MIDI or
+  audio) on its timeline. A track's instruments and effects are shared:
+  every slot's MIDI player is event-connected to the track's synth, and
+  audio players sum into the track's input.
+- **Envelopes.** An automation player on the slot's timeline makes a clip's
+  automation follow its launches. Parameters keep their last value when a
+  slot stops, so if one slot of a track automates a parameter, give its
+  other slots a lane for it too (the demo's steady 600 Hz cutoff).
+- **Stopping.** A stopped MIDI player ends its notes; an audio player fades
+  out over `DECLICK_FRAMES`.
+
+## Building an arrangement
+
+`examples/arrangement` lays out three tracks of regions on a song with a
+tempo change, loops its second half and edits the bass while it plays.
+
+- **One song timeline** that leads, with a tempo map:
+  `transport.add_timeline(clock, &tempo_map)`, then `transport.set_leader`.
+- **One player per region,** each placed with `{at, length, loop}` on the
+  song timeline; a track's regions feed the track's nodes. A drum track of
+  two regions is two audio players into the same output.
+- **Automation lanes** are automation clips placed like regions:
+  `{at = 0}` without a length spans the song, and `{at = 16, length = 16}`
+  is a region-length envelope such as a fade.
+- **Looping and locating** use the song timeline (`transport.set_loop`,
+  `transport.locate`). MIDI players chase notes already in progress at the
+  new position; audio players jump to it (instantly at their cues, see
+  above).
+- **Edits.** Rebuild the edited clip and set it again with the same
+  placement. It replaces the old one at the player's next block.
+- **Bouncing** is the same loop run offline, writing each block with
+  `audiofile.writer_write`; call `audio_player_ready` before starting so
+  the first region doesn't start in silence.
 
 ## MIDI files
 
