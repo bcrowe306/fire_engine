@@ -107,11 +107,7 @@ transport.play(clock, tl, tb.Quantize.Bar)
 ### Time-stretching
 
 `.Stretch` clips need a stretcher in the player's settings. `fire:stretch`
-provides Signalsmith Stretch (MIT, C++, vendored). Build it once:
-
-```bash
-./scripts/stretch.sh
-```
+provides Signalsmith Stretch (MIT), ported to Odin: no build step.
 
 ```odin
 settings := clip.default_audio_player_settings(tl, streamer)
@@ -121,6 +117,10 @@ id, _ := graph.add_node(g, node, 0, 2) // prepare first: the stretcher needs the
 loop, _ := clip.audio_clip_create(src, {bpm = 100, mode = .Stretch})
 clip.audio_player_set(player, loop, {loop = true})
 ```
+
+A Stretch clip can also be shifted in pitch, independently of tempo, with
+`transpose` in semitones (`{bpm = 100, mode = .Stretch, transpose = -3}`).
+Only Stretch clips transpose; a custom stretcher needs `set_transpose` for it.
 
 - **Tempo without pitch change.** `examples/stretched_loop` plays the same
   tone repitched and stretched through a tempo ramp. Repitched, it rises

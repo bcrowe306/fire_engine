@@ -22,6 +22,7 @@ Audio_Clip_Settings :: struct {
 	loop_end:   i64,
 	bpm:        f64,         // the material's tempo, to place it in beats; needed by Repitch and Stretch
 	mode:       Audio_Mode,
+	transpose:  f64,         // semitones; Stretch only (pitch shift without changing timing), 0 = none
 	gain:       f32,         // linear; 0 is taken as 1
 	fade_in:    f64,         // seconds, at the clip's start; negative = none, 0 = 5 ms
 	fade_out:   f64,         // seconds, at the clip's end; negative = none, 0 = 5 ms
@@ -41,7 +42,8 @@ Audio_Clip :: struct {
 
 // Control thread. Makes a clip on `src` (which it keeps a reference to).
 // Fails with `.Invalid_Argument` for an empty or out-of-range region or
-// loop, or a Repitch or Stretch clip without a `bpm`.
+// loop, a Repitch or Stretch clip without a `bpm`, or a `transpose` on a
+// clip that isn't Stretch.
 audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, allocator := context.allocator) -> (^Audio_Clip, core.Error) {
 	info := stream.source_info(src)
 	s := settings
@@ -50,6 +52,7 @@ audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, al
 	if s.loop_start == 0 && s.loop_end == 0 do s.loop_start, s.loop_end = s.start, s.end
 	if s.loop_start < s.start || s.loop_end > s.end || s.loop_end <= s.loop_start do return nil, .Invalid_Argument
 	if s.mode != .Original && !(s.bpm > 0) do return nil, .Invalid_Argument
+	if s.transpose != 0 && s.mode != .Stretch do return nil, .Invalid_Argument
 	if s.gain == 0 do s.gain = 1
 	if s.fade_in == 0 do s.fade_in = 0.005
 	if s.fade_out == 0 do s.fade_out = 0.005

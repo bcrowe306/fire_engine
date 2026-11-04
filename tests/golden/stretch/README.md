@@ -40,8 +40,11 @@ diverge while the sound does not. The C++ itself shows this:
 
 So each case is checked with `testkit.spectral_distance`, the mean over
 2048-sample frames of the RMS difference between log-magnitude spectra. Each
-case's `tolerance` is twice the C++'s largest cross-platform distance for
-that case, and at least 0.05 dB:
+case's `tolerance` is 1.5 × the C++'s own largest distance for that case,
+on Linux, on Windows, or with its input nudged by 1e-5 (−100 dBFS; 8
+variants), and at least 0.05 dB. The nudge matters: rounding differences
+the port can't avoid move the output as much as noise far below hearing.
+Before the nudge, the spread looked like this:
 
 | Spread across platforms | Cases |
 |---|---|
@@ -50,6 +53,11 @@ that case, and at least 0.05 dB:
 | 1–2.6 dB | sweep at 0.5×, ±pitch shifts, custom map, `exact()` |
 | 6.2 dB | voice at 0.4× (random phases) |
 
-The port is also checked block by block against the C++ for the first blocks
-of each case, before rounding differences can compound. Those checks go when
-the C++ does; these recordings stay.
+On an Apple-silicon Mac (where these were recorded) the port's first block
+(120 ms, or 100 ms for the cheaper preset) must also match within −70 dB,
+before rounding differences can compound. It does, at −80 dB or better;
+rate 1, tonality, formant-only, cheaper, split, flush and seek cases match
+within −90 dB for their whole length.
+
+`tests/stretch_port` holds those checks; `tests/stretch` checks the C++
+itself (FFT and STFT parity, the recordings) while it is still vendored.

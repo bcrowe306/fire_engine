@@ -36,3 +36,5 @@ The C++ was built by `scripts/stretch.sh` (CMake Release). Times are the best of
 | `voice_exact_1p5` | 1 | 1.50 | 7.96 | 188 |
 
 **Benchmark:** 10 s of stereo drums at 48 kHz, default preset, rate 1, 512-frame chunks: 70.5 ms of CPU (142× real time, 0.70% of one core).
+
+**Odin port (`tests/stretch_port`, `port_speed`), same benchmark and Mac, `-o:speed`:** 155 ms (64× real time), 2.2× the C++. Optimising it is the next stage of the port.

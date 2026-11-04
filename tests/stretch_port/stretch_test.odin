@@ -1,4 +1,4 @@
-package test_stretch
+package test_stretch_port
 
 import "core:log"
 import "core:math"
@@ -58,7 +58,7 @@ Rig :: struct {
 	trap:     kit.Trap_Allocator,
 }
 
-rig_make :: proc(t: ^testing.T, path: string, bpm: f64, placement := clip.Placement{}) -> ^Rig {
+rig_make :: proc(t: ^testing.T, path: string, bpm: f64, placement := clip.Placement{}, transpose := 0.0) -> ^Rig {
 	r := new(Rig)
 	cs := transport.default_settings(SR)
 	cs.bpm = bpm
@@ -71,7 +71,7 @@ rig_make :: proc(t: ^testing.T, path: string, bpm: f64, placement := clip.Placem
 	s.stretcher = &stretch.signalsmith
 	r.node, r.player = clip.audio_player_create(s)
 	core.node_prepare(&r.node, {sample_rate = SR, max_block = 4096, out_channels = 1})
-	r.clip, _ = clip.audio_clip_create(r.source, {bpm = 120, mode = .Stretch, fade_in = -1, fade_out = -1})
+	r.clip, _ = clip.audio_clip_create(r.source, {bpm = 120, mode = .Stretch, transpose = transpose, fade_in = -1, fade_out = -1})
 	testing.expect_value(t, clip.audio_player_set(r.player, r.clip, placement), core.Error.None)
 	start := time.tick_now()
 	for !clip.audio_player_ready(r.player) && time.tick_since(start) < 5 * time.Second do time.sleep(time.Millisecond)
@@ -150,6 +150,24 @@ pitch_is_kept :: proc(t: ^testing.T) {
 		testing.expect_value(t, r.trap.violations, 0)
 		rig_destroy(r)
 	}
+}
+
+// A transposed clip moves pitch, not timing: +7 semitones at 90 BPM puts
+// the 440 Hz tone at 659 Hz.
+@(test)
+transpose_moves_pitch :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 60 * time.Second)
+	path := source_file("sine.wav", 48_000 * 20, false)
+	r := rig_make(t, path, 90, transpose = 7)
+	defer rig_destroy(r)
+	transport.play(r.clock, r.tl)
+	rig_run(r, 48_000 * 3)
+	spec := kit.spectrum(r.out[48_000:48_000 + 65_536], SR)
+	_, hz, _ := kit.spectrum_peak(spec)
+	kit.spectrum_destroy(&spec)
+	want := 440 * math.pow(2, 7.0 / 12)
+	testing.expectf(t, abs(hz - want) < 3, "peak at %.1f Hz, not %.1f", hz, want)
+	testing.expect_value(t, r.trap.violations, 0)
 }
 
 // Clicks recorded on each beat at 120 BPM land on the timeline's beats at

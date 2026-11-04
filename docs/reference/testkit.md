@@ -548,7 +548,7 @@ recordings in tests/golden/stretch.
 | `seek_at_out` |  |
 | `seek_to_in` |  |
 | `chunks` | output frames per process call, repeated; zero entries end the list |
-| `tolerance` | Not seen by the C++ (it comes after the fields fss_case mirrors): the largest spectral distance (`spectral_distance`, dB) allowed from the recording. Twice the C++'s own spread across macOS, Linux and Windows, and at least 0.05 dB (tests/golden/stretch/README.md). |
+| `tolerance` | Not seen by the C++ (it comes after the fields fss_case mirrors): the largest spectral distance (`spectral_distance`, dB) allowed from the recording: 1.5 × the C++'s own largest distance on Linux, on Windows, or with its input nudged by −100 dBFS, and at least 0.05 dB (tests/golden/stretch/README.md). |
 
 ### Trap_Allocator
 

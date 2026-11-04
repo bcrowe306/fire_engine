@@ -104,8 +104,8 @@ audio_player_create :: proc(settings: Audio_Player_Settings, allocator := contex
 // the player's next block; the switch crossfades. Allocates the clip's
 // stream (with cues at the clip's start, its loop start and the placement's
 // start), resampler and (for `.Stretch`) stretcher now. Keeps its own
-// reference to the clip. A `.Stretch` clip needs `settings.stretcher`
-// (`.Unsupported` otherwise) and a prepared node (`.Invalid_State`: add it
+// reference to the clip. A `.Stretch` clip needs `settings.stretcher`, one
+// with `set_transpose` if the clip has a `transpose` (`.Unsupported` otherwise) and a prepared node (`.Invalid_State`: add it
 // to the graph first).
 audio_player_set :: proc(p: ^Audio_Player, clip: ^Audio_Clip, placement: Placement) -> core.Error {
 	audio_collect(p)
@@ -146,13 +146,14 @@ audio_config_init :: proc(p: ^Audio_Player, cfg: ^Audio_Config) -> core.Error {
 	max_input := int(f64(AUDIO_CHUNK) * p.settings.max_speed) + 2048 // plus the filter's reach
 	if c.mode == .Stretch {
 		vt := p.settings.stretcher
-		if vt == nil do return .Unsupported
+		if vt == nil || (c.transpose != 0 && vt.set_transpose == nil) do return .Unsupported
 		if p.sample_rate == 0 do return .Invalid_State
 		rate_speed := c.sample_rate / p.sample_rate
 		if rate_speed > p.settings.max_speed do return .Unsupported
 		max_rate := p.settings.max_speed / rate_speed
 		cfg.stretcher = vt.create(c.channels, p.sample_rate, max_rate)
 		if cfg.stretcher == nil do return .Out_Of_Memory
+		if c.transpose != 0 do vt.set_transpose(cfg.stretcher, c.transpose)
 		cfg.input_latency, cfg.output_latency = vt.input_latency(cfg.stretcher), vt.output_latency(cfg.stretcher)
 		// Room for a seek's priming, or a chunk at the fastest rate plus a
 		// latency change.

@@ -1,6 +1,7 @@
 package clip
 
-// A time-stretcher for `.Stretch` audio clips: changes duration, not pitch.
+// A time-stretcher for `.Stretch` audio clips: changes duration, not pitch
+// (unless the clip asks for a `transpose`).
 // Fire Engine's clips don't depend on any particular one; `fire:stretch`
 // provides Signalsmith Stretch, and you can supply your own. Give it to the
 // player in `Audio_Player_Settings.stretcher`.
@@ -24,6 +25,9 @@ Stretcher_VTable :: struct {
 	// [rt] Start over so that the next output begins at input frame 0;
 	// `frames` = input_latency + rate × output_latency.
 	output_seek:    proc "contextless" (s: rawptr, input: [][]f32, frames: int),
+	// Control thread, after `create`; optional (nil: clips with a
+	// `transpose` are refused). Shifts pitch by `semitones`.
+	set_transpose:  proc(s: rawptr, semitones: f64),
 	// [rt] Consume `in_frames` frames and produce `out_frames`; their ratio
 	// is the playback rate.
 	process:        proc "contextless" (s: rawptr, input: [][]f32, in_frames: int, output: [][]f32, out_frames: int),

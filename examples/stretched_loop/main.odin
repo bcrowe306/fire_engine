@@ -4,8 +4,6 @@ up from 90 to 140 BPM, twice: repitched (pitch rises with tempo) and
 time-stretched (pitch stays). Prints the strongest frequency of a held tone
 in each, early and late.
 
-Needs the Signalsmith Stretch library: run ./scripts/stretch.sh first.
-
 	odin run examples/stretched_loop -collection:fire=f_engine
 */
 package stretched_loop

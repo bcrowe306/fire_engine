@@ -75,6 +75,7 @@ Audio_Clip_Settings :: struct {
 	loop_end: i64,
 	bpm: f64,
 	mode: Audio_Mode,
+	transpose: f64,
 	gain: f32,
 	fade_in: f64,
 	fade_out: f64,
@@ -92,6 +93,7 @@ frames.
 | `loop_end` |  |
 | `bpm` | the material's tempo, to place it in beats; needed by Repitch and Stretch |
 | `mode` |  |
+| `transpose` | semitones; Stretch only (pitch shift without changing timing), 0 = none |
 | `gain` | linear; 0 is taken as 1 |
 | `fade_in` | seconds, at the clip's start; negative = none, 0 = 5 ms |
 | `fade_out` | seconds, at the clip's end; negative = none, 0 = 5 ms |
@@ -401,11 +403,13 @@ Stretcher_VTable :: struct {
 	input_latency: proc(s: rawptr) -> int,
 	output_latency: proc(s: rawptr) -> int,
 	output_seek: proc "contextless"(s: rawptr, input: [][]f32, frames: int),
+	set_transpose: proc(s: rawptr, semitones: f64),
 	process: proc "contextless"(s: rawptr, input: [][]f32, in_frames: int, output: [][]f32, out_frames: int),
 }
 ```
 
-A time-stretcher for `.Stretch` audio clips: changes duration, not pitch.
+A time-stretcher for `.Stretch` audio clips: changes duration, not pitch
+(unless the clip asks for a `transpose`).
 Fire Engine's clips don't depend on any particular one; `fire:stretch`
 provides Signalsmith Stretch, and you can supply your own. Give it to the
 player in `Audio_Player_Settings.stretcher`.
@@ -423,6 +427,7 @@ the input fed so far, minus `input_latency`, minus the playback rate
 | `input_latency` | Frames of input ahead of the position being processed. |
 | `output_latency` | Frames by which output trails the position being processed. |
 | `output_seek` | [rt] Start over so that the next output begins at input frame 0; `frames` = input_latency + rate × output_latency. |
+| `set_transpose` | Control thread, after `create`; optional (nil: clips with a `transpose` are refused). Shifts pitch by `semitones`. |
 | `process` | [rt] Consume `in_frames` frames and produce `out_frames`; their ratio is the playback rate. |
 
 ## Procedures
@@ -435,7 +440,8 @@ audio_clip_create :: proc(src: ^stream.Source, settings: Audio_Clip_Settings, al
 
 Control thread. Makes a clip on `src` (which it keeps a reference to).
 Fails with `.Invalid_Argument` for an empty or out-of-range region or
-loop, or a Repitch or Stretch clip without a `bpm`.
+loop, a Repitch or Stretch clip without a `bpm`, or a `transpose` on a
+clip that isn't Stretch.
 
 ### audio_clip_retain
 
@@ -490,8 +496,8 @@ Control thread. Plays `clip` (nil: nothing) placed as `placement`, from
 the player's next block; the switch crossfades. Allocates the clip's
 stream (with cues at the clip's start, its loop start and the placement's
 start), resampler and (for `.Stretch`) stretcher now. Keeps its own
-reference to the clip. A `.Stretch` clip needs `settings.stretcher`
-(`.Unsupported` otherwise) and a prepared node (`.Invalid_State`: add it
+reference to the clip. A `.Stretch` clip needs `settings.stretcher`, one
+with `set_transpose` if the clip has a `transpose` (`.Unsupported` otherwise) and a prepared node (`.Invalid_State`: add it
 to the graph first).
 
 ### audio_player_ready

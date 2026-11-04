@@ -1,54 +1,67 @@
 /*
-Time-stretching for audio clips: Signalsmith Stretch (MIT, by Geraint Luff /
-Signalsmith Audio), as a `clip.Stretcher_VTable`.
+Time-stretching and pitch-shifting: Signalsmith Stretch (by Geraint Luff /
+Signalsmith Audio, MIT), ported to Odin. No C or C++, no build step.
 
-The library is C++, vendored in vendor/signalsmith; build it once with
-`scripts/stretch.sh` (needs CMake and a C++17 compiler). Only apps that
-import this package need it: `fire:clip` itself is pure Odin. A pure-Odin
-port is planned.
+Use it directly on buffers:
+
+	s: stretch.Stretch
+	stretch.stretch_preset_default(&s, channels = 2, sample_rate = 48_000)
+	defer stretch.stretch_destroy(&s)
+	stretch.stretch_set_transpose_semitones(&s, 3)
+	stretch.stretch_output_seek(&s, input, stretch.stretch_output_seek_length(&s, rate))
+	// then, per block (realtime-safe, allocation-free):
+	stretch.stretch_process(&s, input, in_frames, output, out_frames)
+
+or let audio clips use it, for clips that follow tempo at their own pitch,
+or at a `transpose` of it:
 
 	settings := clip.default_audio_player_settings(tl, streamer)
 	settings.stretcher = &stretch.signalsmith
 	node, player := clip.audio_player_create(settings)
 	// ... add the node to the graph, then:
-	loop, _ := clip.audio_clip_create(src, {bpm = 100, mode = .Stretch})
-	clip.audio_player_set(player, loop, {loop = true}) // follows tempo, pitch unchanged
+	loop, _ := clip.audio_clip_create(src, {bpm = 100, mode = .Stretch, transpose = -2})
+	clip.audio_player_set(player, loop, {loop = true})
 
-Its preset analyses 120 ms blocks every 30 ms, so a stretched clip is heard
-about 60 ms after its input; the player compensates, so clips stay in time.
+The default preset analyses 120 ms blocks every 30 ms, so output is heard
+about 60 ms after its input; the clip player compensates. Beyond 2× slower,
+phases are randomised (deterministically, the same on every platform).
 */
 package stretch
 
-import ss "fire:sys/signalsmith"
 import "fire:clip"
 
 // Most channels a stretcher handles.
 MAX_CHANNELS :: 16
 
-// Signalsmith Stretch's default preset, for `Audio_Player_Settings.stretcher`.
+// The default preset as a `clip.Stretcher_VTable`, for
+// `Audio_Player_Settings.stretcher`.
 signalsmith := clip.Stretcher_VTable {
 	create = proc(channels: int, sample_rate, max_rate: f64) -> rawptr {
 		if channels < 1 || channels > MAX_CHANNELS do return nil
-		return ss.create(i32(channels), f32(sample_rate), f32(max_rate))
+		s := new(Stretch)
+		if s == nil || stretch_preset_default(s, channels, f32(sample_rate)) != .None {
+			free(s)
+			return nil
+		}
+		return s
 	},
 	destroy = proc(s: rawptr) {
-		ss.destroy((^ss.Stretch)(s))
+		stretch_destroy((^Stretch)(s))
+		free(s)
 	},
 	input_latency = proc(s: rawptr) -> int {
-		return int(ss.input_latency((^ss.Stretch)(s)))
+		return stretch_input_latency((^Stretch)(s))
 	},
 	output_latency = proc(s: rawptr) -> int {
-		return int(ss.output_latency((^ss.Stretch)(s)))
+		return stretch_output_latency((^Stretch)(s))
 	},
 	output_seek = proc "contextless" (s: rawptr, input: [][]f32, frames: int) {
-		ptrs: [MAX_CHANNELS][^]f32
-		for ch, i in input do ptrs[i] = raw_data(ch)
-		ss.output_seek((^ss.Stretch)(s), raw_data(ptrs[:]), i32(frames))
+		stretch_output_seek((^Stretch)(s), input, frames)
+	},
+	set_transpose = proc(s: rawptr, semitones: f64) {
+		stretch_set_transpose_semitones((^Stretch)(s), f32(semitones))
 	},
 	process = proc "contextless" (s: rawptr, input: [][]f32, in_frames: int, output: [][]f32, out_frames: int) {
-		in_ptrs, out_ptrs: [MAX_CHANNELS][^]f32
-		for ch, i in input do in_ptrs[i] = raw_data(ch)
-		for ch, i in output do out_ptrs[i] = raw_data(ch)
-		ss.process((^ss.Stretch)(s), raw_data(in_ptrs[:]), i32(in_frames), raw_data(out_ptrs[:]), i32(out_frames))
+		stretch_process((^Stretch)(s), input, in_frames, output, out_frames)
 	},
 }
