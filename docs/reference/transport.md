@@ -215,6 +215,8 @@ Status :: struct {
 	frame: timebase.Sample_Time,
 	grid: timebase.Beats,
 	tempo_bpm: f64,
+	bar: i64,
+	meter: timebase.Meter,
 }
 ```
 
@@ -226,6 +228,8 @@ from the end of a recent block.
 | `frame` | reference frames processed |
 | `grid` | grid position |
 | `tempo_bpm` | current tempo |
+| `bar` | 0-based bar of the bar grid (the leader's, when one plays) |
+| `meter` | the meter of that bar |
 
 ### Stats
 
@@ -515,6 +519,17 @@ timeline_status :: proc(c: ^Clock, id: core.Timeline_Id) -> (position: timebase.
 Control thread. A timeline's position and play state as of a recent block
 end. ok = false for an unknown ID, or one added so recently that no block
 has run since.
+
+### timeline_loop
+
+```odin
+timeline_loop :: proc(c: ^Clock, id: core.Timeline_Id) -> (looping: bool, start: timebase.Beats, end: timebase.Beats, ok: bool)
+```
+
+Control thread. Whether a timeline loops, and between which local beats,
+as of a recent block end (`ok` as for `timeline_status`). For displays:
+start and end are read separately, so a change can show half-applied
+for one read.
 
 ### stats
 

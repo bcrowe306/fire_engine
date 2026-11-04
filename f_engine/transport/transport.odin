@@ -111,6 +111,8 @@ Clock :: struct {
 	status_frame:   i64, // atomic
 	status_grid:    u64, // atomic; f64 bits
 	status_tempo:   u64, // atomic; f64 bits
+	status_bar:     i64, // atomic
+	status_meter:   u64, // atomic: numerator << 32 | denominator
 	status_timelines: []Timeline_Status_Atomic,
 	dropped_commands: u64, // atomic
 	dropped_events:   u64, // atomic
@@ -122,6 +124,8 @@ Status :: struct {
 	frame:     tb.Sample_Time, // reference frames processed
 	grid:      tb.Beats,       // grid position
 	tempo_bpm: f64,            // current tempo
+	bar:       i64,            // 0-based bar of the bar grid (the leader's, when one plays)
+	meter:     tb.Meter,       // the meter of that bar
 }
 
 // Counters for things the audio thread dropped instead of allocating.
@@ -132,8 +136,11 @@ Stats :: struct {
 
 @(private)
 Timeline_Status_Atomic :: struct {
-	position: u64, // atomic; f64 bits
-	playing:  bool, // atomic
+	position:   u64, // atomic; f64 bits
+	playing:    bool, // atomic
+	looping:    bool, // atomic
+	loop_start: u64, // atomic; f64 bits
+	loop_end:   u64, // atomic; f64 bits
 }
 
 @(private)
@@ -406,7 +413,15 @@ status :: proc "contextless" (c: ^Clock) -> Status {
 		frame     = tb.Sample_Time(intrinsics.atomic_load_explicit(&c.status_frame, .Relaxed)),
 		grid      = tb.Beats(transmute(f64)intrinsics.atomic_load_explicit(&c.status_grid, .Relaxed)),
 		tempo_bpm = transmute(f64)intrinsics.atomic_load_explicit(&c.status_tempo, .Relaxed),
+		bar       = intrinsics.atomic_load_explicit(&c.status_bar, .Relaxed),
+		meter     = unpack_meter(intrinsics.atomic_load_explicit(&c.status_meter, .Relaxed)),
 	}
+}
+
+@(private)
+unpack_meter :: proc "contextless" (v: u64) -> tb.Meter {
+	if v == 0 do return {4, 4} // before the first block
+	return {i32(v >> 32), i32(v & 0xFFFF_FFFF)}
 }
 
 // Control thread. A timeline's position and play state as of a recent block
@@ -418,6 +433,19 @@ timeline_status :: proc(c: ^Clock, id: core.Timeline_Id) -> (position: tb.Beats,
 	position = tb.Beats(transmute(f64)intrinsics.atomic_load_explicit(&s.position, .Relaxed))
 	playing = intrinsics.atomic_load_explicit(&s.playing, .Relaxed)
 	return position, playing, true
+}
+
+// Control thread. Whether a timeline loops, and between which local beats,
+// as of a recent block end (`ok` as for `timeline_status`). For displays:
+// start and end are read separately, so a change can show half-applied
+// for one read.
+timeline_loop :: proc(c: ^Clock, id: core.Timeline_Id) -> (looping: bool, start, end: tb.Beats, ok: bool) {
+	if check(c, id) != .None do return
+	s := &c.status_timelines[id.index]
+	looping = intrinsics.atomic_load_explicit(&s.looping, .Relaxed)
+	start = tb.Beats(transmute(f64)intrinsics.atomic_load_explicit(&s.loop_start, .Relaxed))
+	end = tb.Beats(transmute(f64)intrinsics.atomic_load_explicit(&s.loop_end, .Relaxed))
+	return looping, start, end, true
 }
 
 // Any thread. Counts of things dropped on the audio thread.

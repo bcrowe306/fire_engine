@@ -46,6 +46,11 @@ jobs:
         shell: bash
         run: ./scripts/clap.sh
 
+      # The C control-surface test script. Without it tests/surface is skipped.
+      - name: Build the surface test script
+        shell: bash
+        run: ./scripts/surface.sh
+
       - name: Test
         shell: bash
         env:

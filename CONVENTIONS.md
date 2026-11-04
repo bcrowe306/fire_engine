@@ -27,6 +27,7 @@ on purpose, leave a comment explaining why.
 | `fire:sampler`   | A sampler: sample maps (zones by key and velocity, loops, one-shots) and the polyphonic sampler node | `core`, `dsp`, `rt`, `stream` |
 | `fire:clap`      | Hosting CLAP plug-ins as nodes: libraries (shared per path), instances, parameters, state, editors | `core`, `sys/clap` |
 | `fire:clap/sdk`  | Making CLAP plug-ins from nodes: the entry, factory and extensions a plug-in library exports | `core`, `rt`, `sys/clap` |
+| `fire:surface`   | Control-surface scripts: the script ABI (Odin, and `fire_surface.h` for C) and the manager hosting them (MIDI, transport, controls, named graph nodes) | `core`, `graph`, `midi`, `timebase`, `transport` |
 | `fire:stretch`   | Signalsmith Stretch, ported to Odin, also as a `clip.Stretcher_VTable`. Only apps import it | `clip`, `dsp` |
 | `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |

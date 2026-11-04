@@ -565,9 +565,15 @@ publish :: proc "contextless" (c: ^Clock) {
 	intrinsics.atomic_store_explicit(&c.status_frame, c.frame, .Relaxed)
 	intrinsics.atomic_store_explicit(&c.status_grid, transmute(u64)f64(g), .Relaxed)
 	intrinsics.atomic_store_explicit(&c.status_tempo, transmute(u64)tempo, .Relaxed)
+	bars := bars_at(c, g)
+	intrinsics.atomic_store_explicit(&c.status_bar, bars.bar, .Relaxed)
+	intrinsics.atomic_store_explicit(&c.status_meter, u64(bars.meter.numerator) << 32 | u64(u32(bars.meter.denominator)), .Relaxed)
 	for &tl, i in c.timelines {
 		s := &c.status_timelines[i]
 		intrinsics.atomic_store_explicit(&s.position, transmute(u64)f64(local_at(&tl, g)), .Relaxed)
 		intrinsics.atomic_store_explicit(&s.playing, tl.state.playing, .Relaxed)
+		intrinsics.atomic_store_explicit(&s.looping, tl.state.looping, .Relaxed)
+		intrinsics.atomic_store_explicit(&s.loop_start, transmute(u64)f64(tl.state.loop_start), .Relaxed)
+		intrinsics.atomic_store_explicit(&s.loop_end, transmute(u64)f64(tl.state.loop_end), .Relaxed)
 	}
 }

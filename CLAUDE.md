@@ -48,6 +48,7 @@ Credentials live in `secrets.env` (gitignored, never commit or print it).
 "$(odin root)/vendor/miniaudio/src/build_miniaudio.sh"   # Linux only, once: miniaudio for fire:audiofile/codecs
 ./scripts/link.sh            # fetch + build Ableton Link (GPL, into gitignored third_party/) for fire:link; tests/link skips without it
 ./scripts/clap.sh            # build the CLAP test plug-ins (C, and Odin via fire:clap/sdk); tests/clap skips without them
+./scripts/surface.sh         # build the C control-surface test script; tests/surface skips without it
 ```
 
 Every exported symbol needs a doc comment; internals are `@(private)`. See the

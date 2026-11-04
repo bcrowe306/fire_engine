@@ -243,6 +243,18 @@ input_process :: proc "contextless" (in_: ^Midi_Input, block_ns: u64, frames: in
 	}
 }
 
+// The consumer of a `Midi_Input` that isn't an audio thread: every short
+// message received so far, in time order, to `each` (with its port index
+// and bytes), with no latency or block placement. For control-thread uses
+// such as control surfaces: give such ports a `Midi_Input` of their own,
+// on a driver of their own, and drain it from one thread only. SysEx comes
+// from `sysex_pop` as usual.
+input_drain :: proc(in_: ^Midi_Input, each: proc(user: rawptr, port: u8, bytes: [3]u8, time_ns: u64), user: rawptr) {
+	for e in rt.spsc_pop(&in_.queue) do insert_pending(in_, e)
+	for e in in_.pending[:in_.pending_len] do each(user, e.port, e.bytes, e.time_ns)
+	in_.pending_len = 0
+}
+
 // [rt] Keeps `pending` sorted by time; events usually arrive in order, so this
 // is an append.
 @(private)

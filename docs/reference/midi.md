@@ -650,6 +650,19 @@ input_process :: proc "contextless"(in_: ^Midi_Input, block_ns: u64, frames: int
 time order. `block_ns` is the presentation time of the block's first frame
 (Io_Block.output_ns).
 
+### input_drain
+
+```odin
+input_drain :: proc(in_: ^Midi_Input, each: proc(user: rawptr, port: u8, bytes: [3]u8, time_ns: u64), user: rawptr)
+```
+
+The consumer of a `Midi_Input` that isn't an audio thread: every short
+message received so far, in time order, to `each` (with its port index
+and bytes), with no latency or block placement. For control-thread uses
+such as control surfaces: give such ports a `Midi_Input` of their own,
+on a driver of their own, and drain it from one thread only. SysEx comes
+from `sysex_pop` as usual.
+
 ### input_stats
 
 ```odin
