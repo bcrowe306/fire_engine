@@ -132,7 +132,8 @@ run_node :: proc(g: ^Graph, p: ^Plan, i: i32, frames: int, t0: i64, transport: ^
 	due := 0
 	for due < s.pending_len && s.pending[due].at < t0 + i64(frames) {
 		c := s.pending[due]
-		pn.events[n] = {u32(max(c.at - t0, 0)), core.Param_Value{c.param, c.value}}
+		at := u32(max(c.at - t0, 0))
+		pn.events[n] = {at, core.Param_Value{c.param, c.value}} if c.ramp < 0 else {at, core.Param_Ramp{c.param, c.value, u32(c.ramp)}}
 		n += 1
 		due += 1
 	}

@@ -170,6 +170,7 @@ Param_Change :: struct {
 	param:      core.Param_Id,
 	value:      f64,
 	at:         i64,
+	ramp:       i64, // frames of a `core.Param_Ramp`, or -1 for a `core.Param_Value`
 }
 
 // Creates a graph with only INPUT and OUTPUT. Starts the worker threads.
@@ -331,8 +332,22 @@ collect :: proc(g: ^Graph) {
 set_param :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, value: f64, at: i64 = 0) -> core.Error {
 	s := lookup(g, id) or_return
 	if s.kind != .Node do return .Invalid_Argument
-	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, value, at}) {
+	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, value, at, -1}) {
 		return .Out_Of_Memory // queue full: the audio thread is not running or far behind
+	}
+	return .None
+}
+
+// Moves a parameter in a straight line to `target` over `frames` frames,
+// starting at `at` (as in `set_param`): the node receives a
+// `core.Param_Ramp`, which it follows exactly instead of smoothing. For
+// timed fades and glides. Control thread only.
+set_param_ramp :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, target: f64, frames: int, at: i64 = 0) -> core.Error {
+	if frames < 0 || frames > int(max(u32)) do return .Invalid_Argument
+	s := lookup(g, id) or_return
+	if s.kind != .Node do return .Invalid_Argument
+	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, target, at, i64(frames)}) {
+		return .Out_Of_Memory
 	}
 	return .None
 }

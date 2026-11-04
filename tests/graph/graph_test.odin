@@ -231,6 +231,27 @@ params_are_sample_accurate :: proc(t: ^testing.T) {
 	}
 }
 
+// Ramps arrive as Param_Ramp events at their graph times, mixed in order
+// with plain values.
+@(test)
+param_ramps_are_sample_accurate :: proc(t: ^testing.T) {
+	g := new_graph(t, 0)
+	defer graph.destroy(g)
+	node, probe := kit.probe_create(1024)
+	id, _ := graph.add_node(g, node, 0, 0)
+	expect_ok(t, graph.commit(g))
+	expect_ok(t, graph.set_param_ramp(g, id, 5, 0.5, 1200, 333))
+	expect_ok(t, graph.set_param(g, id, 6, 2, 900))
+	testing.expect_value(t, graph.set_param_ramp(g, id, 5, 1, -1), core.Error.Invalid_Argument)
+	render(t, g, kit.buffer_length_only(2000, SR), render_cfg(0))
+	got := kit.probe_events(probe)
+	if !testing.expect_value(t, len(got), 2) do return
+	testing.expect_value(t, i64(got[0].absolute), 333)
+	testing.expect_value(t, got[0].payload.(core.Param_Ramp), core.Param_Ramp{5, 0.5, 1200})
+	testing.expect_value(t, i64(got[1].absolute), 900)
+	testing.expect_value(t, got[1].payload.(core.Param_Value), core.Param_Value{6, 2})
+}
+
 // A real node (dsp gain) driven by a sample-accurate parameter.
 @(test)
 param_drives_gain_node :: proc(t: ^testing.T) {

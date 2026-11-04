@@ -23,6 +23,7 @@ one_pole_params := [?]core.Param_Info {
 One_Pole_Lowpass :: struct {
 	cutoff:      Smoothed_Value, // Hz
 	g:           f64,            // G = g / (1 + g), g = tan(pi fc / fs)
+	g_hz:        f64,            // the cutoff `g` is for
 	state:       []f64,          // one per channel, allocated in prepare
 	sample_rate: f64,
 }
@@ -60,7 +61,7 @@ one_pole_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, allocator: mem.
 	if err != nil do return .Out_Of_Memory
 	f.sample_rate = cfg.sample_rate
 	smoothed_init_from_param(&f.cutoff, one_pole_params[0], cfg.sample_rate)
-	f.g = one_pole_coeff(f.cutoff.current, f.sample_rate)
+	f.g, f.g_hz = one_pole_coeff(f.cutoff.current, f.sample_rate), f.cutoff.current
 	return .None
 }
 
@@ -76,7 +77,7 @@ one_pole_reset :: proc(self: rawptr) {
 	f := (^One_Pole_Lowpass)(self)
 	for &s in f.state do s = 0
 	smoothed_reset(&f.cutoff, f.cutoff.target)
-	f.g = one_pole_coeff(f.cutoff.current, f.sample_rate)
+	f.g, f.g_hz = one_pole_coeff(f.cutoff.current, f.sample_rate), f.cutoff.current
 }
 
 // [rt]
@@ -100,8 +101,11 @@ one_pole_render :: proc(f: ^One_Pole_Lowpass, ctx: ^core.Process_Context, from, 
 	channels := len(ctx.outputs)
 	ins := min(len(ctx.inputs), channels)
 	for i in from ..< to {
-		if smoothed_is_smoothing(&f.cutoff) {
-			f.g = one_pole_coeff(smoothed_next(&f.cutoff), f.sample_rate)
+		// A ramp's last call returns the value before its target, so compare
+		// with what `g` was designed for rather than only while smoothing.
+		hz := smoothed_next(&f.cutoff) if smoothed_is_smoothing(&f.cutoff) else f.cutoff.current
+		if hz != f.g_hz {
+			f.g, f.g_hz = one_pole_coeff(hz, f.sample_rate), hz
 		}
 		for c in 0 ..< channels {
 			x := c < ins ? f64(ctx.inputs[c][i]) : 0

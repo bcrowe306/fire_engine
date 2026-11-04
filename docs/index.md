@@ -15,7 +15,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:graph`](/reference/graph/) | The audio graph: nodes and connections, processed on many threads |
 | [`fire:transport`](/reference/transport/) | The musical clock: tempo, bars, and timelines for arrangements, clips, loopers and sequencers; MIDI clock out |
 | [`fire:link`](/reference/link/) | Optional [Ableton Link](https://www.ableton.com/link/) sync (GPLv2+; built separately) |
-| [`fire:dsp`](/reference/dsp/) | DSP building blocks and simple nodes (gain, filters, smoothing, resampling) |
+| [`fire:dsp`](/reference/dsp/) | DSP primitives and effect nodes: filters and parametric EQ, gain, smoothing, resampling, FFT |
 | [`fire:audiofile`](/reference/audiofile/) | Read and write WAV and AIFF; [FLAC, MP3 and Ogg](/reference/audiofile/codecs/) decoding |
 | [`fire:clip`](/reference/clip/) | Clips on timelines: MIDI clips with per-note expression, tempo-following audio clips, parameter automation, players for launchers and arrangements, MIDI files |
 | [`fire:record`](/reference/record/) | Recording: audio takes to disk, MIDI and automation recording, overdub and loop recording, latency compensation and measurement |
@@ -36,7 +36,8 @@ DAW, a headless box on a single-board computer) on top of its packages.
    [recording](/guides/recording/) them.
 4. [Audio devices](/guides/devices/) and [MIDI](/guides/midi/): talking to hardware.
 5. [Audio files and sample rates](/guides/audio-files/): reading, writing, recording, resampling.
-6. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
+6. [Effects](/guides/effects/): the filters and EQ in `fire:dsp`.
+7. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.
 

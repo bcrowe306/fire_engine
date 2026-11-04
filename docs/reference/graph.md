@@ -246,6 +246,17 @@ Changes a parameter of a node, sample-accurately: the node receives a
 the graph started processing, see `time`). `at = 0` or a time already past
 means the start of the next block. Control thread only (one producer).
 
+### set_param_ramp
+
+```odin
+set_param_ramp :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, target: f64, frames: int, at: i64 = 0) -> core.Error
+```
+
+Moves a parameter in a straight line to `target` over `frames` frames,
+starting at `at` (as in `set_param`): the node receives a
+`core.Param_Ramp`, which it follows exactly instead of smoothing. For
+timed fades and glides. Control thread only.
+
 ### get_node
 
 ```odin

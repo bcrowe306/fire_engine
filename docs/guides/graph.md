@@ -68,11 +68,13 @@ half-finished edit.
 ```odin
 graph.set_param(g, vol, dsp.GAIN_PARAM_DB, -6)                  // next block
 graph.set_param(g, vol, dsp.GAIN_PARAM_DB, -20, at = t + 4800)  // at a frame
+graph.set_param_ramp(g, vol, dsp.GAIN_PARAM_DB, -96, frames = 96_000) // a 2 s fade
 ```
 
-The node receives a `core.Param_Value` event at the exact frame. Times are on
-the graph's clock, frames since it started processing (`graph.time(g)`).
-`set_param` is lock-free; call it from one control thread.
+The node receives a `core.Param_Value` event at the exact frame, which it
+smooths its own way; a ramp arrives as a `core.Param_Ramp`, which it follows
+exactly. Times are on the graph's clock, frames since it started processing
+(`graph.time(g)`). Both are lock-free; call them from one control thread.
 
 ## Events and MIDI
 
