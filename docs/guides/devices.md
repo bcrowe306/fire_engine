@@ -70,7 +70,10 @@ for e in backend.device_poll_event(&dev) {
 
 The engine never tears a device down by itself: you decide what to do.
 `backend.device_stats` reports callbacks, xruns and CPU load (load 1.0 = the
-whole block's time spent in your callback).
+whole block's time spent in your callback), and the round trip the
+timestamps imply (`round_trip_frames`). For recording, use
+`backend.round_trip_latency_frames(&dev)` once the device runs, or measure
+it: see [Recording](/guides/recording/#latency).
 
 ## See also
 

@@ -82,6 +82,18 @@ Device_Format :: struct {
 	output_latency_frames:  int,
 }
 
+// Control thread. The frames between a sample leaving the engine and a
+// loopback of it arriving back, which a recorder compensates so takes line
+// up with what the performer heard. From the driver's timestamps once the
+// device has run a callback (they match loopback measurements), else the
+// latencies it reports (which some drivers leave at 0). Measure your own
+// interface with a loopback cable and add an offset if takes land late or
+// early.
+round_trip_latency_frames :: proc(dev: ^Device) -> int {
+	if n := device_stats(dev).round_trip_frames; n > 0 do return n
+	return dev.format.input_latency_frames + dev.format.output_latency_frames
+}
+
 // `channels` interleaved channels starting at `data`.
 Driver_Plane :: struct {
 	data:     rawptr,

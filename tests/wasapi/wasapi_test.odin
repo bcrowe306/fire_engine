@@ -115,8 +115,8 @@ loopback_through_cable :: proc(t: ^testing.T) {
 	for ch in 0 ..< 2 {
 		res := kit.analyze_loopback(r.play[:frames / 2], r.rec[ch][:], 8192)
 		testing.expectf(t, res.found, "ch%d: no loopback signal", ch)
-		if ch == 0 do log.infof("%v Hz %v/%v, period %d, buffer %d: round trip %d frames (%.2f ms), gain %v (%.2f dB), residual %v; %v; peak load %.3f",
-			f.sample_rate, f.output_format, f.input_format, f.buffer_frames, f.max_driver_frames, res.latency, f64(res.latency) * 1000 / f.sample_rate,
+		if ch == 0 do log.infof("%v Hz %v/%v, period %d, buffer %d: round trip %d frames (%.2f ms; driver reports %d, timestamps %d), gain %v (%.2f dB), residual %v; %v; peak load %.3f",
+			f.sample_rate, f.output_format, f.input_format, f.buffer_frames, f.max_driver_frames, res.latency, f64(res.latency) * 1000 / f.sample_rate, f.input_latency_frames + f.output_latency_frames, stats.round_trip_frames,
 			res.gain, kit.linear_to_db(res.gain), res.residual, diag, stats.peak_load)
 		testing.expectf(t, res.residual <= 1e-5, "ch%d: not a scaled copy: gain %v residual %v at %d", ch, res.gain, res.residual, res.at)
 		if res.found && res.residual > 1e-5 && ch == 0 {
@@ -276,4 +276,24 @@ endpoint_hotplug_is_reported :: proc(t: ^testing.T) {
 		time.sleep(20 * time.Millisecond)
 	}
 	testing.expect(t, back, "no Devices_Changed after re-enabling the cable")
+}
+
+@(test)
+latency_probe_measures_the_cable :: proc(t: ^testing.T) {
+	lock := kit.device_lock("vbcable")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
+	d, ok := make_driver(t)
+	if !ok do return
+	defer backend.driver_destroy(d)
+	c, found := find_cable(d)
+	if !found do return
+	dev: backend.Device
+	defer backend.device_destroy(&dev)
+	if !open_cable(t, &dev, d, c, 256) do return
+	frames, quality, done := kit.run_latency_probe(&dev)
+	log.infof("probe: %d frames, quality %.4f; device timestamps %d", frames, quality, backend.round_trip_latency_frames(&dev))
+	testing.expect(t, done, "the probe never finished")
+	testing.expectf(t, quality > 0.99, "quality %v", quality)
+	testing.expectf(t, frames > dev.format.buffer_frames, "%d frames is less than a period", frames) // VB-CABLE's own delay varies by stream
 }

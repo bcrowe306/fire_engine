@@ -25,6 +25,7 @@ Device_Stats :: struct {
 	overloads: u64, // driver callbacks that took longer than their real-time budget
 	load:      f64, // last driver callback: elapsed / budget
 	peak_load: f64, // since start or the last device_reset_peak_load
+	round_trip_frames: int, // output presentation minus input capture time of the last callback, from the driver's timestamps; 0 = unknown
 }
 
 @(private) EVENT_RING :: 64
@@ -72,6 +73,7 @@ Device :: struct {
 	stat_overloads: u64,
 	stat_load:      u64, // f64 bits
 	stat_peak_load: u64, // f64 bits
+	stat_round_trip_ns: u64,
 
 	// Driver notification thread → control thread.
 	event_lock:     sync.Mutex,
@@ -214,6 +216,7 @@ device_stats :: proc(dev: ^Device) -> Device_Stats {
 		overloads = load(&dev.stat_overloads),
 		load      = transmute(f64)load(&dev.stat_load),
 		peak_load = transmute(f64)load(&dev.stat_peak_load),
+		round_trip_frames = int(f64(load(&dev.stat_round_trip_ns)) * dev.format.sample_rate / 1e9 + 0.5),
 	}
 }
 
@@ -258,6 +261,9 @@ driver_process :: proc "contextless" (dev: ^Device, buf: ^Driver_Buffers) {
 
 	sr := dev.format.sample_rate
 	callback_ns := buf.callback_ns != 0 ? buf.callback_ns : rt.host_time_ns()
+	if buf.input_ns != 0 && buf.output_ns > buf.input_ns {
+		intrinsics.atomic_store_explicit(&dev.stat_round_trip_ns, buf.output_ns - buf.input_ns, .Relaxed)
+	}
 
 	block := Io_Block {
 		inputs      = dev.in_views,

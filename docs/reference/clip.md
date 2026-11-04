@@ -716,6 +716,18 @@ automation_clip_release :: proc(c: ^Automation_Clip)
 
 Control thread. Drops a reference; the clip is freed with the last one.
 
+### automation_merge
+
+```odin
+automation_merge :: proc(base: ^Automation_Clip, param: core.Param_Id, start: timebase.Beats, end: timebase.Beats, points: []Automation_Point, length: timebase.Beats = 0, allocator: mem.Allocator = context.allocator) -> (c: ^Automation_Clip, err: core.Error)
+```
+
+Control thread. A new clip like `base`, with `param`'s lane replaced from
+clip position `start` to `end` by `points` (sorted, within the range): what
+writing automation over a range does. The curve jumps to the new points
+at `start` and back to the old curve at `end`. With a nil `base`, makes a
+clip of `length` beats with only this lane. The caller owns the result.
+
 ### automation_lane
 
 ```odin
@@ -820,6 +832,16 @@ add_controller :: proc(b: ^Midi_Builder, at: timebase.Beats, bytes: [3]u8)
 ```
 
 Adds a channel message at `at` (`bytes[0]` is the status byte).
+
+### add_clip
+
+```odin
+add_clip :: proc(b: ^Midi_Builder, c: ^Midi_Clip, offset: timebase.Beats = 0)
+```
+
+Adds everything in clip `c` (notes with their expression, and
+controllers), `offset` beats later: to edit a clip, merge recordings into
+it (overdub), or join clips. The builder's length and loop are unchanged.
 
 ### set_loop
 

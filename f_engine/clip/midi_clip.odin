@@ -121,6 +121,17 @@ add_controller :: proc(b: ^Midi_Builder, at: tb.Beats, bytes: [3]u8) {
 	append(&b.controllers, Controller{at, bytes})
 }
 
+// Adds everything in clip `c` (notes with their expression, and
+// controllers), `offset` beats later: to edit a clip, merge recordings into
+// it (overdub), or join clips. The builder's length and loop are unchanged.
+add_clip :: proc(b: ^Midi_Builder, c: ^Midi_Clip, offset: tb.Beats = 0) {
+	for n in c.notes {
+		i := add_note(b, n.start + offset, n.length, n.key, n.velocity, n.channel, n.release)
+		for x in c.expression[n.expression[0]:][:n.expression[1]] do add_expression(b, i, x.at, x.kind, x.value)
+	}
+	for k in c.controllers do add_controller(b, k.at + offset, k.bytes)
+}
+
 // Sets the part a looping placement repeats (default: the whole clip).
 set_loop :: proc(b: ^Midi_Builder, start, end: tb.Beats) {
 	b.loop_start, b.loop_end = start, end

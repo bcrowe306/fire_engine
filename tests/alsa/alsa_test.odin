@@ -118,8 +118,8 @@ loopback_is_exact :: proc(t: ^testing.T) {
 	for c in 0 ..< 2 {
 		res := kit.analyze_loopback(r.play[:FRAMES / 2], r.rec[c][:], 8192)
 		testing.expectf(t, res.found, "ch%d: no loopback signal", c)
-		if c == 0 do log.infof("format %v/%v, period %d: round trip %d frames (%.2f ms), gain %v, residual %v; SCHED_FIFO %v; peak load %.3f",
-			f.output_format, f.input_format, f.buffer_frames, res.latency, f64(res.latency) * 1000 / f.sample_rate, res.gain, res.residual, realtime, stats.peak_load)
+		if c == 0 do log.infof("format %v/%v, period %d: round trip %d frames (%.2f ms; driver reports %d, timestamps %d), gain %v, residual %v; SCHED_FIFO %v; peak load %.3f",
+			f.output_format, f.input_format, f.buffer_frames, res.latency, f64(res.latency) * 1000 / f.sample_rate, f.input_latency_frames + f.output_latency_frames, stats.round_trip_frames, res.gain, res.residual, realtime, stats.peak_load)
 		testing.expectf(t, abs(res.gain - 1) < 1e-6 && res.residual <= lsb * 0.5 + 1e-7, "ch%d: not an exact copy: gain %v residual %v at %d", c, res.gain, res.residual, res.at)
 	}
 }
@@ -252,4 +252,22 @@ card_hotplug_is_reported :: proc(t: ^testing.T) {
 	testing.expect(t, wait_event(&dev, .Devices_Changed, 3 * time.Second), "no Devices_Changed after adding a card")
 	testing.expect_value(t, system("rmmod snd-dummy"), 0)
 	testing.expect(t, wait_event(&dev, .Devices_Changed, 3 * time.Second), "no Devices_Changed after removing a card")
+}
+
+@(test)
+latency_probe_measures_the_loopback :: proc(t: ^testing.T) {
+	lock := kit.device_lock("aloop")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
+	d := alsad.create()
+	defer backend.driver_destroy(d)
+	if !has_loopback(d) do return
+	dev: backend.Device
+	defer backend.device_destroy(&dev)
+	if !open_loopback(t, &dev, d, 1024, 256) do return
+	frames, quality, ok := kit.run_latency_probe(&dev)
+	log.infof("probe: %d frames, quality %.4f; device timestamps %d", frames, quality, backend.round_trip_latency_frames(&dev))
+	testing.expect(t, ok, "the probe never finished")
+	testing.expectf(t, quality > 0.99, "quality %v", quality)
+	testing.expect_value(t, frames, 2 * dev.format.buffer_frames) // the loopback measured above: two periods
 }

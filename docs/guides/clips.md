@@ -229,8 +229,9 @@ graph.set_param(g, filter, dsp.ONE_POLE_PARAM_CUTOFF_HZ, user_hz) // the user's 
 clip.automation_player_resume(player, dsp.ONE_POLE_PARAM_CUTOFF_HZ, glide_ms = 50)
 ```
 
-Recording parameter moves into new curves is left to the app for now: it
-can collect the values it sets and build a clip from them.
+To record moves into the curve, send them through an automation recorder
+and merge its takes with `clip.automation_merge`: see
+[Recording](/guides/recording/#automation).
 
 ## Building a clip launcher
 
@@ -315,3 +316,5 @@ clip.midi_file_write("out.mid", {{"Bass", bass}, {"Keys", keys}}, &tempo_map)
 - [`fire:clip` reference](/reference/clip/)
 - [Tempo and timelines](/guides/transport/): launching, looping and
   locating the timelines clips play on
+- [Recording](/guides/recording/): audio takes, MIDI overdubs and
+  automation, ready to play as clips

@@ -343,6 +343,7 @@ Device_Stats :: struct {
 	overloads: u64,
 	load: f64,
 	peak_load: f64,
+	round_trip_frames: int,
 }
 ```
 
@@ -357,6 +358,7 @@ Counters returned by device_stats. Reset by device_start.
 | `overloads` | driver callbacks that took longer than their real-time budget |
 | `load` | last driver callback: elapsed / budget |
 | `peak_load` | since start or the last device_reset_peak_load |
+| `round_trip_frames` | output presentation minus input capture time of the last callback, from the driver's timestamps; 0 = unknown |
 
 ### Device
 
@@ -389,6 +391,7 @@ Device :: struct {
 	stat_overloads: u64,
 	stat_load: u64,
 	stat_peak_load: u64,
+	stat_round_trip_ns: u64,
 	event_lock: sync.Mutex,
 	events: [64]Device_Event,
 	event_head: int,
@@ -430,6 +433,7 @@ time. All procs except `driver_process` run on the control thread.
 | `stat_overloads` |  |
 | `stat_load` | f64 bits |
 | `stat_peak_load` | f64 bits |
+| `stat_round_trip_ns` |  |
 | `event_lock` | Driver notification thread → control thread. |
 | `events` |  |
 | `event_head` |  |
@@ -455,6 +459,20 @@ device_infos_destroy :: proc(infos: []Device_Info, allocator: mem.Allocator = co
 
 Frees a slice returned by driver_enumerate and everything in it. Pass the
 same allocator that was given to driver_enumerate.
+
+### round_trip_latency_frames
+
+```odin
+round_trip_latency_frames :: proc(dev: ^Device) -> int
+```
+
+Control thread. The frames between a sample leaving the engine and a
+loopback of it arriving back, which a recorder compensates so takes line
+up with what the performer heard. From the driver's timestamps once the
+device has run a callback (they match loopback measurements), else the
+latencies it reports (which some drivers leave at 0). Measure your own
+interface with a loopback cable and add an offset if takes land late or
+early.
 
 ### driver_destroy
 

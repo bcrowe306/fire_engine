@@ -120,7 +120,7 @@ loopback_is_exact :: proc(t: ^testing.T) {
 	for ch in 0 ..< 2 {
 		res := kit.analyze_loopback(r.play[:FRAMES / 2], r.rec[ch][:], 8192)
 		testing.expectf(t, res.found, "ch%d: no loopback signal", ch)
-		if ch == 0 do log.infof("round trip %d frames (%d periods), gain %v, residual %v; peak load %.3f", res.latency, res.latency / PERIOD, res.gain, res.residual, stats.peak_load)
+		if ch == 0 do log.infof("round trip %d frames (%d periods; driver reports %d, timestamps %d), gain %v, residual %v; peak load %.3f", res.latency, res.latency / PERIOD, dev.format.input_latency_frames + dev.format.output_latency_frames, stats.round_trip_frames, res.gain, res.residual, stats.peak_load)
 		testing.expectf(t, res.gain == 1 && res.residual == 0, "ch%d: not bit-exact: gain %v residual %v at %d", ch, res.gain, res.residual, res.at)
 		testing.expectf(t, res.latency % PERIOD == 0, "ch%d: latency %d is not whole periods", ch, res.latency)
 	}

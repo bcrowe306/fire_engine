@@ -139,6 +139,45 @@ automation_clip_release :: proc(c: ^Automation_Clip) {
 	free(c, c.allocator)
 }
 
+// Control thread. A new clip like `base`, with `param`'s lane replaced from
+// clip position `start` to `end` by `points` (sorted, within the range): what
+// writing automation over a range does. The curve jumps to the new points
+// at `start` and back to the old curve at `end`. With a nil `base`, makes a
+// clip of `length` beats with only this lane. The caller owns the result.
+automation_merge :: proc(base: ^Automation_Clip, param: core.Param_Id, start, end: tb.Beats, points: []Automation_Point, length: tb.Beats = 0, allocator := context.allocator) -> (c: ^Automation_Clip, err: core.Error) {
+	if !(end >= start) do return nil, .Invalid_Argument
+	b: Automation_Builder
+	automation_builder_init(&b, base.length if base != nil else length, context.temp_allocator)
+	defer automation_builder_destroy(&b)
+	if base != nil {
+		automation_set_loop(&b, base.loop_start, base.loop_end)
+		for &l in base.lanes {
+			if l.param != param {
+				for p in l.points do automation_add_point(&b, l.param, p.at, p.value, p.shape, p.tension)
+				continue
+			}
+			for p in l.points do if p.at < start do automation_add_point(&b, param, p.at, p.value, p.shape, p.tension)
+			if len(l.points) > 0 && start > l.points[0].at do automation_add_point(&b, param, start, left_of(&l, start))
+		}
+	}
+	for p in points do automation_add_point(&b, param, p.at, p.value, p.shape, p.tension)
+	if base != nil {
+		if l := automation_lane(base, param); l != nil && len(l.points) > 0 {
+			if end < l.points[len(l.points) - 1].at do automation_add_point(&b, param, end, automation_value(l, end))
+			for p in l.points do if p.at > end do automation_add_point(&b, param, p.at, p.value, p.shape, p.tension)
+		}
+	}
+	return automation_build(&b, allocator)
+}
+
+// The lane's value just before `at` (before any jump there).
+@(private)
+left_of :: proc "contextless" (l: ^Automation_Lane, at: tb.Beats) -> f64 {
+	i := segment_at(l, at)
+	for i >= 0 && l.points[i].at >= at do i -= 1
+	return segment_value(l, i, at)
+}
+
 // [rt] The lane for `param`, or nil.
 automation_lane :: proc "contextless" (c: ^Automation_Clip, param: core.Param_Id) -> ^Automation_Lane {
 	if c == nil do return nil

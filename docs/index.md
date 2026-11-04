@@ -18,6 +18,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:dsp`](/reference/dsp/) | DSP building blocks and simple nodes (gain, filters, smoothing, resampling) |
 | [`fire:audiofile`](/reference/audiofile/) | Read and write WAV and AIFF; [FLAC, MP3 and Ogg](/reference/audiofile/codecs/) decoding |
 | [`fire:clip`](/reference/clip/) | Clips on timelines: MIDI clips with per-note expression, tempo-following audio clips, parameter automation, players for launchers and arrangements, MIDI files |
+| [`fire:record`](/reference/record/) | Recording: audio takes to disk, MIDI and automation recording, overdub and loop recording, latency compensation and measurement |
 | [`fire:stretch`](/reference/stretch/) | Time-stretching for audio clips: Signalsmith Stretch, ported to Odin |
 | [`fire:stream`](/reference/stream/) | Disk streaming: files read ahead on background threads, instant jumps to cue points |
 | [`fire:backend`](/reference/backend/) | Audio devices: one API over [CoreAudio](/reference/backend/coreaudio/), [ALSA](/reference/backend/alsa/), [JACK](/reference/backend/jack/), [WASAPI](/reference/backend/wasapi/) and a [simulated driver](/reference/backend/fake/) |
@@ -31,7 +32,8 @@ DAW, a headless box on a single-board computer) on top of its packages.
 1. [Getting started](/guides/getting-started/): build setup and a first program.
 2. [The audio graph](/guides/graph/): how to connect nodes and run them.
 3. [Tempo and timelines](/guides/transport/): the clock, playing, looping and quantized launching.
-   Then [clips](/guides/clips/): MIDI and audio that play on them.
+   Then [clips](/guides/clips/): MIDI and audio that play on them, and
+   [recording](/guides/recording/) them.
 4. [Audio devices](/guides/devices/) and [MIDI](/guides/midi/): talking to hardware.
 5. [Audio files and sample rates](/guides/audio-files/): reading, writing, recording, resampling.
 6. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.

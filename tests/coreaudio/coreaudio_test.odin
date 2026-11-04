@@ -134,8 +134,8 @@ blackhole_loopback_is_bit_exact :: proc(t: ^testing.T) {
 	for c in 0 ..< 2 {
 		res := kit.analyze_loopback(r.play[:FRAMES / 2], r.rec[c][:], 8192)
 		testing.expectf(t, res.found, "ch%d: no loopback signal found", c)
-		if c == 0 do log.infof("round trip %d frames (%.2f ms), gain %.4f (%.2f dB)%s; %d callbacks, peak load %.3f",
-			res.latency, f64(res.latency) * 1000 / f.sample_rate, res.gain, kit.linear_to_db(res.gain),
+		if c == 0 do log.infof("round trip %d frames (%.2f ms; driver reports %d, timestamps %d), gain %.4f (%.2f dB)%s; %d callbacks, peak load %.3f",
+			res.latency, f64(res.latency) * 1000 / f.sample_rate, f.input_latency_frames + f.output_latency_frames, stats.round_trip_frames, res.gain, kit.linear_to_db(res.gain),
 			"" if unity else " (BlackHole volume below 100%)", stats.callbacks, stats.peak_load)
 		testing.expectf(t, res.residual <= 1e-6, "ch%d: recording is not a scaled copy of the input: residual %v at %d", c, res.residual, res.at)
 		if unity do testing.expectf(t, res.gain == 1 && res.residual == 0, "ch%d: loopback at unity volume not bit-exact (gain %v)", c, res.gain)
@@ -322,4 +322,28 @@ wait_device_event :: proc(dev: ^backend.Device, kind: backend.Device_Event_Kind,
 		time.sleep(10 * time.Millisecond)
 	}
 	return false
+}
+
+@(test)
+latency_probe_measures_blackhole :: proc(t: ^testing.T) {
+	lock := kit.device_lock("blackhole")
+	defer kit.device_unlock(lock)
+	testing.set_fail_timeout(t, 60 * time.Second)
+	d := cad.create()
+	defer backend.driver_destroy(d)
+	id, rate, found := find_blackhole(t, d)
+	if !found do return
+	dev: backend.Device
+	backend.device_init(&dev, d)
+	defer backend.device_destroy(&dev)
+	setup := backend.Device_Setup{output_device_id = id, input_device_id = id, sample_rate = rate, buffer_frames = 256, input_channels = {0, 1}, output_channels = {0, 1}}
+	if err := backend.device_open(&dev, setup, 256); err != .None {
+		testing.expectf(t, false, "open BlackHole: %v", err)
+		return
+	}
+	frames, quality, ok := kit.run_latency_probe(&dev)
+	log.infof("probe: %d frames, quality %.4f; device timestamps %d", frames, quality, backend.round_trip_latency_frames(&dev))
+	testing.expect(t, ok, "the probe never finished")
+	testing.expectf(t, quality > 0.99, "quality %v", quality)
+	testing.expect_value(t, frames, 2 * dev.format.buffer_frames) // as the loopback test measures
 }

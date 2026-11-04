@@ -1152,6 +1152,16 @@ standard_block_patterns :: proc(max_block: int) -> [5]Block_Pattern
 
 The block-size patterns every DSP test should survive.
 
+### run_latency_probe
+
+```odin
+run_latency_probe :: proc(dev: ^backend.Device, timeout: time.Duration = 10 * time.Second) -> (frames: int, quality: f64, ok: bool)
+```
+
+Runs a `record.Latency_Probe` on an opened (not started) device, from
+its first input channel to every output channel, and returns what it
+measured. Starts and stops the device.
+
 ### probe_create
 
 ```odin

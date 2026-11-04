@@ -23,6 +23,7 @@ on purpose, leave a comment explaining why.
 | `fire:dsp`       | DSP primitives and simple nodes; the resampler             | `core`, `rt`        |
 | `fire:audiofile` | WAV/AIFF reading and writing (pure Odin)                   | `core`              |
 | `fire:clip`      | Clips and their players: immutable MIDI, audio and automation clips, player nodes, Standard MIDI Files | `core`, `rt`, `timebase`, `dsp`, `stream` |
+| `fire:record`    | Recording: audio takes to disk (disk writer thread), MIDI and automation recorders, loop recording, latency compensation and the latency probe | `audiofile`, `clip`, `core`, `dsp`, `rt`, `timebase` |
 | `fire:stretch`   | Signalsmith Stretch, ported to Odin, also as a `clip.Stretcher_VTable`. Only apps import it | `clip`, `dsp` |
 | `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |
