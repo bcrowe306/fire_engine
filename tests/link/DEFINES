@@ -1,0 +1,2 @@
+# Link peers find each other across tests: one test at a time.
+ODIN_TEST_THREADS=1

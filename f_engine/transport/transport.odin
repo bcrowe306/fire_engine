@@ -368,9 +368,21 @@ set_tempo_override :: proc(c: ^Clock, on: bool, at: When = nil) -> core.Error {
 // over tempo maps and the live tempo (meters still apply); report local tempo
 // changes to the outside clock from `begin_block` (see
 // `Sync_Block.desired_bpm`).
+//
+// A sync may also start and stop one timeline (`timeline`), as Link's
+// start/stop sync does: `Sync_Block` tells it when that timeline was started
+// or stopped here, and it may ask for a start or stop at a grid beat.
 Sync :: struct {
 	begin_block: proc(user: rawptr, b: ^Sync_Block), // [rt]
 	user:        rawptr,
+	timeline:    core.Timeline_Id, // the timeline it starts and stops; zero for none
+}
+
+// What a sync asks of its timeline in a block.
+Start_Stop :: enum u8 {
+	None,
+	Start,
+	Stop,
 }
 
 // What `Sync.begin_block` sees and returns.
@@ -386,10 +398,22 @@ Sync_Block :: struct {
 	// only after a local change (`set_tempo`, a map tempo point); push it to
 	// the outside clock then.
 	desired_bpm: f64,
+	// The sync's timeline (`Sync.timeline`): whether it plays at the first
+	// frame, and how often and where (the grid beat of the latest) it was
+	// started or stopped by anything but the sync. A change in `toggles` is
+	// a local start or stop to pass on.
+	playing:     bool,
+	toggles:     u64,
+	toggled_at:  tb.Beats,
 	// Out. Leave `ok` false to change nothing this block.
 	ok:          bool,
 	bpm:         f64,      // the tempo for this block
 	beat:        tb.Beats, // the grid position at the first frame
+	// Start or stop the sync's timeline at grid beat `start_stop_at` (on the
+	// grid as `beat` sets it). A beat already passed applies at once, as if
+	// it had happened then: a start catches up.
+	start_stop:    Start_Stop,
+	start_stop_at: tb.Beats,
 }
 
 // Grid corrections larger than this (in beats) count as a jump: playing

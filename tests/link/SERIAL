@@ -1,0 +1,2 @@
+Link sessions are shared by every Link instance on the network, so concurrent
+runs (other tests, other opt levels) would join each other's sessions.

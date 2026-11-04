@@ -32,6 +32,18 @@ link.enable(l, true)
 transport.play(clock, clip, tb.Quantize.Bar)
 ```
 
+With start/stop sync on (`enable_start_stop`), the session also carries
+play and stop. Name the timeline to follow in `sync`: starting or stopping it
+here (`transport.play`, `transport.stop`) starts or stops peers at the same
+beat, and their starts and stops start and stop it. Joining a session that
+already plays starts it on the session's next quantum.
+
+```odin
+transport.set_sync(clock, link.sync(l, song))
+link.enable_start_stop(l, true)
+transport.play(clock, song, tb.Quantize.Bar) // peers start on that bar too
+```
+
 Pass the device's presentation time to `transport.process` (its `host_ns`
 argument) so the beat lines up with what peers hear.
 
@@ -101,11 +113,38 @@ session_tempo :: proc(l: ^Link) -> f64
 
 Control thread. The session tempo now, as the network sees it.
 
+### enable_start_stop
+
+```odin
+enable_start_stop :: proc(l: ^Link, on: bool)
+```
+
+Any thread. Turns start/stop sync on or off: whether the session's play
+state starts and stops the timeline named in `sync`, and its starts and
+stops reach the session. Peers share play state only among those with it on.
+
+### is_start_stop_enabled
+
+```odin
+is_start_stop_enabled :: proc(l: ^Link) -> bool
+```
+
+Any thread. Whether start/stop sync is on.
+
+### session_playing
+
+```odin
+session_playing :: proc(l: ^Link) -> bool
+```
+
+Control thread. Whether the session is playing, as the network sees it.
+
 ### sync
 
 ```odin
-sync :: proc(l: ^Link) -> transport.Sync
+sync :: proc(l: ^Link, timeline: core.Timeline_Id = {}) -> transport.Sync
 ```
 
-The hook to pass to `transport.set_sync`. `l` must outlive its use.
+The hook to pass to `transport.set_sync`; with start/stop sync, `timeline`
+is the one the session starts and stops. `l` must outlive its use.
 

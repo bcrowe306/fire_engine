@@ -77,6 +77,9 @@ Audio_State :: struct {
 	live_bpm:   f64,
 	override:   bool,
 	sync:       Sync,
+	// Local starts and stops of the sync's timeline (see `Sync_Block`).
+	sync_toggles:    u64,
+	sync_toggled_at: tb.Beats,
 	leader:     core.Timeline_Id,
 	// The clock's own bar grid, used while no leader plays: bar `bar_index`
 	// starts at grid beat `bar_anchor`.
@@ -361,12 +364,14 @@ apply :: proc(c: ^Clock, cmd: ^Command, b: tb.Beats) {
 		tl.anchor_local, tl.anchor_grid = tl.state.position, b
 		tl.state.flags += {.Started}
 		affects_clock = cmd.timeline == c.leader
+		toggled(c, cmd, b)
 	case .Stop:
 		if tl == nil || !tl.state.playing do return
 		tl.state.position = local_at(tl, b)
 		tl.state.playing = false
 		tl.state.flags += {.Stopped}
 		affects_clock = cmd.timeline == c.leader
+		toggled(c, cmd, b)
 	case .Locate:
 		if tl == nil do return
 		if tl.state.playing {
@@ -418,7 +423,18 @@ apply :: proc(c: ^Clock, cmd: ^Command, b: tb.Beats) {
 	if affects_clock do end_edit(c, edit)
 }
 
-// Lets the sync source set this block's tempo and grid position.
+// Counts a start or stop of the sync's timeline that the sync didn't ask for
+// (its own commands carry `flag`).
+@(private)
+toggled :: proc "contextless" (c: ^Clock, cmd: ^Command, b: tb.Beats) {
+	if cmd.timeline == c.sync.timeline && !cmd.flag {
+		c.sync_toggles += 1
+		c.sync_toggled_at = b
+	}
+}
+
+// Lets the sync source set this block's tempo and grid position, and start
+// or stop its timeline.
 @(private)
 follow_sync :: proc(c: ^Clock, frames: int, host_ns: u64) {
 	g := grid_at_frame(c, f64(c.frame))
@@ -429,7 +445,10 @@ follow_sync :: proc(c: ^Clock, frames: int, host_ns: u64) {
 	b := Sync_Block {
 		frame = tb.Sample_Time(c.frame), frames = frames, sample_rate = c.settings.sample_rate,
 		host_ns = host_ns, grid = g, desired_bpm = desired,
+		toggles = c.sync_toggles, toggled_at = c.sync_toggled_at,
 	}
+	tl := get(c, c.sync.timeline)
+	if tl != nil do b.playing = tl.state.playing
 	c.sync.begin_block(c.sync.user, &b)
 	if !b.ok || !(b.bpm >= MIN_BPM && b.bpm <= MAX_BPM) do return
 	delta := b.beat - g
@@ -442,6 +461,14 @@ follow_sync :: proc(c: ^Clock, frames: int, host_ns: u64) {
 	}
 	c.live_bpm = b.bpm
 	c.source = {frame = f64(c.frame), grid = b.beat, bpm = b.bpm}
+	if tl != nil && b.start_stop != .None {
+		cmd := Command{kind = .Play if b.start_stop == .Start else .Stop, timeline = c.sync.timeline, flag = true, at = b.start_stop_at}
+		if due_frame(c, cmd.at) <= c.frame {
+			apply(c, &cmd, cmd.at)
+		} else {
+			insert(c, cmd)
+		}
+	}
 }
 
 @(private)

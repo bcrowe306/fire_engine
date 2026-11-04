@@ -288,8 +288,9 @@ tempo change, loops its second half and edits the bass while it plays.
 - **Edits.** Rebuild the edited clip and set it again with the same
   placement. It replaces the old one at the player's next block.
 - **Bouncing** is the same loop run offline, writing each block with
-  `audiofile.writer_write`; call `audio_player_ready` before starting so
-  the first region doesn't start in silence.
+  `audiofile.writer_write`. Put the streamer in offline mode first
+  (`stream.set_offline(streamer, true)`), so audio players wait for the disk
+  instead of dropping out when the render runs ahead of it.
 
 ## MIDI files
 

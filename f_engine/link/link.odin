@@ -20,11 +20,22 @@ agree with peers when the quantum is the bar length. Local tempo changes
 	// Launch quantized as usual; peers see the same downbeats.
 	transport.play(clock, clip, tb.Quantize.Bar)
 
+With start/stop sync on (`enable_start_stop`), the session also carries
+play and stop. Name the timeline to follow in `sync`: starting or stopping it
+here (`transport.play`, `transport.stop`) starts or stops peers at the same
+beat, and their starts and stops start and stop it. Joining a session that
+already plays starts it on the session's next quantum.
+
+	transport.set_sync(clock, link.sync(l, song))
+	link.enable_start_stop(l, true)
+	transport.play(clock, song, tb.Quantize.Bar) // peers start on that bar too
+
 Pass the device's presentation time to `transport.process` (its `host_ns`
 argument) so the beat lines up with what peers hear.
 */
 package link
 
+import "core:math"
 import "core:mem"
 
 import "fire:core"
@@ -43,6 +54,9 @@ Link :: struct {
 	// Audio thread.
 	last_bpm:  f64, // tempo returned to the clock last block; 0 before the first
 	filter:    Host_Time_Filter,
+	following: bool, // start/stop sync was on last block
+	playing:   bool, // the session's play state as last seen
+	toggles:   u64,  // `Sync_Block.toggles` as last seen
 }
 
 // Control thread. Creates a Link instance, not yet enabled (see `enable`),
@@ -100,9 +114,28 @@ session_tempo :: proc(l: ^Link) -> f64 {
 	return abl.tempo(l.app)
 }
 
-// The hook to pass to `transport.set_sync`. `l` must outlive its use.
-sync :: proc(l: ^Link) -> transport.Sync {
-	return {begin_block = begin_block, user = l}
+// Any thread. Turns start/stop sync on or off: whether the session's play
+// state starts and stops the timeline named in `sync`, and its starts and
+// stops reach the session. Peers share play state only among those with it on.
+enable_start_stop :: proc(l: ^Link, on: bool) {
+	abl.enable_start_stop_sync(l.handle, on)
+}
+
+// Any thread. Whether start/stop sync is on.
+is_start_stop_enabled :: proc(l: ^Link) -> bool {
+	return abl.is_start_stop_sync_enabled(l.handle)
+}
+
+// Control thread. Whether the session is playing, as the network sees it.
+session_playing :: proc(l: ^Link) -> bool {
+	abl.capture_app_session_state(l.handle, l.app)
+	return abl.is_playing(l.app)
+}
+
+// The hook to pass to `transport.set_sync`; with start/stop sync, `timeline`
+// is the one the session starts and stops. `l` must outlive its use.
+sync :: proc(l: ^Link, timeline: core.Timeline_Id = {}) -> transport.Sync {
+	return {begin_block = begin_block, user = l, timeline = timeline}
 }
 
 // [rt] Reports local tempo changes to the session, then gives the clock the
@@ -116,14 +149,67 @@ begin_block :: proc(user: rawptr, b: ^transport.Sync_Block) {
 	link_us := abl.clock_micros(l.handle) + (i64(host_ns) - i64(rt.host_time_ns())) / 1000
 
 	abl.capture_audio_session_state(l.handle, l.audio)
+	commit := false
 	local_change := l.last_bpm != 0 && abs(b.desired_bpm - l.last_bpm) > 1e-6
 	alone_at_start := l.last_bpm == 0 && abl.num_peers(l.handle) == 0
 	if local_change || alone_at_start {
 		abl.set_tempo(l.audio, b.desired_bpm, link_us)
-		abl.commit_audio_session_state(l.handle, l.audio)
+		commit = true
 	}
 	b.bpm = abl.tempo(l.audio)
 	b.beat = tb.Beats(abl.beat_at_time(l.audio, link_us, l.quantum))
 	b.ok = true
 	l.last_bpm = b.bpm
+	if start_stop(l, b) do commit = true
+	if commit do abl.commit_audio_session_state(l.handle, l.audio)
+}
+
+// [rt] Start/stop sync, after `begin_block` set the block's beat: passes a
+// local start or stop to the session, or the session's to the clock. True
+// when the session state needs committing.
+@(private)
+start_stop :: proc(l: ^Link, b: ^transport.Sync_Block) -> (commit: bool) {
+	if !abl.is_start_stop_sync_enabled(l.handle) {
+		l.following = false
+		return false
+	}
+	session := abl.is_playing(l.audio)
+	q := tb.Beats(l.quantum)
+	if !l.following {
+		// Joining: take the session's state from its next quantum.
+		l.following, l.playing, l.toggles = true, session, b.toggles
+		if session && !b.playing {
+			start := tb.Beats(abl.beat_at_time(l.audio, abl.time_for_is_playing(l.audio), l.quantum))
+			b.start_stop, b.start_stop_at = .Start, next_in_phase(start, b.beat, q)
+		}
+		return false
+	}
+	if b.toggles != l.toggles {
+		// Started or stopped here: tell the session when, on its timeline.
+		l.toggles = b.toggles
+		if b.playing != session {
+			abl.set_is_playing(l.audio, b.playing, abl.time_at_beat(l.audio, f64(b.toggled_at), l.quantum))
+			l.playing = b.playing
+			return true
+		}
+		l.playing = session
+		return false
+	}
+	if session != l.playing {
+		// A peer started or stopped the session.
+		l.playing = session
+		if session == b.playing do return false
+		at := tb.Beats(abl.beat_at_time(l.audio, abl.time_for_is_playing(l.audio), l.quantum))
+		// Long past (a missed start): wait for its phase instead of jumping.
+		if at < b.beat - q do at = next_in_phase(at, b.beat, q) if session else b.beat
+		b.start_stop, b.start_stop_at = .Start if session else .Stop, at
+	}
+	return false
+}
+
+// The first beat at or after `from` in phase with `beat` (modulo `q`).
+@(private)
+next_in_phase :: proc "contextless" (beat, from, q: tb.Beats) -> tb.Beats {
+	n := tb.Beats(math.ceil(f64((from - beat) / q)))
+	return beat + max(n, 0) * q
 }

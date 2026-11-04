@@ -53,4 +53,9 @@ foreign abl {
 	phase_at_time                :: proc(state: Session_State, time: i64, quantum: f64) -> f64 ---
 	time_at_beat                 :: proc(state: Session_State, beat: f64, quantum: f64) -> i64 ---
 	request_beat_at_time         :: proc(state: Session_State, beat: f64, time: i64, quantum: f64) ---
+	is_start_stop_sync_enabled   :: proc(link: Link) -> bool ---
+	enable_start_stop_sync       :: proc(link: Link, enabled: bool) ---
+	set_is_playing               :: proc(state: Session_State, is_playing: bool, time: i64) ---
+	is_playing                   :: proc(state: Session_State) -> bool ---
+	time_for_is_playing          :: proc(state: Session_State) -> i64 ---
 }

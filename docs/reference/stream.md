@@ -24,7 +24,8 @@ thread can play any number of them without ever touching the disk.
   launches and loop wraps never drop out.
 
 The audio thread never waits: if data has not arrived it plays silence and
-the stream counts an underrun.
+the stream counts an underrun. Offline renders (bounces), which run faster
+than the disk can keep up, turn on `set_offline` so reads wait instead.
 
 ```odin
 s, _ := stream.create(stream.default_settings())
@@ -60,6 +61,16 @@ MAX_CUES :: 16
 ```
 
 Most cues one stream may have.
+
+### OFFLINE_TIMEOUT
+
+```odin
+OFFLINE_TIMEOUT : time.Duration : 10 * time.Second
+```
+
+The longest one `stream_read` waits for the disk while offline before it
+gives up and plays silence (an underrun), so a broken disk can't hang a
+bounce.
 
 ## Types
 
@@ -172,7 +183,9 @@ slices are left alone, missing ones skipped) and advances. Frames past the
 end of the file are silence. Frames the disk has not delivered yet are
 silence too, and are counted as underruns; time keeps moving. Returns how
 many frames came from the file (the rest of `frames` is silence). One
-audio thread only; never allocates or blocks.
+audio thread only; never allocates, and never blocks unless the streamer
+is offline (`set_offline`): then it waits for the disk instead (up to
+`OFFLINE_TIMEOUT` at a time).
 
 ### stream_seek
 
@@ -201,6 +214,25 @@ default_settings :: proc() -> Settings
 
 Two disk threads, 2 s of read-ahead, 1 s at each cue, files up to 16 MB
 decoded into memory, WAV and AIFF.
+
+### set_offline
+
+```odin
+set_offline :: proc "contextless"(s: ^Streamer, on: bool)
+```
+
+Any thread. Offline (true), `stream_read` waits for data the disk hasn't
+delivered yet instead of playing silence: for bounces and other renders
+that don't run on a device's audio thread, which are faster than real time
+and must never drop out. Turn it off again before playing live.
+
+### is_offline
+
+```odin
+is_offline :: proc "contextless"(s: ^Streamer) -> bool
+```
+
+Any thread. Whether `set_offline` is on.
 
 ### create
 

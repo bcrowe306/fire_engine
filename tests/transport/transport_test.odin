@@ -522,7 +522,7 @@ sync_takes_tempo_and_grid_keeping_timelines_continuous :: proc(t: ^testing.T) {
 
 	fake := Fake_Sync{bpm = 100, origin = 1000}
 	defer delete(fake.desired)
-	transport.set_sync(c, {fake_begin_block, &fake})
+	transport.set_sync(c, {begin_block = fake_begin_block, user = &fake})
 	transport.set_tempo(c, 133)
 	run(c, &r, 48_000)
 	testing.expect(t, fake.calls > 0)
@@ -548,4 +548,81 @@ sync_takes_tempo_and_grid_keeping_timelines_continuous :: proc(t: ^testing.T) {
 	transport.set_sync(c, {})
 	run(c, &r, 4800)
 	testing.expect_value(t, transport.status(c).tempo_bpm, 100) // carries on at the outside tempo
+}
+
+// An outside clock that also starts and stops a timeline, as Link does.
+Start_Stop_Sync :: struct {
+	ask:        transport.Start_Stop, // asked for at the next block, once
+	at:         tb.Beats,
+	toggles:    u64,      // as last seen
+	toggled_at: tb.Beats,
+	playing:    bool,
+}
+
+start_stop_begin_block :: proc(user: rawptr, b: ^transport.Sync_Block) {
+	s := (^Start_Stop_Sync)(user)
+	b.ok, b.bpm = true, 120
+	b.beat = tb.Beats(f64(b.frame) / b.sample_rate * 2) // grid beat = seconds × 2
+	s.toggles, s.toggled_at, s.playing = b.toggles, b.toggled_at, b.playing
+	b.start_stop, b.start_stop_at = s.ask, s.at
+	s.ask = .None
+}
+
+// The sync's starts and stops land on the exact frame of the beat it names,
+// whatever the block size, or at once (caught up) when that beat has passed;
+// they don't count as local toggles, which it is told of with their beat.
+@(test)
+sync_starts_and_stops_its_timeline :: proc(t: ^testing.T) {
+	for block in ([]int{512, 100, 1}) {
+		c := new_clock(120)
+		defer transport.destroy(c)
+		r: Rec
+		defer delete(r.calls)
+		tl, _ := transport.add_timeline(c)
+		s: Start_Stop_Sync
+		transport.set_sync(c, {begin_block = start_stop_begin_block, user = &s, timeline = tl})
+		run(c, &r, 4800, block)
+
+		// A start at beat 1.5 (frame 36_000), asked for at frame 4800.
+		s.ask, s.at = .Start, 1.5
+		run(c, &r, 48_000, block)
+		started := find_flag(&r, int(tl.index), .Started)
+		if testing.expectf(t, started != nil, "block %d: never started", block) {
+			testing.expectf(t, started.frame == 36_000, "block %d: started at frame %d, want 36000", block, started.frame)
+			testing.expect_value(t, started.tl[tl.index].position, 0)
+		}
+		testing.expect_value(t, s.toggles, 0)
+		testing.expect(t, s.playing)
+
+		// A stop in the past applies at once, where it was due: at beat 2,
+		// the song had played 0.5 beats.
+		s.ask, s.at = .Stop, 2
+		run(c, &r, 4800, block)
+		pos, playing, _ := transport.timeline_status(c, tl)
+		testing.expect(t, !playing)
+		kit.expect_near(t, f64(pos), 0.5, 1e-9, "stopped where the stop was due")
+		testing.expect_value(t, s.toggles, 0)
+
+		// A start in the past catches up.
+		clear(&r.calls)
+		s.ask, s.at = .Start, 2.2 // the grid is at 2.4 by now
+		run(c, &r, block, block)
+		pos, playing, _ = transport.timeline_status(c, tl)
+		grid := transport.status(c).grid
+		testing.expect(t, playing)
+		kit.expect_near(t, f64(pos), 0.5 + f64(grid - 2.2), 1e-9, "caught up from the start beat")
+
+		// Local stops and starts are counted, with their beat.
+		transport.stop(c, tl, transport.At_Beat(4))
+		run(c, &r, 48_000, block)
+		testing.expect_value(t, s.toggles, 1)
+		kit.expect_near(t, f64(s.toggled_at), 4, 1e-9, "the local stop's beat")
+		testing.expect(t, !s.playing)
+		transport.play(c, tl)
+		run(c, &r, 4800, block)
+		testing.expect_value(t, s.toggles, 2)
+		testing.expect(t, s.playing)
+		transport.set_sync(c, {})
+		run(c, &r, block, block)
+	}
 }

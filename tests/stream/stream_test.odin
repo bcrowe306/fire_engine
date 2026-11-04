@@ -293,3 +293,60 @@ many_streams_under_load :: proc(t: ^testing.T) {
 	testing.expect_value(t, sh.bad, 0)
 	testing.expect(t, sh.reads > 1000)
 }
+
+// A bounce reads as fast as it can, far faster than the disk: offline, every
+// read waits for its data, from the first one (no `stream_ready` wait), after
+// seeks without cues, and from a file still loading into memory. Live, the
+// same reads underrun (so the test does test the waiting).
+@(test)
+offline_reads_wait_for_the_disk :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 120 * time.Second)
+	path := test_file("ten_seconds.wav", 10 * SR)
+	for offline in ([]bool{true, false}) {
+		settings := streaming_settings()
+		settings.threads = 1
+		s, _ := stream.create(settings)
+		stream.set_offline(s, offline)
+		testing.expect_value(t, stream.is_offline(s), offline)
+		src, _ := stream.source_open(s, path)
+		st, _ := stream.stream_create(s, src)
+		out := [2][]f32{make([]f32, 4096, context.temp_allocator), make([]f32, 4096, context.temp_allocator)}
+		pos := i64(0)
+		bad := false
+		read :: proc(t: ^testing.T, st: ^stream.Stream, out: [2][]f32, pos: ^i64, bad: ^bool, offline: bool) {
+			n := stream.stream_read(st, {out[0][:], out[1][:]}, 4096)
+			silent := check(t, out, pos^, 4096, 10 * SR)
+			if offline && silent != 0 && !bad^ {
+				testing.expectf(t, false, "offline: %d silent frames at %d", silent, pos^)
+				bad^ = true
+			}
+			if offline do testing.expect_value(t, n, int(min(4096, max(10 * SR - pos^, 0))))
+			pos^ += 4096
+		}
+		for pos < 4 * SR do read(t, st, out, &pos, &bad, offline)
+		stream.stream_seek(st, 7 * SR + 77)
+		pos = 7 * SR + 77
+		for pos < 10 * SR do read(t, st, out, &pos, &bad, offline)
+		if offline {
+			testing.expect_value(t, stream.stream_underruns(st), 0)
+		} else {
+			testing.expect(t, stream.stream_underruns(st) > 0, "live reads at full speed never underran")
+		}
+		stream.stream_destroy(st)
+		stream.source_release(src)
+		stream.destroy(s)
+	}
+
+	// In memory: the first read waits while the file loads.
+	s, _ := stream.create(stream.default_settings())
+	defer stream.destroy(s)
+	stream.set_offline(s, true)
+	src, _ := stream.source_open(s, test_file("one_second.wav", SR))
+	defer stream.source_release(src)
+	st, _ := stream.stream_create(s, src)
+	defer stream.stream_destroy(st)
+	out := [2][]f32{make([]f32, 300, context.temp_allocator), make([]f32, 300, context.temp_allocator)}
+	stream.stream_read(st, {out[0][:], out[1][:]}, 300)
+	testing.expect_value(t, check(t, out, 0, 300, SR), 0)
+	testing.expect_value(t, stream.stream_underruns(st), 0)
+}

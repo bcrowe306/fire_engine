@@ -14,7 +14,8 @@ thread can play any number of them without ever touching the disk.
   launches and loop wraps never drop out.
 
 The audio thread never waits: if data has not arrived it plays silence and
-the stream counts an underrun.
+the stream counts an underrun. Offline renders (bounces), which run faster
+than the disk can keep up, turn on `set_offline` so reads wait instead.
 
 	s, _ := stream.create(stream.default_settings())
 	defer stream.destroy(s)
@@ -88,6 +89,29 @@ Streamer :: struct {
 	slots:     []^Stream, // atomic pointers; nil = free
 	pending:   []^Source, // sources waiting to be loaded into memory; atomic pointers
 	underruns: u64, // atomic: frames played as silence for lack of data, all streams
+	offline:   bool, // atomic: reads wait for the disk
+}
+
+// The longest one `stream_read` waits for the disk while offline before it
+// gives up and plays silence (an underrun), so a broken disk can't hang a
+// bounce.
+OFFLINE_TIMEOUT :: 10 * time.Second
+
+// How often an offline read looks again for data.
+@(private)
+OFFLINE_POLL :: 100 * time.Microsecond
+
+// Any thread. Offline (true), `stream_read` waits for data the disk hasn't
+// delivered yet instead of playing silence: for bounces and other renders
+// that don't run on a device's audio thread, which are faster than real time
+// and must never drop out. Turn it off again before playing live.
+set_offline :: proc "contextless" (s: ^Streamer, on: bool) {
+	intrinsics.atomic_store(&s.offline, on)
+}
+
+// Any thread. Whether `set_offline` is on.
+is_offline :: proc "contextless" (s: ^Streamer) -> bool {
+	return intrinsics.atomic_load(&s.offline)
 }
 
 // Whether a source's data can be played.

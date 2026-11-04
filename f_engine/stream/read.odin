@@ -1,6 +1,7 @@
 package stream
 
 import "base:intrinsics"
+import "core:time"
 
 import "fire:rt"
 
@@ -10,11 +11,14 @@ import "fire:rt"
 // end of the file are silence. Frames the disk has not delivered yet are
 // silence too, and are counted as underruns; time keeps moving. Returns how
 // many frames came from the file (the rest of `frames` is silence). One
-// audio thread only; never allocates or blocks.
+// audio thread only; never allocates, and never blocks unless the streamer
+// is offline (`set_offline`): then it waits for the disk instead (up to
+// `OFFLINE_TIMEOUT` at a time).
 stream_read :: proc "contextless" (st: ^Stream, out: [][]f32, frames: int) -> (from_file: int) {
 	src := st.source
 	channels := min(len(out), src.info.channels)
 	done := 0
+	waited: time.Duration
 	for done < frames {
 		left := frames - done
 		if st.position >= src.info.frames {
@@ -30,6 +34,11 @@ stream_read :: proc "contextless" (st: ^Stream, out: [][]f32, frames: int) -> (f
 			}
 		} else {
 			n = read_streamed(st, out[:channels], done, left)
+		}
+		if n == 0 && waited < OFFLINE_TIMEOUT && intrinsics.atomic_load(&st.streamer.offline) && will_arrive(st) {
+			time.sleep(OFFLINE_POLL)
+			waited += OFFLINE_POLL
+			continue
 		}
 		if n == 0 { // nothing available: silence for the rest of this call
 			silence(out[:channels], done, left)
@@ -118,6 +127,14 @@ read_streamed :: proc "contextless" (st: ^Stream, out: [][]f32, at, frames: int)
 		}
 		return n
 	}
+}
+
+// Whether data the stream lacks at its position is still on its way: the
+// source is loading, or a disk thread is filling blocks for it.
+@(private)
+will_arrive :: proc "contextless" (st: ^Stream) -> bool {
+	if st.source.ram != nil do return intrinsics.atomic_load(&st.source.state) == .Loading
+	return st.reader != nil && intrinsics.atomic_load(&st.streamer.running)
 }
 
 @(private)

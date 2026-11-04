@@ -195,6 +195,30 @@ peers' (with a quantum of one bar). `set_tempo`, or a leader's tempo map,
 changes the session tempo for everyone. Before `link.destroy`, detach with
 `transport.set_sync(clock, {})` and let one block pass.
 
+### Start and stop with the session
+
+Link sessions can also share play and stop among members that turn it on.
+Name the timeline that follows the session, and turn start/stop sync on:
+
+```odin
+transport.set_sync(clock, link.sync(l, song))
+link.enable_start_stop(l, true)
+
+transport.play(clock, song, tb.Quantize.Bar) // peers start on that bar too
+```
+
+Starting or stopping `song` here, by any means (your UI, a control surface),
+starts or stops the session at that beat. When a peer starts or stops the
+session, `song` starts or stops at the beat the peer named. The song plays
+on from its own position; a start that has already passed by the time it
+arrives (network delay) is caught up, so the song stays on the peers' beat.
+If you join a session that is already playing, `song` starts on the
+session's next quantum, in phase with the peers. `link.session_playing`
+reports the session's state.
+
+Other sync sources can do the same through `transport.Sync.timeline` and
+the `start_stop` fields of `transport.Sync_Block`.
+
 ## See also
 
 - [`fire:transport` reference](/reference/transport/) and

@@ -105,6 +105,12 @@ stream.stream_seek(st, loop_start)  // a cue: plays on from memory at once
 - **The audio thread never waits.** Missing data plays as silence and is
   counted (`stream_underruns`, `stats`). `stream_ready` tells the control
   thread when a stream can start without a dropout.
+- **Offline renders wait instead.** A bounce runs as fast as the CPU allows,
+  far ahead of the disk. Call `stream.set_offline(streamer, true)` first: then
+  `stream_read` waits for missing data rather than playing silence (up to
+  `stream.OFFLINE_TIMEOUT` per read, so a failing disk can't hang it). Turn it
+  off again before playing live, since waiting on a device's audio thread
+  would glitch.
 
 ## Converting sample rates
 

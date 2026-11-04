@@ -253,6 +253,7 @@ Counters for things the audio thread dropped instead of allocating.
 Sync :: struct {
 	begin_block: proc(user: rawptr, b: ^Sync_Block),
 	user: rawptr,
+	timeline: core.Timeline_Id,
 }
 ```
 
@@ -263,10 +264,27 @@ over tempo maps and the live tempo (meters still apply); report local tempo
 changes to the outside clock from `begin_block` (see
 `Sync_Block.desired_bpm`).
 
+A sync may also start and stop one timeline (`timeline`), as Link's
+start/stop sync does: `Sync_Block` tells it when that timeline was started
+or stopped here, and it may ask for a start or stop at a grid beat.
+
 | Field | Description |
 |-------|-------------|
 | `begin_block` | [rt] |
 | `user` |  |
+| `timeline` | the timeline it starts and stops; zero for none |
+
+### Start_Stop
+
+```odin
+Start_Stop :: enum u8 {
+	None,
+	Start,
+	Stop,
+}
+```
+
+What a sync asks of its timeline in a block.
 
 ### Sync_Block
 
@@ -278,9 +296,14 @@ Sync_Block :: struct {
 	host_ns: u64,
 	grid: timebase.Beats,
 	desired_bpm: f64,
+	playing: bool,
+	toggles: u64,
+	toggled_at: timebase.Beats,
 	ok: bool,
 	bpm: f64,
 	beat: timebase.Beats,
+	start_stop: Start_Stop,
+	start_stop_at: timebase.Beats,
 }
 ```
 
@@ -294,9 +317,14 @@ What `Sync.begin_block` sees and returns.
 | `host_ns` | presentation time of the first frame; 0 = unknown |
 | `grid` | where the clock would be without correction |
 | `desired_bpm` | The tempo the clock would use without sync: the live tempo, or the playing leader's map. It differs from the `bpm` returned last block only after a local change (`set_tempo`, a map tempo point); push it to the outside clock then. |
+| `playing` | The sync's timeline (`Sync.timeline`): whether it plays at the first frame, and how often and where (the grid beat of the latest) it was started or stopped by anything but the sync. A change in `toggles` is a local start or stop to pass on. |
+| `toggles` |  |
+| `toggled_at` |  |
 | `ok` | Out. Leave `ok` false to change nothing this block. |
 | `bpm` | the tempo for this block |
 | `beat` | the grid position at the first frame |
+| `start_stop` | Start or stop the sync's timeline at grid beat `start_stop_at` (on the grid as `beat` sets it). A beat already passed applies at once, as if it had happened then: a start catches up. |
+| `start_stop_at` |  |
 
 ## Procedures
 
