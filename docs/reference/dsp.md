@@ -106,6 +106,91 @@ RMS_MS :: 10.0
 
 RMS window of the detectors, in ms.
 
+### DELAY_PARAM_TIME_MS
+
+```odin
+DELAY_PARAM_TIME_MS : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Delay`'s time in ms (1..4000, default 375), when not synced.
+
+### DELAY_PARAM_SYNC
+
+```odin
+DELAY_PARAM_SYNC : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Delay`'s tempo sync: 1 = the time is `DELAY_PARAM_BEATS` (default 0).
+
+### DELAY_PARAM_BEATS
+
+```odin
+DELAY_PARAM_BEATS : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Delay`'s synced time, in beats (0.0625..8, default
+0.75: a dotted eighth).
+
+### DELAY_PARAM_FEEDBACK
+
+```odin
+DELAY_PARAM_FEEDBACK : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the `Delay`'s feedback, in percent (0..95, default 40).
+
+### DELAY_PARAM_MIX
+
+```odin
+DELAY_PARAM_MIX : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the `Delay`'s mix of echoes with the dry signal, in
+percent (0..100, default 35).
+
+### DELAY_PARAM_PING_PONG
+
+```odin
+DELAY_PARAM_PING_PONG : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the `Delay`'s ping-pong: 1 = echoes alternate left and
+right (stereo only; default 0).
+
+### DELAY_PARAM_LOW_CUT_HZ
+
+```odin
+DELAY_PARAM_LOW_CUT_HZ : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of the `Delay`'s low cut in the feedback loop, in Hz
+(20..2000, default 20): each echo thinner.
+
+### DELAY_PARAM_HIGH_CUT_HZ
+
+```odin
+DELAY_PARAM_HIGH_CUT_HZ : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of the `Delay`'s high cut in the feedback loop, in Hz
+(1000..20000, default 12000): each echo darker.
+
+### DELAY_MAX_SECONDS
+
+```odin
+DELAY_MAX_SECONDS :: 4.0
+```
+
+Longest delay, in seconds.
+
+### DELAY_GLIDE_MS
+
+```odin
+DELAY_GLIDE_MS :: 100.0
+```
+
+How long a delay time change takes to glide (like tape), in ms.
+
 ### EQ_MAX_BANDS
 
 ```odin
@@ -249,6 +334,108 @@ LIMITER_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(3)
 
 Parameter id of the `Limiter`'s release, in ms (1..2000, default 100).
 
+### MOD_PARAM_RATE_HZ
+
+```odin
+MOD_PARAM_RATE_HZ : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the modulation's LFO rate, in Hz.
+
+### MOD_PARAM_DEPTH
+
+```odin
+MOD_PARAM_DEPTH : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the modulation depth. Chorus and flanger: how far the
+delay swings, in ms. Phaser: how far the sweep goes, in percent of the
+range from `MOD_PARAM_MIN_HZ` to `MOD_PARAM_MAX_HZ`.
+
+### MOD_PARAM_DELAY_MS
+
+```odin
+MOD_PARAM_DELAY_MS : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the chorus's and flanger's base delay, in ms: what the
+LFO swings around.
+
+### MOD_PARAM_FEEDBACK
+
+```odin
+MOD_PARAM_FEEDBACK : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the flanger's and phaser's feedback, in percent
+(−95..95; negative inverts).
+
+### MOD_PARAM_MIX
+
+```odin
+MOD_PARAM_MIX : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the modulation's mix with the dry signal, in percent.
+
+### MOD_PARAM_SPREAD
+
+```odin
+MOD_PARAM_SPREAD : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the LFO phase difference between channels, in percent
+of a cycle (0..50; 25 is a quarter cycle, wide stereo).
+
+### MOD_PARAM_VOICES
+
+```odin
+MOD_PARAM_VOICES : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of the chorus's voices per channel (1..4), and the phaser's
+allpass stages (2..12, even).
+
+### MOD_PARAM_MIN_HZ
+
+```odin
+MOD_PARAM_MIN_HZ : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of the phaser's lowest sweep frequency, in Hz.
+
+### MOD_PARAM_MAX_HZ
+
+```odin
+MOD_PARAM_MAX_HZ : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of the phaser's highest sweep frequency, in Hz.
+
+### MOD_MAX_VOICES
+
+```odin
+MOD_MAX_VOICES :: 4
+```
+
+Most voices per channel of a `Chorus`.
+
+### PHASER_MAX_STAGES
+
+```odin
+PHASER_MAX_STAGES :: 12
+```
+
+Most stages of a `Phaser`.
+
+### MOD_MAX_CHANNELS
+
+```odin
+MOD_MAX_CHANNELS :: 8
+```
+
+Most channels the modulation nodes process (the rest are silent).
+
 ### ONE_POLE_PARAM_CUTOFF_HZ
 
 ```odin
@@ -320,6 +507,138 @@ when there are any, they are detected instead of the main inputs.
 | `gain` |  |
 | `sample_rate` |  |
 | `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
+
+### Delay
+
+```odin
+Delay :: struct {
+	time_ms: f64,
+	beats: f64,
+	sync: bool,
+	ping_pong: bool,
+	primed: bool,
+	low_cut: f64,
+	high_cut: f64,
+	frames: Smoothed_Value,
+	feedback: Smoothed_Value,
+	mix: Smoothed_Value,
+	lines: []Delay_Line,
+	low: Svf_Coeffs,
+	high: Svf_Coeffs,
+	low_state: []Svf_State,
+	high_state: []Svf_State,
+	sample_rate: f64,
+}
+```
+
+An echo node: a delay with feedback, filtered in the loop, free or synced
+to the tempo (`ctx.transport`; 120 BPM without one). Changing the time
+glides there over about 100 ms, bending the echoes' pitch as tape does,
+instead of clicking. Ping-pong takes the mix of the inputs and bounces
+it between the first two outputs.
+
+| Field | Description |
+|-------|-------------|
+| `time_ms` |  |
+| `beats` |  |
+| `sync` |  |
+| `ping_pong` |  |
+| `primed` | has rendered: before that, time changes jump instead of gliding |
+| `low_cut` |  |
+| `high_cut` |  |
+| `frames` | the delay in frames, gliding |
+| `feedback` |  |
+| `mix` | percent |
+| `lines` |  |
+| `low` |  |
+| `high` |  |
+| `low_state` |  |
+| `high_state` |  |
+| `sample_rate` |  |
+
+### Interpolation
+
+```odin
+Interpolation :: enum u8 {
+	None,
+	Linear,
+	Cubic,
+}
+```
+
+How a `Delay_Line` reads between samples.
+
+| Value | Description |
+|-------|-------------|
+| `None` | the nearest older sample |
+| `Linear` | cheap; dulls highs a little at fractional delays |
+| `Cubic` | 4-point Hermite: smooth, for modulated delays (chorus, flanger) |
+
+### Delay_Line
+
+```odin
+Delay_Line :: struct {
+	buffer: []f32,
+	mask: int,
+	pos: int,
+}
+```
+
+A single-channel delay line of up to `max_delay` frames, with
+fractional reads. Write each frame, then read it back any delay later.
+
+| Field | Description |
+|-------|-------------|
+| `buffer` | power-of-two length |
+| `mask` |  |
+| `pos` | where the next write goes |
+
+### Lfo_Shape
+
+```odin
+Lfo_Shape :: enum u8 {
+	Sine,
+	Triangle,
+	Saw_Up,
+	Saw_Down,
+	Square,
+	Random,
+}
+```
+
+The shape of an `Lfo`.
+
+| Value | Description |
+|-------|-------------|
+| `Sine` |  |
+| `Triangle` |  |
+| `Saw_Up` |  |
+| `Saw_Down` |  |
+| `Square` |  |
+| `Random` | a new random value each cycle, held (sample and hold) |
+
+### Lfo
+
+```odin
+Lfo :: struct {
+	shape: Lfo_Shape,
+	phase: f64,
+	step: f64,
+	seed: u32,
+	held: f64,
+}
+```
+
+A low-frequency oscillator, from −1 to 1. Free-running at a rate in Hz,
+or locked to a beat position with `lfo_sync`.
+
+| Field | Description |
+|-------|-------------|
+| `shape` |  |
+| `phase` | 0..1 |
+| `step` | cycles per frame |
+| `seed` |  |
+| `held` | Random: the current value |
 
 ### Detector
 
@@ -633,6 +952,16 @@ a DAC or a sample-rate conversion, inter-sample peaks can be up to about
 | `lookahead_ms` |  |
 | `sample_rate` |  |
 | `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
+
+### Modulation
+
+```odin
+Modulation :: struct {...}
+```
+
+A chorus, flanger or phaser node (`chorus_create`, `flanger_create`,
+`phaser_create`). Each channel has its own LFO phase, `spread` apart.
+Fields are internal.
 
 ### One_Pole_Lowpass
 
@@ -980,6 +1309,95 @@ compressor_gain_reduction_db :: proc "contextless"(c: ^Compressor) -> f64
 **Realtime-safe** (callable on the audio thread). The compressor's gain reduction in dB at the end of its last block,
 for a meter. Any thread.
 
+### delay_create
+
+```odin
+delay_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. Allocates a `Delay` node at its defaults. Free it with
+`core.node_destroy`.
+
+### delay_line_init
+
+```odin
+delay_line_init :: proc(d: ^Delay_Line, max_delay: int, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. Allocates a delay line that can delay by up to
+`max_delay` frames (plus room for interpolation). Free with
+`delay_line_destroy`.
+
+### delay_line_destroy
+
+```odin
+delay_line_destroy :: proc(d: ^Delay_Line, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees the delay line.
+
+### delay_line_clear
+
+```odin
+delay_line_clear :: proc "contextless"(d: ^Delay_Line)
+```
+
+**Realtime-safe** (callable on the audio thread). Silences the delay line.
+
+### delay_line_write
+
+```odin
+delay_line_write :: proc "contextless"(d: ^Delay_Line, x: f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Adds the next frame.
+
+### delay_line_read
+
+```odin
+delay_line_read :: proc "contextless"(d: ^Delay_Line, delay: f64, interp: Interpolation = Interpolation.Linear) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The frame written `delay` frames before the last write (0 = the last
+write). `delay` is clamped to what the line holds; Cubic reads at least 1
+frame back.
+
+### lfo_set_rate
+
+```odin
+lfo_set_rate :: proc "contextless"(l: ^Lfo, hz: f64, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets the rate in Hz.
+
+### lfo_shape_at
+
+```odin
+lfo_shape_at :: proc "contextless"(shape: Lfo_Shape, phase: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The shape's value at `phase` (0..1, wrapping). Random returns 0;
+use `lfo_next` for it.
+
+### lfo_next
+
+```odin
+lfo_next :: proc "contextless"(l: ^Lfo) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The value now, then advances one frame.
+
+### lfo_sync
+
+```odin
+lfo_sync :: proc "contextless"(l: ^Lfo, beat: f64, period_beats: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Locks the LFO to the beat: one cycle per `period_beats`, at phase 0
+on every multiple of it, from timeline position `beat`. Call it once
+per block with the position at the block's start, and set the step from
+the tempo (`lfo_set_rate(l, bpm / 60 / period_beats, sample_rate)`).
+
 ### compressor_curve
 
 ```odin
@@ -1253,6 +1671,36 @@ limiter_gain_reduction_db :: proc "contextless"(l: ^Limiter) -> f64
 ```
 
 **Realtime-safe** (callable on the audio thread). The limiter's gain reduction in dB at the end of its last block. Any thread.
+
+### chorus_create
+
+```odin
+chorus_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A chorus node: up to 4 voices per channel, each a copy
+delayed by `delay` ± `depth` ms on its own LFO phase, mixed with the dry
+signal. Free it with `core.node_destroy`.
+
+### flanger_create
+
+```odin
+flanger_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A flanger node: a short delay swept by an LFO, mixed with
+the dry signal into moving comb-filter notches; feedback sharpens them.
+
+### phaser_create
+
+```odin
+phaser_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A phaser node: a chain of first-order allpass filters
+(TPT, so sweeping is smooth) whose frequency an LFO sweeps on a log
+scale between `min` and `max`, mixed with the dry signal. Every two
+stages make one notch; at 50% mix the notches are complete.
 
 ### one_pole_create
 
@@ -1783,6 +2231,14 @@ compressor_params: [8]core.Param_Info
 
 Parameter table of the `Compressor` node, as returned by `node_params`. Read-only.
 
+### delay_params
+
+```odin
+delay_params: [8]core.Param_Info
+```
+
+Parameter table of the `Delay` node, as returned by `node_params`. Read-only.
+
 ### filter_params
 
 ```odin
@@ -1814,6 +2270,30 @@ limiter_params: [3]core.Param_Info
 ```
 
 Parameter table of the `Limiter` node, as returned by `node_params`. Read-only.
+
+### chorus_params
+
+```odin
+chorus_params: [6]core.Param_Info
+```
+
+Parameter table of the `Chorus` node. Read-only.
+
+### flanger_params
+
+```odin
+flanger_params: [6]core.Param_Info
+```
+
+Parameter table of the `Flanger` node. Read-only.
+
+### phaser_params
+
+```odin
+phaser_params: [8]core.Param_Info
+```
+
+Parameter table of the `Phaser` node. Read-only.
 
 ### one_pole_params
 

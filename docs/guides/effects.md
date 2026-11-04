@@ -1,6 +1,6 @@
 ---
 title: Effects
-description: Filters, parametric EQ and dynamics (compressor, gate, lookahead limiter), as primitives for your own nodes and as ready-made nodes with automatable parameters.
+description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limiter), delay and modulation (chorus, flanger, phaser), as primitives for your own nodes and as ready-made nodes with automatable parameters.
 ---
 
 `fire:dsp` has effects in two forms:
@@ -11,8 +11,8 @@ description: Filters, parametric EQ and dynamics (compressor, gate, lookahead li
 - **Nodes**: ready to add to a graph, with stable parameter ids, smoothing,
   and sample-accurate automation (`filter_create`, `eq_create`).
 
-`examples/effects` runs noise through a swept filter, an EQ, a compressor
-and a limiter, offline.
+`examples/effects` runs noise through a swept filter, an EQ, a ping-pong
+delay, a compressor and a limiter, offline.
 
 ## Filters
 
@@ -107,6 +107,50 @@ For your own nodes, the parts are primitives: `compressor_curve`,
 `expander_curve`, `Level_Detector`, `Gain_Smoother` and `time_coeff`.
 On an Apple M1, per 512-frame stereo block: compressor 21 µs (0.2%),
 gate 11 µs, limiter 8 µs.
+
+## Delay and modulation
+
+**`delay_create()`** is an echo: a delay with feedback, filtered inside the
+loop so each repeat is thinner (`DELAY_PARAM_LOW_CUT_HZ`) and darker
+(`DELAY_PARAM_HIGH_CUT_HZ`).
+
+```odin
+d, _ := graph.add_node(g, dsp.delay_create(), 2, 2)
+graph.set_param(g, d, dsp.DELAY_PARAM_SYNC, 1)
+graph.set_param(g, d, dsp.DELAY_PARAM_BEATS, 0.75) // a dotted eighth
+graph.set_param(g, d, dsp.DELAY_PARAM_PING_PONG, 1)
+```
+
+- **Synced** to the tempo, it reads `ctx.transport` (so run the graph
+  through the clock) and follows tempo changes.
+- **Changing the time glides** there over about 100 ms, bending the
+  echoes' pitch like tape instead of clicking.
+- **Ping-pong** sends the mix of the inputs into the left line, and each
+  echo to the other side.
+
+**`chorus_create()`, `flanger_create()` and `phaser_create()`** share
+their parameter ids (`MOD_PARAM_*`; each table lists the ones it uses).
+Each channel's LFO is `spread` of a cycle apart, for width.
+
+| Node | Is | Typical |
+|---|---|---|
+| Chorus | up to 4 copies per channel, delayed `delay` ± `depth` ms on spread LFO phases | 12 ms ± 3 ms at 0.8 Hz |
+| Flanger | one short swept delay; mixed with the dry signal, moving comb notches; feedback sharpens them | 1–5 ms at 0.25 Hz, 50% feedback |
+| Phaser | 2 to 12 first-order allpass stages swept on a log scale between `min` and `max`; every two stages make a notch | 200 Hz–3 kHz, 4 stages |
+
+At 50% mix the flanger's and phaser's notches are complete: at rest, the
+flanger at 1 ms cancels 500 Hz exactly, and a two-stage phaser at 1 kHz
+cancels 1 kHz, as the tests check.
+
+**Primitives** for your own nodes:
+
+- `Delay_Line`: a ring buffer with fractional reads, none, linear or cubic
+  (4-point Hermite, for anything modulated).
+- `Lfo`: sine, triangle, saws, square and sample-and-hold, free-running
+  or locked to beats with `lfo_sync`.
+
+Costs per 512-frame stereo block on an Apple M1: delay 11 µs, chorus
+27 µs, flanger 16 µs, phaser 40 µs (0.1% to 0.4% of the block).
 
 ## See also
 

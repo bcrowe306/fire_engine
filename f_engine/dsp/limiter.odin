@@ -151,7 +151,9 @@ limiter_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		}
 	}
 	limiter_render(l, ctx, pos, ctx.frames)
-	intrinsics.atomic_store_explicit(&l.meter, transmute(u64)(-20 * math.log10(max(l.gain, 1e-10))), .Relaxed)
+	reduction := -20 * math.log10(max(l.gain, 1e-10))
+	if reduction <= 0 do reduction = 0 // not −0
+	intrinsics.atomic_store_explicit(&l.meter, transmute(u64)reduction, .Relaxed)
 }
 
 // [rt] Pushes `v` and returns the minimum of the last `len` values.
