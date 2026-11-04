@@ -93,15 +93,22 @@ internal.
 ```odin
 Gain :: struct {
 	gain: Smoothed_Value,
+	ramp: Smoothed_Value,
+	ramping: bool,
 }
 ```
 
 Gain stage with a sample-accurate, smoothed gain parameter (in dB).
 Channel i of the output is channel i of the input (silence for extra outputs).
+Its own smoothing moves in linear gain; automation ramps
+(`core.Param_Ramp`) move linearly in dB, so an automated fade is exact at
+any block size.
 
 | Field | Description |
 |-------|-------------|
-| `gain` | linear gain |
+| `gain` | linear gain: values and their smoothing |
+| `ramp` | dB: an automation ramp, while `ramping` |
+| `ramping` |  |
 
 ### One_Pole_Lowpass
 
@@ -172,6 +179,8 @@ Smoothed_Value :: struct {
 	remaining: int,
 	ramp_len: int,
 	coeff: f64,
+	ramp_step: f64,
+	ramp_left: int,
 }
 ```
 
@@ -187,6 +196,8 @@ Advancing is per sample, so the result never depends on block boundaries.
 | `remaining` |  |
 | `ramp_len` |  |
 | `coeff` | One-pole |
+| `ramp_step` | A `smoothed_ramp` in progress (any mode) |
+| `ramp_left` |  |
 
 ### Stft_Spectrum
 
@@ -553,6 +564,26 @@ smoothed_set_target :: proc "contextless"(s: ^Smoothed_Value, target: f64)
 
 **Realtime-safe** (callable on the audio thread). Starts moving toward `target`. With `.None` smoothing the value jumps;
 with `.Linear` a new ramp of the full length starts from the current value.
+
+### smoothed_ramp
+
+```odin
+smoothed_ramp :: proc "contextless"(s: ^Smoothed_Value, target: f64, frames: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Moves in a straight line from the current value to `target`,
+whatever the smoothing mode, as `core.Param_Ramp` asks: the next
+`smoothed_next` still returns the current value, and the one `frames`
+calls later returns `target` (for 0, the next one already does).
+
+### smoothed_apply
+
+```odin
+smoothed_apply :: proc "contextless"(s: ^Smoothed_Value, value: f64, ramp_frames: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Applies a parameter change read by `core.param_event`: a ramp when
+`ramp_frames` ≥ 0, otherwise the parameter's own smoothing.
 
 ### smoothed_reset
 

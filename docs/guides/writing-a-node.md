@@ -68,13 +68,21 @@ tremolo_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	for e in ctx.events_in {
 		render(t, ctx, pos, int(e.offset))
 		pos = int(e.offset)
-		if pv, ok := e.payload.(core.Param_Value); ok && pv.param == TREMOLO_DEPTH {
-			dsp.smoothed_set_target(&t.depth, pv.value)
+		// A Param_Value (smoothed) or an automation ramp (followed exactly).
+		if depth, frames, ok := core.param_event(e.payload, TREMOLO_DEPTH); ok {
+			dsp.smoothed_apply(&t.depth, clamp(depth, 0, 100), frames)
 		}
 	}
 	render(t, ctx, pos, ctx.frames)
 }
 ```
+
+A parameter changes in two ways:
+
+- **`core.Param_Value`:** a new value from `graph.set_param` or another node. The node approaches it with its own smoothing (`Param_Info.smoothing`), to avoid clicks.
+- **`core.Param_Ramp`:** a straight line to `target` over `frames` frames, which automation sends to follow a curve exactly. Apply it as it is, without your smoothing: `dsp.smoothed_ramp` does this whatever the smoothing mode.
+
+`core.param_event` reads either for one parameter, and `dsp.smoothed_apply` hands the result to a `Smoothed_Value`, as above. A node that reads only `Param_Value` gets automation's jumps but none of its ramps, so read both. Ramp in the parameter's own units: a straight line in dB is not one in linear gain, and where automation cuts its ramps depends on the block size. `dsp.Gain` ramps in dB for this reason, while its own smoothing stays in linear gain.
 
 ## Latency
 

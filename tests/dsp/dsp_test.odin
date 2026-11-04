@@ -1,5 +1,6 @@
 package test_dsp
 
+import "core:math"
 import "core:path/filepath"
 import "core:testing"
 
@@ -100,6 +101,63 @@ gain_is_block_invariant :: proc(t: ^testing.T) {
 	}
 	patterns := kit.standard_block_patterns(cfg.max_block)
 	kit.expect_block_invariant(t, gain_factory, input, cfg, patterns[:], 0, "gain")
+}
+
+// An automation ramp is followed exactly, without the 20 ms smoothing: the
+// event's frame keeps the old gain, `frames` later the new one, linear in
+// dB between. A zero-length ramp is an exact jump.
+@(test)
+gain_follows_ramps_exactly :: proc(t: ^testing.T) {
+	input := kit.buffer_make(1, 8_000, SR, context.temp_allocator)
+	for &v in input.channels[0] do v = 1
+	cfg := kit.default_render_config()
+	cfg.out_channels = 1
+	half := 20 * math.log10(0.5)
+	cfg.events = {
+		{1_000, core.Param_Ramp{dsp.GAIN_PARAM_DB, half, 1_000}},
+		{5_000, core.Param_Ramp{dsp.GAIN_PARAM_DB, 0, 0}},
+	}
+	n := dsp.gain_create()
+	defer core.node_destroy(&n)
+	out, r := kit.render(&n, input, cfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r)
+	kit.expect_clean_render(t, r)
+	ch := out.channels[0]
+	worst: f64
+	for i in 0 ..< 8_000 {
+		want := 1.0
+		if i >= 1_000 && i < 2_000 do want = math.pow(10, half * f64(i - 1_000) / 1_000 / 20)
+		if i >= 2_000 && i < 5_000 do want = 0.5
+		worst = max(worst, abs(f64(ch[i]) - want))
+	}
+	testing.expectf(t, worst < 1e-6, "off the ramp by %.3g", worst)
+	testing.expect_value(t, ch[4_999], 0.5)
+	testing.expect_value(t, ch[5_000], 1)
+	patterns := kit.standard_block_patterns(cfg.max_block)
+	kit.expect_block_invariant(t, gain_factory, input, cfg, patterns[:], 0, "gain ramps")
+}
+
+// A ramp interrupts smoothing in progress, and a Param_Value interrupts a
+// ramp, in every smoothing mode.
+@(test)
+smoothed_value_ramps :: proc(t: ^testing.T) {
+	for mode in core.Param_Smoothing {
+		s: dsp.Smoothed_Value
+		dsp.smoothed_init(&s, 0, mode, 10, SR)
+		dsp.smoothed_set_target(&s, 1) // smoothing toward 1 (or there already)
+		for _ in 0 ..< 5 do dsp.smoothed_next(&s)
+		start := s.current
+		dsp.smoothed_ramp(&s, 2, 4)
+		got: [5]f64
+		for &g in got do g = dsp.smoothed_next(&s)
+		step := (2 - start) / 4
+		for g, k in got[:4] do testing.expectf(t, abs(g - (start + f64(k) * step)) < 1e-12, "%v: frame %d of the ramp is %v", mode, k, g)
+		testing.expectf(t, got[4] == 2, "%v: after the ramp %v", mode, got[4])
+		dsp.smoothed_ramp(&s, 3, 100)
+		dsp.smoothed_next(&s)
+		dsp.smoothed_set_target(&s, -1) // back to the mode's own smoothing
+		testing.expect_value(t, s.ramp_left, 0)
+	}
 }
 
 // --- one-pole lowpass -------------------------------------------------------------

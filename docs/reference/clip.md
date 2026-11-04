@@ -32,8 +32,10 @@ clip.midi_clip_release(c)                     // the player keeps its own refere
 ```
 
 Audio clips (`Audio_Clip`, `audio_player_create`) play regions of files
-through `fire:stream`, at their own speed or following the tempo. See
-/guides/clips/ for placing clips in arrangements and launchers.
+through `fire:stream`, at their own speed or following the tempo.
+Automation clips (`Automation_Clip`, `automation_player_create`) move node
+parameters along curves, sample-accurately. See /guides/clips/ for placing
+clips in arrangements and launchers.
 
 ## Constants
 
@@ -171,6 +173,149 @@ audio outputs (no inputs). Uses the same `Placement`s as MIDI clips.
 
 Mono sources play on every output; with a mono output, channels are
 averaged; otherwise channel c plays on output c. Fields are internal.
+
+### Segment_Shape
+
+```odin
+Segment_Shape :: enum u8 {
+	Linear,
+	Step,
+	Curve,
+}
+```
+
+How the value moves from one automation point to the next.
+
+| Value | Description |
+|-------|-------------|
+| `Linear` | a straight line |
+| `Step` | holds this point's value until the next point, then jumps |
+| `Curve` | bends by the point's `tension`: positive starts slowly, negative quickly |
+
+### Automation_Point
+
+```odin
+Automation_Point :: struct {
+	at: timebase.Beats,
+	value: f64,
+	shape: Segment_Shape,
+	tension: f32,
+}
+```
+
+One breakpoint of an automation lane. Its shape and tension describe the
+segment from it to the next point.
+
+| Field | Description |
+|-------|-------------|
+| `at` | clip position |
+| `value` | plain value, in the parameter's own units |
+| `shape` |  |
+| `tension` | for `.Curve`: -1..1 (0 is a straight line) |
+
+### Automation_Lane
+
+```odin
+Automation_Lane :: struct {
+	param: core.Param_Id,
+	points: []Automation_Point,
+}
+```
+
+The curve of one parameter. Before its first point it holds the first
+value, after its last point the last.
+
+| Field | Description |
+|-------|-------------|
+| `param` |  |
+| `points` | sorted by `at` (points at the same `at` make a jump) |
+
+### Automation_Clip
+
+```odin
+Automation_Clip :: struct {
+	length: timebase.Beats,
+	loop_start: timebase.Beats,
+	loop_end: timebase.Beats,
+	lanes: []Automation_Lane,
+	points: []Automation_Point,
+	refs: int,
+	allocator: mem.Allocator,
+}
+```
+
+An immutable automation clip: one lane per parameter, in beats. Read its
+fields freely but never change them (players read them on the audio
+thread). Built with an `Automation_Builder`; release with
+`automation_clip_release`.
+
+| Field | Description |
+|-------|-------------|
+| `length` | the clip's length in beats |
+| `loop_start` | the part repeated when a placement loops |
+| `loop_end` |  |
+| `lanes` | sorted by param, one per param |
+| `points` | every lane's points (the lanes' slices point into this) |
+| `refs` | control thread |
+| `allocator` |  |
+
+### Automation_Builder
+
+```odin
+Automation_Builder :: struct {
+	length: timebase.Beats,
+	loop_start: timebase.Beats,
+	loop_end: timebase.Beats,
+	points: [dynamic]Builder_Point,
+}
+```
+
+Collects automation points for a clip. Control thread.
+
+### Automation_Player_Settings
+
+```odin
+Automation_Player_Settings :: struct {
+	timeline: core.Timeline_Id,
+	max_events: int,
+	max_lanes: int,
+	curve_frames: int,
+}
+```
+
+Settings for `automation_player_create`.
+
+| Field | Description |
+|-------|-------------|
+| `timeline` | the timeline it follows |
+| `max_events` | events per process call; 0 = 1024 (more are dropped and counted) |
+| `max_lanes` | lanes it plays, and parameters suspended at once; 0 = 64 |
+| `curve_frames` | longest ramp along a curved segment, or under a tempo ramp; 0 = 64 |
+
+### Automation_Player
+
+```odin
+Automation_Player :: struct {...}
+```
+
+Plays an `Automation_Clip` on a timeline as parameter changes. It is a
+graph node (0 audio channels): event-connect it to the node whose
+parameters it moves (`graph.connect_events`). Each lane's `param` is a
+parameter of that node.
+
+While the timeline plays, each lane is sent as `core.Param_Ramp` events:
+straight segments as one ramp per block, curved ones (and everything
+under a tempo ramp) as ramps of at most `curve_frames`. Jumps (steps,
+points at the same position, loop wraps, starts and locates) are
+zero-length ramps, so they land on their exact frame. While it is
+stopped, a locate or a new clip sends each lane's value at the new
+position as a `core.Param_Value`. Outside the placement nothing is sent,
+so parameters keep their last value.
+
+To let the user take over a parameter, suspend its lane
+(`automation_player_suspend`); resume it with a glide back to the curve.
+
+Fields are internal.
 
 ### Note
 
@@ -509,6 +654,131 @@ audio_player_ready :: proc(p: ^Audio_Player) -> bool
 Control thread. Whether the clip given to the last `audio_player_set` can
 start without a dropout (its stream's start and cues are buffered). Poll
 it before a quantized launch.
+
+### automation_builder_init
+
+```odin
+automation_builder_init :: proc(b: ^Automation_Builder, length: timebase.Beats, allocator: mem.Allocator = context.allocator)
+```
+
+Starts a clip of `length` beats, looping over all of it.
+
+### automation_builder_destroy
+
+```odin
+automation_builder_destroy :: proc(b: ^Automation_Builder)
+```
+
+Frees the builder (not the clips built from it).
+
+### automation_add_point
+
+```odin
+automation_add_point :: proc(b: ^Automation_Builder, param: core.Param_Id, at: timebase.Beats, value: f64, shape: Segment_Shape = Segment_Shape.Linear, tension: f32 = 0)
+```
+
+Adds a point to `param`'s lane (made by its first point). Points may be
+added in any order; two at the same position make a jump, the first
+added giving the value just before it.
+
+### automation_set_loop
+
+```odin
+automation_set_loop :: proc(b: ^Automation_Builder, start: timebase.Beats, end: timebase.Beats)
+```
+
+Sets the part a looping placement repeats (default: the whole clip).
+
+### automation_build
+
+```odin
+automation_build :: proc(b: ^Automation_Builder, allocator: mem.Allocator = context.allocator) -> (c: ^Automation_Clip, err: core.Error)
+```
+
+Makes an immutable clip from the builder's contents, with one reference
+held by the caller. The builder can keep being edited and built again.
+`.Invalid_Argument` for a bad length or loop, or a point that isn't
+finite.
+
+### automation_clip_retain
+
+```odin
+automation_clip_retain :: proc(c: ^Automation_Clip)
+```
+
+Control thread. Adds a reference (one per place the clip is kept).
+
+### automation_clip_release
+
+```odin
+automation_clip_release :: proc(c: ^Automation_Clip)
+```
+
+Control thread. Drops a reference; the clip is freed with the last one.
+
+### automation_lane
+
+```odin
+automation_lane :: proc "contextless"(c: ^Automation_Clip, param: core.Param_Id) -> ^Automation_Lane
+```
+
+**Realtime-safe** (callable on the audio thread). The lane for `param`, or nil.
+
+### automation_value
+
+```odin
+automation_value :: proc "contextless"(l: ^Automation_Lane, at: timebase.Beats) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The lane's value at clip position `at` (the value after any jump
+there). For drawing curves, and what the player sends.
+
+### automation_player_create
+
+```odin
+automation_player_create :: proc(settings: Automation_Player_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, player: ^Automation_Player, err: core.Error)
+```
+
+Control thread. Creates a player node and a handle for controlling it.
+Give the node to the graph (`graph.add_node(g, node, 0, 0)`); the handle
+stays valid until the graph destroys the node.
+
+### automation_player_set
+
+```odin
+automation_player_set :: proc(p: ^Automation_Player, clip: ^Automation_Clip, placement: Placement) -> core.Error
+```
+
+Control thread. Plays `clip` (nil: nothing) placed as `placement`, from
+the player's next block. The player keeps its own reference to the clip.
+
+### automation_player_suspend
+
+```odin
+automation_player_suspend :: proc(p: ^Automation_Player, param: core.Param_Id) -> core.Error
+```
+
+Control thread. Stops sending `param`'s lane from the next block, so the
+parameter follows whatever else sets it (the user, through
+`graph.set_param`). `.Out_Of_Memory` if the command queue is full.
+
+### automation_player_resume
+
+```odin
+automation_player_resume :: proc(p: ^Automation_Player, param: core.Param_Id, glide_ms: f64 = 50) -> core.Error
+```
+
+Control thread. Sends `param`'s lane again, gliding from wherever the
+parameter is to the curve over `glide_ms` (0: a jump).
+
+### automation_player_dropped
+
+```odin
+automation_player_dropped :: proc "contextless"(p: ^Automation_Player) -> u64
+```
+
+Any thread. Events dropped because `max_events` was full, plus lanes
+beyond `max_lanes` (counted each call).
 
 ### midi_builder_init
 

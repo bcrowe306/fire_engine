@@ -87,8 +87,8 @@ one_pole_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	for e in ctx.events_in {
 		one_pole_render(f, ctx, pos, int(e.offset))
 		pos = int(e.offset)
-		if pv, ok := e.payload.(core.Param_Value); ok && pv.param == ONE_POLE_PARAM_CUTOFF_HZ {
-			smoothed_set_target(&f.cutoff, clamp(pv.value, 10, 20000))
+		if hz, frames, ok := core.param_event(e.payload, ONE_POLE_PARAM_CUTOFF_HZ); ok {
+			smoothed_apply(&f.cutoff, clamp(hz, 10, 20000), frames)
 		}
 	}
 	one_pole_render(f, ctx, pos, ctx.frames)

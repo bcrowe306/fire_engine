@@ -164,6 +164,72 @@ Only Stretch clips transpose; a custom stretcher needs `set_transpose` for it.
 Output mapping: a mono file plays on every output, a stereo file averages
 into a mono output, and otherwise channels map one to one.
 
+## Automation
+
+An `Automation_Clip` holds one curve (a lane) per parameter, in beats. An
+automation player node plays it on a timeline and moves the parameters of
+the node it is event-connected to, sample-accurately: one player per node
+being automated, one lane per parameter of that node. Clips are built, placed and
+swapped like MIDI clips, so the same clip can be a launcher clip's envelope
+or an arrangement lane.
+
+```odin
+b: clip.Automation_Builder
+clip.automation_builder_init(&b, length = 16)
+clip.automation_add_point(&b, dsp.ONE_POLE_PARAM_CUTOFF_HZ, 0, 200, .Curve, tension = 0.6)
+clip.automation_add_point(&b, dsp.ONE_POLE_PARAM_CUTOFF_HZ, 8, 8000)
+clip.automation_add_point(&b, dsp.ONE_POLE_PARAM_CUTOFF_HZ, 16, 200)
+sweep, _ := clip.automation_build(&b)
+clip.automation_builder_destroy(&b)
+
+node, player, _ := clip.automation_player_create({timeline = song})
+auto, _ := graph.add_node(g, node, 0, 0)
+graph.connect_events(g, auto, filter) // a one-pole lowpass: the lane is its cutoff
+clip.automation_player_set(player, sweep, {loop = true})
+clip.automation_clip_release(sweep)
+```
+
+**Segments.** Each point says how the value moves on to the next one:
+
+| Shape | Moves |
+|-------|-------|
+| `.Linear` | in a straight line |
+| `.Step` | not at all, then jumps at the next point |
+| `.Curve` | along a bend set by `tension` (−1..1): positive starts slowly, negative quickly |
+
+Two points at the same position make a jump there. Before a lane's first
+point it holds the first value, after its last the last. Values are in the
+parameter's own units (`Param_Info`: dB, Hz and so on), so a straight
+segment in dB is a natural fade.
+
+**What the node receives.**
+
+- **While playing:** `core.Param_Ramp` events, which the node follows
+  exactly, without its own smoothing. Straight segments are one ramp per
+  block; curved ones, and anything under a tempo ramp, are ramps of at most
+  `curve_frames` (64 by default).
+- **Jumps** (steps, loop wraps, starts and locates) land on their exact
+  frame. To soften one, use a short linear segment instead of a step.
+- **While stopped:** a locate or a new clip sends each lane's value at the
+  new position as a plain `Param_Value`, which the node smooths.
+- **Outside the placement:** nothing, so parameters keep their last value.
+
+Nodes need to handle ramps for this; see
+[Writing a node](/guides/writing-a-node/). Fire Engine's own nodes do.
+
+**Handing a parameter to the user.** While the user moves an automated
+control, suspend its lane; when they let go (or on the next loop, for
+latch), resume it with a glide back to the curve:
+
+```odin
+clip.automation_player_suspend(player, dsp.ONE_POLE_PARAM_CUTOFF_HZ)
+graph.set_param(g, filter, dsp.ONE_POLE_PARAM_CUTOFF_HZ, user_hz) // the user's moves
+clip.automation_player_resume(player, dsp.ONE_POLE_PARAM_CUTOFF_HZ, glide_ms = 50)
+```
+
+Recording parameter moves into new curves is left to the app for now: it
+can collect the values it sets and build a clip from them.
+
 ## MIDI files
 
 ```odin

@@ -67,8 +67,9 @@ tremolo_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	for e in ctx.events_in {
 		render(t, ctx, pos, int(e.offset))
 		pos = int(e.offset)
-		if pv, ok := e.payload.(core.Param_Value); ok && pv.param == TREMOLO_DEPTH {
-			dsp.smoothed_set_target(&t.depth, clamp(pv.value, 0, 100))
+		// A Param_Value (smoothed) or an automation ramp (followed exactly).
+		if depth, frames, ok := core.param_event(e.payload, TREMOLO_DEPTH); ok {
+			dsp.smoothed_apply(&t.depth, clamp(depth, 0, 100), frames)
 		}
 	}
 	render(t, ctx, pos, ctx.frames)

@@ -75,6 +75,33 @@ Param_Value :: struct {
 	value: f64,      // plain value in the parameter's own units (not normalized)
 }
 
+// Moves a parameter in a straight line from wherever it is at the event's
+// frame offset (that frame keeps the current value) to `target`, which it
+// has `frames` frames later (possibly in a later block). Automation sends
+// these so curves are followed exactly, so a node applies them as they are,
+// without its own smoothing. `frames` = 0 sets `target` from the event's
+// frame on, unsmoothed. A later `Param_Value` or `Param_Ramp` for the same
+// parameter replaces the ramp.
+Param_Ramp :: struct {
+	param:  Param_Id, // parameter to change
+	target: f64,      // plain value to arrive at
+	frames: u32,      // ramp length in frames
+}
+
+// [rt] Reads `payload` as a change to parameter `param`: a `Param_Value`
+// (`ramp_frames` = -1: approach `value` with the parameter's own smoothing)
+// or a `Param_Ramp` (`ramp_frames` ≥ 0). `ok` is false for any other event
+// or parameter. Pair with `dsp.smoothed_apply`.
+param_event :: proc "contextless" (payload: Event_Payload, param: Param_Id) -> (value: f64, ramp_frames: int, ok: bool) {
+	#partial switch e in payload {
+	case Param_Value:
+		if e.param == param do return e.value, -1, true
+	case Param_Ramp:
+		if e.param == param do return e.target, int(e.frames), true
+	}
+	return 0, 0, false
+}
+
 // Raw MIDI 1.0 passthrough (status + up to 2 data bytes).
 Midi_Raw :: struct {
 	bytes: [3]u8, // status byte then data bytes; unused bytes are 0
@@ -87,6 +114,7 @@ Event_Payload :: union {
 	Note_Off,
 	Note_Expression,
 	Param_Value,
+	Param_Ramp,
 	Midi_Raw,
 }
 

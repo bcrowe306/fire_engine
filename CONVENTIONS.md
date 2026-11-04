@@ -22,7 +22,7 @@ on purpose, leave a comment explaining why.
 | `fire:rt`        | Realtime utilities: FTZ/DAZ, SPSC queue, `host_time_ns` (the device/MIDI clock), `set_realtime_priority`, `precise_sleep` | — |
 | `fire:dsp`       | DSP primitives and simple nodes; the resampler             | `core`, `rt`        |
 | `fire:audiofile` | WAV/AIFF reading and writing (pure Odin)                   | `core`              |
-| `fire:clip`      | Clips and their players: immutable MIDI and audio clips, player nodes, Standard MIDI Files | `core`, `rt`, `timebase`, `dsp`, `stream` |
+| `fire:clip`      | Clips and their players: immutable MIDI, audio and automation clips, player nodes, Standard MIDI Files | `core`, `rt`, `timebase`, `dsp`, `stream` |
 | `fire:stretch`   | Signalsmith Stretch, ported to Odin, also as a `clip.Stretcher_VTable`. Only apps import it | `clip`, `dsp` |
 | `fire:stream`    | Disk streaming: sources (shared, small ones in RAM), streams with read-ahead and cues, disk threads | `audiofile`, `core`, `rt` |
 | `fire:audiofile/codecs` | FLAC, MP3, Ogg Vorbis decoding via `vendor:miniaudio` (ships with Odin; built once on Linux) | `audiofile`, `vendor:miniaudio` |

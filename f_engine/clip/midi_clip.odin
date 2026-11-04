@@ -20,8 +20,10 @@ play in several places.
 	clip.midi_clip_release(c)                     // the player keeps its own reference
 
 Audio clips (`Audio_Clip`, `audio_player_create`) play regions of files
-through `fire:stream`, at their own speed or following the tempo. See
-/guides/clips/ for placing clips in arrangements and launchers.
+through `fire:stream`, at their own speed or following the tempo.
+Automation clips (`Automation_Clip`, `automation_player_create`) move node
+parameters along curves, sample-accurately. See /guides/clips/ for placing
+clips in arrangements and launchers.
 */
 package clip
 

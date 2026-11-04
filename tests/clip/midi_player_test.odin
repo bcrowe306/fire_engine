@@ -83,6 +83,7 @@ describe :: proc(g: Got) -> string {
 	case core.Note_Expression: return fmt.tprintf("%d expr %d %v %v", g.frame, e.key, e.kind, e.value)
 	case core.Midi_Raw:        return fmt.tprintf("%d raw %v", g.frame, e.bytes)
 	case core.Param_Value:     return fmt.tprintf("%d param", g.frame)
+	case core.Param_Ramp:      return fmt.tprintf("%d ramp", g.frame)
 	}
 	return ""
 }

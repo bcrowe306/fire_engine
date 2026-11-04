@@ -175,6 +175,30 @@ Sets a parameter at the event's frame offset.
 | `param` | parameter to change |
 | `value` | plain value in the parameter's own units (not normalized) |
 
+### Param_Ramp
+
+```odin
+Param_Ramp :: struct {
+	param: Param_Id,
+	target: f64,
+	frames: u32,
+}
+```
+
+Moves a parameter in a straight line from wherever it is at the event's
+frame offset (that frame keeps the current value) to `target`, which it
+has `frames` frames later (possibly in a later block). Automation sends
+these so curves are followed exactly, so a node applies them as they are,
+without its own smoothing. `frames` = 0 sets `target` from the event's
+frame on, unsmoothed. A later `Param_Value` or `Param_Ramp` for the same
+parameter replaces the ramp.
+
+| Field | Description |
+|-------|-------------|
+| `param` | parameter to change |
+| `target` | plain value to arrive at |
+| `frames` | ramp length in frames |
+
 ### Midi_Raw
 
 ```odin
@@ -199,6 +223,7 @@ Event_Payload :: union {
 	Note_Off,
 	Note_Expression,
 	Param_Value,
+	Param_Ramp,
 	Midi_Raw,
 }
 ```
@@ -591,6 +616,17 @@ from_allocator_error :: proc "contextless"(e: runtime.Allocator_Error) -> Error
 
 Maps an allocator error to `Error`: `.None` stays `.None`, anything else is
 `.Out_Of_Memory`. Any thread.
+
+### param_event
+
+```odin
+param_event :: proc "contextless"(payload: Event_Payload, param: Param_Id) -> (value: f64, ramp_frames: int, ok: bool)
+```
+
+**Realtime-safe** (callable on the audio thread). Reads `payload` as a change to parameter `param`: a `Param_Value`
+(`ramp_frames` = -1: approach `value` with the parameter's own smoothing)
+or a `Param_Ramp` (`ramp_frames` ≥ 0). `ok` is false for any other event
+or parameter. Pair with `dsp.smoothed_apply`.
 
 ### event_writer_push
 
