@@ -547,6 +547,38 @@ REVERB_PARAM_WIDTH : core.Param_Id : core.Param_Id(8)
 Parameter id of the `Reverb`'s stereo width, in percent (0..100,
 default 100; 0 is mono).
 
+### SATURATION_PARAM_DRIVE_DB
+
+```odin
+SATURATION_PARAM_DRIVE_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Saturation`'s drive, in dB (0..36, default 6): gain into the curve.
+
+### SATURATION_PARAM_SHAPE
+
+```odin
+SATURATION_PARAM_SHAPE : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Saturation`'s curve: a `Saturation_Shape` as a number (default Soft).
+
+### SATURATION_PARAM_OUTPUT_DB
+
+```odin
+SATURATION_PARAM_OUTPUT_DB : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Saturation`'s output level, in dB (−36..12, default 0).
+
+### SATURATION_PARAM_MIX
+
+```odin
+SATURATION_PARAM_MIX : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the `Saturation`'s mix with the dry signal, in percent (0..100, default 100).
+
 ### SYNTH_PARAM_OSC1_SHAPE
 
 ```odin
@@ -1403,6 +1435,21 @@ sound, with a definite length).
 | `decay_coeff` |  |
 | `release_coeff` |  |
 
+### Oversampler
+
+```odin
+Oversampler :: struct {...}
+```
+
+Raises one channel to 2, 4 or 8 times its sample rate and back, so a
+nonlinear process (saturation, clipping) can run where its harmonics
+have room instead of folding back as aliasing. Each 2× stage is a
+linear-phase halfband FIR (Kaiser-windowed sinc, about 90 dB of image
+and alias rejection; the first stage passes up to 0.45 of the base
+rate). Run `oversampler_up`, process what it returns at the high rate,
+then `oversampler_down`. The round trip delays by `oversampler_latency`
+frames exactly. Fields are internal.
+
 ### Resampler_Quality
 
 ```odin
@@ -1495,6 +1542,64 @@ channel past the second is silent), the reverb mixed with the dry input.
 | `pre` |  |
 | `lfo_phase` |  |
 | `sample_rate` |  |
+
+### Saturation_Shape
+
+```odin
+Saturation_Shape :: enum u8 {
+	Soft,
+	Hard,
+	Tube,
+	Fold,
+	Cubic,
+}
+```
+
+The transfer curve of a `Saturation` node.
+
+| Value | Description |
+|-------|-------------|
+| `Soft` | tanh: smooth, odd harmonics |
+| `Hard` | a clip at ±1: bright, buzzy |
+| `Tube` | tanh pushed harder on one side: even harmonics too |
+| `Fold` | a sine wavefolder: past full scale the wave folds back |
+| `Cubic` | x − 4x³/27, then flat: the gentlest |
+
+### Saturation
+
+```odin
+Saturation :: struct {
+	factor: int,
+	shape: Saturation_Shape,
+	drive: Smoothed_Value,
+	output: Smoothed_Value,
+	mix: Smoothed_Value,
+	channels: []Saturation_Channel,
+	gains: []f64,
+	wet: []f32,
+	dc_coeff: f64,
+	latency: int,
+}
+```
+
+A saturation node: drive into a curve (`Saturation_Shape`), run 1, 2, 4
+or 8 times oversampled so the new harmonics don't fold back as
+aliasing, then a DC blocker (asymmetric curves add DC) and the output
+level, mixed with the dry signal. Oversampling is fixed at create and
+reported as the node's latency; the dry signal is delayed to match.
+
+| Field | Description |
+|-------|-------------|
+| `factor` |  |
+| `shape` |  |
+| `drive` | dB |
+| `output` | dB |
+| `mix` | percent |
+| `channels` |  |
+| `gains` | per high-rate frame of a block: the drive, as a gain |
+| `wet` | a block at the base rate |
+| `dc_coeff` |  |
+| `latency` |  |
 
 ### Smoothed_Value
 
@@ -2331,6 +2436,57 @@ adsr_next :: proc "contextless"(a: ^Adsr) -> f64
 
 **Realtime-safe** (callable on the audio thread). The level now, then advances one frame.
 
+### oversampler_init
+
+```odin
+oversampler_init :: proc(o: ^Oversampler, factor: int, max_block: int, allocator: mem.Allocator = context.allocator) -> (err: core.Error)
+```
+
+Control thread. Prepares an oversampler of `factor` 2, 4 or 8 for
+blocks of up to `max_block` frames. Free with `oversampler_destroy`.
+
+### oversampler_destroy
+
+```odin
+oversampler_destroy :: proc(o: ^Oversampler, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `oversampler_init` allocated.
+
+### oversampler_reset
+
+```odin
+oversampler_reset :: proc "contextless"(o: ^Oversampler)
+```
+
+**Realtime-safe** (callable on the audio thread). Clears the filters' memory.
+
+### oversampler_latency
+
+```odin
+oversampler_latency :: proc "contextless"(o: ^Oversampler) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). The round trip's delay, in base-rate frames.
+
+### oversampler_up
+
+```odin
+oversampler_up :: proc "contextless"(o: ^Oversampler, input: []f32) -> []f32
+```
+
+**Realtime-safe** (callable on the audio thread). Upsamples `input` by `factor` into the oversampler's buffer, and
+returns it (factor × len(input) frames, valid until the next call).
+
+### oversampler_down
+
+```odin
+oversampler_down :: proc "contextless"(o: ^Oversampler, input: []f32, output: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Downsamples the high-rate `input` (factor × len(output) frames, as
+`oversampler_up` returned) into `output`.
+
 ### resampler_init
 
 ```odin
@@ -2387,6 +2543,25 @@ reverb_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
 ```
 
 Control thread. Allocates a `Reverb` node at its defaults. Free it with
+`core.node_destroy`.
+
+### saturate
+
+```odin
+saturate :: proc "contextless"(shape: Saturation_Shape, x: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The curve `shape` at `x` (−1..1 out, unity slope at 0 for every
+shape but Fold).
+
+### saturation_create
+
+```odin
+saturation_create :: proc(oversample: int = 4, allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A `Saturation` node, `oversample` 1, 2, 4 or 8 times
+(other values are rounded down to one of those). Free it with
 `core.node_destroy`.
 
 ### smoothed_init
@@ -2955,6 +3130,14 @@ reverb_params: [8]core.Param_Info
 ```
 
 Parameter table of the `Reverb` node, as returned by `node_params`. Read-only.
+
+### saturation_params
+
+```odin
+saturation_params: [4]core.Param_Info
+```
+
+Parameter table of the `Saturation` node, as returned by `node_params`. Read-only.
 
 ### synth_params
 

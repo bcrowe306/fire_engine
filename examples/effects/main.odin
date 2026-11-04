@@ -1,8 +1,8 @@
 /*
 Effects from fire:dsp in a graph: noise through a resonant lowpass whose
 cutoff sweeps up and back down (an automation ramp, followed exactly), a
-parametric EQ, a ping-pong delay (which makes it stereo), a reverb, a
-compressor and a limiter. Then convolves the result with a generated room
+parametric EQ, a ping-pong delay (which makes it stereo), a reverb,
+oversampled saturation, a compressor and a limiter. Then convolves the result with a generated room
 response using the `Convolver` primitive directly. Renders four seconds offline,
 prints the level and the dynamics' gain reduction as the filter opens, the
 EQ's curve, and writes a WAV file.
@@ -37,7 +37,7 @@ main :: proc() {
 	g, _ := graph.create(settings)
 	defer graph.destroy(g)
 
-	// noise → lowpass (Q 6) → 4-band EQ → ping-pong delay → reverb → compressor → limiter
+	// noise → lowpass (Q 6) → EQ → ping-pong delay → reverb → saturation → compressor → limiter
 	noise, _ := graph.add_node(g, core.node_make(&noise_vtable, new(Noise), context.allocator), 0, 1)
 	filter, _ := graph.add_node(g, dsp.filter_create(.Lowpass), 1, 1)
 	eq_node := dsp.eq_create(4)
@@ -52,11 +52,13 @@ main :: proc() {
 	l, _ := graph.add_node(g, lim_node, 2, 2)
 	d, _ := graph.add_node(g, dsp.delay_create(), 1, 2) // mono in, ping-pong out
 	rv, _ := graph.add_node(g, dsp.reverb_create(), 2, 2)
+	sat, _ := graph.add_node(g, dsp.saturation_create(4), 2, 2) // 4× oversampled; the graph compensates its latency
 	graph.connect(g, filter, 0, e, 0)
 	graph.connect(g, e, 0, d, 0)
 	for ch in 0 ..< 2 {
 		graph.connect(g, d, ch, rv, ch)
-		graph.connect(g, rv, ch, c, ch)
+		graph.connect(g, rv, ch, sat, ch)
+		graph.connect(g, sat, ch, c, ch)
 		graph.connect(g, c, ch, l, ch)
 		graph.connect(g, l, ch, graph.OUTPUT, ch)
 	}
@@ -76,6 +78,9 @@ main :: proc() {
 	graph.set_param(g, d, dsp.DELAY_PARAM_MIX, 50)
 	graph.set_param(g, rv, dsp.REVERB_PARAM_DECAY_S, 2.5)
 	graph.set_param(g, rv, dsp.REVERB_PARAM_MIX, 25)
+	graph.set_param(g, sat, dsp.SATURATION_PARAM_SHAPE, f64(dsp.Saturation_Shape.Tube))
+	graph.set_param(g, sat, dsp.SATURATION_PARAM_DRIVE_DB, 9)
+	graph.set_param(g, sat, dsp.SATURATION_PARAM_OUTPUT_DB, -6)
 	graph.set_param(g, c, dsp.COMPRESSOR_PARAM_THRESHOLD_DB, -24)  // evens out the sweep...
 	graph.set_param(g, c, dsp.COMPRESSOR_PARAM_RATIO, 3)
 	graph.set_param(g, c, dsp.COMPRESSOR_PARAM_MAKEUP_DB, 6)

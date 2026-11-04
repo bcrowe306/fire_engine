@@ -1,6 +1,6 @@
 ---
 title: Effects
-description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limiter), delay and modulation (chorus, flanger, phaser), algorithmic reverb and zero-latency convolution, as primitives for your own nodes and as ready-made nodes with automatable parameters.
+description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limiter), delay and modulation (chorus, flanger, phaser), algorithmic reverb, zero-latency convolution and oversampled saturation, as primitives for your own nodes and as ready-made nodes with automatable parameters.
 ---
 
 `fire:dsp` has effects in two forms:
@@ -12,8 +12,8 @@ description: Filters, parametric EQ, dynamics (compressor, gate, lookahead limit
   and sample-accurate automation (`filter_create`, `eq_create`).
 
 `examples/effects` runs noise through a swept filter, an EQ, a ping-pong
-delay, a reverb, a compressor and a limiter, offline, then convolves the
-result with a room response.
+delay, a reverb, saturation, a compressor and a limiter, offline, then
+convolves the result with a room response.
 
 ## Filters
 
@@ -205,6 +205,41 @@ graph.set_param(g, v, dsp.CONVOLUTION_PARAM_MIX, 30)
 
 The primitive is `Convolver` (`convolver_init`, `convolver_process`): one
 channel, any length per call, also useful offline.
+
+## Saturation
+
+**`saturation_create(oversample)`** drives the signal into a curve, then
+blocks DC and sets the output level, mixed with the dry signal:
+
+| `Saturation_Shape` | Curve | Sound |
+|---|---|---|
+| `Soft` | tanh | smooth, odd harmonics |
+| `Hard` | a clip at ±1 | bright, buzzy |
+| `Tube` | tanh, harder on the negative side | even harmonics too |
+| `Fold` | a sine wavefolder | past full scale the wave folds back |
+| `Cubic` | x − 4x³/27, flat from ±1.5 | the gentlest |
+
+**Oversampling.** A curve makes harmonics far above the input, and at the
+base rate those above Nyquist fold back as aliasing: inharmonic tones
+that sound harsh and digital. Run 2, 4 or 8 times faster, they have
+room. Hard-clipping a 6.3 kHz sine at +12 dB:
+
+| Oversampling | Aliasing | Latency at 48 kHz | Cost (stereo, 512 frames, M1) |
+|---|---|---|---|
+| 1× | −16 dB | 0 | 14 µs |
+| 2× | −33 dB | 31 frames | 65 µs |
+| 4× | −42 dB | 39 frames | 115 µs |
+| 8× | −46 dB | 41 frames | 171 µs |
+
+The oversampling is fixed when the node is made, and its latency is
+reported, so the graph keeps parallel paths aligned; the node delays its
+own dry signal to match.
+
+**The primitive** is `Oversampler`: `oversampler_up` returns the block at
+the high rate, you process it, and `oversampler_down` brings it back. Its
+2× stages are linear-phase halfband FIRs (63, 31 and 19 taps), and the
+round trip is a pure delay of `oversampler_latency` frames within 10⁻⁴
+below 10 kHz.
 
 ## See also
 
