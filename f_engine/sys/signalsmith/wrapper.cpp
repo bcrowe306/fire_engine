@@ -113,3 +113,51 @@ double fss_test_bench_real_fft(int size, int count) {
 }
 
 }
+
+#include "signalsmith-linear/stft.h"
+
+extern "C" {
+
+// Test only: runs mono `input` through Linear's DynamicSTFT (Kaiser window
+// at `interval`, the given spectrum type: 0 packed, 1 half-bin, 2
+// unpacked) with hops taken in turn from `hops`, writing `output`. Each
+// hop: write and move input, analyse, multiply each bin by a fixed complex
+// gain (so the spectrum path is exercised), synthesise, read and move
+// output. Allocates.
+void fss_test_stft(int block, int interval, int extra, int kind, const int *hops, int hop_count,
+		const float *input, int frames, float *output) {
+	auto run = [&](auto &stft) {
+		stft.configure(1, 1, block, extra);
+		stft.setInterval(interval, stft.kaiser);
+		stft.reset();
+		int at = 0, k = 0;
+		while (true) {
+			int h = hops[k++ % hop_count];
+			if (at + h > frames) break;
+			stft.writeInput(0, h, input + at);
+			stft.moveInput(h);
+			stft.analyse();
+			auto *spec = stft.spectrum(0);
+			for (size_t b = 0; b < stft.bands(); ++b) {
+				float phase = 0.01f*b;
+				spec[b] *= std::complex<float>(std::cos(phase), std::sin(phase))/(1 + 0.002f*b);
+			}
+			stft.synthesise();
+			stft.readOutput(0, h, output + at);
+			stft.moveOutput(h);
+			at += h;
+		}
+	};
+	if (kind == 1) {
+		signalsmith::linear::DynamicSTFT<float, false, 1> s;
+		run(s);
+	} else if (kind == 2) {
+		signalsmith::linear::DynamicSTFT<float, false, 2> s;
+		run(s);
+	} else {
+		signalsmith::linear::DynamicSTFT<float, false, 0> s;
+		run(s);
+	}
+}
+
+}

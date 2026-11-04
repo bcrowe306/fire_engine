@@ -188,6 +188,132 @@ Advancing is per sample, so the result never depends on block boundaries.
 | `ramp_len` |  |
 | `coeff` | One-pole |
 
+### Stft_Spectrum
+
+```odin
+Stft_Spectrum :: enum u8 {
+	Packed,
+	Half_Bin,
+	Unpacked,
+}
+```
+
+How an `Stft` lays out its spectrum.
+
+| Value | Description |
+|-------|-------------|
+| `Packed` | fft_size/2 bins; bin 0 holds DC (real) and Nyquist (imaginary) |
+| `Half_Bin` | fft_size/2 bins at k + ½ (see `Real_Fft`); suits spectral processing |
+| `Unpacked` | fft_size/2 + 1 bins, Nyquist in its own bin |
+
+### Stft_Window
+
+```odin
+Stft_Window :: enum u8 {
+	Keep,
+	Acg,
+	Kaiser,
+}
+```
+
+The window shape `stft_set_interval` builds.
+
+| Value | Description |
+|-------|-------------|
+| `Keep` | leave the windows as they are |
+| `Acg` | approximate confined Gaussian |
+| `Kaiser` | Kaiser, with a bandwidth chosen for the interval |
+
+### Stft_Normalisation
+
+```odin
+Stft_Normalisation :: enum u8 {
+	Round_Trip,
+	Synthesis,
+	None,
+}
+```
+
+What output is divided by, so that analysis then synthesis gives back the
+input whatever the windows and block positions.
+
+| Value | Description |
+|-------|-------------|
+| `Round_Trip` | analysis × synthesis windows (the default) |
+| `Synthesis` | the synthesis window only |
+| `None` | only the FFT's gain |
+
+### Stft
+
+```odin
+Stft :: struct {...}
+```
+
+A short-time Fourier transform for spectral processing: write input,
+analyse a block into spectra, change the spectra, synthesise them back,
+read output. It normalises itself: output is divided by the sum of the
+window products of the blocks that went into it, so analysis then
+synthesis at a steady hop (not only the default interval) reconstructs
+the input exactly, `stft_latency` minus one hop later when output is read
+straight after synthesising. (With uneven hops the gain varies, exactly
+as in Signalsmith Linear.)
+
+Analysis and synthesis can also run in steps (`stft_analyse_steps`), to
+spread their cost. Planar f32; nothing allocates after `stft_init`.
+Fields are internal.
+
+### Stft_Input
+
+```odin
+Stft_Input :: struct {
+	pos: int,
+	buffer: []f32,
+}
+```
+
+An STFT's input history, which can be saved and swapped (as Signalsmith
+Stretch does to re-analyse). Make one with `stft_input_make`. Fields are
+internal.
+
+### Stft_Output
+
+```odin
+Stft_Output :: struct {...}
+```
+
+An STFT's pending output, which can be saved and swapped. Make one with
+`stft_output_make`. Fields are internal.
+
+### Stft_Settings
+
+```odin
+Stft_Settings :: struct {
+	in_channels: int,
+	out_channels: int,
+	block: int,
+	extra_history: int,
+	interval: int,
+	asymmetry: f64,
+	fft_min_size: int,
+	spectrum: Stft_Spectrum,
+	split: bool,
+}
+```
+
+Settings for `stft_init`.
+
+| Field | Description |
+|-------|-------------|
+| `in_channels` | channels analysed |
+| `out_channels` | channels synthesised |
+| `block` | block (window) length in samples |
+| `extra_history` | input kept beyond one block, for analysing in the past |
+| `interval` | default hop; 0 = block/4 |
+| `asymmetry` | window warp, −1..1; 0 = symmetric |
+| `fft_min_size` | 0 = block |
+| `spectrum` |  |
+| `split` | allow analysing and synthesising in more, smaller steps |
+
 ## Procedures
 
 ### fft_fast_size_above
@@ -451,6 +577,357 @@ smoothed_next :: proc "contextless"(s: ^Smoothed_Value) -> f64
 ```
 
 **Realtime-safe** (callable on the audio thread). Advance one sample and return the new value.
+
+### stft_init
+
+```odin
+stft_init :: proc(s: ^Stft, settings: Stft_Settings, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. Allocates and configures an STFT (with an ACG window at
+the default interval, and round-trip normalisation), then resets it. Free
+with `stft_destroy`.
+
+### stft_destroy
+
+```odin
+stft_destroy :: proc(s: ^Stft, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `stft_init` allocated.
+
+### stft_input_make
+
+```odin
+stft_input_make :: proc(s: ^Stft, allocator: mem.Allocator = context.allocator) -> Stft_Input
+```
+
+Control thread. A spare input state the same size as `s`'s, for saving
+and swapping (see `stft_input_copy`, `stft_swap_input`).
+
+### stft_output_make
+
+```odin
+stft_output_make :: proc(s: ^Stft, allocator: mem.Allocator = context.allocator) -> Stft_Output
+```
+
+Control thread. A spare output state the same size as `s`'s.
+
+### stft_input_free
+
+```odin
+stft_input_free :: proc(state: ^Stft_Input, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a spare state from `stft_input_make`.
+
+### stft_output_free
+
+```odin
+stft_output_free :: proc(state: ^Stft_Output, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a spare state from `stft_output_make`.
+
+### stft_input_copy
+
+```odin
+stft_input_copy :: proc "contextless"(dst: ^Stft_Input, src: ^Stft_Input)
+```
+
+**Realtime-safe** (callable on the audio thread). Copies input state `src` into `dst` (same sizes).
+
+### stft_output_copy
+
+```odin
+stft_output_copy :: proc "contextless"(dst: ^Stft_Output, src: ^Stft_Output)
+```
+
+**Realtime-safe** (callable on the audio thread). Copies output state `src` into `dst` (same sizes).
+
+### stft_swap_input
+
+```odin
+stft_swap_input :: proc "contextless"(s: ^Stft, other: ^Stft_Input)
+```
+
+**Realtime-safe** (callable on the audio thread). Exchanges the STFT's input state with `other`.
+
+### stft_swap_output
+
+```odin
+stft_swap_output :: proc "contextless"(s: ^Stft, other: ^Stft_Output)
+```
+
+**Realtime-safe** (callable on the audio thread). Exchanges the STFT's output state with `other`.
+
+### stft_block
+
+```odin
+stft_block :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Block length in samples.
+
+### stft_fft_size
+
+```odin
+stft_fft_size :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). FFT length in samples (≥ the block, unless `fft_min_size` was smaller).
+
+### stft_interval
+
+```odin
+stft_interval :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). The default hop between blocks.
+
+### stft_bands
+
+```odin
+stft_bands :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Spectrum bins per channel.
+
+### stft_analysis_latency
+
+```odin
+stft_analysis_latency :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Samples from the newest input to the centre of the analysis window.
+
+### stft_synthesis_latency
+
+```odin
+stft_synthesis_latency :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Samples from the centre of the synthesis window to the output read next.
+
+### stft_latency
+
+```odin
+stft_latency :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Total latency through analysis and synthesis.
+
+### stft_samples_since_analysis
+
+```odin
+stft_samples_since_analysis :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Input written since the last analysis.
+
+### stft_samples_since_synthesis
+
+```odin
+stft_samples_since_synthesis :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Output moved since the last synthesis.
+
+### stft_bin_to_freq
+
+```odin
+stft_bin_to_freq :: proc "contextless"(s: ^Stft, bin: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). A bin's frequency as a fraction of the sample rate.
+
+### stft_freq_to_bin
+
+```odin
+stft_freq_to_bin :: proc "contextless"(s: ^Stft, freq: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The (fractional) bin of a frequency given as a fraction of the sample rate.
+
+### stft_spectrum
+
+```odin
+stft_spectrum :: proc "contextless"(s: ^Stft, channel: int) -> []complex64
+```
+
+**Realtime-safe** (callable on the audio thread). Channel `channel`'s spectrum: `stft_bands` bins, read and written in
+place between analysis and synthesis.
+
+### stft_analysis_window
+
+```odin
+stft_analysis_window :: proc "contextless"(s: ^Stft) -> []f32
+```
+
+**Realtime-safe** (callable on the audio thread). The analysis window (`stft_block` samples), editable.
+
+### stft_synthesis_window
+
+```odin
+stft_synthesis_window :: proc "contextless"(s: ^Stft) -> []f32
+```
+
+**Realtime-safe** (callable on the audio thread). The synthesis window, editable.
+
+### stft_set_analysis_offset
+
+```odin
+stft_set_analysis_offset :: proc "contextless"(s: ^Stft, offset: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets the index of the analysis window's centre.
+
+### stft_set_synthesis_offset
+
+```odin
+stft_set_synthesis_offset :: proc "contextless"(s: ^Stft, offset: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets the index of the synthesis window's centre.
+
+### stft_set_normalisation
+
+```odin
+stft_set_normalisation :: proc "contextless"(s: ^Stft, mode: Stft_Normalisation)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets how output is normalised.
+
+### stft_reset
+
+```odin
+stft_reset :: proc "contextless"(s: ^Stft, product_weight: f32 = 1)
+```
+
+**Realtime-safe** (callable on the audio thread). Clears all input and output. `product_weight` scales the initial
+window products (the output's starting normalisation).
+
+### stft_set_interval
+
+```odin
+stft_set_interval :: proc "contextless"(s: ^Stft, interval: int, shape: Stft_Window = Stft_Window.Keep, asymmetry: f64 = 0)
+```
+
+**Realtime-safe** (callable on the audio thread). Sets the default hop, and (unless `.Keep`) rebuilds both windows for
+it. Windows are made in f64. With no asymmetry, the windows are scaled for
+perfect reconstruction at this hop.
+
+### stft_write_input
+
+```odin
+stft_write_input :: proc "contextless"(s: ^Stft, channel: int, offset: int, samples: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Writes `samples` into channel `channel`'s input, `offset` samples
+after the current input position (which doesn't move).
+
+### stft_move_input
+
+```odin
+stft_move_input :: proc "contextless"(s: ^Stft, samples: int, clear: bool = false)
+```
+
+**Realtime-safe** (callable on the audio thread). Moves the input position on by `samples` (optionally clearing what
+it moves over first).
+
+### stft_read_output
+
+```odin
+stft_read_output :: proc "contextless"(s: ^Stft, channel: int, offset: int, out: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Reads `len(out)` samples of channel `channel`'s output, starting
+`offset` samples ahead, normalised.
+
+### stft_add_output
+
+```odin
+stft_add_output :: proc "contextless"(s: ^Stft, channel: int, offset: int, samples: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Adds `samples` (already normalised) into channel `channel`'s output,
+`offset` samples ahead (at most one block).
+
+### stft_replace_output
+
+```odin
+stft_replace_output :: proc "contextless"(s: ^Stft, channel: int, offset: int, samples: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Like `stft_add_output`, but replacing what was there.
+
+### stft_move_output
+
+```odin
+stft_move_output :: proc "contextless"(s: ^Stft, samples: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Moves the output position on by `samples`, clearing what it passes.
+
+### stft_finish_output
+
+```odin
+stft_finish_output :: proc "contextless"(s: ^Stft, strength: f32 = 1, offset: int = 0)
+```
+
+**Realtime-safe** (callable on the audio thread). When no more synthesis is coming, lets the output taper to zero with
+the windows rather than being scaled up as if blocks were just far apart.
+Applies from `offset` samples ahead; `strength` 0..1.
+
+### stft_analyse
+
+```odin
+stft_analyse :: proc "contextless"(s: ^Stft, samples_in_past: int = 0)
+```
+
+**Realtime-safe** (callable on the audio thread). Analyses the latest block of input (or one ending `samples_in_past`
+samples ago) into every channel's spectrum.
+
+### stft_analyse_steps
+
+```odin
+stft_analyse_steps :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Steps an analysis takes (one per channel, or more with `split`).
+
+### stft_analyse_step
+
+```odin
+stft_analyse_step :: proc "contextless"(s: ^Stft, step: int, samples_in_past: int = 0)
+```
+
+**Realtime-safe** (callable on the audio thread). Step `step` of an analysis; run all of them in order.
+
+### stft_synthesise
+
+```odin
+stft_synthesise :: proc "contextless"(s: ^Stft)
+```
+
+**Realtime-safe** (callable on the audio thread). Synthesises every channel's spectrum and adds the result to the
+output at the current position.
+
+### stft_synthesise_steps
+
+```odin
+stft_synthesise_steps :: proc "contextless"(s: ^Stft) -> int
+```
+
+**Realtime-safe** (callable on the audio thread). Steps a synthesis takes.
+
+### stft_synthesise_step
+
+```odin
+stft_synthesise_step :: proc "contextless"(s: ^Stft, step: int)
+```
+
+**Realtime-safe** (callable on the audio thread). Step `step` of a synthesis; run all of them in order.
 
 ## Variables
 

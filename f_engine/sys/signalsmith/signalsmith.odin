@@ -27,4 +27,5 @@ foreign lib {
 	// Test only: Signalsmith Linear's real FFT, as a reference for fire:dsp.
 	test_real_fft       :: proc(size: i32, half_bin: i32, input: [^]f32, output: [^]f32) ---
 	test_bench_real_fft :: proc(size: i32, count: i32) -> f64 ---
+	test_stft           :: proc(block, interval, extra, kind: i32, hops: [^]i32, hop_count: i32, input: [^]f32, frames: i32, output: [^]f32) ---
 }
