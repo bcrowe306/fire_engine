@@ -4,7 +4,7 @@ description: Speed of the C++ Signalsmith Stretch 1.4.0 on the reference cases, 
 ---
 
 Recorded by `tools/stretch_golden` on Apple M1, Darwin/arm64, 2026-11-04.
-The C++ was built by `scripts/stretch.sh` (CMake Release). Times are the best of 3 runs.
+The C++ was built by `scripts/stretch.sh` (CMake Release). Times are the best of 3 runs. (Both the tool and the C++ have since been removed; see commit 33600b9.)
 
 | Case | Channels | Output (s) | CPU (ms) | × real time |
 |---|---|---|---|---|

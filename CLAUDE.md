@@ -46,7 +46,6 @@ Credentials live in `secrets.env` (gitignored, never commit or print it).
 ./scripts/docs.sh --check    # CI: reference current + every exported symbol documented
 ./scripts/examples.sh        # build and run examples/ headless (fake audio driver)
 "$(odin root)/vendor/miniaudio/src/build_miniaudio.sh"   # Linux only, once: miniaudio for fire:audiofile/codecs
-./scripts/stretch.sh         # build the C++ Signalsmith Stretch, only for tests/stretch (parity with the port); skipped without it
 ./scripts/link.sh            # fetch + build Ableton Link (GPL, into gitignored third_party/) for fire:link; tests/link skips without it
 ```
 

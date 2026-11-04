@@ -14,6 +14,8 @@ package stretch
 //   notice shall be included in all copies or substantial portions of the
 //   Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 //
+// The full licence is in LICENSE-signalsmith-stretch.txt, next to this file.
+//
 // The structure, names and order of operations follow the original closely,
 // so the two can be compared block by block.
 

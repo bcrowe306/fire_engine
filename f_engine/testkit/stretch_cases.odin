@@ -18,10 +18,10 @@ Stretch_Mode :: enum i32 {
 }
 
 // One reference case for the time-stretcher: its input, settings and how
-// it is driven. Laid out as the C struct `fss_case` (f_engine/sys/
-// signalsmith/wrapper.cpp), which renders it through Signalsmith Stretch's
-// C++; the pure-Odin port renders the same cases and is compared with the
-// recordings in tests/golden/stretch.
+// it is driven. The C++ Signalsmith Stretch rendered these into the
+// recordings in tests/golden/stretch (before it was removed: see commit
+// 33600b9); the pure-Odin port renders the same cases and is compared with
+// them.
 Stretch_Case :: struct {
 	name:               cstring,
 	signal:             Stretch_Signal,
@@ -43,8 +43,7 @@ Stretch_Case :: struct {
 	seek_at_out:        i32,
 	seek_to_in:         i32,
 	chunks:             [4]i32,       // output frames per process call, repeated; zero entries end the list
-	// Not seen by the C++ (it comes after the fields fss_case mirrors): the
-	// largest spectral distance (`spectral_distance`, dB) allowed from the
+	// The largest spectral distance (`spectral_distance`, dB) allowed from the
 	// recording: 1.5 × the C++'s own largest distance on Linux, on Windows,
 	// or with its input nudged by −100 dBFS, and at least 0.05 dB
 	// (tests/golden/stretch/README.md).

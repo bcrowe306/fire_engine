@@ -521,10 +521,10 @@ Stretch_Case :: struct {
 ```
 
 One reference case for the time-stretcher: its input, settings and how
-it is driven. Laid out as the C struct `fss_case` (f_engine/sys/
-signalsmith/wrapper.cpp), which renders it through Signalsmith Stretch's
-C++; the pure-Odin port renders the same cases and is compared with the
-recordings in tests/golden/stretch.
+it is driven. The C++ Signalsmith Stretch rendered these into the
+recordings in tests/golden/stretch (before it was removed: see commit
+33600b9); the pure-Odin port renders the same cases and is compared with
+them.
 
 | Field | Description |
 |-------|-------------|
@@ -548,7 +548,7 @@ recordings in tests/golden/stretch.
 | `seek_at_out` |  |
 | `seek_to_in` |  |
 | `chunks` | output frames per process call, repeated; zero entries end the list |
-| `tolerance` | Not seen by the C++ (it comes after the fields fss_case mirrors): the largest spectral distance (`spectral_distance`, dB) allowed from the recording: 1.5 × the C++'s own largest distance on Linux, on Windows, or with its input nudged by −100 dBFS, and at least 0.05 dB (tests/golden/stretch/README.md). |
+| `tolerance` | The largest spectral distance (`spectral_distance`, dB) allowed from the recording: 1.5 × the C++'s own largest distance on Linux, on Windows, or with its input nudged by −100 dBFS, and at least 0.05 dB (tests/golden/stretch/README.md). |
 
 ### Trap_Allocator
 

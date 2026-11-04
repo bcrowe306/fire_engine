@@ -3,15 +3,13 @@
 The output of the C++ Signalsmith Stretch 1.4.0 for every case in
 `testkit.stretch_reference_cases` (`f_engine/testkit/stretch_cases.odin`), as
 32-bit float WAVs, plus its speed in `TIMINGS.md`. They were made by
-`tools/stretch_golden` on an Apple-silicon Mac before the C++ is removed. The
-pure-Odin port (`fire:stretch`) is tested against them.
+`tools/stretch_golden` on an Apple-silicon Mac. The pure-Odin port
+(`fire:stretch`) is tested against them.
 
-To remake them (only while the C++ is still in `vendor/signalsmith`):
-
-```bash
-./scripts/stretch.sh
-odin run tools/stretch_golden -collection:fire=f_engine -o:speed -- "$(sysctl -n machdep.cpu.brand_string)"
-```
+The C++, its wrapper and that tool have since been removed, so these can't
+be remade from this tree. They are the reference; never regenerate them from
+the port. To remake them, check out commit 33600b9 (which still has
+`vendor/signalsmith`, `scripts/stretch.sh` and `tools/stretch_golden`).
 
 ## What the cases cover
 
@@ -59,5 +57,4 @@ before rounding differences can compound. It does, at −80 dB or better;
 rate 1, tonality, formant-only, cheaper, split, flush and seek cases match
 within −90 dB for their whole length.
 
-`tests/stretch_port` holds those checks; `tests/stretch` checks the C++
-itself (FFT and STFT parity, the recordings) while it is still vendored.
+`tests/stretch_port` holds those checks.

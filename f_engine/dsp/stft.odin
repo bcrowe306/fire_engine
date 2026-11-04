@@ -13,6 +13,8 @@ package dsp
 //   following conditions: The above copyright notice and this permission
 //   notice shall be included in all copies or substantial portions of the
 //   Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+//
+// The full licence is in LICENSE-signalsmith-linear.txt, next to this file.
 
 import "core:math"
 import "core:mem"

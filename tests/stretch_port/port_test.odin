@@ -12,7 +12,7 @@ import "fire:stretch"
 import kit "fire:testkit"
 
 // Renders a reference case through the Odin port, driving it exactly as
-// fss_test_render (f_engine/sys/signalsmith/wrapper.cpp) drives the C++.
+// the C++ was driven to make the recordings.
 port_render :: proc(c: ^kit.Stretch_Case, input: [][]f32) -> [][]f32 {
 	ch := int(c.channels)
 	s: stretch.Stretch

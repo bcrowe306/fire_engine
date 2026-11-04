@@ -1,2 +1,0 @@
-# Run ./scripts/stretch.sh first (builds the vendored Signalsmith Stretch).
-f_engine/sys/signalsmith/lib/*fire_signalsmith*
