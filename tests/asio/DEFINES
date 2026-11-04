@@ -1,0 +1,2 @@
+# Built with ASIO support (opt-in).
+FIRE_ASIO=true

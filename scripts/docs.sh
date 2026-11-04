@@ -14,7 +14,7 @@ cd "$ROOT"
 PACKAGES=(
 	core timebase rt dsp graph transport link audiofile audiofile/codecs stream clip record sampler stretch
 	backend backend/fake backend/jack
-	backend/coreaudio:darwin_arm64 backend/alsa:linux_amd64 backend/wasapi:windows_amd64
+	backend/coreaudio:darwin_arm64 backend/alsa:linux_amd64 backend/wasapi:windows_amd64 backend/asio:windows_amd64
 	midi midi/coremidi:darwin_arm64 midi/alsa:linux_amd64 midi/winmm:windows_amd64
 	testkit
 )

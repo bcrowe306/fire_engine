@@ -3,7 +3,7 @@
 # stopped when idle (only its disk is billed while stopped; `down` terminates).
 # AWS keys come from secrets.env (AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY).
 #
-#   ./scripts/cloud/windows.sh up        start (or create: OpenSSH, VS Build Tools, Git, Odin, VB-CABLE, loopMIDI)
+#   ./scripts/cloud/windows.sh up        start (or create: OpenSSH, VS Build Tools, Git, Odin, VB-CABLE, loopMIDI, FlexASIO)
 #   ./scripts/cloud/windows.sh sync      copy the working tree to C:\fire
 #   ./scripts/cloud/windows.sh test [..] sync, then run scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/windows.sh ssh [cmd] PowerShell command (or shell) on the instance
@@ -115,6 +115,11 @@ Expand-Archive C:\\loopmidi.zip C:\\loopmidi -Force
 \$cert = (Get-AuthenticodeSignature \$lm).SignerCertificate
 \$store = New-Object System.Security.Cryptography.X509Certificates.X509Store("TrustedPublisher", "LocalMachine"); \$store.Open("ReadWrite"); \$store.Add(\$cert); \$store.Close()
 Start-Process -FilePath \$lm -ArgumentList "/quiet","/norestart" -Wait
+# FlexASIO: an open-source ASIO driver (on PortAudio) for the ASIO tests,
+# set to use VB-CABLE so its outputs loop back to its inputs.
+Invoke-WebRequest -UseBasicParsing "https://github.com/dechamps/FlexASIO/releases/download/flexasio-1.10b/FlexASIO-1.10b.exe" -OutFile C:\\flexasio.exe
+Start-Process -FilePath C:\\flexasio.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+Set-Content -Path C:\\Users\\Administrator\\FlexASIO.toml -Value @('backend = "Windows WASAPI"', '', '[input]', 'device = "CABLE Output (VB-Audio Virtual Cable)"', 'channels = 2', '', '[output]', 'device = "CABLE Input (VB-Audio Virtual Cable)"', 'channels = 2')
 New-Item -ItemType File -Path C:\\fire_setup_done -Force
 Stop-Transcript
 Restart-Computer -Force

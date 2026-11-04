@@ -5,7 +5,7 @@ description: How fire:backend and fire:midi wrap CoreAudio, ALSA, JACK, WASAPI, 
 
 Status: audio drivers for CoreAudio (macOS 11+), ALSA and JACK (Linux) and
 WASAPI (Windows); MIDI drivers for CoreMIDI, the ALSA sequencer and WinMM; hot-plug
-events on all of them. Next: ASIO, Windows MIDI Services.
+events on all of them, and ASIO (opt-in). Next: Windows MIDI Services.
 
 ## Decisions
 

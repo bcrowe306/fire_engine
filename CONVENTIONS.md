@@ -31,7 +31,7 @@ on purpose, leave a comment explaining why.
 | `fire:testkit`   | Test-only: generators, analyzers, WAV, golden files, null backend, callback harness | anything |
 | `fire:backend`   | Device API and shared layer: format conversion, channel selection, block splitting, device events (see `docs/design/backend.md`) | `core`, `rt` |
 | `fire:backend/fake` | Simulated driver for tests and headless runs           | `backend`, `core`   |
-| `fire:backend/<api>` | Drivers: `coreaudio` (macOS), `alsa` and `jack` (Linux; JACK loaded at run time), `wasapi` (Windows); planned ASIO | `backend`, `core`, `rt`, `sys/<api>` |
+| `fire:backend/<api>` | Drivers: `coreaudio` (macOS), `alsa` and `jack` (Linux; JACK loaded at run time), `wasapi` (Windows), and `asio` (Windows, opt-in with `-define:FIRE_ASIO=true`; our own ABI declarations in `sys/asio`) | `backend`, `core`, `rt`, `sys/<api>` |
 | `fire:midi`      | MIDI 1.0 ⇄ UMP, input scheduling into blocks, SysEx queue, output sender, driver interface | `core`, `rt` |
 | `fire:midi/<api>` | MIDI drivers: `coremidi` (macOS), `alsa` (Linux sequencer), `winmm` (Windows) | `midi`, `core`, `rt`, `sys/<api>` |
 | `fire:sys/<api>` | Raw OS API bindings, no logic. Package name `<api>_sys` (Odin package names must be unique) | OS packages only |
@@ -47,6 +47,8 @@ GPL code (Ableton Link) is never committed: it is fetched into `third_party/`.
 
 A test package whose dependency is built separately has a `REQUIRES` file: globs
 that must match (else `scripts/test.sh` skips it) and `#` lines saying how to get them.
+One that needs an opt-in feature has a `DEFINES` file: `NAME=VALUE` lines that
+`scripts/test.sh` passes as `-define:` flags (`tests/asio` sets `FIRE_ASIO=true`).
 
 Platform-specific files use build tags (`#+build darwin`). A test package for one
 platform adds a `#+build !<os>` stub file with one empty test, so it compiles everywhere.

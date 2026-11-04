@@ -14,11 +14,39 @@ frames for your callback.
 | Linux | ALSA | `alsa.create()` |
 | Linux | JACK (if installed) | `jack.create(jack.default_options())` |
 | Windows | WASAPI (shared mode) | `wasapi.create()` |
+| Windows | ASIO (opt-in: `-define:FIRE_ASIO=true`) | `asio.create()` |
 | Any | Simulated, for tests and headless runs | `fake.driver(fake.create(fake.default_config()))` |
 
 Driver packages exist only on their platform, so import them from files with
 build tags (`#+build darwin` and so on). `examples/play_device` shows the
 pattern.
+
+## ASIO
+
+Most Windows audio interfaces come with an ASIO driver, usually the lowest
+latency way to use them. `fire:backend/asio` talks to ASIO drivers through
+declarations of the interface in Fire Engine's own code, without
+Steinberg's SDK; it is off unless you build with `-define:FIRE_ASIO=true`
+(ASIO is Steinberg's technology, so check their terms before you ship with
+it).
+
+- Each installed driver is one device, with inputs and outputs on one
+  clock; its id is `"asio:"` and the driver's registry name. Use the same
+  id for input and output.
+- Only one ASIO device can be open in a process: the interface's callbacks
+  carry no context.
+- Callbacks arrive on the driver's thread, `buffer_frames` long. The
+  requested buffer size is rounded to the nearest the driver allows.
+- A driver asking to be reset (after its control panel changed the buffer
+  size, say) or changing rate arrives as a `.Format_Changed` event: close
+  and reopen. Lost samples arrive as xruns.
+- The create, open, start, stop and close calls must all come from one
+  thread: COM is initialized apartment-threaded on it, as ASIO drivers
+  expect.
+
+It is tested with FlexASIO (an open-source ASIO driver on PortAudio) set
+up as a VB-CABLE loopback: exact copies, no xruns at 480-frame buffers,
+and the latency probe reading through it.
 
 ## Open, start, stop
 

@@ -1,0 +1,1 @@
+Real-device streaming tests through FlexASIO and VB-CABLE: scripts/test.sh runs this package alone, after the others.

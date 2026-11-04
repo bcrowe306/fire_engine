@@ -16,6 +16,9 @@
 #   FIRE_JOBS=4            packages built and run at once (default: CPU count).
 #                          Each compile takes ~300 MB, so small machines need a cap.
 #
+# A package with a DEFINES file is built with the -define:NAME=VALUE flags it
+# lists, one per line (# lines are comments): for opt-in features such as ASIO.
+#
 # Packages containing a SERIAL file run after all others, one at a time:
 # real-device streaming tests that require zero xruns (so compiles and other
 # tests don't preempt their audio threads), and tests whose system-wide device
@@ -108,12 +111,20 @@ run_with_timeout() {
 	return "$status"
 }
 
+# The -define flags from a package's DEFINES file, if any.
+defines() {
+	local f="tests/$1/DEFINES"
+	[ -f "$f" ] || return 0
+	grep -v '^#' "$f" | grep -v '^[[:space:]]*$' | sed 's/^/-define:/' | tr '\n' ' '
+}
+
 run_one() {
 	local pkg="$1" opt="$2" artifacts="$3"
 	local tag="${pkg}_${opt}"
 	local bin="$WORK/test_$tag.bin"
+	# shellcheck disable=SC2046 # one word per define
 	FIRE_ARTIFACTS_DIR="$artifacts" run_with_timeout "$TIMEOUT" \
-		odin test "tests/$pkg" -collection:fire=f_engine -o:"$opt" \
+		odin test "tests/$pkg" -collection:fire=f_engine -o:"$opt" $(defines "$pkg") \
 		-vet -strict-style -out:"$bin" \
 		> "$LOGS/$tag.log" 2>&1
 	echo $? > "$LOGS/$tag.status"
@@ -123,7 +134,8 @@ run_one() {
 build_one() {
 	local pkg="$1" opt="$2"
 	local tag="${pkg}_${opt}"
-	odin build "tests/$pkg" -build-mode:test -collection:fire=f_engine -o:"$opt" \
+	# shellcheck disable=SC2046
+	odin build "tests/$pkg" -build-mode:test -collection:fire=f_engine -o:"$opt" $(defines "$pkg") \
 		-vet -strict-style -out:"$WORK/test_$tag.bin" > "$LOGS/$tag.log" 2>&1
 	echo $? > "$LOGS/$tag.status"
 }

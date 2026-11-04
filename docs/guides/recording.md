@@ -101,6 +101,7 @@ these match reality. On the loopback devices Fire Engine tests with:
 | ALSA, snd-aloop | 2048 | 2048 | 1024 |
 | JACK, a port connected to a port | 1024 | 2048 | 1024 |
 | WASAPI, VB-CABLE | about 6400 | about 2300 | 0 |
+| ASIO, FlexASIO on VB-CABLE | about 5400 | 4800 | 4800 |
 
 The JACK and VB-CABLE rows are virtual devices with delays of their own
 that no driver can see. Hardware interfaces vary too, so the reliable way
