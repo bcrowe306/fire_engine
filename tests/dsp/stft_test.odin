@@ -53,7 +53,9 @@ stft_reconstructs_its_input :: proc(t: ^testing.T) {
 			testing.expect_value(t, dsp.stft_init(&s, stretch_like(kind, split)), core.Error.None)
 			dsp.stft_set_interval(&s, 1440, .Kaiser)
 			y := round_trip(&s, x, 1440, split)
-			lag := kit.estimate_latency(x[0], y, 20_000)
+			// The lag from a 4096-frame excerpt past the start-up: the search
+			// costs excerpt × lag range, far too slow over the whole signal.
+			lag := kit.estimate_latency(x[0][10_000:][:4096], y[10_000:], 20_000)
 			// Only whole hops are processed: compare up to the last one written.
 			written := len(y) / 1440 * 1440
 			worst := 0.0

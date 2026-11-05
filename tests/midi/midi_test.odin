@@ -416,16 +416,23 @@ output_sender_holds_until_due_when_driver_cannot_schedule :: proc(t: ^testing.T)
 	defer midi.output_destroy(&o)
 	midi.output_start(&o)
 
+	// Wait until the sender is running: on a loaded Windows Server, starting
+	// its thread alone has taken hundreds of milliseconds.
+	midi.output_push(&o, {rt.host_time_ns(), 1, {0x90, 127, 1}})
+	start := time.tick_now()
+	for intrinsics.atomic_load(&f.count) < 1 && time.tick_since(start) < 5 * time.Second do time.sleep(time.Millisecond)
+	testing.expect_value(t, f.count, 1)
+
 	base := rt.host_time_ns() + 20_000_000
 	for i in 0 ..< 5 do midi.output_push(&o, {base + u64(i) * 10_000_000, 1, {0x90, u8(i), 1}})
-	start := time.tick_now()
-	for intrinsics.atomic_load(&f.count) < 5 && time.tick_since(start) < 2 * time.Second do time.sleep(time.Millisecond)
+	start = time.tick_now()
+	for intrinsics.atomic_load(&f.count) < 6 && time.tick_since(start) < 2 * time.Second do time.sleep(time.Millisecond)
 	midi.output_stop(&o)
 
-	testing.expect_value(t, f.count, 5)
-	for i in 0 ..< f.count {
+	testing.expect_value(t, f.count, 6)
+	for i in 0 ..< f.count - 1 {
 		due := base + u64(i) * 10_000_000
-		late := i64(f.sent_at[i]) - i64(due)
+		late := i64(f.sent_at[i + 1]) - i64(due)
 		// Never early. The lateness bound allows a loaded machine (8 parallel
 		// compiles delayed one message 11 ms before the sender ran at High).
 		testing.expectf(t, late >= 0 && late < 20_000_000, "message %d sent %d ns after its time", i, late)

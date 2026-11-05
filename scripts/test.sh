@@ -30,6 +30,8 @@ cd "$ROOT"
 
 read -r -a OPTS <<< "${FIRE_OPT:-none}"
 ARTIFACTS="${FIRE_ARTIFACTS_DIR:-$ROOT/.test_artifacts}"
+# Absolute: serial packages run from their own directory.
+case "$ARTIFACTS" in /*) ;; *) ARTIFACTS="$ROOT/$ARTIFACTS" ;; esac
 TIMEOUT="${FIRE_TIMEOUT:-600}"
 JOBS_MAX="${FIRE_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 rm -rf "$ARTIFACTS"

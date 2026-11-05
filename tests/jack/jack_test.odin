@@ -43,26 +43,30 @@ server_start :: proc(t: ^testing.T, tag: string) -> (s: Server, d: ^backend.Driv
 		log.info("libjack not installed; skipping")
 		return
 	}
-	cmd := fmt.ctprintf("JACK_NO_AUDIO_RESERVATION=1 jackd -n %s -d dummy -r %d -p %d >/dev/null 2>&1 & echo $! > %s", s.name, RATE, PERIOD, s.pidfile)
+	cmd := fmt.ctprintf("JACK_NO_AUDIO_RESERVATION=1 jackd -n %s -d dummy -r %d -p %d >/tmp/%s.log 2>&1 & echo $! > %s", s.name, RATE, PERIOD, s.name, s.pidfile)
 	if libc.system(cmd) != 0 {
 		backend.driver_destroy(d)
 		log.info("jackd not available; skipping")
 		return s, nil, false
 	}
+	// A slow, loaded VM can take seconds to start jackd.
 	start := time.tick_now()
-	for time.tick_since(start) < 5 * time.Second {
+	for time.tick_since(start) < 15 * time.Second {
 		infos, _ := backend.driver_enumerate(d, context.temp_allocator)
 		if len(infos) == 1 do return s, d, true
 		time.sleep(50 * time.Millisecond)
 	}
-	testing.expectf(t, false, "jackd %s did not come up", s.name)
+	out, _ := os.read_entire_file(fmt.tprintf("/tmp/%s.log", s.name), context.temp_allocator)
+	testing.expectf(t, false, "jackd %s did not come up; it said:\n%s", s.name, string(out))
 	server_stop(s)
 	backend.driver_destroy(d)
 	return s, nil, false
 }
 
+// Stops the server and waits (up to 5 s) for it to exit, so the next one
+// doesn't start while it still holds its shared memory.
 server_stop :: proc(s: Server) {
-	libc.system(fmt.ctprintf("kill $(cat %s) 2>/dev/null; rm -f %s", s.pidfile, s.pidfile))
+	libc.system(fmt.ctprintf("p=$(cat %s); kill $p 2>/dev/null; for i in $(seq 100); do kill -0 $p 2>/dev/null || break; sleep 0.05; done; rm -f %s /tmp/%s.log", s.pidfile, s.pidfile, s.name))
 }
 
 server_release :: proc(s: Server) {

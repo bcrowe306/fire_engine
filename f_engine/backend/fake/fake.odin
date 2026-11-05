@@ -302,7 +302,9 @@ thread_main :: proc(data: rawptr) {
 		frames := cycle(f, rt.host_time_ns())
 		if f.cfg.realtime {
 			time.sleep(time.Duration(f64(frames) * 1e9 / f.format.sample_rate))
-		} else {
+		} else if intrinsics.atomic_load(&f.callbacks) % 256 == 0 {
+			// Rarely: on a loaded machine with long scheduler quanta
+			// (Windows Server), each yield can cost most of a second.
 			thread.yield()
 		}
 	}

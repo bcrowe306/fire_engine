@@ -417,8 +417,10 @@ format_change_is_reported :: proc(t: ^testing.T) {
 
 @(test)
 threaded_start_stop_cycles :: proc(t: ^testing.T) {
-	// A crash on the driver thread must fail the test, not hang the run.
-	testing.set_fail_timeout(t, 30 * time.Second)
+	// A crash on the driver thread must fail the test, not hang the run. The
+	// limits are generous: on a loaded 2-core Windows Server machine, a new
+	// thread can wait seconds for a CPU, and each of the 20 cycles starts one.
+	testing.set_fail_timeout(t, 120 * time.Second)
 	cfg := fake.default_config()
 	cfg.threaded = true
 	cfg.jitter_min, cfg.jitter_max = 1, 512
@@ -432,7 +434,7 @@ threaded_start_stop_cycles :: proc(t: ^testing.T) {
 		testing.expect_value(t, backend.device_start(&rig.dev, recorder_callback(r)), core.Error.None)
 		deadline := time.tick_now()
 		for fake.callback_count(rig.f) < 50 {
-			if time.tick_since(deadline) > 5 * time.Second {
+			if time.tick_since(deadline) > 20 * time.Second {
 				testing.expectf(t, false, "cycle %d: callbacks stalled", cycle)
 				backend.device_stop(&rig.dev)
 				return

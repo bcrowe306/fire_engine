@@ -93,7 +93,7 @@ output_is_identical_for_any_thread_count :: proc(t: ^testing.T) {
 Stress :: struct {
 	g:        ^graph.Graph,
 	stop:     bool, // atomic
-	blocks:   int,
+	blocks:   int, // atomic
 	bad:      int,  // non-finite samples
 	trap:     kit.Trap_Allocator,
 }
@@ -133,14 +133,17 @@ live_edits_under_load :: proc(t: ^testing.T) {
 			ctx := core.Process_Context{inputs = ins[:], outputs = outs[:], frames = 128}
 			graph.process(s.g, &ctx)
 			for o in outs do for x in o do if math.is_nan(x) || math.is_inf(x) do s.bad += 1
-			s.blocks += 1
+			intrinsics.atomic_add(&s.blocks, 1)
 		}
 	})
 
 	rng := kit.Rng{state = 7}
 	ids := make([dynamic]graph.Node_Id, context.temp_allocator)
-	// Up to 300 edits, for at most 30 s: on a loaded 2-core machine the
-	// control thread's short sleeps can take most of a second each.
+	// Up to 300 edits, for at most 30 s. Between edits the control thread
+	// waits (briefly) for the audio thread to process a block, so it meets
+	// each plan. It spins rather than sleeps or yields: on a loaded machine
+	// with long scheduler quanta (Windows Server), giving up the CPU can cost
+	// most of a second each time.
 	start := time.tick_now()
 	edits := 0
 	for edit in 0 ..< 300 {
@@ -163,8 +166,10 @@ live_edits_under_load :: proc(t: ^testing.T) {
 				graph.connect(g, ids[0], 1, ids[len(ids) - 1], 1)
 			}
 		}
+		b0 := intrinsics.atomic_load(&s.blocks)
 		testing.expect_value(t, graph.commit(g), core.Error.None)
-		time.sleep(200 * time.Microsecond)
+		w := time.tick_now()
+		for intrinsics.atomic_load(&s.blocks) == b0 && time.tick_since(w) < 2 * time.Millisecond do intrinsics.cpu_relax()
 	}
 	time.sleep(20 * time.Millisecond)
 	intrinsics.atomic_store(&s.stop, true)
