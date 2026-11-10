@@ -15,6 +15,8 @@ Options:
 	--headless     no window on screen (for scripted runs without a display)
 	--fake         the simulated audio driver (no sound card needed)
 	--prefs DIR    where preferences go (recent projects, favourites); default: the system's
+	--control PORT take commands live from a test harness on 127.0.0.1:PORT (0: any free
+	               port; the one chosen is printed): see app:ui's Control and tests/e2e
 	--profile N    draw N frames as fast as possible and print the CPU time per frame
 	               (after the drive script, if one is given: profile a loaded project)
 */
@@ -50,6 +52,7 @@ App :: struct {
 	browser:  pm.Browser,
 	bview:    Browser_View,
 	prefs:    string, // where preferences go (--prefs; default: the system's)
+	control:  ui.Control, // --control: a test harness's live commands
 	tools:    Tool_State,
 	seq:      Seq_State,
 	capture:  pm.Capture,
@@ -71,7 +74,10 @@ App :: struct {
 }
 
 main :: proc() {
+	ui.crash_install()
+	context.assertion_failure_proc = ui.crash_assertion
 	project, drive, out, headless, fake, profile, prefs := "", "", ".build/app/shots", false, false, 0, ""
+	control := -1
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
 			if i^ + 1 < len(os.args) {
@@ -88,6 +94,7 @@ main :: proc() {
 		case "--fake":     fake = true
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
 		case "--prefs":    prefs = next(&i)
+		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
 		case:
 			fmt.eprintln("pads: unknown option", os.args[i])
 			os.exit(2)
@@ -142,8 +149,24 @@ main :: proc() {
 	pm.browser_init(&a.browser, favorites_path(a))
 	defer pm.browser_destroy(&a.browser)
 
+	if control >= 0 {
+		// Live: commands from a harness, through a driver with no script of
+		// its own (the app runs as usual between them).
+		if !ui.control_open(&a.control, control) do os.exit(1)
+		ui.driver_init(&a.driver, "", out)
+		a.driver.live = true
+		a.driver.command = drive_command
+		a.driver.user = a
+		p.driver, p.control = &a.driver, &a.control
+		if headless do p.fixed_dt = 1.0 / 60
+		ui.probe_on(true)
+		fmt.printfln("control: listening on 127.0.0.1:%d", a.control.port)
+		os.flush(os.stdout)
+	}
+	defer if control >= 0 do ui.control_close(&a.control)
 	if drive != "" {
 		if !ui.driver_load(&a.driver, drive, out) do os.exit(1)
+		ui.probe_on(true)
 		a.driver.command = drive_command
 		a.driver.user = a
 		p.driver = &a.driver

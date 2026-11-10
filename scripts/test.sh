@@ -3,6 +3,7 @@
 #
 #   ./scripts/test.sh              all packages
 #   ./scripts/test.sh dsp rt       selected packages
+#   ./scripts/test.sh 'app_*'      packages by pattern (quoted: the script expands it)
 #
 # Env:
 #   FIRE_UPDATE_GOLDEN=1   rewrite golden WAVs instead of comparing
@@ -37,12 +38,20 @@ JOBS_MAX="${FIRE_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 rm -rf "$ARTIFACTS"
 
 if [ "$#" -gt 0 ]; then
-	PKGS=("$@")
+	# Names, or patterns of them ('app_*'), under tests/.
+	PKGS=()
+	for arg in "$@"; do
+		case "$arg" in
+		*"*"*) for d in tests/$arg/; do [ -d "$d" ] && ls "$d"*.odin >/dev/null 2>&1 && PKGS+=("$(basename "$d")"); done ;;
+		*) PKGS+=("$arg") ;;
+		esac
+	done
 else
 	PKGS=()
 	for d in tests/*/; do
 		name="$(basename "$d")"
 		[ "$name" = "golden" ] && continue
+		ls "$d"*.odin >/dev/null 2>&1 || continue  # not an Odin package (tests/e2e is Python)
 		PKGS+=("$name")
 	done
 fi

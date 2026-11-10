@@ -5,7 +5,9 @@
 #   task app:pads             build .build/app/pads (optimized)
 #   task app:run              build and run Pads
 #   task app:drive -- FILE    run Pads with a drive script (input events and screenshots)
-#   task app:test             test app:core, app:ui and Pads headless
+#   task app:test             test app:core, app:ui and Pads headless (and the e2e suite)
+#   task app:e2e              the end-to-end suite: Pads used as a person uses it (tests/e2e, pytest)
+#   task app:ctl              Pads under remote control: type drive commands, see answers and crashes
 #   task app:gallery          the widget gallery (to review the look)
 version: '3'
 
@@ -14,6 +16,8 @@ vars:
   EXE: '{{if eq OS "windows"}}.exe{{end}}'
   COLLECTIONS: -collection:fire={{.ROOT_DIR}}/f_engine -collection:app={{.ROOT_DIR}}/app -collection:deps={{.ROOT_DIR}}/vendor
   OPT: '{{.OPT | default "speed"}}'
+  # The Python `task deps` sets up (pytest for the e2e suite).
+  E2E_PYTHON: '{{if eq OS "windows"}}{{.ROOT_DIR}}/.deps/venv/Scripts/python.exe{{else}}{{.ROOT_DIR}}/.deps/venv/bin/python{{end}}'
 
 tasks:
   pads:
@@ -22,6 +26,9 @@ tasks:
       - '{{.ROOT_DIR}}/apps/pads/**/*.odin'
       - '{{.ROOT_DIR}}/app/**/*.odin'
       - '{{.ROOT_DIR}}/f_engine/**/*.odin'
+      - '{{.ROOT_DIR}}/vendor/**/*.odin'
+      - '{{.ROOT_DIR}}/vendor/imgui/*.a'
+      - '{{.ROOT_DIR}}/vendor/imgui/*.lib'
     generates:
       - '{{.OUT}}/pads{{.EXE}}'
     # Up to date only if the sources are unchanged and it was built at this OPT
@@ -30,7 +37,7 @@ tasks:
       - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}"'
     cmds:
       - mkdir -p {{.OUT}}
-      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} -o:{{.OPT}} -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
       - echo {{.OPT}} > {{.OUT}}/pads.opt
 
   gallery:
@@ -55,9 +62,33 @@ tasks:
   test:
     desc: 'Test the application layer: the headless packages (tests/app_*, tests/pads_*), the UI cases that need a window (apps/ui_tests), then Pads driven by its scripts.'
     cmds:
-      - bash ./scripts/test.sh $(cd tests && ls -d app_* pads_* | tr '\n' ' ')
+      - bash ./scripts/test.sh 'app_*' 'pads_*'
+      - task: lint
       - task: ui-tests
       - task: pads-drive
+      - task: e2e
+        vars: {HEADLESS: '1'}
+
+  lint:
+    desc: 'Check the app code for ImGui calls given Odin strings where C wants cstrings (they crash).'
+    cmds:
+      - '{{if eq OS "windows"}}python{{else}}python3{{end}} scripts/lint_imgui.py apps app'
+
+  e2e:
+    desc: 'The end-to-end suite: Pads driven over its control socket by tests/e2e (pytest), as a person uses it; a crash fails the test with its report. A window on the Mac (watch it), headless elsewhere or with HEADLESS=1. Args go to pytest: task app:e2e -- -k browser -x'
+    env:
+      E2E_HEADLESS: '{{if .HEADLESS}}{{.HEADLESS}}{{else if eq OS "darwin"}}0{{else}}1{{end}}'
+    cmds:
+      - task: pads
+        vars: {OPT: none}
+      - '{{.E2E_PYTHON}} -m pytest tests/e2e -q {{.CLI_ARGS}}'
+
+  ctl:
+    desc: 'Pads under remote control (a window): type drive commands (click_item, drag_item, state, ...) one per line; each answer prints, and a crash prints its report. Args go to tests/e2e/ctl.py: task app:ctl -- --headless state'
+    cmds:
+      - task: pads
+        vars: {OPT: none}
+      - '{{.E2E_PYTHON}} tests/e2e/ctl.py {{.CLI_ARGS}}'
 
   pads-drive:
     desc: 'Run Pads headless on the simulated audio driver through tests/app_ui/drive/pads*.txt; fails if an expect line fails. Screenshots go to .build/app/pads_shots.'

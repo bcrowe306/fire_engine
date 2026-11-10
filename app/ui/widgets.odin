@@ -60,6 +60,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 
 	im.SetCursorScreenPos({pos.x + (w - size) / 2, pos.y + label_h + 4})
 	im.InvisibleButton("##knob", {size, size})
+	name(string(shown))
 	e = drag_value(value, min_v, max_v, default, size * 3)
 
 	// Arc from 7:30 to 4:30 (270°): track, then the value.
@@ -135,6 +136,7 @@ fader :: proc(label: cstring, value: ^f32, min_v, max_v, default: f32, size := F
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
 	im.InvisibleButton("##fader", size)
+	name(widget_name(label, "fader"))
 	e = drag_value(value, min_v, max_v, default, (size.y if vertical else size.x) - 12, vertical)
 	frac := (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
 	hovered := im.IsItemHovered() || im.IsItemActive()
@@ -254,6 +256,7 @@ toggle :: proc(label: cstring, on: ^bool) -> bool {
 	pos := im.GetCursorScreenPos()
 	y := pos.y + (im.GetFrameHeight() - h) / 2
 	clicked := im.InvisibleButton("##toggle", {w, im.GetFrameHeight()})
+	name(widget_name(label, "toggle"))
 	if clicked do on^ = !on^
 	hovered := im.IsItemHovered()
 	bg := t.accent if on^ else (t.hover if hovered else t.raised)
@@ -293,10 +296,12 @@ segmented :: proc(id: cstring, options: []string, choice: ^int) -> bool {
 		im.SetCursorScreenPos({x, pos.y})
 		im.PushIDInt(i32(i))
 		if im.InvisibleButton("##seg", {widths[i], h}) && choice^ != i {
+		// (named below, once its block is done)
 			choice^ = i
 			changed = true
 		}
 		hovered := im.IsItemHovered()
+		name(o)
 		im.PopID()
 		if choice^ == i {
 			im.DrawList_AddRectFilled(dl, {x, pos.y + 2}, {x + widths[i], pos.y + h - 2}, col(t.surface), t.radius - 1)
@@ -327,6 +332,7 @@ icon_button :: proc(icon: string, tooltip: cstring, on := false, size: f32 = 0, 
 	defer im.PopID()
 	pos := im.GetCursorScreenPos()
 	clicked := im.InvisibleButton("##icon", {s, s}) && !disabled
+	name(string(tooltip))
 	hovered := im.IsItemHovered() && !disabled
 	held := im.IsItemActive() && !disabled
 	c := icon_color(on, hovered, held, color, disabled)
@@ -357,6 +363,7 @@ xy_pad :: proc(id: cstring, x, y: ^f32, size := im.Vec2{160, 160}) -> (e: Edit) 
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
 	im.InvisibleButton("##xy", size)
+	name(widget_name(id, "xy pad"))
 	if im.IsItemActivated() do e.started = true
 	if im.IsItemActive() {
 		e.active = true
@@ -395,6 +402,13 @@ flow :: proc(width: f32, spacing: f32 = -1) {
 // The width of a button labelled `label` (for flow).
 button_width :: proc(label: cstring) -> f32 {
 	return im.CalcTextSize(label).x + im.GetStyle().FramePadding.x * 2
+}
+
+// The name a widget gets for the probe: its label as shown, or `kind`.
+@(private)
+widget_name :: proc(label: cstring, kind: string) -> string {
+	s := string(shown_label(label))
+	return s if s != "" else kind
 }
 
 // The theme in use (the last one given to set_theme).

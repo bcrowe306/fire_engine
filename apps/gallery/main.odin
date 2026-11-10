@@ -210,7 +210,7 @@ draw_controls :: proc(user: rawptr) {
 	im.PushFontFloat(f.bold, 22)
 	im.Text("Fire Engine UI")
 	im.PopFont()
-	im.TextDisabled("Widgets of app:ui, %s theme", "dark" if s.dark else "light")
+	im.TextDisabled("%s", fmt.ctprintf("Widgets of app:ui, %s theme", "dark" if s.dark else "light"))
 	section(f, "Buttons")
 	im.Button("Button")
 	im.SameLine()
@@ -299,7 +299,7 @@ draw_editors :: proc(user: rawptr) {
 draw_history :: proc(user: rawptr) {
 	s := (^State)(user)
 	h := &s.history
-	im.TextDisabled("%d steps, %s", len(h.undo), "unsaved" if app.is_dirty(h) else "saved")
+	im.TextDisabled("%s", fmt.ctprintf("%d steps, %s", len(h.undo), "unsaved" if app.is_dirty(h) else "saved"))
 	im.Separator()
 	for step, i in h.undo {
 		im.PushIDInt(i32(i))

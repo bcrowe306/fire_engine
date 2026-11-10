@@ -52,6 +52,8 @@ Platform :: struct {
 	running:      bool,
 	frame:        u64, // frames drawn
 	driver:       ^Driver, // when the UI runs from a script
+	control:      ^Control, // live commands from a test harness (with a live driver)
+	fence:        ^sdl.GPUFence, // headless: the frame in flight (waited for before the next)
 	fixed_dt:     f32, // > 0: every frame advances this many seconds (repeatable runs)
 	clear:        [4]f32, // background colour
 	fonts:        Fonts,
@@ -134,6 +136,7 @@ platform_init :: proc(p: ^Platform, settings: Platform_Settings) -> bool {
 // Shuts ImGui, the device and the window down, in that order.
 platform_destroy :: proc(p: ^Platform) {
 	if p.device != nil do _ = sdl.WaitForGPUIdle(p.device)
+	if p.fence != nil do sdl.ReleaseGPUFence(p.device, p.fence)
 	if im.GetCurrentContext() != nil {
 		imgpu.Shutdown()
 		imsdl.Shutdown()
@@ -165,6 +168,7 @@ frame_begin :: proc(p: ^Platform) -> bool {
 	}
 	for d in p.drops do delete(d.path)
 	clear(&p.drops)
+	if p.control != nil && p.driver != nil do control_poll(p.control, p.driver)
 	if p.driver != nil do driver_step(p.driver, p)
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
@@ -179,6 +183,7 @@ frame_begin :: proc(p: ^Platform) -> bool {
 		}
 	}
 	if !p.running do return false
+	im.probe_frame() // the frame just drawn's items become the ones a test reads
 	imgpu.NewFrame()
 	imsdl.NewFrame()
 	if p.fixed_dt > 0 do im.GetIO().DeltaTime = p.fixed_dt
@@ -228,6 +233,17 @@ frame_end :: proc(p: ^Platform) {
 		screenshot_submit(p, cmd, p.driver.shot_path)
 		delete(p.driver.shot_path)
 		p.driver.shot_path = ""
+	} else if swapchain == nil {
+		// No swapchain paces a headless frame: wait for the last one to finish
+		// before going on, or frames queue up faster than a (software) GPU
+		// draws them and their memory piles up (gigabytes on Linux's
+		// lavapipe). One frame stays in flight.
+		fence := sdl.SubmitGPUCommandBufferAndAcquireFence(cmd)
+		if p.fence != nil {
+			_ = sdl.WaitForGPUFences(p.device, true, &p.fence, 1)
+			sdl.ReleaseGPUFence(p.device, p.fence)
+		}
+		p.fence = fence
 	} else {
 		_ = sdl.SubmitGPUCommandBuffer(cmd)
 	}

@@ -24,6 +24,7 @@ task app:pads OPT=none   # a debug build in .build/app/pads
 | `--drive FILE` | run from a [drive script](#scripts-and-tests) |
 | `--out DIR` | where a script's screenshots go (default `.build/app/shots`) |
 | `--headless` | no window on screen |
+| `--control PORT` | take commands live from a test harness on 127.0.0.1:PORT (0: any free port, printed) |
 | `--prefs DIR` | where preferences go: recent projects, the browser's favourites (default: the system's place for them) |
 | `--profile N` | draw N frames flat out and print the CPU time per frame (after `--drive`'s script, if given) |
 
@@ -261,6 +262,8 @@ search QUERY         search under the folder shown ("search" alone stops)
 preview play|stop | auto on|off | sync on|off | volume DB
 expect root NAME / expect rows K / expect results K / expect previewing 0|1
 expect favorites K / expect selected_file NAME
+state                the app's state as one line of JSON (what tests/e2e reads)
+crash segv|assert|bounds   crash on purpose (the crash reporter's test)
 set N FIELD VALUE    volume, pan, pitch, mode (0..3), choke, reverse (0/1)
 chop N equal K       (or: chop N transients SENSITIVITY)
 theme light|dark     action ID (an action from the palette: undo, bank_b...)
@@ -321,3 +324,73 @@ task app:pads-drive    # just the scripts (debug build, fake driver, headless)
 
 The fixtures (samples, the `library/` folders and `beat.mid`) are made by
 `tests/app_ui/fixtures/make.py`.
+
+## End-to-end tests and live control
+
+`tests/e2e` uses Pads as a person does, by mouse and keyboard, over its
+control socket (`--control`), and checks the app's state after each step;
+a crash fails the test with the app's crash report (the cause, the last
+command, a back trace). Each test gets a fresh Pads with its own
+preferences and project. On the Mac a window opens (watch it); elsewhere,
+and with `HEADLESS=1`, it runs headless.
+
+```bash
+task deps                              # once: also puts pytest in .deps/venv
+task app:e2e                           # the suite (a window on the Mac)
+task app:e2e HEADLESS=1                # headless (what task app:test runs)
+task app:e2e -- -k browser -x          # some tests; stop at the first failure
+.deps/venv/bin/python -m pytest tests/e2e -q   # the same, by hand (after task app:pads OPT=none)
+```
+
+| File | What it uses |
+|---|---|
+| `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, dragging files and search results onto pads |
+| `test_pads.py` | pads by mouse and keys, banks, the Pad tab (modes, Reverse, knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
+| `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
+| `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
+| `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song chain and its switches |
+| `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |
+| `test_crawl.py` | a hunt for crashes: every item showing in each panel and tab clicked (left and right), and a browser file dragged onto every kind of target |
+| `test_harness.py` | the harness: crashes are reported, a missing item is an error |
+
+A test reads like what a person does:
+
+```python
+def test_dragging_a_sample_onto_a_pad_loads_it(app, library):
+    app.browse(library)
+    app.click("Drums", window="browser")
+    app.click("Kicks", window="browser")
+    app.drag("Kick 808.wav", "pad A1", from_window="browser")
+    assert app.pad(0)["name"] == "Kick 808"
+```
+
+`app` (tests/e2e/pads.py) has `click`, `drag`, `drag_by`, `key`, `type`,
+`panel`, `expect_item`, `items`, `state` (the app's state: pads, mixer,
+browser, preview, sequencer, toasts), `until` and `screenshot`; `cmd`
+runs any drive command. A failing test keeps a screenshot in
+`.build/app/e2e/<test>/failure.png`. The names items go by: pads are
+`pad A1`; mixer parts are `A1 fader`, `A1 send B`, `A1 slot 1`, `A1
+output`, `Bus A mute`, `Main fader`; favourite pills `tab Documents`;
+performance effects `fx 1`; song steps `song step 1`; browser rows their
+names; icon buttons their tooltips; combos their ids (`##arp_mode`).
+`items` (or `task app:ctl -- items`) lists what shows.
+
+### Driving it live
+
+`task app:ctl` starts Pads under remote control and runs the commands you
+type, printing each answer — or the crash report if it dies:
+
+```bash
+task app:ctl
+browse tests/app_ui/fixtures/library
+click_item Drums in browser
+drag_item "Closed Hat.wav" in browser to "pad A2"
+state
+```
+
+```bash
+task app:ctl -- --headless 'click_item "  Mixer"' 'items fader'   # some commands, then quit
+.deps/venv/bin/python tests/e2e/ctl.py --keep 'load 0 tests/app_ui/fixtures/kick.wav'   # then type more
+```
+
+`crash segv|assert|bounds` crashes on purpose (to see a report).

@@ -73,6 +73,7 @@ draw_pads :: proc(user: rawptr) {
 			color, has, selected = target.color, target.sample != 0, false
 		}
 		hit := ui.pad("pad", name, detail, ui.rgb(color), has, a.lit[index] > 0 || a.held[index], selected, {side, side})
+		ui.name(fmt.tprintf("pad %s", pm.pad_label(index)))
 		if hit.pressed do press(a, index, hit.velocity)
 		if hit.released do release(a, index)
 		if hit.selected && a.play_mode == .Pads do a.selected = index

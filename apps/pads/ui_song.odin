@@ -29,7 +29,7 @@ draw_song :: proc(user: rawptr) {
 	}
 	im.SameLine(0, 16)
 	im.SetNextItemWidth(170)
-	if im.BeginCombo("##switch", pm.SWITCH_NAMES[p.switch_at]) {
+	if ui.combo("##switch", pm.SWITCH_NAMES[p.switch_at]) {
 		for sw in pm.Switch_At do if im.Selectable(pm.SWITCH_NAMES[sw], sw == p.switch_at) do p.switch_at = sw
 		im.EndCombo()
 	}
@@ -39,7 +39,7 @@ draw_song :: proc(user: rawptr) {
 	if im.Button(fmt.ctprintf("%s %d", add, p.slot + 1)) do pm.song_add(m, p.slot)
 	im.SameLine()
 	im.SetNextItemWidth(170)
-	if im.BeginCombo("##merge", "Merge into this…") {
+	if ui.combo("##merge", "Merge into this…") {
 		for k in 0 ..< pm.SLOTS do if k != p.slot && pm.slot_used(m, k) {
 			if im.Selectable(fmt.ctprintf("Sequence %d", k + 1)) do pm.merge_sequences(m, k, p.slot)
 		}
@@ -64,6 +64,7 @@ draw_song :: proc(user: rawptr) {
 		pos := im.GetCursorScreenPos()
 		dl := im.GetWindowDrawList()
 		clicked := im.InvisibleButton("##step", {w, h})
+		ui.name(fmt.tprintf("song step %d", i + 1))
 		on := i == playing
 		bg := t.accent if on else (t.hover if im.IsItemHovered() else t.raised)
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)

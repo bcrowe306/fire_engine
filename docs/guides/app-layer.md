@@ -165,6 +165,67 @@ would.
 Key presses release their modifiers with the key, as a keyboard does, so
 `key cmd+k` followed by `text tog` types into the field Cmd+K focused.
 
+### Finding items by what they say
+
+Coordinates break when a layout changes; tests should click what a person
+sees. The **probe** (`ui.probe_on`) records every item each frame draws —
+its label, its window, the part of it that shows — through ImGui's
+test-engine hooks (`vendor/imgui/probe.cpp`, built into the static
+library by `task deps`). Commands that use it wait up to a second for
+their item to show:
+
+```text
+click_item "Kick 808.wav" in browser          # the item's centre; "in" names a panel by its id
+click_item seq in sequence at 0.5 0.1         # a point inside it (fractions of its size)
+click_item "A1 send B" in mixer right         # right-click (or double)
+drag_item "Kick 808.wav" in browser to "pad A1"
+drag_by "A1 fader" in mixer 0 40              # drag a knob or fader by an offset
+expect_item "Stop (Space)" / expect_no_item "Stop (Space)"
+items fader                                   # list what shows (window, label, rect, raw label)
+```
+
+A label matches as shown (before any `##`), then as given (`##search`),
+then as the end of a shown label (an icon goes first: `"  Mixer"` is the
+Mixer panel's tab, not the Mixer menu). `Label#2` is the second match.
+Clicks press a frame after the mouse arrives, as a person's do (ImGui
+treats tabs as hovered only if they were the frame before).
+
+Widgets drawn with an `InvisibleButton("##…")` name themselves for the
+probe: knobs, faders, toggles and segmented choices by their labels, icon
+buttons by their tooltips, the editors as `waveform`, `piano roll`,
+`lane` (or their ids). An app names its own after drawing them with
+`ui.name("pad A1")`, and draws combos with `ui.combo`/`ui.combo_char`
+(ImGui gives a combo no label to find).
+
+### Live control and crashes
+
+`ui.Control` takes commands from a test harness over TCP on 127.0.0.1:
+the same commands as a script, one per line, each answered with a line
+of JSON once it has run (`{"ok": true, "output": "..."}`, or `"ok":
+false` and an `"error"`). With it the app runs as usual between commands,
+in a window or headless. Pads starts it with `--control PORT` (0: any
+free port; it prints the one it took).
+
+`ui.crash_install` (with `context.assertion_failure_proc =
+ui.crash_assertion` in main) makes a crash report itself on standard
+error: the cause (a bad memory access, a failed assertion or bounds
+check), the last command the driver ran, and a back trace (procedure
+names in a `-debug` build; a failed assertion or bounds check also
+prints its file and line), then dies as it would have:
+
+```text
+=== CRASH: SIGSEGV (a bad memory access)
+=== last command: drag_item "Kick 808.wav" in browser to "pad A1"
+=== back trace:
+	#0 _sigtramp at /usr/lib/system/libsystem_platform.dylib
+	#1 pads::[ui_browser.odin]::draw_rows at .build/app/pads
+```
+
+Never pass an Odin `string` to ImGui's `%s` (`im.Text("%s", "x")`,
+`im.Text("%s", ui.ICON_X)`): C reads its length as the next pointer and
+crashes. Pass a `cstring(...)` or `fmt.ctprintf(...)`. `task app:lint`
+(part of `task app:test`) flags those calls.
+
 ## Testing UI
 
 - `tests/app_ui` holds `odin test` cases that need no window (the PNG
@@ -178,6 +239,9 @@ Key presses release their modifiers with the key, as a keyboard does, so
 ```bash
 task app:test
 ```
+
+- `tests/e2e` drives Pads end to end over the control socket (pytest):
+  see [Pads](/guides/pads/#end-to-end-tests-and-live-control).
 
 ## Cost
 

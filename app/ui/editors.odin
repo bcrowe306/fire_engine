@@ -79,6 +79,7 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 	}
 
 	im.InvisibleButton("##wave", size)
+	name(widget_name(id, "waveform"))
 	hovered := im.IsItemHovered()
 	@(static) dragging_marker := -1
 	@(static) select_from: i64
@@ -196,6 +197,7 @@ step_grid :: proc(id: cstring, cells: []bool, rows, steps: int, row_names: []str
 	gap: f32 = 3
 	size := im.Vec2{label_w + f32(steps) * (cell.x + gap), f32(rows) * (cell.y + gap)}
 	im.InvisibleButton("##grid", size)
+	name(widget_name(id, "step grid"))
 	io := im.GetIO()
 	@(static) paint: bool
 	hit_cell :: proc(m: im.Vec2, pos: im.Vec2, label_w, gap: f32, cell: im.Vec2, rows, steps: int) -> (int, bool) {
@@ -308,6 +310,7 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 	snap_to :: proc(b, snap: f64) -> f64 { return math.round(b / snap) * snap if snap > 0 else b }
 
 	im.InvisibleButton("##roll", size, {.MouseButtonLeft, .MouseButtonRight})
+	name(widget_name(id, "piano roll"))
 	hovered := im.IsItemHovered()
 	@(static) drag_note := -1
 	@(static) drag_resize := false
@@ -467,6 +470,7 @@ automation_lane :: proc(id: cstring, points: []Lane_Point, beat0, beats: f64, sn
 	pos := im.GetCursorScreenPos()
 	io := im.GetIO()
 	im.InvisibleButton("##lane", size, {.MouseButtonLeft, .MouseButtonRight})
+	name(widget_name(id, "lane"))
 	bw := size.x / f32(beats)
 	to_screen :: proc(p: Lane_Point, pos, size: im.Vec2, beat0: f64, bw: f32) -> im.Vec2 {
 		return {pos.x + f32(p.beat - beat0) * bw, pos.y + (1 - p.value) * size.y}
@@ -544,6 +548,7 @@ value_lane :: proc(id: cstring, bars: []Lane_Bar, beat0, beats: f64, size: im.Ve
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
 	im.InvisibleButton("##lane", size)
+	name(widget_name(id, "lane"))
 	gx := pos.x + left
 	gw := size.x - left
 	beat_w := gw / f32(max(beats, 1e-6))

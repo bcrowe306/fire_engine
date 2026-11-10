@@ -28,8 +28,22 @@ import sdl "deps:sdl3"
 //	screenshot NAME       save this frame as NAME.png in the output directory
 //	quit                  stop the app
 //
+// By what the user sees (the probe: items found by their label, waiting
+// up to a second for one to show; LABEL in quotes if it has spaces,
+// "Label#2" for the second; `in WINDOW` limits it to a panel by its id):
+//
+//	click_item LABEL [in WINDOW] [right|double] [at FX FY]   click the item (at FX, FY of its
+//	                      width and height, 0..1; default its centre)
+//	hover_item LABEL [in WINDOW]                  move the mouse onto it
+//	drag_item LABEL [in WINDOW] to LABEL [in WINDOW] [N]   drag one item onto another
+//	drag_by LABEL [in WINDOW] DX DY [N]           drag from the item's centre by DX, DY (a knob, a fader)
+//	expect_item LABEL [in WINDOW] / expect_no_item LABEL [in WINDOW]
+//	items [TEXT]          list the items showing (whose label or window has TEXT): window, label,
+//	                      rectangle and label as given, tab-separated
+//
 // Any other command goes to `Driver.command` (the app's own: "theme
-// light", "open demo.pads"). When the script ends, the app quits.
+// light", "open demo.pads"). When the script ends, the app quits — unless
+// it is live (fed line by line from a `Control` connection).
 Driver :: struct {
 	lines:     []string,
 	at:        int,      // next line
@@ -44,6 +58,45 @@ Driver :: struct {
 	texts:     [dynamic]cstring, // text events' strings, alive until the run ends
 	mouse:     [2]f32,
 	data:      []u8,
+	live:      bool, // lines come from a Control connection; it never ends on its own
+	retry:     int,  // frames an item command has waited for its item
+	reply:     strings.Builder, // what the current line says back (live), and its error
+	error:     string,
+	errors:    int, // lines that failed
+}
+
+// A line said something back (a live caller reads it): `text` and a
+// newline. For the app's own commands (a state dump).
+driver_say :: proc(d: ^Driver, text: string) {
+	strings.write_string(&d.reply, text)
+	strings.write_byte(&d.reply, '\n')
+}
+
+// The current line failed with `message` (printed, and told to a live
+// caller); the script's run fails.
+driver_error :: proc(d: ^Driver, message: string) {
+	fmt.eprintln(message)
+	if d.error == "" do d.error = strings.clone(message)
+	d.failed = true
+	d.errors += 1
+}
+
+// Whether the driver has run everything it was given (and its events have
+// gone out): a live caller's line is done.
+driver_idle :: proc(d: ^Driver) -> bool {
+	return d.at >= len(d.lines) && d.wait == 0 && len(d.pending) == 0
+}
+
+// Gives a live driver one more line to run.
+driver_feed :: proc(d: ^Driver, line: string) {
+	lines := make([dynamic]string, 0, len(d.lines) + 1)
+	append(&lines, ..d.lines)
+	append(&lines, strings.clone(line))
+	delete(d.lines)
+	d.lines = lines[:]
+	strings.builder_reset(&d.reply)
+	delete(d.error)
+	d.error = ""
 }
 
 // Loads a script from `path`. Screenshots go to `out_dir` (created).
@@ -76,6 +129,8 @@ driver_destroy :: proc(d: ^Driver) {
 	delete(d.texts)
 	delete(d.pending)
 	delete(d.shot_path)
+	strings.builder_destroy(&d.reply)
+	delete(d.error)
 	d^ = {}
 }
 
@@ -94,12 +149,74 @@ driver_step :: proc(d: ^Driver, p: ^Platform) {
 	for d.at < len(d.lines) {
 		line := strings.trim_space(d.lines[d.at])
 		d.at += 1
-		if i := strings.index_byte(line, '#'); i >= 0 do line = strings.trim_space(line[:i])
+		if strings.has_prefix(line, "#") do continue
+		if i := strings.index(line, " #"); i >= 0 do line = strings.trim_space(line[:i]) // a comment after it ("Label#2" stays)
 		if line == "" do continue
-		words := strings.fields(line, context.temp_allocator)
+		words := split_words(line)
+		crash_note(line)
 		if driver_run(d, p, words, line) do return // this command takes the frame
 	}
-	if d.wait == 0 && len(d.pending) == 0 do quit(p)
+	if d.wait == 0 && len(d.pending) == 0 && !d.live do quit(p)
+}
+
+// A line's words: spaces separate them, "double quotes" keep spaces in
+// one (temporary allocator).
+@(private)
+split_words :: proc(line: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	i := 0
+	for i < len(line) {
+		for i < len(line) && line[i] == ' ' do i += 1
+		if i >= len(line) do break
+		if line[i] == '"' {
+			j := strings.index_byte(line[i + 1:], '"')
+			end := len(line) if j < 0 else i + 1 + j
+			append(&out, line[i + 1:end])
+			i = end + 1
+		} else {
+			j := strings.index_byte(line[i:], ' ')
+			end := len(line) if j < 0 else i + j
+			append(&out, line[i:end])
+			i = end
+		}
+	}
+	return out[:]
+}
+
+// An item command's target: a label and, after `in`, its window; the
+// words after it.
+@(private)
+target :: proc(w: []string) -> (label, window: string, rest: []string) {
+	if len(w) == 0 do return
+	label, rest = w[0], w[1:]
+	if len(rest) >= 2 && rest[0] == "in" do window, rest = rest[1], rest[2:]
+	return
+}
+
+// Finds an item for line `line`, or makes the line run again next frame
+// (up to a second) while it isn't there yet; false then, or when it never
+// shows (the line fails).
+@(private)
+find_or_wait :: proc(d: ^Driver, label, window, line: string) -> (Probe_Item, bool) {
+	it, ok := probe_find(label, window)
+	if ok {
+		d.retry = 0
+		return it, true
+	}
+	d.retry += 1
+	if d.retry < 60 {
+		d.at -= 1 // this line again, next frame
+		return {}, false
+	}
+	d.retry = 0
+	in_ := fmt.tprintf(" in %s", window) if window != "" else ""
+	driver_error(d, fmt.tprintf("ui: drive line %d: no item \"%s\"%s (%s)", d.at, label, in_, line))
+	return {}, false
+}
+
+@(private)
+centre :: proc(it: Probe_Item) -> [2]f32 {
+	return {(it.min.x + it.max.x) / 2, (it.min.y + it.max.y) / 2}
 }
 
 // Runs one command; true if the script should continue on the next frame.
@@ -134,9 +251,10 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 		from, to := [2]f32{num(w, 1), num(w, 2)}, [2]f32{num(w, 3), num(w, 4)}
 		steps := max(int(num(w, 5, 8)), 1)
 		push_motion(d, window, from)
-		push_button(d, window, 1, true, false)
-		// The moves and the release become lines run on later frames.
+		// The press (a frame after the mouse arrives, as for a click), the
+		// moves and the release become lines run on later frames.
 		extra := make([dynamic]string, context.temp_allocator)
+		append(&extra, "down")
 		for i in 1 ..= steps {
 			t := f32(i) / f32(steps)
 			append(&extra, fmt.tprintf("move %v %v", from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t))
@@ -186,6 +304,75 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 	case "quit":
 		quit(p)
 		return true
+	case "click_item", "hover_item":
+		label, win, rest := target(w[1:])
+		it, ok := find_or_wait(d, label, win, line)
+		if !ok do return true
+		at := centre(it)
+		b := u8(1)
+		double := false
+		for r, k in rest {
+			if r == "right" do b = 3
+			if r == "double" do double = true
+			if r == "at" && k + 2 < len(rest) {
+				fx, fy := num(rest, k + 1, 0.5), num(rest, k + 2, 0.5)
+				at = {it.min.x + (it.max.x - it.min.x) * fx, it.min.y + (it.max.y - it.min.y) * fy}
+			}
+		}
+		push_motion(d, window, at)
+		if w[0] == "hover_item" do return true
+		// Pressed a frame after the mouse arrives, as a person's would be: an
+		// item that allows overlap (a tab) counts as hovered only if it was
+		// the frame before.
+		which := "right" if b == 3 else "left"
+		press := []string{fmt.tprintf("down %s", which), fmt.tprintf("up %s", which)}
+		if double do press = {fmt.tprintf("down %s", which), fmt.tprintf("up %s", which), fmt.tprintf("down %s", which), fmt.tprintf("up %s", which)}
+		insert_lines(d, press)
+		return true
+	case "drag_item":
+		from_l, from_w, rest := target(w[1:])
+		if len(rest) < 2 || rest[0] != "to" do return fail(d, line)
+		to_l, to_w, rest2 := target(rest[1:])
+		a, ok := find_or_wait(d, from_l, from_w, line)
+		if !ok do return true
+		b, ok2 := find_or_wait(d, to_l, to_w, line)
+		if !ok2 do return true
+		steps := 12
+		if len(rest2) > 0 do steps = max(int(num(rest2, 0, 12)), 1)
+		fa, fb := centre(a), centre(b)
+		return driver_run(d, p, {"drag", fmt.tprint(fa.x), fmt.tprint(fa.y), fmt.tprint(fb.x), fmt.tprint(fb.y), fmt.tprint(steps)}, line)
+	case "drag_by":
+		label, win, rest := target(w[1:])
+		if len(rest) < 2 do return fail(d, line)
+		it, ok := find_or_wait(d, label, win, line)
+		if !ok do return true
+		c := centre(it)
+		steps := max(int(num(rest, 2, 12)), 1)
+		return driver_run(d, p, {"drag", fmt.tprint(c.x), fmt.tprint(c.y), fmt.tprint(c.x + num(rest, 0)), fmt.tprint(c.y + num(rest, 1)), fmt.tprint(steps)}, line)
+	case "expect_item", "expect_no_item":
+		label, win, _ := target(w[1:])
+		_, found := probe_find(label, win)
+		want := w[0] == "expect_item"
+		if found != want {
+			// Items show a frame late: give it up to a second.
+			d.retry += 1
+			if d.retry < 60 {
+				d.at -= 1
+				return true
+			}
+			d.retry = 0
+			driver_error(d, fmt.tprintf("ui: drive line %d: expected %s\"%s\"%s", d.at, "" if want else "no ", label, fmt.tprintf(" in %s", win) if win != "" else ""))
+			return false
+		}
+		d.retry = 0
+		return false
+	case "items":
+		filter := strings.to_lower(w[1] if len(w) > 1 else "", context.temp_allocator)
+		for it in probe_items() {
+			if filter != "" && !strings.contains(strings.to_lower(it.raw, context.temp_allocator), filter) && !strings.contains(strings.to_lower(it.window, context.temp_allocator), filter) do continue
+			driver_say(d, fmt.tprintf("%s\t%s\t%.0f %.0f %.0f %.0f\t%s", it.window, it.label, it.min.x, it.min.y, it.max.x, it.max.y, it.raw))
+		}
+		return false
 	}
 	if d.command != nil && d.command(d.user, w) do return true
 	return fail(d, line)
@@ -193,8 +380,7 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 
 @(private)
 fail :: proc(d: ^Driver, line: string) -> bool {
-	fmt.eprintfln("ui: drive script line %d not understood: %s", d.at, line)
-	d.failed = true
+	driver_error(d, fmt.tprintf("ui: drive script line %d not understood: %s", d.at, line))
 	return false
 }
 

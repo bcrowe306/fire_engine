@@ -55,6 +55,16 @@ update_meters :: proc(a: ^App) {
 	}
 }
 
+// The strip being drawn's name ("A1", "Bus A", "Main"): its parts are
+// named after it for the probe ("A1 fader", "Bus A mute").
+@(private) strip_name: string
+
+// Names the item just drawn as part `part` of the strip being drawn.
+@(private)
+part :: proc(name: string) {
+	ui.name(fmt.tprintf("%s %s", strip_name, name))
+}
+
 // Sizes of a channel strip, in points.
 STRIP_W :: 86
 @(private) STRIP_GAP :: 4
@@ -174,6 +184,7 @@ eq_thumb :: proc(eq: ^[3]f32, color: ui.Color) -> bool {
 	pos := im.GetCursorScreenPos()
 	w := inner_w()
 	clicked := im.InvisibleButton("##eq", {w, EQ_H})
+	part("eq")
 	hovered := im.IsItemHovered()
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + EQ_H}, ui.col(well(t)), t.radius - 2)
 	mid := pos.y + EQ_H / 2
@@ -218,13 +229,16 @@ row :: proc(a: ^App, id: cstring, label: string, color: ui.Color, highlight := f
 	lo = im.GetCursorScreenPos()
 	hi = {lo.x + inner_w(), lo.y + ROW_H}
 	clicked = im.InvisibleButton(id, {inner_w(), ROW_H})
+	part(string(id)[2:]) // "##send B" → "A1 send B", "##slot 1" → "A1 slot 1"
 	hovered := im.IsItemHovered()
 	bg := t.accent if highlight else (t.hover if hovered else well(t))
 	im.DrawList_AddRectFilled(dl, lo, hi, ui.col(bg), 3)
 	small(a)
 	text_in(dl, lo, hi, label, t.accent_text if highlight else color)
 	im.PopFont()
-	im.Dummy({0, 2})
+	// The gap below it without an item: callers read the row's own state
+	// (hovered, dragged, right-clicked) as the last item's.
+	im.SetCursorPosY(im.GetCursorPosY() + 2)
 	return
 }
 
@@ -237,7 +251,7 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 	if failed do name = fmt.tprintf("%s (missing)", name)
 	color := t.text if s.on else t.text_dim
 	if failed do color = t.danger
-	_, _, clicked := row(a, fmt.ctprintf("##slot%d", target.slot), name, color, a.fx == target)
+	_, _, clicked := row(a, fmt.ctprintf("##slot %d", target.slot + 1), name, color, a.fx == target)
 	if s.kind == .None && im.IsItemHovered() {
 		lo, hi := im.GetItemRectMin(), im.GetItemRectMax()
 		small(a)
@@ -262,7 +276,7 @@ send_row :: proc(a: ^App, pad, bus: int) {
 	on := s.level > 0
 	letters := "ABCD"
 	name := fmt.tprintf("%s %s", letters[bus - 1:][:1], "pre" if s.pre else "")
-	lo, hi, _ := row(a, fmt.ctprintf("##send%d", bus), "", t.text)
+	lo, hi, _ := row(a, fmt.ctprintf("##send %s", letters[bus - 1:][:1]), "", t.text)
 	dl := im.GetWindowDrawList()
 	small(a)
 	text_in(dl, lo, {hi.x - 18, hi.y}, name, t.text if on else t.text_dim, left = true)
@@ -338,7 +352,7 @@ output_row :: proc(a: ^App, pad: int) {
 	m := &a.m
 	t := ui.theme()
 	cur := int(m.project.pads[pad].bus)
-	_, _, clicked := row(a, "##out", pm.bus_name(cur), t.text)
+	_, _, clicked := row(a, "##output", pm.bus_name(cur), t.text)
 	if clicked do im.OpenPopup("##outmenu")
 	if im.BeginPopup("##outmenu") {
 		for b in 0 ..= pm.BUSES do if im.MenuItem(fmt.ctprintf("%s", pm.bus_name(b)), nil, b == cur) do pm.set_pad_bus(m, pad, b)
@@ -355,6 +369,7 @@ pan_knob :: proc(a: ^App, pan: ^f32) -> ui.Edit {
 	pos := im.GetCursorScreenPos()
 	w := inner_w()
 	im.InvisibleButton("##pan", {w, PAN_H})
+	part("pan")
 	e := ui_drag(pan, -1, 1, 0, 120)
 	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 		pan^ = 0
@@ -423,6 +438,7 @@ readouts :: proc(a: ^App, db: f32, view: ^[2]Meter_View) {
 	im.PopFont()
 	im.SetCursorScreenPos({pos.x + w + 3, pos.y})
 	if im.InvisibleButton("##peak", {w, h}) do for &v in view do v.max = 0
+	part("peak")
 	if im.IsItemHovered({.DelayShort}) do im.SetTooltip("Peak since reset: click to reset")
 	im.SetCursorScreenPos({pos.x, pos.y + h + 4})
 }
@@ -445,6 +461,7 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32) -> (e: u
 	// The fader.
 	im.SetCursorScreenPos({x0, pos.y})
 	im.InvisibleButton("##fader", {fader_w, h})
+	part("fader")
 	frac := fader_frac(value^)
 	f := frac
 	e = ui_drag(&f, 0, 1, 0, bottom - top)
@@ -514,7 +531,9 @@ mute_solo :: proc(a: ^App, mute, solo: ^bool) -> (changed: bool) {
 		on := mute if which == 0 else solo
 		if which == 1 do im.SameLine(0, 4)
 		pos := im.GetCursorScreenPos()
-		if im.InvisibleButton("M##m" if which == 0 else "S##s", {w, ROW_H}) {
+		pressed := im.InvisibleButton("M##m" if which == 0 else "S##s", {w, ROW_H})
+		part("mute" if which == 0 else "solo")
+		if pressed {
 			on^ = !on^
 			changed = true
 		}
@@ -538,6 +557,7 @@ name_plate :: proc(name: string, color: ui.Color) -> bool {
 	pos := im.GetCursorScreenPos()
 	h: f32 = 21
 	clicked := im.InvisibleButton("##name", {inner_w(), h})
+	part("name")
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + inner_w(), pos.y + h}, ui.col(color), 3)
 	// Dark or light text, for the colour.
 	lum := 0.3 * color.r + 0.59 * color.g + 0.11 * color.b
@@ -562,6 +582,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32) {
 	pad := m.project.pads[i]
 	im.PushIDInt(i32(i))
 	defer im.PopID()
+	strip_name = pm.pad_label(i)
 	top := im.GetCursorScreenPos()
 	strip_begin(h, a.selected == i)
 	defer strip_end(top, h)
@@ -620,6 +641,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	bus := pm.bus_of(m, b)^
 	im.PushIDInt(i32(1000 + b))
 	defer im.PopID()
+	strip_name = pm.bus_name(0 if b == pm.BUSES else b + 1)
 	top := im.GetCursorScreenPos()
 	strip_begin(h, false)
 	defer strip_end(top, h)
@@ -631,7 +653,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	for s, k in bus.slots do slot_row(a, {.Bus, b, k}, s, pm.slot_failed(&m.engine, -1, b, k))
 	for _ in pm.BUS_SLOTS ..< SLOT_ROWS do im.Dummy({inner_w(), ROW_H + 2})
 	gap()
-	row(a, "##out", "Main" if !is_main else "Output", t.text_dim)
+	row(a, "##output", "Main" if !is_main else "Output", t.text_dim)
 	gap()
 	pan := bus.pan
 	pe := pan_knob(a, &pan)

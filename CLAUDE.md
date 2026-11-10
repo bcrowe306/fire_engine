@@ -29,6 +29,8 @@ task deps                 # once per machine: fetch + build static SDL3 and ImGu
 task app:pads             # build .build/app/pads (collections: fire, app=app, deps=vendor)
 task app:test             # tests/app_* (headless) + apps/ui_tests (UI cases with a window, main thread)
 task app:pads-drive       # Pads driven by tests/app_ui/drive/pads*.txt (fake audio, headless; expect lines)
+task app:e2e              # tests/e2e: Pads used by mouse and keys over --control (pytest); a crash fails with its report
+task app:ctl              # Pads under remote control: type drive commands (click_item, drag_item, state...)
 .build/app/pads --headless --drive tests/app_ui/drive/smoke.txt --out .build/app/shots   # scripted run + screenshots
 ```
 

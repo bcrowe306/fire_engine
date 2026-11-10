@@ -76,12 +76,14 @@ draw_browser :: proc(user: rawptr) {
 
 	// The list (the preview below it).
 	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + im.GetFrameHeight() + 3 * im.GetStyle().ItemSpacing.y + 6)
-	if im.BeginChild("##list", {0, max(list_h, 80)}, {}, {}) {
+	// No ImGui keyboard navigation in the list: its keys are the browser's
+	// own (Enter would otherwise also press the row last clicked).
+	if im.BeginChild("##list", {0, max(list_h, 80)}, {}, {.NoNavInputs}) {
 		rows := pm.search_results(&b.search) if searching else pm.browser_rows(b)
 		draw_rows(a, rows)
 		if len(rows) == 0 {
 			if searching {
-				im.TextDisabled("%s", "Searching…" if !pm.search_done(&b.search) else "Nothing found")
+				im.TextDisabled("%s", cstring("Searching…") if !pm.search_done(&b.search) else cstring("Nothing found"))
 			} else if b.root == "" {
 				im.TextDisabled("Save the project to give it a folder")
 			} else {
@@ -101,16 +103,27 @@ draw_browser :: proc(user: rawptr) {
 draw_favorite_tabs :: proc(a: ^App) {
 	b := &a.browser
 	v := &a.bview
-	if !im.BeginTabBar("##favorites", {.FittingPolicyScroll, .NoTooltip}) do return
-	defer im.EndTabBar()
+	t := ui.theme()
+	// Pills that wrap onto more lines (a tab bar would scroll some out of
+	// sight in a narrow sidebar).
 	changed := false
+	im.PushStyleVarVec2(.FramePadding, {8, 4})
+	im.PushStyleVar(.FrameRounding, 12)
+	defer im.PopStyleVar(2)
 	for f, i in b.favorites {
-		flags: im.TabItemFlags = {.SetSelected} if v.scroll_to && i == b.tab else {}
 		icon := ui.ICON_FOLDER_HEART if f.project else ui.ICON_STAR
-		if im.BeginTabItem(fmt.ctprintf("%s %s###fav%d", icon, f.name, i), nil, flags) {
-			if i != b.tab do pm.browser_set_tab(b, i)
-			im.EndTabItem()
+		label := fmt.ctprintf("%s %s##fav%d", icon, f.name, i)
+		if i > 0 do ui.flow(ui.button_width(label), 4)
+		on := i == b.tab
+		if on {
+			im.PushStyleColorVec4(.Button, transmute(im.Vec4)t.accent)
+			im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)ui.lighten(t.accent, 0.1))
+			im.PushStyleColorVec4(.Text, transmute(im.Vec4)t.accent_text)
 		}
+		if im.Button(label) && !on do pm.browser_set_tab(b, i)
+		if on do im.PopStyleColor(3)
+		ui.name(fmt.tprintf("tab %s", f.name)) // for a test: "tab Documents"
+		if im.IsItemHovered({.DelayNormal}) do im.SetTooltip("%s", fmt.ctprintf("%s (right-click to rename, move or remove)", favorite_where(b, i)))
 		if im.BeginPopupContextItem(fmt.ctprintf("##favmenu%d", i)) {
 			if v.renaming != i {
 				v.renaming = i
@@ -141,13 +154,21 @@ draw_favorite_tabs :: proc(a: ^App) {
 		}
 		if changed do break // the list changed under us
 	}
-	if im.TabItemButton(ui.ICON_PLUS, {.Trailing, .NoTooltip}) && b.root != "" {
+	ui.flow(im.GetFrameHeight(), 4)
+	if ui.icon_button(ui.ICON_PLUS, "Add this folder as a favourite", disabled = b.root == "" || pm.is_favorite(b, b.root)) {
 		pm.favorite_add(b, b.root)
 		changed = true
 	}
-	if im.IsItemHovered() do im.SetTooltip("Add this folder as a tab")
 	if changed do pm.favorites_save(b, favorites_path(a))
 	v.scroll_to = false
+	im.Spacing()
+}
+
+// Where favourite `i` points, for its tooltip.
+@(private)
+favorite_where :: proc(b: ^pm.Browser, i: int) -> string {
+	d := pm.favorite_dir(b, i)
+	return d if d != "" else "The project's samples (save the project first)"
 }
 
 // The root's path, each part a button (the last ones that fit).
@@ -182,7 +203,7 @@ draw_crumbs :: proc(a: ^App) {
 		if !last do im.PopStyleColor()
 		if !last {
 			im.SameLine(0, 0)
-			im.TextDisabled("%s", ui.ICON_CHEVRON_RIGHT)
+			im.TextDisabled("%s", cstring(ui.ICON_CHEVRON_RIGHT))
 			im.SameLine(0, 0)
 		}
 	}
@@ -221,7 +242,9 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			pos := im.GetCursorScreenPos()
 			w := im.GetContentRegionAvail().x
 			selected := e.path == b.selected
-			if im.InvisibleButton("##row", {w, BROWSER_ROW}) {
+			clicked_row := im.InvisibleButton("##row", {w, BROWSER_ROW})
+			ui.name(e.name)
+			if clicked_row {
 				pm.browser_select(b, e.path)
 				if e.is_dir do toggle = e.path
 				else do preview_selected(a, e, true)
@@ -233,7 +256,7 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			}
 			if !e.is_dir && im.BeginDragDropSource() {
 				im.SetDragDropPayload("PADS_FILE", raw_data(e.path), uint(len(e.path)))
-				im.Text("%s  %s", ui.ICON_FILE_AUDIO, fmt.ctprintf("%s", filepath.base(e.path)))
+				im.Text("%s", fmt.ctprintf("%s  %s", ui.ICON_FILE_AUDIO, filepath.base(e.path)))
 				im.EndDragDropSource()
 			}
 			if e.is_dir && im.BeginPopupContextItem("##rowmenu") {
@@ -373,7 +396,7 @@ draw_preview :: proc(a: ^App) {
 	}
 	im.SameLine(0, 8)
 	im.AlignTextToFramePadding()
-	im.TextDisabled("%s", ui.ICON_VOLUME_2)
+	im.TextDisabled("%s", cstring(ui.ICON_VOLUME_2))
 	im.SameLine(0, 4)
 	im.SetNextItemWidth(max(im.GetContentRegionAvail().x, 40))
 	vol := pv.volume

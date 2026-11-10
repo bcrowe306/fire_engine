@@ -50,6 +50,7 @@ tasks:
     status:
       - test -f {{.ROOT_DIR}}/vendor/imgui/{{.IMGUI_LIB}}
       - test -f {{.DEPS}}/generated/dcimgui_internal.cpp  # libraries built before the internal API was added rebuild
+      - test -f {{.DEPS}}/build/imgui/.probe_v1  # ...and before the item probe (the test-engine hooks) was added
     cmds:
       - task: clone
         vars: {URL: 'https://github.com/ocornut/imgui.git', REF: '{{.IMGUI_VERSION}}', DIR: '{{.DEPS}}/src/imgui'}
@@ -67,6 +68,8 @@ tasks:
         -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY={{.ROOT_DIR}}/vendor/imgui
         -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE={{.ROOT_DIR}}/vendor/imgui
       - cmake --build {{.DEPS}}/build/imgui --config Release --parallel {{numCPU}}
+      - touch {{.DEPS}}/build/imgui/.probe_v1
+      - '{{.PYTHON}} -m pip install --quiet pytest==8.3.5'  # for the e2e harness (tests/e2e)
 
   clean:
     desc: Remove fetched sources, build trees and the built libraries.

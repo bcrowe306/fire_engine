@@ -12,6 +12,10 @@ on purpose, leave a comment explaining why.
   understand a problem (driver quirks, backend abstraction shape), then write our
   own code. Never translate JUCE source line by line. The ASIO SDK is never
   committed; the ASIO backend is an opt-in build flag.
+- ImGui's printf-style calls (`im.Text("%s", ...)`, `SetTooltip`...) take C
+  strings: pass `cstring(...)` or `fmt.ctprintf(...)`, never an Odin `string`
+  (a literal, an `ICON_` constant, a ternary of strings). C reads the string's
+  length as the next pointer and crashes. `task app:lint` checks.
 
 ## Package layout
 

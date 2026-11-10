@@ -52,6 +52,7 @@ draw_detail :: proc(user: rawptr) {
 	im.SameLine(0, 0)
 	pos := im.GetCursorScreenPos()
 	im.InvisibleButton("##divider", {DIVIDER, avail.y})
+	ui.name("pads divider")
 	hot := im.IsItemHovered() || im.IsItemActive()
 	if hot do im.SetMouseCursor(.ResizeEW)
 	if im.IsItemActive() do st.pads_width = w + im.GetIO().MouseDelta.x

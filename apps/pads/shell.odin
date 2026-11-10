@@ -217,6 +217,8 @@ subscribe_imports :: proc(a: ^App) {
 //	bank N                show bank N (0..3)
 //	browse DIR            show folder DIR in the browser (it goes on the back list)
 //	browser up|back|forward|refresh|fav | open|toggle|select REL (under the folder shown) | tab N
+//	state                 the app's state as one line of JSON (pads, sequencer, mixer, browser...)
+//	crash segv|assert|bounds   crash on purpose (the crash reporter's test)
 //	search QUERY (\"\" stops) / preview play|stop|auto on|off|sync on|off|volume DB
 //	expect root NAME / expect rows K / expect results K (waits for the search) / expect previewing 0|1 / expect favorites K / expect selected_file NAME
 //	set N FIELD VALUE     set a pad field: volume, pan, pitch, mode (0..3), choke, reverse (0/1)
@@ -303,6 +305,23 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "refresh": pm.browser_refresh(b)
 		case "fav":     pm.favorite_add(b, b.root); pm.favorites_save(b, favorites_path(a))
 		case: return false
+		}
+		return true
+	case "state":
+		ui.driver_say(&a.driver, state_json(a))
+		return true
+	case "crash":
+		// crash segv|assert|bounds: the crash reporter's own test (scripts and harnesses only)
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "segv":
+			p: ^int = nil
+			p^ = 1
+		case "assert": assert(false, "crash assert")
+		case "bounds":
+			xs := []int{1, 2}
+			i := len(w) // 2: one past the end
+			_ = xs[i]
 		}
 		return true
 	case "search":
@@ -671,8 +690,7 @@ effect_kind :: proc(name: string) -> (pm.Effect_Kind, bool) {
 
 @(private)
 drive_fail :: proc(a: ^App, what: string) -> bool {
-	fmt.eprintln("pads: drive:", what)
-	a.driver.failed = true
+	ui.driver_error(&a.driver, fmt.tprint("pads: drive:", what))
 	return true
 }
 

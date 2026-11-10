@@ -91,7 +91,7 @@ draw_inspector :: proc(user: rawptr) {
 	groups := [pm.CHOKE_GROUPS + 1]cstring{"No choke group", "Choke group 1", "Choke group 2", "Choke group 3", "Choke group 4", "Choke group 5", "Choke group 6"}
 	im.SameLine(0, 16)
 	im.SetNextItemWidth(min(180, im.GetContentRegionAvail().x))
-	if im.ComboChar("##choke", &choke, &groups[0], len(groups)) {
+	if ui.combo_char("##choke", &choke, &groups[0], len(groups)) {
 		p := pad
 		p.choke = u8(choke)
 		pm.set_pad(m, i, .Choke, "Set Choke Group", p)

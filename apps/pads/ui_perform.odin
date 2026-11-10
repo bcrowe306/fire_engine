@@ -60,13 +60,13 @@ draw_perform :: proc(user: rawptr) {
 	if a.play_mode == .Keyboard {
 		k := &a.keys
 		im.SetNextItemWidth(170)
-		if im.BeginCombo("##scale", pm.SCALE_NAMES[k.scale]) {
+		if ui.combo("##scale", pm.SCALE_NAMES[k.scale]) {
 			for sc in pm.Scale do if im.Selectable(pm.SCALE_NAMES[sc], sc == k.scale) do k.scale = sc
 			im.EndCombo()
 		}
 		ui.flow(70)
 		im.SetNextItemWidth(70)
-		if im.BeginCombo("##root", ROOT_NAMES[k.root]) {
+		if ui.combo("##root", ROOT_NAMES[k.root]) {
 			for r, i in ROOT_NAMES do if im.Selectable(r, i == k.root) do k.root = i
 			im.EndCombo()
 		}
@@ -75,7 +75,7 @@ draw_perform :: proc(user: rawptr) {
 		oct := i32(k.octave)
 		if im.DragInt("##octave", &oct, 0.05, -3, 3, "Octave %+d", {.ClampOnInput}) do k.octave = int(oct)
 		im.SetNextItemWidth(170)
-		if im.BeginCombo("##chord", pm.CHORD_NAMES[k.chord]) {
+		if ui.combo("##chord", pm.CHORD_NAMES[k.chord]) {
 			for c in pm.Chord do if im.Selectable(pm.CHORD_NAMES[c], c == k.chord) do k.chord = c
 			im.EndCombo()
 		}
@@ -106,7 +106,7 @@ draw_perform :: proc(user: rawptr) {
 	im.SameLine(0, 16)
 	if ui.toggle("Latch", &p.arp.latch) do changed = true
 	im.SetNextItemWidth(130)
-	if im.BeginCombo("##arp_mode", ARP_NAMES[p.arp.mode]) {
+	if ui.combo("##arp_mode", ARP_NAMES[p.arp.mode]) {
 		for am in pf.Arp_Mode do if im.Selectable(ARP_NAMES[am], am == p.arp.mode) {
 			p.arp.mode = am
 			changed = true
@@ -150,6 +150,7 @@ draw_perform :: proc(user: rawptr) {
 		fx := m.project.perf_fx[i]
 		im.PushIDInt(i32(5000 + i))
 		hit := ui.pad("fx", pm.perf_label(fx), fmt.tprintf("FX %d", i + 1), ui.theme().accent, true, fx.on, a.fx == pm.Fx_Target{.Perf, i, 0}, {side, side * 0.62})
+		ui.name(fmt.tprintf("fx %d", i + 1))
 		im.PopID()
 		if hit.pressed {
 			a.perf_held[i] = true
@@ -249,7 +250,7 @@ draw_perform :: proc(user: rawptr) {
 // A combo of step lengths.
 @(private)
 rate_combo :: proc(id: cstring, rate: ^pf.Rate) -> (changed: bool) {
-	if im.BeginCombo(id, RATE_NAMES[rate^]) {
+	if ui.combo(id, RATE_NAMES[rate^]) {
 		for r in pf.Rate do if im.Selectable(RATE_NAMES[r], r == rate^) {
 			rate^ = r
 			changed = true

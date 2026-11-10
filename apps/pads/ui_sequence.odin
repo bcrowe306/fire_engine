@@ -173,7 +173,7 @@ draw_transport :: proc(a: ^App) {
 	// The slot, with the slots that hold notes marked.
 	ui.flow(120, 20)
 	im.SetNextItemWidth(120)
-	if im.BeginCombo("##slot", fmt.ctprintf("Sequence %d", slot + 1)) {
+	if ui.combo("##slot", fmt.ctprintf("Sequence %d", slot + 1)) {
 		for k in 0 ..< pm.SLOTS {
 			label := fmt.ctprintf("%s Sequence %d", ui.ICON_CIRCLE_DOT if pm.slot_used(m, k) else "   ", k + 1)
 			if im.Selectable(label, k == slot) do pm.select_slot(m, k)
@@ -202,7 +202,7 @@ draw_transport :: proc(a: ^App) {
 	// Grid (snap), quantize, swing.
 	ui.flow(84, 20)
 	im.SetNextItemWidth(84)
-	if im.BeginCombo("##grid", pm.GRID_NAMES[st.grid]) {
+	if ui.combo("##grid", pm.GRID_NAMES[st.grid]) {
 		for g in pm.Grid do if im.Selectable(pm.GRID_NAMES[g], g == st.grid) {
 			st.grid = g
 			a.capture.grid = g
@@ -235,7 +235,7 @@ draw_transport :: proc(a: ^App) {
 	if st.lane == 2 {
 		ui.flow(110)
 		im.SetNextItemWidth(110)
-		if im.BeginCombo("##param", pm.LANE_NAMES[st.param]) {
+		if ui.combo("##param", pm.LANE_NAMES[st.param]) {
 			for lp in pm.Lane_Param do if im.Selectable(pm.LANE_NAMES[lp], lp == st.param) do st.param = lp
 			im.EndCombo()
 		}

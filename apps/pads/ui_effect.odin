@@ -44,7 +44,7 @@ draw_effect :: proc(user: rawptr) {
 
 	// What it holds.
 	im.SetNextItemWidth(200)
-	if im.BeginCombo("##kind", fmt.ctprintf("%s", pm.slot_name(s))) {
+	if ui.combo("##kind", fmt.ctprintf("%s", pm.slot_name(s))) {
 		for k in pm.Effect_Kind {
 			if k == .Plugin do continue
 			if t.kind == .Perf && k == .None do continue

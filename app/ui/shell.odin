@@ -232,6 +232,15 @@ Toast :: struct {
 }
 
 // Shows `text` for `seconds`.
+// The messages showing now, oldest first, and their kinds (temporary
+// allocator; for a test harness).
+toast_texts :: proc(ts: ^Toasts) -> (texts: []string, kinds: []Toast_Kind) {
+	t := make([]string, len(ts.items), context.temp_allocator)
+	k := make([]Toast_Kind, len(ts.items), context.temp_allocator)
+	for x, i in ts.items do t[i], k[i] = x.text, x.kind
+	return t, k
+}
+
 toast :: proc(ts: ^Toasts, kind: Toast_Kind, text: string, seconds: f32 = 3.5) {
 	append(&ts.items, Toast{kind = kind, text = strings.clone(text), life = seconds})
 }
