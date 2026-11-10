@@ -22,6 +22,8 @@ setup_actions :: proc(a: ^App) {
 		enabled = proc(u: rawptr) -> bool { return len((^App)(u).m.history.redo) > 0 }})
 	add(acts, {id = "import", label = "Import Sample…", icon = ui.ICON_FILE_AUDIO, chord = ui.MOD_CMD | i32(im.Key.O), user = a,
 		run = proc(u: rawptr) { open_import_dialog((^App)(u)) }})
+	add(acts, {id = "import_midi", label = "Import MIDI File…", icon = ui.ICON_MUSIC, user = a,
+		run = proc(u: rawptr) { open_midi_dialog((^App)(u)) }})
 	add(acts, {id = "clear_pad", label = "Clear Pad", icon = ui.ICON_ERASER, chord = i32(im.Key.Delete), user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_pad(&a.m, a.selected) },
 		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return a.m.project.pads[a.selected].sample != 0 }})
@@ -72,6 +74,7 @@ draw_menu :: proc(user: rawptr) {
 	a := (^App)(user)
 	if im.BeginMenu("File") {
 		ui.menu_action(&a.actions, "import")
+		ui.menu_action(&a.actions, "import_midi")
 		im.Separator()
 		ui.menu_action(&a.actions, "quit")
 		im.EndMenu()
@@ -113,9 +116,11 @@ setup_workspace :: proc(a: ^App) {
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
 	ui.panel_add(w, {id = "pads", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_pads, user = a, flags = {.NoScrollbar}}, .Center)
 	ui.panel_add(w, {id = "inspector", title = "Pad", icon = ui.ICON_SLIDERS_HORIZONTAL, open = true, draw = draw_inspector, user = a}, .Right)
+	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Right)
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Bottom)
 	ui.panel_add(w, {id = "sample", title = "Sample", icon = ui.ICON_AUDIO_WAVEFORM, open = true, draw = draw_sample, user = a}, .Bottom)
 	ui.panel_focus(w, "sequence")
+	ui.panel_focus(w, "inspector")
 }
 
 // An "Import Sample" dialog (the system's), onto the selected pad. The
@@ -130,6 +135,23 @@ open_import_dialog :: proc(a: ^App) {
 	}, a, a.platform.window, &filters[0], 1, nil, false)
 }
 
+// A MIDI file dialog: the file goes into the current sequence (drums by
+// the MIDI map).
+open_midi_dialog :: proc(a: ^App) {
+	filters := [1]sdl.DialogFileFilter{{name = "MIDI", pattern = "mid;midi"}}
+	sdl.ShowOpenFileDialog(proc "c" (user: rawptr, files: [^]cstring, filter: i32) {
+		if files == nil || files[0] == nil do return
+		a := (^App)(user)
+		context = runtime.default_context()
+		app.post_any_thread(&a.bus, Midi_Chosen{strings.clone(string(files[0]))})
+	}, a, a.platform.window, &filters[0], 1, nil, false)
+}
+
+// A MIDI file chosen in its dialog.
+Midi_Chosen :: struct {
+	path: string,
+}
+
 // A file chosen in the import dialog.
 Import_Chosen :: struct {
 	path: string,
@@ -141,6 +163,13 @@ subscribe_imports :: proc(a: ^App) {
 		a := (^App)(user)
 		defer delete(e.path)
 		if pm.load_onto_pad(&a.m, a.selected, e.path) != .None do ui.toast(&a.ws.toasts, .Error, "Could not load that file")
+	}, a)
+	app.subscribe(&a.bus, Midi_Chosen, proc(user: rawptr, e: ^Midi_Chosen) {
+		a := (^App)(user)
+		defer delete(e.path)
+		n := pm.import_midi(&a.m, e.path, a.m.project.slot)
+		if n < 0 do ui.toast(&a.ws.toasts, .Error, "Could not read that MIDI file")
+		else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%d notes into sequence %d", n, a.m.project.slot + 1))
 	}, a)
 }
 
@@ -163,7 +192,12 @@ subscribe_imports :: proc(a: ^App) {
 //	play / stop / rec on|off / metronome on|off   the sequencer
 //	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
 //	note PAD BEAT LENGTH [VELOCITY]   add a note to the current sequence
-//	expect notes K / expect playing 0|1 / expect slot N
+//	expect notes K / expect playing 0|1 / expect slot N / expect points K
+//	expect midi_key PAD KEY / expect struck PAD MIN (it has sounded MIN+ times)
+//	mode pads|keys|velocity / scale NAME / chord off|triad|seventh|power
+//	arp on|off / repeat on|off / midi KEY VELOCITY (0: off) / learn PAD KEY
+//	point PAD volume|pitch|low|mid|high BEAT VALUE / import_midi PATH
+//	lane velocity|chance|automation [PARAM]   what the sequence editor's lane shows
 //	theme light|dark, action ID
 drive_command :: proc(user: rawptr, w: []string) -> bool {
 	a := (^App)(user)
@@ -237,6 +271,85 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "theme":
 		set_dark(a, len(w) < 2 || w[1] != "light")
 		return true
+	case "mode":
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "pads":     a.play_mode = .Pads
+		case "keys":     a.play_mode = .Keyboard
+		case "velocity": a.play_mode = .Velocity
+		case: return false
+		}
+		return true
+	case "scale":
+		if len(w) < 2 do return false
+		for sc in pm.Scale do if strings.equal_fold(string(pm.SCALE_NAMES[sc]), strings.join(w[1:], " ", context.temp_allocator)) {
+			a.keys.scale = sc
+			return true
+		}
+		return false
+	case "chord":
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "off":     a.keys.chord = .Off
+		case "triad":   a.keys.chord = .Triad
+		case "seventh": a.keys.chord = .Seventh
+		case "power":   a.keys.chord = .Power
+		case: return false
+		}
+		return true
+	case "arp", "repeat":
+		p := a.m.project.perform
+		on := len(w) < 2 || w[1] != "off"
+		if w[0] == "arp" do p.arp_on, p.repeat_on = on, p.repeat_on && !on
+		else do p.repeat_on, p.arp_on = on, p.arp_on && !on
+		pm.set_perform(&a.m, p)
+		return true
+	case "midi":
+		// midi KEY VELOCITY (0 = note-off)
+		if len(w) < 3 do return false
+		key, vel := num(w, 1), num(w, 2)
+		if key < 0 || key > 127 do return false
+		app.host_midi_inject(&a.host, {0x90 if vel > 0 else 0x80, u8(key), u8(clamp(vel, 0, 127))})
+		return true
+	case "learn":
+		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
+			pm.learn_midi(&a.m, num(w, 2), i)
+			return true
+		}
+	case "point":
+		// point PAD PARAM BEAT VALUE (PARAM: volume, pitch, low, mid, high)
+		if len(w) < 5 do return false
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		param: pm.Lane_Param
+		switch w[2] {
+		case "volume": param = .Volume
+		case "pitch":  param = .Pitch
+		case "low":    param = .Eq_Low
+		case "mid":    param = .Eq_Mid
+		case "high":   param = .Eq_High
+		case: return false
+		}
+		pm.add_point(&a.m, a.m.project.slot, {pad = u8(i), param = param, beat = f64(numf(w, 3)), value = numf(w, 4)})
+		return true
+	case "lane":
+		// lane velocity|chance|automation [volume|pitch|low|mid|high]
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "velocity":   a.seq.lane = 0
+		case "chance":     a.seq.lane = 1
+		case "automation": a.seq.lane = 2
+		case: return false
+		}
+		if len(w) > 2 do for lp in pm.Lane_Param do if strings.has_prefix(strings.to_lower(string(pm.LANE_NAMES[lp]), context.temp_allocator), w[2]) || (w[2] == "low" && lp == .Eq_Low) || (w[2] == "mid" && lp == .Eq_Mid) || (w[2] == "high" && lp == .Eq_High) {
+			a.seq.param = lp
+			break
+		}
+		return true
+	case "import_midi":
+		if len(w) < 2 do return false
+		if pm.import_midi(&a.m, strings.join(w[1:], " ", context.temp_allocator), a.m.project.slot) < 0 do return drive_fail(a, "could not read the MIDI file")
+		return true
 	case "panel":
 		return len(w) > 1 && ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 	case "play":
@@ -297,6 +410,24 @@ drive_fail :: proc(a: ^App, what: string) -> bool {
 drive_expect :: proc(a: ^App, w: []string) -> bool {
 	if len(w) < 3 do return false
 	switch w[1] {
+	case "points":
+		want, _ := strconv.parse_int(w[2])
+		got := len(pm.current_sequence(&a.m).points)
+		if got != want do return drive_fail(a, fmt.tprintf("expected %d automation points, got %d", want, got))
+		return true
+	case "midi_key":
+		if len(w) < 4 do return false
+		want, _ := strconv.parse_int(w[3])
+		i, _ := strconv.parse_int(w[2])
+		if got := pm.midi_key_of(&a.m, i); got != want do return drive_fail(a, fmt.tprintf("expected pad %d on key %d, got %d", i, want, got))
+		return true
+	case "struck":
+		// expect struck PAD MIN: pad PAD has sounded at least MIN times
+		if len(w) < 4 do return false
+		i, _ := strconv.parse_int(w[2])
+		want, _ := strconv.parse_int(w[3])
+		if got := int(pm.struck(&a.m.engine, i)); got < want do return drive_fail(a, fmt.tprintf("expected pad %d struck %d+ times, got %d", i, want, got))
+		return true
 	case "notes":
 		want, _ := strconv.parse_int(w[2])
 		got := len(pm.current_sequence(&a.m).notes)

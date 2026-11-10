@@ -26,7 +26,7 @@ FADER_SIZE :: im.Vec2{28, 140}
 // Default pad size.
 PAD_SIZE :: im.Vec2{88, 88}
 
-@(private)
+// A colour as ImGui packs it, for draw lists.
 col :: proc "contextless" (c: Color) -> u32 {
 	return im.GetColorU32Vec4(transmute(im.Vec4)c)
 }
@@ -250,10 +250,13 @@ toggle :: proc(label: cstring, on: ^bool) -> bool {
 	im.DrawList_AddRectFilled(dl, {pos.x, y}, {pos.x + w, y + h}, col(bg), h / 2)
 	knob_x := pos.x + h / 2 + (w - h) * (1 if on^ else 0)
 	im.DrawList_AddCircleFilled(dl, {knob_x, y + h / 2}, h / 2 - 3, col(t.accent_text if on^ else t.text), 24)
-	if label != "" {
+	// The label up to "##" (what follows only makes the id unique, as in ImGui).
+	text := string(label)
+	if i := strings.index(text, "##"); i >= 0 do text = text[:i]
+	if text != "" {
 		im.SameLine(0, t.gap.x)
 		im.AlignTextToFramePadding()
-		im.Text("%s", label)
+		im.Text("%s", strings.clone_to_cstring(text, context.temp_allocator))
 	}
 	return clicked
 }

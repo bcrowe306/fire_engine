@@ -164,6 +164,16 @@ for running {
   The graph and clock carry on untouched.
 - `host_render` runs the engine without a device, for exporting.
 - `fake = true` uses the simulated driver, for tests and headless runs.
+  Its device runs when you call `host_fake_run` (manual mode): an app
+  running it interactively gives it a frame's worth of callbacks each
+  frame.
+- **MIDI.** With `midi = true` the host opens the platform's MIDI
+  (CoreMIDI, ALSA, WinMM) and every input port: what they play reaches the
+  graph's `INPUT` as `core.Midi_Raw`, on its frame. `core.Midi_Raw` the
+  graph sends to `OUTPUT` goes to the port named by `midi_output`.
+  `host_midi_inject` plays a message in as if a port had (tests, scripts,
+  on-screen keyboards); `host_midi_counts` counts what went in and out
+  (activity lights); `host_midi_ports` lists the ports.
 
 ## Testing
 

@@ -11,6 +11,8 @@ Capture :: struct {
 	live_quantize: bool, // notes land on the grid
 	grid:          Grid,
 	held:          [PADS][dynamic]Held_Hit, // per pad: hits not yet released
+	midi_key:      int, // the last MIDI note that came in (-1: none yet), for MIDI learn
+	midi_count:    int, // MIDI notes that came in (to notice a new one)
 }
 
 @(private)
@@ -44,7 +46,11 @@ capture_destroy :: proc(c: ^Capture) {
 // sequence. Call once per frame. True if notes were added.
 capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 	for t in rt.spsc_pop(&m.engine.router.taken) {
-		if !c.armed || !t.playing do continue
+		if t.midi_key >= 0 && t.on {
+			c.midi_key = int(t.midi_key)
+			c.midi_count += 1
+		}
+		if t.no_pad || !c.armed || !t.playing do continue
 		i := int(t.pad)
 		if t.on {
 			start := t.beat
@@ -53,18 +59,24 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 			if start >= length do start -= length
 			append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch})
 		} else if len(c.held[i]) > 0 {
-			finish_hit(m, c, i, t.beat)
+			k := 0 // the held hit of the same pitch (a chord's notes end one by one)
+			for h, j in c.held[i] do if h.pitch == t.pitch {
+				k = j
+				break
+			}
+			finish_hit(m, c, i, t.beat, k)
 			added = true
 		}
 	}
 	return
 }
 
-// Pad `i`'s oldest held hit ends at `beat`: add it as a note.
+// Pad `i`'s held hit `k` (the oldest by default) ends at `beat`: add it as
+// a note.
 @(private)
-finish_hit :: proc(m: ^Model, c: ^Capture, i: int, beat: f64) {
-	h := c.held[i][0]
-	ordered_remove(&c.held[i], 0)
+finish_hit :: proc(m: ^Model, c: ^Capture, i: int, beat: f64, k := 0) {
+	h := c.held[i][k]
+	ordered_remove(&c.held[i], k)
 	length := seq_beats(current_sequence(m))
 	d := beat - h.played
 	if d <= 0 do d += length // held across the loop's end

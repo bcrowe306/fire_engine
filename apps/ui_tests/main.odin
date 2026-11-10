@@ -202,14 +202,14 @@ wait 2
 		draw = proc(s: ^State) {
 			if s.roll.beats == 0 {
 				s.roll = {beat0 = 0, beats = 12, key0 = 48, keys = 24}
-				append(&s.notes, ui.Roll_Note{0, 1, 48, 0.8, false})
+				append(&s.notes, ui.Roll_Note{start = 0, length = 1, key = 48, velocity = 0.8})
 			}
 			full_window()
 			im.SetCursorPos({0, 0})
 			r := ui.piano_roll("roll", s.notes[:], &s.roll, 0.25, {640, 400})
 			if r.add {
 				s.adds += 1
-				append(&s.notes, ui.Roll_Note{r.at_beat, 0.5, r.at_key, 0.8, false})
+				append(&s.notes, ui.Roll_Note{start = r.at_beat, length = 0.5, key = r.at_key, velocity = 0.8})
 			}
 			if r.released && r.moving >= 0 {
 				s.moves += 1

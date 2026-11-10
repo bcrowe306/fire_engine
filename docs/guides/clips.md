@@ -38,6 +38,15 @@ c, err := clip.midi_build(&b) // one reference, yours
   vibrato, brightness and pressure, sent as `core.Note_Expression` with the
   note's own `Note_Id`. Points are steps; for a smooth bend, add points
   densely.
+- **Chance.** `add_note(..., probability = 0.5)` plays a note half the
+  times it comes round. The player rolls with its own generator, seeded
+  by `Midi_Player_Settings.seed`: the same seed makes the same choices, at
+  any block size. Saved clips keep it (MIDI clip chunks, version 2).
+- **Swing** is applied while building: `clip.swing(at, grid, amount)`
+  moves off-beat positions late (amount 0 is straight, 1 puts the
+  off-beat three quarters through its pair, 2/3 a triplet feel), and the
+  positions between in proportion, so notes keep their order. Keep your
+  model straight and swing the clip you build from it.
 - **Controllers** are MIDI 1.0 channel messages (CC, pitch bend, pressure,
   program change), sent as `core.Midi_Raw`.
 

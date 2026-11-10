@@ -5,6 +5,7 @@ import "core:mem"
 import "core:slice"
 
 import app "app:core"
+import "fire:clip"
 
 // Sequence slots in a project.
 SLOTS :: 32
@@ -63,6 +64,96 @@ Sequence :: struct {
 	swing:      f32,  // 0..1 (see clip.swing)
 	swing_grid: Grid, // which notes swing: 1/8 or 1/16
 	notes:      []Seq_Note, // sorted by start, then pad
+	points:     []Auto_Point, // automation, sorted by pad, parameter, beat
+}
+
+// What an automation lane moves.
+Lane_Param :: enum u8 {
+	Volume, // dB
+	Pitch,  // semitones (whole)
+	Eq_Low, // dB
+	Eq_Mid,
+	Eq_High,
+}
+
+// Lane names, as the UI shows them.
+LANE_NAMES := [Lane_Param]cstring{.Volume = "Volume", .Pitch = "Pitch", .Eq_Low = "EQ low", .Eq_Mid = "EQ mid", .Eq_High = "EQ high"}
+
+// A lane parameter's range, in its units.
+lane_range :: proc "contextless" (p: Lane_Param) -> (lo, hi: f32) {
+	switch p {
+	case .Volume:                   return -48, 12
+	case .Pitch:                    return -24, 24
+	case .Eq_Low, .Eq_Mid, .Eq_High: return -15, 15
+	}
+	return 0, 1
+}
+
+// One point of an automation lane: pad `pad`'s `param` is `value` at
+// `beat`, moving in a line to the next point. A lane is every point with
+// the same pad and parameter.
+Auto_Point :: struct {
+	pad:   u8,
+	param: Lane_Param,
+	beat:  f64,
+	value: f32, // in the parameter's units (see lane_range)
+}
+
+// The points of pad `pad`'s `param` lane in `s` (a view into s.points) and
+// where they start.
+lane_points :: proc(s: Sequence, pad: int, param: Lane_Param) -> (points: []Auto_Point, first: int) {
+	lo, hi := -1, -1
+	for p, i in s.points do if int(p.pad) == pad && p.param == param {
+		if lo < 0 do lo = i
+		hi = i + 1
+	}
+	if lo < 0 do return nil, 0
+	return s.points[lo:hi], lo
+}
+
+// Adds a point to slot `slot`'s automation (one undo step).
+add_point :: proc(m: ^Model, slot: int, p: Auto_Point) {
+	s := m.project.sequences[slot]
+	points := make([dynamic]Auto_Point, 0, len(s.points) + 1, context.temp_allocator)
+	append(&points, ..s.points)
+	pp := p
+	lo, hi := lane_range(p.param)
+	pp.value = clamp(pp.value, lo, hi)
+	append(&points, pp)
+	s.points = points[:]
+	set_sequence(m, slot, .Notes, "Add Automation", s)
+}
+
+// Moves point `index` of slot `slot`'s automation (drags merge).
+set_point :: proc(m: ^Model, slot, index: int, p: Auto_Point) {
+	s := m.project.sequences[slot]
+	if index < 0 || index >= len(s.points) do return
+	points := slice.clone(s.points, context.temp_allocator)
+	pp := p
+	lo, hi := lane_range(p.param)
+	pp.value = clamp(pp.value, lo, hi)
+	points[index] = pp
+	s.points = points
+	set_sequence(m, slot, .Automation, "Move Automation", s)
+}
+
+// Removes point `index` of slot `slot`'s automation.
+remove_point :: proc(m: ^Model, slot, index: int) {
+	s := m.project.sequences[slot]
+	if index < 0 || index >= len(s.points) do return
+	points := make([dynamic]Auto_Point, 0, len(s.points), context.temp_allocator)
+	for p, i in s.points do if i != index do append(&points, p)
+	s.points = points[:]
+	set_sequence(m, slot, .Notes, "Delete Automation", s)
+}
+
+// Removes pad `pad`'s `param` lane from slot `slot`.
+clear_lane :: proc(m: ^Model, slot, pad: int, param: Lane_Param) {
+	s := m.project.sequences[slot]
+	points := make([dynamic]Auto_Point, 0, len(s.points), context.temp_allocator)
+	for p in s.points do if !(int(p.pad) == pad && p.param == param) do append(&points, p)
+	s.points = points[:]
+	set_sequence(m, slot, .Notes, "Clear Automation", s)
 }
 
 // An empty one-bar sequence.
@@ -79,13 +170,15 @@ seq_beats :: proc "contextless" (s: Sequence) -> f64 {
 clone_sequence :: proc(s: Sequence, allocator := context.allocator) -> Sequence {
 	c := s
 	c.notes = slice.clone(s.notes, allocator)
+	c.points = slice.clone(s.points, allocator)
 	return c
 }
 
 // Frees `s`'s notes.
 delete_sequence :: proc(s: ^Sequence) {
 	delete(s.notes)
-	s.notes = nil
+	delete(s.points)
+	s.notes, s.points = nil, nil
 }
 
 // Which part of a sequence an edit changes: consecutive edits of the same
@@ -98,6 +191,7 @@ Seq_Field :: enum {
 	Record,
 	Bars,
 	Swing,
+	Automation,
 }
 
 // Replaces slot `slot`'s sequence with `new` (copied), undoably, as an edit
@@ -108,6 +202,11 @@ set_sequence :: proc(m: ^Model, slot: int, field: Seq_Field, name: string, new: 
 	old := m.project.sequences[slot]
 	n := clone_sequence(new)
 	sort_notes(n.notes)
+	slice.sort_by(n.points, proc(x, y: Auto_Point) -> bool {
+		if x.pad != y.pad do return x.pad < y.pad
+		if x.param != y.param do return x.param < y.param
+		return x.beat < y.beat
+	})
 	if sequences_equal(old, n) {
 		delete_sequence(&n)
 		return
@@ -159,7 +258,7 @@ put_sequence :: proc(m: ^Model, slot: int, s: Sequence) {
 
 @(private)
 sequences_equal :: proc(a, b: Sequence) -> bool {
-	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && slice.equal(a.notes, b.notes)
+	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
 }
 
 @(private)
@@ -211,7 +310,7 @@ set_note :: proc(m: ^Model, slot, index: int, n: Seq_Note, field: Seq_Field, nam
 // Empties slot `slot`.
 clear_sequence :: proc(m: ^Model, slot: int) {
 	s := m.project.sequences[slot]
-	s.notes = nil
+	s.notes, s.points = nil, nil
 	set_sequence(m, slot, .Notes, "Clear Sequence", s)
 }
 
@@ -237,6 +336,15 @@ double_sequence :: proc(m: ^Model, slot: int) {
 		append(&notes, n)
 	}
 	s.notes = notes[:]
+	points := make([dynamic]Auto_Point, 0, len(s.points) * 2, context.temp_allocator)
+	for p in s.points do if p.beat < length do append(&points, p)
+	pc := len(points)
+	for i in 0 ..< pc {
+		p := points[i]
+		p.beat += length
+		append(&points, p)
+	}
+	s.points = points[:]
 	s.bars *= 2
 	set_sequence(m, slot, .Notes, "Double Sequence", s)
 }
@@ -286,4 +394,45 @@ select_slot :: proc(m: ^Model, slot: int) {
 // Whether slot `slot` holds any notes.
 slot_used :: proc(m: ^Model, slot: int) -> bool {
 	return len(m.project.sequences[slot].notes) > 0
+}
+
+// How a MIDI file's notes find pads (see `import_midi`).
+Midi_Import :: enum u8 {
+	By_Map,    // each key plays the pad the MIDI map gives it (drums: key 36 is A1); other keys are skipped
+	On_Pad,    // every note plays pad `pad`, pitched (a melody or a bass line)
+}
+
+// Reads the MIDI file at `path` into slot `slot`, replacing what is there,
+// as one undo step: its notes (every track), as long as the file (whole
+// bars, at most MAX_BARS). Returns how many notes it brought in, or -1 if
+// the file could not be read.
+import_midi :: proc(m: ^Model, path: string, slot: int, how := Midi_Import.By_Map, pad := 0) -> int {
+	mf, err := clip.midi_file_read(path, context.temp_allocator)
+	if err != .None do return -1
+	defer clip.midi_file_destroy(&mf)
+	notes := make([dynamic]Seq_Note, context.temp_allocator)
+	length: f64 = 0
+	for tr in mf.tracks {
+		c := tr.clip
+		if c == nil do continue
+		length = max(length, f64(c.length))
+		for n in c.notes {
+			sn := Seq_Note{start = f64(n.start), length = f64(n.length), velocity = n.velocity, probability = 1}
+			switch how {
+			case .By_Map:
+				p := m.project.midi_map[n.key]
+				if p < 0 do continue
+				sn.pad = u8(p)
+			case .On_Pad:
+				sn.pad = u8(clamp(pad, 0, PADS - 1))
+				sn.pitch = i8(clamp(int(n.key) - KEYS_CENTER, -48, 48))
+			}
+			append(&notes, sn)
+		}
+	}
+	s := m.project.sequences[slot]
+	s.bars = clamp(int(math.ceil(length / BEATS_PER_BAR - 1e-9)), 1, MAX_BARS)
+	s.notes = notes[:]
+	set_sequence(m, slot, .Notes, "Import MIDI", s)
+	return len(notes)
 }

@@ -88,7 +88,7 @@ main :: proc() {
 	for i in 0 ..< 16 do s.m.cells[i] = i % 4 == 0
 	for i in 0 ..< 16 do s.m.cells[16 + i] = i % 8 == 4
 	for i in 0 ..< 16 do s.m.cells[32 + i] = i % 2 == 0
-	append(&s.m.notes, ui.Roll_Note{0, 1, 60, 0.9, false}, ui.Roll_Note{1, 0.5, 64, 0.6, false}, ui.Roll_Note{2, 1.5, 67, 0.8, false}, ui.Roll_Note{4, 2, 72, 0.5, false})
+	append(&s.m.notes, ui.Roll_Note{start = 0, length = 1, key = 60, velocity = 0.9}, ui.Roll_Note{start = 1, length = 0.5, key = 64, velocity = 0.6}, ui.Roll_Note{start = 2, length = 1.5, key = 67, velocity = 0.8}, ui.Roll_Note{start = 4, length = 2, key = 72, velocity = 0.5})
 	append(&s.m.points, ui.Lane_Point{0, 0.2}, ui.Lane_Point{2, 0.8}, ui.Lane_Point{5, 0.4}, ui.Lane_Point{8, 0.9})
 	s.selected = 5
 	s.roll = {beat0 = 0, beats = 8, key0 = 55, keys = 24}
@@ -285,7 +285,7 @@ draw_editors :: proc(user: rawptr) {
 	}
 	if g.ended do app.seal(&s.history)
 	r := ui.piano_roll("roll", m.notes[:], &s.roll, 0.25, {half, max(avail.y - 140, 120)}, f64(s.frame % 480) / 60)
-	if r.add do append(&m.notes, ui.Roll_Note{r.at_beat, 0.5, r.at_key, 0.8, false})
+	if r.add do append(&m.notes, ui.Roll_Note{start = r.at_beat, length = 0.5, key = r.at_key, velocity = 0.8})
 	if r.released && r.moving >= 0 do m.notes[r.moving].start, m.notes[r.moving].key = r.to_start, r.to_key
 	if r.released && r.resizing >= 0 do m.notes[r.resizing].length = r.to_length
 	if r.delete >= 0 do ordered_remove(&m.notes, r.delete)

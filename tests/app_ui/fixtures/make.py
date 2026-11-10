@@ -31,3 +31,28 @@ for b in range(4):
     for i, v in enumerate(hat(beat // 4)):
         loop[b * beat + beat // 2 + i] += 0.6 * v
 write("loop.wav", loop)
+
+# beat.mid: one bar of a drum pattern (kick on 36, hat on 37), 480 ticks a beat.
+def vlq(n):
+    out = [n & 0x7F]
+    n >>= 7
+    while n:
+        out.insert(0, 0x80 | (n & 0x7F))
+        n >>= 7
+    return bytes(out)
+
+events = []  # (tick, bytes)
+for b in range(4):
+    events.append((b * 480, bytes([0x99, 36, 110])))
+    events.append((b * 480 + 120, bytes([0x89, 36, 0])))
+    events.append((b * 480 + 240, bytes([0x99, 37, 80])))
+    events.append((b * 480 + 360, bytes([0x89, 37, 0])))
+events.sort(key=lambda e: e[0])
+track, last = b"", 0
+for tick, data in events:
+    track += vlq(tick - last) + data
+    last = tick
+track += vlq(1920 - last) + bytes([0xFF, 0x2F, 0x00])
+with open("beat.mid", "wb") as f:
+    f.write(b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480))
+    f.write(b"MTrk" + struct.pack(">I", len(track)) + track)

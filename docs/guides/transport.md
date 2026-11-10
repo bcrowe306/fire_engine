@@ -146,6 +146,14 @@ From the control thread, `transport.status(clock)` gives the grid and tempo,
 and `transport.timeline_status(clock, id)` gives a timeline's position and
 play state, as of a recent block.
 
+## A metronome
+
+`dsp.metronome_create({timeline = tl})` is a node (no inputs, one or two
+outputs) that clicks every beat of the timeline while it plays, higher
+on the first beat of each bar (the clock's meter, counted from the
+timeline's beat 0), each click on its exact frame. `METRONOME_PARAM_ON`
+switches it, `METRONOME_PARAM_LEVEL_DB` sets its level.
+
 ## MIDI clock out
 
 `transport.midi_clock_create` makes a node that sends 24-PPQ clock and,

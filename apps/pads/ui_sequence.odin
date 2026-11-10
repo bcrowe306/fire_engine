@@ -15,7 +15,8 @@ ROW_MIN :: 17
 Seq_State :: struct {
 	view:     ui.Roll_View,
 	grid:     pm.Grid, // snap and quantize
-	lane:     int,     // 0 = velocity, 1 = chance
+	lane:     int,     // 0 = velocity, 1 = chance, 2 = automation
+	param:    pm.Lane_Param, // the automation lane shown (of the selected pad)
 	selected: int,     // a note of the current sequence, or -1
 	slot_was: int,
 	bars_was: int,
@@ -96,7 +97,12 @@ draw_sequence :: proc(user: rawptr) {
 		for x, k in pm.current_sequence(m).notes do if x == n do st.selected = k
 	}
 
-	// The lane: velocity or chance, lined up under the grid.
+	// The lane, lined up under the grid: velocity, chance, or the selected
+	// pad's automation.
+	if st.lane == 2 {
+		draw_automation(a, s, length, snap, {avail.x, lane_h}, ui.roll_rows_width(rows))
+		return
+	}
 	bars := make([]ui.Lane_Bar, len(notes), context.temp_allocator)
 	for n, k in notes {
 		sn := s.notes[which[k]]
@@ -116,6 +122,37 @@ draw_sequence :: proc(user: rawptr) {
 		st.selected = i
 	}
 	if le.ended do app.seal(&m.history)
+}
+
+// The selected pad's automation lane for `a.seq.param`: click to add a
+// point, drag to move, right-click to delete.
+draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec2, left: f32) {
+	m := &a.m
+	st := &a.seq
+	slot := m.project.slot
+	pad := a.selected
+	points, first := pm.lane_points(s, pad, st.param)
+	lo, hi := pm.lane_range(st.param)
+	norm :: proc(v, lo, hi: f32) -> f32 { return (v - lo) / (hi - lo) }
+	view := make([]ui.Lane_Point, len(points), context.temp_allocator)
+	for p, i in points do view[i] = {beat = p.beat, value = norm(p.value, lo, hi)}
+	// The lane's label sits where the editor's row names are.
+	pos := im.GetCursorScreenPos()
+	im.DrawList_AddText(im.GetWindowDrawList(), {pos.x + 4, pos.y + 4}, ui.col(ui.theme().text_dim),
+		fmt.ctprintf("%s %s", pm.pad_label(pad), pm.LANE_NAMES[st.param]))
+	im.SetCursorScreenPos({pos.x + left, pos.y})
+	e := ui.automation_lane("auto", view, 0, length, snap, {size.x - left, size.y}, ui.rgb(m.project.pads[pad].color))
+	value_of :: proc(n, lo, hi: f32) -> f32 { return lo + clamp(n, 0, 1) * (hi - lo) }
+	if e.add && e.at.beat <= length {
+		pm.add_point(m, slot, {pad = u8(pad), param = st.param, beat = e.at.beat, value = value_of(e.at.value, lo, hi)})
+	}
+	if e.moving >= 0 && e.moving < len(points) {
+		p := points[e.moving]
+		p.beat, p.value = clamp(e.to.beat, 0, length), value_of(e.to.value, lo, hi)
+		pm.set_point(m, slot, first + e.moving, p)
+		if e.released do app.seal(&m.history)
+	}
+	if e.delete >= 0 && e.delete < len(points) do pm.remove_point(m, slot, first + e.delete)
 }
 
 // Play, stop, record and the click; the slot; its length, grid and swing.
@@ -183,8 +220,16 @@ draw_transport :: proc(a: ^App) {
 	}
 
 	// The lane's value, and clearing.
-	ui.flow(ui.button_width("Velocity") + ui.button_width("Chance"), 20)
-	ui.segmented("lane", {"Velocity", "Chance"}, &st.lane)
+	ui.flow(ui.button_width("Velocity") + ui.button_width("Chance") + ui.button_width("Automation"), 20)
+	ui.segmented("lane", {"Velocity", "Chance", "Automation"}, &st.lane)
+	if st.lane == 2 {
+		ui.flow(110)
+		im.SetNextItemWidth(110)
+		if im.BeginCombo("##param", pm.LANE_NAMES[st.param]) {
+			for lp in pm.Lane_Param do if im.Selectable(pm.LANE_NAMES[lp], lp == st.param) do st.param = lp
+			im.EndCombo()
+		}
+	}
 	ui.flow(im.GetFrameHeight())
 	if ui.icon_button(ui.ICON_TRASH_2, "Clear the sequence") do pm.clear_sequence(m, slot)
 	_ = t

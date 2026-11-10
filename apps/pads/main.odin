@@ -51,6 +51,10 @@ App :: struct {
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
 	frame:    int,
+	play_mode: pm.Play_Mode,
+	keys:     pm.Keys,
+	grid_held: [pm.PADS_PER_BANK]Grid_Held,
+	perf:     Perf_State,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
 	fake_due: f64, // frames the simulated device owes (it runs as the frames go by)
 }
@@ -189,21 +193,55 @@ run_fake :: proc(a: ^App) {
 	}
 }
 
-// Plays pad `index` (from the mouse, a key or a script).
+// Plays pad `index` (from the mouse, a key or a script). In keyboard and
+// velocity modes the pad's place in the grid says how to play the
+// selected pad instead.
 press :: proc(a: ^App, index: int, velocity: f32 = 1) {
-	a.selected = index
-	if a.m.project.pads[index].sample != 0 {
-		pm.hit(&a.m.engine, index, true, velocity)
-		a.lit[index] = 0.18
+	k := index % pm.PADS_PER_BANK
+	g := &a.grid_held[k]
+	if g.on do release(a, index)
+	switch a.play_mode {
+	case .Pads:
+		a.selected = index
+		g^ = {on = true, pad = index}
+		if a.m.project.pads[index].sample != 0 do pm.hit(&a.m.engine, index, true, velocity)
+	case .Keyboard:
+		pitches: [4]int
+		ps := pm.keyboard_pitches(a.keys, k, &pitches)
+		g^ = {on = true, pad = a.selected, keyboard = true, count = len(ps)}
+		for p, i in ps {
+			g.pitches[i] = i8(clamp(p, -48, 48))
+			pm.hit(&a.m.engine, a.selected, true, velocity, g.pitches[i], keyboard = true)
+		}
+	case .Velocity:
+		g^ = {on = true, pad = a.selected}
+		pm.hit(&a.m.engine, a.selected, true, pm.velocity_of_pad(k))
 	}
+	a.lit[a.bank * pm.PADS_PER_BANK + k] = 0.18
 	a.held[index] = true
 }
 
-// Releases pad `index`.
+// Releases pad `index` (what its press played).
 release :: proc(a: ^App, index: int) {
-	if !a.held[index] do return
+	k := index % pm.PADS_PER_BANK
+	g := &a.grid_held[k]
 	a.held[index] = false
-	pm.hit(&a.m.engine, index, false)
+	if !g.on do return
+	g.on = false
+	if g.keyboard {
+		for p in g.pitches[:g.count] do pm.hit(&a.m.engine, g.pad, false, 0, p, keyboard = true)
+	} else {
+		pm.hit(&a.m.engine, g.pad, false)
+	}
+}
+
+// What a press of a grid pad played, to release it.
+Grid_Held :: struct {
+	on:       bool,
+	pad:      int,
+	keyboard: bool,
+	pitches:  [4]i8,
+	count:    int,
 }
 
 // The computer keyboard as a 4×4 pad grid, top row first.

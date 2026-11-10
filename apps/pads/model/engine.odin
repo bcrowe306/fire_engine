@@ -1,7 +1,7 @@
 package pads_model
 
 import "base:intrinsics"
-import "core:mem"
+import "core:math"
 
 import app "app:core"
 import fc "fire:core"
@@ -36,6 +36,10 @@ Engine :: struct {
 	bpm:       f64,  // the tempo the clock has
 	metronome: bool, // the click is on (set it, then `sync`)
 	metro_on:  bool, // what the metronome node has
+	resend:    bool, // send every pad's parameters again (automation moved them)
+	stopped:   bool, // stopped by `stop`: automation is off until `play`
+	built_perform: Perform, // what the router's effects have
+	perform_sent:  bool,
 }
 
 // What a pad has in the graph.
@@ -45,6 +49,11 @@ Pad_Nodes :: struct {
 	eq:      graph.Node_Id,
 	handle:  ^sampler.Sampler,
 	built:   Pad, // the pad as the engine has it
+	// Automation of the current sequence: one player into the sampler, one
+	// into the EQ.
+	auto_voice, auto_eq: graph.Node_Id,
+	voice_player, eq_player: ^clip.Automation_Player,
+	automated: bool, // it has lanes now (its parameters are the sequence's while playing)
 }
 
 // Adds the router, the sequencer and the metronome to the host's graph and
@@ -76,9 +85,11 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	e.player = player
 	e.player_id = graph.add_node(g, pnode, 0, 0) or_return
 	graph.connect_events(g, e.player_id, e.router_id)
+	graph.connect_events(g, e.router_id, graph.OUTPUT) // pads' MIDI out
 	e.metro_id = graph.add_node(g, dsp.metronome_create({timeline = e.timeline}), 0, 2) or_return
 	for c in 0 ..< 2 do graph.connect(g, e.metro_id, c, graph.OUTPUT, c)
 	e.bpm, e.metro_on = 0, true // the node starts on: sync sets what the project wants
+	e.perform_sent = false
 	e.seq_dirty = true
 	mark_all(e)
 	graph.commit(g) or_return
@@ -127,10 +138,13 @@ sync :: proc(e: ^Engine) {
 		src := source_of(e, pad.sample)
 		e.router.groups[i] = pad.choke
 		e.router.modes[i] = pad.mode
+		e.router.midi_out[i] = pad.midi_out
 		if src == nil {
 			if n.live {
 				graph.remove_node(g, n.voice)
 				graph.remove_node(g, n.eq)
+				graph.remove_node(g, n.auto_voice)
+				graph.remove_node(g, n.auto_eq)
 				n^ = {}
 				structural = true
 			}
@@ -148,6 +162,14 @@ sync :: proc(e: ^Engine) {
 			}
 			n.voice, n.eq, n.live = sid, eid, true
 			graph.connect_events(g, e.router_id, sid)
+			vnode, vp, _ := clip.automation_player_create({timeline = e.timeline})
+			enode, ep, _ := clip.automation_player_create({timeline = e.timeline})
+			n.voice_player, n.eq_player = vp, ep
+			n.auto_voice, _ = graph.add_node(g, vnode, 0, 0)
+			n.auto_eq, _ = graph.add_node(g, enode, 0, 0)
+			graph.connect_events(g, n.auto_voice, sid)
+			graph.connect_events(g, n.auto_eq, eid)
+			e.seq_dirty = true // its automation
 			for c in 0 ..< 2 {
 				graph.connect(g, sid, c, eid, c)
 				graph.connect(g, eid, c, graph.OUTPUT, c)
@@ -168,7 +190,7 @@ sync :: proc(e: ^Engine) {
 		set :: proc(g: ^graph.Graph, id: graph.Node_Id, p: fc.Param_Id, old, new: f32, fresh: bool) {
 			if fresh || old != new do graph.set_param(g, id, p, f64(new))
 		}
-		fresh := n.built.sample == 0
+		fresh := n.built.sample == 0 || e.resend
 		set(g, n.voice, sampler.SAMPLER_PARAM_GAIN_DB, n.built.volume, pad.volume, fresh)
 		set(g, n.voice, sampler.SAMPLER_PARAM_TRANSPOSE, n.built.pitch, pad.pitch, fresh)
 		set(g, n.voice, sampler.SAMPLER_PARAM_ATTACK, n.built.attack, pad.attack, fresh)
@@ -177,6 +199,7 @@ sync :: proc(e: ^Engine) {
 		n.built = pad
 	}
 	if structural do graph.commit(g)
+	e.resend = false
 	sync_sequencer(e)
 }
 
@@ -192,6 +215,10 @@ sync_sequencer :: proc(e: ^Engine) {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_ON, 1 if e.metronome else 0)
 		e.metro_on = e.metronome
 	}
+	e.router.midi_map = p.midi_map
+	if !e.perform_sent || e.built_perform != p.perform {
+		if rt.spsc_push(&e.router.settings, p.perform) do e.built_perform, e.perform_sent = p.perform, true
+	}
 	if !e.seq_dirty do return
 	e.seq_dirty = false
 	s := p.sequences[p.slot]
@@ -200,6 +227,52 @@ sync_sequencer :: proc(e: ^Engine) {
 	clip.midi_player_set(e.player, c, {loop = true})
 	clip.midi_clip_release(c)
 	transport.set_loop(e.host.clock, e.timeline, 0, tb.Beats(seq_beats(s)))
+	if !e.stopped do sync_automation(e, s)
+}
+
+// Each live pad's automation players get its lanes of sequence `s`.
+@(private)
+sync_automation :: proc(e: ^Engine, s: Sequence) {
+	length := tb.Beats(seq_beats(s))
+	for &n, i in e.nodes {
+		if !n.live do continue
+		has := false
+		for p in s.points do if int(p.pad) == i do has = true
+		if !has {
+			if n.automated {
+				clip.automation_player_set(n.voice_player, nil, {})
+				clip.automation_player_set(n.eq_player, nil, {})
+				n.automated = false
+				e.resend = true // the pad's own values again
+				mark(e, i)
+			}
+			continue
+		}
+		voice, eq: clip.Automation_Builder
+		clip.automation_builder_init(&voice, length, context.temp_allocator)
+		clip.automation_builder_init(&eq, length, context.temp_allocator)
+		for p in s.points do if int(p.pad) == i && tb.Beats(p.beat) <= length {
+			at := tb.Beats(p.beat)
+			v := f64(p.value)
+			switch p.param {
+			case .Volume:  clip.automation_add_point(&voice, sampler.SAMPLER_PARAM_GAIN_DB, at, v)
+			case .Pitch:   clip.automation_add_point(&voice, sampler.SAMPLER_PARAM_TRANSPOSE, at, math.round(v), .Step)
+			case .Eq_Low:  clip.automation_add_point(&eq, dsp.eq_band_param(0, .Gain_Db), at, v)
+			case .Eq_Mid:  clip.automation_add_point(&eq, dsp.eq_band_param(1, .Gain_Db), at, v)
+			case .Eq_High: clip.automation_add_point(&eq, dsp.eq_band_param(2, .Gain_Db), at, v)
+			}
+		}
+		for b in ([]^clip.Automation_Builder{&voice, &eq}) do clip.automation_set_loop(b, 0, length)
+		vc, _ := clip.automation_build(&voice)
+		ec, _ := clip.automation_build(&eq)
+		clip.automation_player_set(n.voice_player, vc, {loop = true})
+		clip.automation_player_set(n.eq_player, ec, {loop = true})
+		if vc != nil do clip.automation_clip_release(vc)
+		if ec != nil do clip.automation_clip_release(ec)
+		clip.automation_builder_destroy(&voice)
+		clip.automation_builder_destroy(&eq)
+		n.automated = true
+	}
 }
 
 // The clip that plays sequence `s`: its notes on the pads' keys, swung,
@@ -215,7 +288,7 @@ build_clip :: proc(s: Sequence) -> ^clip.Midi_Clip {
 		if n.start >= length || int(n.pad) >= PADS do continue
 		start := clip.swing(tb.Beats(n.start), g, f64(s.swing))
 		end := clip.swing(tb.Beats(min(n.start + n.length, length)), g, f64(s.swing))
-		i := clip.add_note(&b, start, max(end - start, 1e-3), pad_key(int(n.pad)), n.velocity, probability = n.probability)
+		i := clip.add_note(&b, start, max(end - start, 1e-3), pad_key(int(n.pad)), n.velocity, channel = SEQ_CHANNEL, probability = n.probability)
 		if n.pitch != 0 do clip.add_expression(&b, i, 0, .Tuning, f64(n.pitch))
 	}
 	c, err := clip.midi_build(&b)
@@ -229,14 +302,29 @@ struck :: proc(e: ^Engine, index: int) -> u32 {
 
 // Starts the sequencer from the top of the sequence.
 play :: proc(e: ^Engine) {
+	if e.stopped {
+		e.stopped = false
+		sync_automation(e, e.project.sequences[e.project.slot])
+	}
 	transport.locate(e.host.clock, e.timeline, 0)
 	transport.play(e.host.clock, e.timeline)
 }
 
-// Stops it (and goes back to the top).
+// Stops it (and goes back to the top). Pads the automation moved get their
+// own settings back.
 stop :: proc(e: ^Engine) {
 	transport.stop(e.host.clock, e.timeline)
 	transport.locate(e.host.clock, e.timeline, 0)
+	// Automation lets go of the pads (a locate would set them again), and
+	// comes back with the next play.
+	for &n, i in e.nodes do if n.automated {
+		clip.automation_player_set(n.voice_player, nil, {})
+		clip.automation_player_set(n.eq_player, nil, {})
+		n.automated = false
+		e.resend = true
+		mark(e, i)
+	}
+	e.stopped = true
 }
 
 // Where the sequencer is, in beats into the sequence, and whether it plays.
@@ -267,144 +355,10 @@ zone_of :: proc(pad: Pad, index: int, src: ^stream.Source) -> sampler.Sample_Zon
 	}
 }
 
-// Plays pad `index` (from the UI), `pitch` semitones from its own pitch:
-// `on` false releases it.
-hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0) -> bool {
-	return rt.spsc_push(&e.router.queue, Hit{u8(index), on, velocity, pitch})
+// Plays pad `index` (from the UI): `on` false releases it. A `keyboard`
+// hit plays the pad `pitch` semitones from its own pitch, as one note of
+// many (keyboard mode, chords); its release must give the same pitch.
+hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, keyboard := false) -> bool {
+	return rt.spsc_push(&e.router.queue, Hit{u8(index), on, velocity, pitch, keyboard})
 }
 
-// --- the router ----------------------------------------------------------------------------
-
-// A pad hit, from the UI thread to the router.
-Hit :: struct {
-	pad:      u8,
-	on:       bool,
-	velocity: f32,
-	pitch:    i8, // semitones (keyboard mode)
-}
-
-// A hit as the router played it, back to the UI while capturing (for
-// recording into a sequence): where the sequencer was when it sounded.
-Taken :: struct {
-	using hit: Hit,
-	beat:    f64,  // the timeline's position at the hit
-	playing: bool, // the sequencer was playing
-}
-
-// Turns pad hits into notes for the pads' samplers: key `pad_key(i)` for
-// pad i. Hitting a pad chokes the other pads of its choke group; a Hold pad
-// stops on its second hit; Gate and Loop pads stop on release. Notes from
-// the sequencer and from MIDI in get the same choke groups and Hold, and
-// pass through. Fields written by the control thread (`groups`, `modes`,
-// `capture`) are read by the audio thread; a torn byte is harmless.
-Router :: struct {
-	queue:    rt.Spsc_Queue(Hit),
-	taken:    rt.Spsc_Queue(Taken), // to the UI, while `capture`
-	capture:  bool,
-	timeline: fc.Timeline_Id,
-	groups:   [PADS]u8,
-	modes:    [PADS]Pad_Mode,
-	holding:  [PADS]bool, // audio thread: Hold pads sounding
-	next_id:  fc.Note_Id, // audio thread: ids for the UI's pitched notes
-	sounding: [PADS][4]fc.Note_Id, // audio thread: the UI's pitched notes per pad, to release
-	played:   u64, // atomic: hits played (for tests and meters)
-	struck:   [PADS]u32, // atomic: times each pad has sounded (the UI lights pads when these move)
-}
-
-@(private)
-router_vtable := fc.Node_VTable {
-	prepare = proc(self: rawptr, cfg: fc.Prepare_Config, a: mem.Allocator) -> fc.Error { return .None },
-	process = router_process,
-	destroy = proc(self: rawptr, a: mem.Allocator) {
-		r := (^Router)(self)
-		rt.spsc_destroy(&r.queue, a)
-		rt.spsc_destroy(&r.taken, a)
-		free(r, a)
-	},
-}
-
-@(private)
-router_create :: proc(allocator := context.allocator) -> (fc.Node, ^Router) {
-	r := new(Router, allocator)
-	rt.spsc_init(&r.queue, 256, allocator)
-	rt.spsc_init(&r.taken, 1024, allocator)
-	r.next_id = 1 << 30 // apart from the sequencer's ids
-	return fc.node_make(&router_vtable, r, allocator), r
-}
-
-// The pad a key plays, or -1.
-@(private)
-pad_of_key :: proc "contextless" (key: u8) -> int {
-	i := int(key) - PAD_KEY_BASE
-	return i if i >= 0 && i < PADS else -1
-}
-
-// [rt] Before pad `i` sounds: choke its group. False if it should not sound
-// (a Hold pad hit a second time stops instead).
-@(private)
-router_strike :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, offset: u32, i: int) -> bool {
-	if r.modes[i] == .Hold && r.holding[i] {
-		fc.event_writer_push(out, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = pad_key(i)}})
-		r.holding[i] = false
-		return false
-	}
-	if g := r.groups[i]; g != 0 {
-		for other in 0 ..< PADS do if other != i && r.groups[other] == g {
-			fc.event_writer_push(out, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = pad_key(other)}})
-			r.holding[other] = false
-		}
-	}
-	if r.modes[i] == .Hold do r.holding[i] = true
-	intrinsics.atomic_add(&r.played, 1)
-	intrinsics.atomic_add(&r.struck[i], 1)
-	return true
-}
-
-// [rt]
-@(private)
-router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
-	r := (^Router)(self)
-	out := ctx.events_out
-	if out == nil do return
-	for e in ctx.events_in {
-		if on, ok := e.payload.(fc.Note_On); ok {
-			if i := pad_of_key(on.key); i >= 0 && !router_strike(r, out, e.offset, i) do continue
-		}
-		fc.event_writer_push(out, e) // the sequencer and MIDI in play pads by key
-	}
-	beat: f64
-	playing := false
-	if tl := fc.transport_timeline(ctx.transport, r.timeline); tl != nil {
-		beat, playing = f64(tl.position), tl.playing
-	}
-	for h in rt.spsc_pop(&r.queue) {
-		i := int(h.pad)
-		if i >= PADS do continue
-		key := pad_key(i)
-		if h.on {
-			if !router_strike(r, out, 0, i) do continue
-			if h.pitch == 0 {
-				fc.event_writer_push(out, {0, fc.Note_On{id = fc.NOTE_ID_ANY, key = key, velocity = h.velocity}})
-			} else {
-				// A pitched note gets its own id, so chords of one pad work.
-				id := r.next_id
-				r.next_id += 1
-				fc.event_writer_push(out, {0, fc.Note_On{id = id, key = key, velocity = h.velocity}})
-				fc.event_writer_push(out, {0, fc.Note_Expression{id = id, key = key, kind = .Tuning, value = f64(h.pitch)}})
-				slots := &r.sounding[i]
-				copy(slots[1:], slots[:3])
-				slots[0] = id
-			}
-		} else if r.modes[i] == .Gate || r.modes[i] == .Loop {
-			if h.pitch == 0 {
-				fc.event_writer_push(out, {0, fc.Note_Off{id = fc.NOTE_ID_ANY, key = key}})
-			} else {
-				for &id in r.sounding[i] do if id != 0 {
-					fc.event_writer_push(out, {0, fc.Note_Off{id = id, key = key}})
-					id = 0
-				}
-			}
-		}
-		if r.capture do rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing})
-	}
-}

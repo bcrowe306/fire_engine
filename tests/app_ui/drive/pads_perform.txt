@@ -1,0 +1,60 @@
+# Pads' performance features: keyboard and velocity modes, note repeat, the
+# arpeggiator, MIDI in and learn, automation, MIDI file import. Screenshots
+# of the Perform panel and keyboard mode.
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+select 0
+panel perform
+wait 3
+screenshot perform_panel
+# Keyboard mode: every pad plays the selected one (A1), pitched.
+mode keys
+scale major
+chord triad
+wait 2
+screenshot perform_keys
+key z                     # the bottom-left pad: the root chord
+wait 4
+expect struck 0 3         # three notes of the chord
+expect selected 0
+mode velocity
+key v
+wait 4
+expect struck 0 4
+mode pads
+# Note repeat: a held key repeats on the grid.
+repeat on
+wait 2
+hit 1
+wait 40                   # 2/3 s: about five sixteenths at 120 BPM
+release 1
+expect struck 1 4
+repeat off
+# MIDI in: key 36 plays A1; learn key 60 for A2.
+midi 36 100
+wait 3
+midi 36 0
+expect struck 0 5
+learn 1 60
+expect midi_key 1 37      # its own key is lower
+midi 60 100
+wait 3
+midi 60 0
+expect struck 1 5
+# Automation and a MIDI file into sequence 2.
+point 0 volume 0 -24
+point 0 volume 4 0
+expect points 2
+slot 2
+import_midi tests/app_ui/fixtures/beat.mid
+expect notes 8
+panel sequence
+wait 3
+screenshot perform_imported
+slot 1
+select 0
+lane automation volume
+wait 3
+screenshot perform_automation

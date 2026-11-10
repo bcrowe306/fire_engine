@@ -172,3 +172,28 @@ set_bpm :: proc(m: ^Model, bpm: f64) {
 		(^Model)(ctx).project.bpm = value
 	})
 }
+
+// Sets the live effects (the arpeggiator, note repeat). Not undoable: how
+// you play, not what the project holds.
+set_perform :: proc(m: ^Model, p: Perform) {
+	m.project.perform = p
+}
+
+// Makes MIDI key `key` play pad `pad` (-1: nothing), undoably. Another key
+// that played `pad` keeps playing it.
+learn_midi :: proc(m: ^Model, key: int, pad: int) {
+	if key < 0 || key > 127 do return
+	old := m.project.midi_map[key]
+	new := i16(clamp(pad, -1, PADS - 1))
+	if old == new do return
+	app.set_value(&m.history, "MIDI Learn", {0, 100 + key}, old, new, proc(ctx: rawptr, k: app.Key, v: i16) {
+		(^Model)(ctx).project.midi_map[k.field - 100] = v
+	})
+	app.seal(&m.history)
+}
+
+// The MIDI key that plays pad `pad` (the lowest, if several), or -1.
+midi_key_of :: proc(m: ^Model, pad: int) -> int {
+	for p, k in m.project.midi_map do if int(p) == pad do return k
+	return -1
+}
