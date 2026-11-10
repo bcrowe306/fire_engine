@@ -95,6 +95,7 @@ Fake :: struct {
 	// Shared with the callback thread.
 	stop_flag:   bool,
 	unplugged:   bool,
+	absent:      bool, // atomic: opening fails (see set_absent)
 	xrun_next:   bool,
 	callbacks:   u64,
 }
@@ -138,6 +139,12 @@ unplug :: proc(f: ^Fake) {
 	intrinsics.atomic_store(&f.unplugged, true)
 	backend.driver_notify(f.driver.host, {kind = .Device_Lost})
 	backend.driver_notify(f.driver.host, {kind = .Devices_Changed})
+}
+
+// While true, opening fails as though the device were still unplugged
+// (until set false again). Lets tests keep a device away for a while.
+set_absent :: proc(f: ^Fake, absent: bool) {
+	intrinsics.atomic_store(&f.absent, absent)
 }
 
 // The device reports a format change (as when another app changes its rate).
@@ -205,6 +212,7 @@ fake_enumerate :: proc(d: ^backend.Driver, allocator: mem.Allocator) -> ([]backe
 fake_open :: proc(d: ^backend.Driver, setup: backend.Device_Setup) -> (backend.Device_Format, core.Error) {
 	f := (^Fake)(d.data)
 	if f.open do return {}, .Invalid_State
+	if intrinsics.atomic_load(&f.absent) do return {}, .Device_Error
 	if setup.input_device_id != "" && setup.output_device_id != "" && setup.input_device_id != setup.output_device_id {
 		return {}, .Unsupported
 	}
