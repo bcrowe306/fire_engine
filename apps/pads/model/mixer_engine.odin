@@ -1,5 +1,7 @@
 package pads_model
 
+import "core:math"
+
 import fc "fire:core"
 import "fire:clap"
 import "fire:dsp"
@@ -21,6 +23,7 @@ key_of :: proc(s: Effect_Slot) -> Slot_Key {
 
 // One effect slot in the graph.
 Fx_Node :: struct {
+	mix:     f32, // the wet mix it was given (performance effects' intensity)
 	has:     bool,
 	id:      graph.Node_Id,
 	key:     Slot_Key,
@@ -131,21 +134,21 @@ effect_node :: proc(e: ^Engine, s: Effect_Slot) -> (node: fc.Node, plugin: ^clap
 
 // [control] Sends what changed in slot `s` to its node.
 @(private)
-apply_slot :: proc(g: ^graph.Graph, f: ^Fx_Node, s: Effect_Slot, fresh: bool) {
+apply_slot :: proc(g: ^graph.Graph, f: ^Fx_Node, s: Effect_Slot, fresh: bool, mix: f32 = 1) {
 	if !f.has do return
 	s := s
 	for p in s.params[:s.count] {
 		old := slot_value(f.applied, p.id, max(f32))
 		if fresh || old != p.value do graph.set_param(g, f.id, p.id, f64(p.value))
 	}
-	if fresh || f.applied.on != s.on {
+	if fresh || f.applied.on != s.on || f.mix != mix {
 		if s.kind == .Stutter {
 			graph.set_param(g, f.id, dsp.STUTTER_PARAM_ACTIVE, 1 if s.on else 0)
 		} else {
-			graph.set_param(g, f.id, dsp.WET_PARAM_MIX, 1 if s.on else 0)
+			graph.set_param(g, f.id, dsp.WET_PARAM_MIX, f64(mix) if s.on else 0)
 		}
 	}
-	f.applied = s
+	f.applied, f.mix = s, mix
 }
 
 // [control] Makes slot `s`'s node if the slot needs a new one. True if the
@@ -360,7 +363,8 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 				changed = true
 				if old.has do structural = true
 			}
-			apply_slot(g, &f, p.perf_fx[k], false)
+			s, mix := perf_effective(p, k, e.perf_live[k])
+			apply_slot(g, &f, s, false, mix)
 		}
 		if changed {
 			// The chain: input → slots → (main: performance effects) → fader.
@@ -446,4 +450,34 @@ target_params :: proc(e: ^Engine, t: Fx_Target, allocator := context.temp_alloca
 		append(&out, p)
 	}
 	return out[:]
+}
+
+// Performance effect `k` at its intensity: `live` while its pad is held
+// (where it is pressed), else its own (`Project.perf_intensity`). Filters
+// sweep toward their cutoff, stutters and cutters go faster, pitch shifts
+// go further; the rest blend in (the mix).
+perf_effective :: proc(p: ^Project, k: int, live: f32) -> (s: Effect_Slot, mix: f32) {
+	s = p.perf_fx[k]
+	x := clamp(live if live >= 0 else p.perf_intensity[k], 0, 1)
+	mix = 1
+	#partial switch s.kind {
+	case .Low_Pass:
+		c := slot_value(s, dsp.FILTER_PARAM_CUTOFF_HZ, 500)
+		slot_set(&s, dsp.FILTER_PARAM_CUTOFF_HZ, 20_000 * math.pow(c / 20_000, x))
+	case .High_Pass:
+		c := slot_value(s, dsp.FILTER_PARAM_CUTOFF_HZ, 2000)
+		slot_set(&s, dsp.FILTER_PARAM_CUTOFF_HZ, 20 * math.pow(c / 20, x))
+	case .Stutter:
+		b := slot_value(s, dsp.STUTTER_PARAM_BEATS, 0.25)
+		slot_set(&s, dsp.STUTTER_PARAM_BEATS, b * math.pow(2, math.round((1 - x) * 2)))
+	case .Cutter:
+		b := slot_value(s, dsp.CUTTER_PARAM_BEATS, 0.25)
+		slot_set(&s, dsp.CUTTER_PARAM_BEATS, b * math.pow(2, math.round((1 - x) * 2)))
+	case .Pitch:
+		st := slot_value(s, dsp.PITCH_PARAM_SEMITONES, 12)
+		slot_set(&s, dsp.PITCH_PARAM_SEMITONES, st * x)
+	case:
+		mix = x
+	}
+	return
 }

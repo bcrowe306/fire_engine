@@ -42,6 +42,15 @@ draw_effect :: proc(user: rawptr) {
 	im.PopFont()
 	im.Spacing()
 
+	// A performance effect: how hard it plays (unless its press says).
+	if t.kind == .Perf {
+		x := m.project.perf_intensity[t.index]
+		ke := ui.knob("Intensity", &x, 0, 1, 1, "%.2f")
+		if ke.changed do pm.set_perf_intensity(m, t.index, x)
+		if ke.ended do app.seal(&m.history)
+		if im.IsItemHovered() do im.SetTooltip("How hard it plays: where you press its pad sets it while held (the top: all of it)")
+		im.SameLine(0, 14)
+	}
 	// What it holds.
 	im.SetNextItemWidth(200)
 	if ui.combo("##kind", fmt.ctprintf("%s", pm.slot_name(s))) {

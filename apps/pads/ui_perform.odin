@@ -42,6 +42,9 @@ draw_perform :: proc(user: rawptr) {
 	// A panel of its own: a column for how the pads play and MIDI, one for
 	// note repeat and the arpeggiator, one for the performance effects
 	// (narrow, one after another).
+	draw_launcher(a)
+	im.Spacing()
+	im.Separator()
 	wide := im.GetContentRegionAvail().x >= 900
 	if wide && !im.BeginTable("##perform", 3, {.BordersInnerV, .PadOuterX}) do wide = false
 	defer if wide do im.EndTable()
@@ -54,10 +57,7 @@ draw_perform :: proc(user: rawptr) {
 
 	section(a, "Play the pads as", !wide)
 	mode := int(a.play_mode)
-	if ui.segmented("play_mode", {"Pads", "Keyboard", "Velocity"}, &mode) {
-		for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
-		a.play_mode = pm.Play_Mode(mode)
-	}
+	if ui.segmented("play_mode", {"Pads", "Keyboard", "Velocity"}, &mode) do set_play_mode(a, pm.Play_Mode(mode))
 	if a.play_mode != .Pads {
 		im.TextDisabled("%s", fmt.ctprintf("Playing %s %s", pm.pad_label(a.selected), pm.pad_name(&m.project.pads[a.selected])))
 	}
@@ -232,15 +232,21 @@ draw_perform :: proc(user: rawptr) {
 		im.PushIDInt(i32(5000 + i))
 		hit := ui.pad("fx", {label = fmt.tprintf("fx %d", i + 1), name = pm.perf_label(fx), middle = fmt.tprintf("FX %d", i + 1), tint = ui.theme().accent, has_sound = true, lit = fx.on, selected = a.fx == pm.Fx_Target{.Perf, i, 0}}, {side, side * 0.62})
 		im.PopID()
+		// Where it is pressed is how hard it plays: the top, all of it.
+		lo, hi := im.GetItemRectMin(), im.GetItemRectMax()
+		press := 1 - clamp((im.GetIO().MousePos.y - lo.y) / max(hi.y - lo.y, 1), 0, 1)
+		press = clamp((press - 0.08) / 0.84, 0, 1) // a margin at each end reaches 0 and 1
 		if hit.pressed {
 			a.perf_held[i] = true
 			if a.perf_hold {
 				a.perf_latched[i] = !a.perf_latched[i]
-				pm.hold_perf_fx(m, i, a.perf_latched[i])
+				pm.hold_perf_fx(m, i, a.perf_latched[i], press)
 			} else {
-				pm.hold_perf_fx(m, i, true)
+				pm.hold_perf_fx(m, i, true, press)
 			}
 		}
+		if hit.held do pm.perf_intensity_live(m, i, press)
+		intensity_fill(a, i, lo, hi)
 		if hit.released {
 			a.perf_held[i] = false
 			if !a.perf_hold do pm.hold_perf_fx(m, i, false)
@@ -302,4 +308,120 @@ step_strip :: proc(m: ^pm.Model, rate: pf.Rate, on: bool) {
 		if k == now do c = ui.mix(base, ui.rgb(0xffffff), (1 - frac) * 0.5 if on else 0) // a flash that fades through the step
 		im.DrawList_AddRectFilled(dl, {x, pos.y}, {x + cw, pos.y + h}, ui.col(c), 2)
 	}
+}
+
+// A performance effect's pad's intensity: a fill from the bottom to how
+// hard it plays now (bright while on), and a mark at its own intensity.
+@(private)
+intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
+	t := ui.theme()
+	m := &a.m
+	on := m.project.perf_fx[i].on
+	own := m.project.perf_intensity[i]
+	now := m.engine.perf_live[i] if on && m.engine.perf_live[i] >= 0 else own
+	dl := im.GetWindowDrawList()
+	h := hi.y - lo.y
+	y := hi.y - h * (0.08 + 0.84 * now)
+	c := ui.with_alpha(ui.rgb(0xffffff) if on else t.accent, 0.28 if on else 0.12)
+	im.DrawList_AddRectFilled(dl, {lo.x + 2, y}, {hi.x - 2, hi.y - 2}, ui.col(c), 4)
+	oy := hi.y - h * (0.08 + 0.84 * own)
+	im.DrawList_AddLine(dl, {lo.x + 6, oy}, {lo.x + 18, oy}, ui.col(ui.with_alpha(t.text, 0.6)), 2)
+}
+
+// The sequences to play live: every one in use (and the current one) as
+// a cell, in its state: playing (a bar runs across it), queued (it pulses
+// and counts down), the one shown. Click to launch it (when stopped it
+// starts playing); Shift-click only to show it. When a switch lands: the
+// project's switch setting, here too.
+draw_launcher :: proc(a: ^App) {
+	m := &a.m
+	p := &m.project
+	t := ui.theme()
+	sw := int(p.switch_at)
+	order := [4]pm.Switch_At{.Now, .Beat, .Bar, .End}
+	cur := 0
+	for o, k in order do if o == p.switch_at do cur = k
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Launch")
+	im.SameLine(0, 12)
+	if ui.segmented("launch_at", {"At once", "Next beat", "Next bar", "Sequence end"}, &cur) do p.switch_at = order[cur]
+	_ = sw
+	if im.IsItemHovered() do im.SetTooltip("When a sequence you launch takes over")
+	im.Spacing()
+
+	beat, playing := pm.position(&m.engine)
+	tl, _ := pm.timeline_beat(&m.engine)
+	next, in_beats, queued := pm.pending_switch(&m.engine)
+	clock := a.transport.clock
+	w: f32 = 132
+	h: f32 = 58
+	gap: f32 = 6
+	avail := im.GetContentRegionAvail().x
+	per_row := max(int((avail + gap) / (w + gap)), 1)
+	shown := 0
+	dl := im.GetWindowDrawList()
+	for k in 0 ..< pm.SLOTS {
+		if !pm.slot_used(m, k) && k != p.slot do continue
+		if shown % per_row != 0 do im.SameLine(0, gap)
+		shown += 1
+		im.PushIDInt(i32(9000 + k))
+		pos := im.GetCursorScreenPos()
+		clicked := im.InvisibleButton("##cell", {w, h})
+		ui.name(fmt.tprintf("launch %d", k + 1))
+		item_menu(a, seq_target(k), "##cellmenu")
+		hovered := im.IsItemHovered()
+		is_cur := k == p.slot
+		is_playing := is_cur && playing
+		is_next := queued && next == k
+		bg := t.raised
+		if is_playing do bg = ui.mix(t.raised, t.accent, 0.55)
+		else if is_cur do bg = ui.mix(t.raised, t.accent, 0.2)
+		if hovered do bg = ui.lighten(bg, 0.06)
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
+		// Queued: a border that pulses with the beat.
+		if is_next {
+			pulse := f32(0.5 + 0.5 * math.cos(math.TAU * tl))
+			im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.warn, 0.5 + 0.5 * pulse)), t.radius, 2.5)
+		}
+		s := p.sequences[k]
+		fg := t.accent_text if is_playing else t.text
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7}, ui.col(fg), fmt.ctprintf("%s", pm.sequence_name(p, k)))
+		info := fmt.ctprintf("%d bar%s%s", s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "")
+		if is_next do info = fmt.ctprintf("in %.1f beats", max(in_beats, 0))
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7 + im.GetTextLineHeightWithSpacing()}, ui.col(t.warn if is_next else (t.accent_text if is_playing else t.text_dim)), info)
+		// Playing: where in it the playhead is.
+		if is_playing {
+			f := f32(beat / max(pm.seq_beats(p, s), 1e-6))
+			im.DrawList_AddRectFilled(dl, {pos.x + 4, pos.y + h - 6}, {pos.x + 4 + (w - 8) * f, pos.y + h - 3}, ui.col(t.accent_text), 2)
+		}
+		if clicked {
+			if im.GetIO().KeyShift {
+				if !playing do pm.select_slot(m, k)
+			} else {
+				pm.select_slot(m, k)
+				if !playing do pm.play(&m.engine)
+			}
+		}
+		im.PopID()
+	}
+	// A new one: the next empty sequence, shown (to record into).
+	if shown % per_row != 0 do im.SameLine(0, gap)
+	if e := pm.next_empty_slot(m, p.slot); e >= 0 {
+		pos := im.GetCursorScreenPos()
+		if im.InvisibleButton("##newcell", {w, h}) do pm.select_slot(m, e)
+		ui.name("new sequence")
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Go to %s (empty) to make a new one", pm.sequence_name(p, e)))
+		im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.text, 0.25)), t.radius, 1.5)
+		pl := im.CalcTextSize("+  New")
+		im.DrawList_AddText(dl, {pos.x + (w - pl.x) / 2, pos.y + (h - pl.y) / 2}, ui.col(t.text_dim), "+  New")
+	}
+	_ = clock
+}
+
+// How the pads play: each its sound, a keyboard of the selected one, or
+// it at 16 velocities. Held pads let go first.
+set_play_mode :: proc(a: ^App, mode: pm.Play_Mode) {
+	if a.play_mode == mode do return
+	for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
+	a.play_mode = mode
 }

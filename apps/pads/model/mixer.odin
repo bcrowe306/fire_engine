@@ -233,11 +233,36 @@ set_perf_fx :: proc(m: ^Model, i: int, field: int, name: string, new: Effect_Slo
 
 // Turns performance effect `i` on or off (while its pad is held, or
 // latched). Not an edit.
-hold_perf_fx :: proc(m: ^Model, i: int, on: bool) {
+hold_perf_fx :: proc(m: ^Model, i: int, on: bool, intensity: f32 = -1) {
 	if i < 0 || i >= PERF_FX do return
 	m.project.perf_fx[i].on = on
+	m.engine.perf_live[i] = intensity if on else -1
 	m.engine.mix_dirty = true
 }
+
+// While performance effect `i` is held: how hard (0..1; where its pad is
+// pressed), moving as the press does.
+perf_intensity_live :: proc(m: ^Model, i: int, intensity: f32) {
+	if i < 0 || i >= PERF_FX || !m.project.perf_fx[i].on do return
+	x := clamp(intensity, 0, 1)
+	if m.engine.perf_live[i] == x do return
+	m.engine.perf_live[i] = x
+	m.engine.mix_dirty = true
+}
+
+// Sets performance effect `i`'s own intensity (0..1), undoably: what it
+// plays at when its pad's press doesn't say.
+set_perf_intensity :: proc(m: ^Model, i: int, x: f32) {
+	if i < 0 || i >= PERF_FX do return
+	app.set_value(&m.history, "Effect Intensity", {app.Id(PERF_INTENSITY_KEY + i), 0}, m.project.perf_intensity[i], clamp(x, 0, 1), proc(ctx: rawptr, key: app.Key, v: f32) {
+		m := (^Model)(ctx)
+		m.project.perf_intensity[int(key.id) - PERF_INTENSITY_KEY] = v
+		m.engine.mix_dirty = true
+	})
+}
+
+@(private)
+PERF_INTENSITY_KEY :: 1 << 21
 
 // A pad's send to a bus: how much of its sound also goes there, from
 // before its fader (`pre`: the fader doesn't change it) or after.

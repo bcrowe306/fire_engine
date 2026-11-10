@@ -263,6 +263,18 @@ draw_toolbar :: proc(user: rawptr) {
 		im.EndPopup()
 	}
 
+	// How the pads play (also in the Perform panel).
+	im.SameLine(0, gap)
+	modes := [3]struct { mode: pm.Play_Mode, icon: string, tip: cstring }{
+		{.Pads, ui.ICON_LAYOUT_GRID, "Play the pads as pads (each its sound)"},
+		{.Keyboard, ui.ICON_KEYBOARD_MUSIC, "Play the pads as a keyboard of the selected pad"},
+		{.Velocity, ui.ICON_SIGNAL_HIGH, "Play the pads as the selected pad at 16 velocities"},
+	}
+	for md, k in modes {
+		if k > 0 do im.SameLine(0, 0)
+		if ui.icon_button(md.icon, md.tip, on = a.play_mode == md.mode, size = big) do set_play_mode(a, md.mode)
+	}
+
 	st.width = im.GetItemRectMax().x - x0
 	// A line under the bar.
 	vp := im.GetWindowPos()

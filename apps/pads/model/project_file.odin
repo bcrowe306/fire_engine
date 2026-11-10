@@ -17,7 +17,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 8 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos
+PROJECT_VERSION :: 9 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -251,6 +251,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_string(w, strings.truncate_to_byte(string(s.name[:]), 0))
 		fc.write_f64(w, s.bpm)
 	}
+	for x in p.perf_intensity do fc.write_f32(w, x) // (v9)
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -437,6 +438,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			s.bpm = clamp(b, 40, 300) if b > 0 else 0
 		}
 	}
+	if version >= 9 do for &x in p.perf_intensity do x = clamp(fc.read_f32(r), 0, 1)
 }
 
 _ :: strings.clone

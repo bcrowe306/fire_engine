@@ -58,6 +58,7 @@ Engine :: struct {
 	armed:     [PADS]bool, // audio pads armed to record
 	audio_dirty: bool,     // a clip changed: give the players theirs again
 	tempo_at, tempo_next: f64, // a tempo change sent ahead: where (timeline beat), and what
+	perf_live: [PERF_FX]f32, // a held performance effect's intensity (where it is pressed; -1: its own)
 }
 
 // What a pad has in the graph.
@@ -90,6 +91,7 @@ Pad_Nodes :: struct {
 engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error {
 	e.host, e.project = host, project
 	e.sources = make(map[app.Id]^stream.Source)
+	for &x in e.perf_live do x = -1
 	return build_fixed(e)
 }
 

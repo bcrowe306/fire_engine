@@ -169,7 +169,15 @@ for other toggles.
   right-click to delete). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
   the sequencer plays them.
-- **Perform** (a panel beside the Mixer): how the pads play — **Pads**, each its
+- **Perform** (a panel beside the Mixer): at its top, the **launcher**:
+  every sequence in use as a cell (its name, bars, its own tempo). Click
+  one to launch it — stopped, it starts playing; playing, it takes over
+  **at once**, on the **next beat**, the **next bar** or at the **sequence
+  end** (chosen beside it, as in the Song tab). The playing cell runs a
+  bar across; a queued one pulses with the beat and counts down; Shift-
+  click only shows a sequence; **+ New** goes to the next empty one;
+  right-click a cell for the sequence's commands. A sequence's own tempo
+  takes over where it does. Below, how the pads play — **Pads**, each its
   own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
   triads, sevenths, power chords) on the selected pad, from any root and
   octave, the bottom-left pad the root; **Velocity**, the selected pad at
@@ -205,8 +213,12 @@ for other toggles.
 - **Performance effects** (in the Perform panel): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
-  distortion. **Hold** latches them. Right-click one to change what it is
-  in the Effects tab.
+  distortion. **Hold** latches them. Where you press is how hard it plays
+  (slide while held): the top is all of it — filters sweep further,
+  stutters and cutters go faster, pitch shifts go further, the rest blend
+  in more. Each pad fills to how hard it plays and marks its own
+  intensity (the **Intensity** knob in the Effects tab, when the press
+  doesn't say). Right-click one to edit it.
 - **File > Import MIDI File…** reads a `.mid` into the current sequence:
   as General MIDI drums: key 36 (the kick) onto A1, 37 onto A2, and on.
   (`import_midi` in the model can also go by the MIDI map, where key N is
@@ -306,6 +318,9 @@ icons whose colour shows their state.
   bars, the metronome's accent, exports.
 - The **metronome**: on/off, and (the arrow) its level, **Only while
   recording** (and counting in), and the count-in.
+- **Play modes** (at the toolbar's right): the pads as pads, as a
+  keyboard of the selected pad, or as it at 16 velocities — as in the
+  Perform panel.
 - **Input quantize** (the magnet): on, recorded notes move toward the
   grid shown beside it; the arrow sets the grid (1/4–1/64, triplets), the
   **strength** (100%: onto the grid; 50%: half way) and **swing** (the
@@ -507,6 +522,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
+| `test_live.py` | the launcher (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
 | `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song chain and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |

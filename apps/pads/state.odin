@@ -41,6 +41,10 @@ State :: struct {
 	exporting:  bool,
 	sequences:  [dynamic]State_Sequence, // the ones in use
 	marked:     bool, // a part of the piano roll is marked
+	perf_on:    [pm.PERF_FX]bool, // the performance effects held (or latched)
+	perf_now:   [pm.PERF_FX]f32,  // how hard each plays while held (-1: its own)
+	perf_intensity: [pm.PERF_FX]f32, // each one's own
+	queued:     int, // the sequence about to take over (1-based; 0: none)
 	pads:       [dynamic]State_Pad, // the ones with a sound
 	buses:      [pm.BUSES + 1]State_Bus, // A..D, then main
 	browser:    State_Browser,
@@ -142,6 +146,9 @@ state_json :: proc(a: ^App) -> string {
 		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes)})
 	}
 	s.marked = a.seq.range.on
+	for fx, k in p.perf_fx do s.perf_on[k] = fx.on
+	s.perf_now, s.perf_intensity = m.engine.perf_live, p.perf_intensity
+	if q, _, ok := pm.pending_switch(&m.engine); ok do s.queued = q + 1
 	s.pads = make([dynamic]State_Pad, context.temp_allocator)
 	for &pad, i in p.pads do if pm.pad_used(p, i) {
 		sp := State_Pad{index = i, label = pm.pad_label(i), name = pm.pad_name(&pad), mode = enum_name(pad.mode),
