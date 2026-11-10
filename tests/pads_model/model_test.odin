@@ -32,7 +32,9 @@ rig_make :: proc(t: ^testing.T, name: string, inputs := 0) -> ^Rig {
 	app.host_close(&r.host) // render offline from here
 	r.dir, _ = filepath.join({kit.artifacts_root(), "pads_model", name})
 	os.remove_all(r.dir)
-	os.make_directory_all(r.dir)
+	// Tests make their folders at once: one that finds the shared parent
+	// being made by another can give up (seen on Linux), so until it is there.
+	for k := 0; k < 100 && !os.is_dir(r.dir); k += 1 do os.make_directory_all(r.dir)
 	testing.expect_value(t, pm.model_init(&r.m, &r.host, r.dir), fc.Error.None)
 	return r
 }
