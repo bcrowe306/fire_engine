@@ -97,7 +97,7 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 		append(&x.passes, Export_Pass{strings.clone(path), {}})
 	case .Pads:
 		os.make_directory_all(path)
-		for pad, i in p.pads do if pad.sample != 0 {
+		for _, i in p.pads do if pad_used(p, i) {
 			name := strings.concatenate({pad_label(i), " ", pad_name(&p.pads[i])}, context.temp_allocator)
 			stem(x, path, name, {.Pad, i})
 		}
@@ -106,7 +106,7 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 		stem(x, path, "Main", {.Bus, 0})
 		for b in 1 ..= BUSES {
 			used := false
-			for pad in p.pads do if int(pad.bus) == b && pad.sample != 0 do used = true
+			for pad, i in p.pads do if int(pad.bus) == b && pad_used(p, i) do used = true
 			if used do stem(x, path, bus_name(b), {.Bus, b})
 		}
 	}
@@ -129,7 +129,7 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 export_to_pad :: proc(m: ^Model, x: ^Export) -> bool {
 	p := &m.project
 	empty := -1
-	for pad, i in p.pads do if pad.sample == 0 {
+	for _, i in p.pads do if !pad_used(p, i) {
 		empty = i
 		break
 	}

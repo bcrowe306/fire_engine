@@ -49,6 +49,9 @@ Pad_Field :: enum {
 	Send_3,
 	Send_Pre,
 	Fades,
+	Kind,
+	Input,
+	Monitor,
 }
 
 // Prepares the model for a project in `dir` on `host`.
@@ -154,7 +157,11 @@ load_onto_pad :: proc(m: ^Model, index: int, path: string) -> fc.Error {
 
 // Empties pad `index`.
 clear_pad :: proc(m: ^Model, index: int) {
+	app.begin(&m.history, "Clear Pad")
+	defer app.end(&m.history)
 	set_pad(m, index, .Whole, "Clear Pad", default_pad())
+	for slot in 0 ..< SLOTS do set_clip(m, slot, index, "Clear Pad", {}) // an audio pad's takes
+	m.engine.armed[index] = false
 }
 
 // The sample a pad plays, or nil.

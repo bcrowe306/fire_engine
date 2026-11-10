@@ -21,8 +21,16 @@ draw_inspector :: proc(user: rawptr) {
 	im.PushFontFloat(f.bold, 18)
 	im.Text("%s", fmt.ctprintf("%s", pm.pad_label(i)))
 	im.PopFont()
-	im.SameLine()
+	im.SameLine(0, 12)
+	kind := int(pad.kind)
+	if ui.segmented("kind", {"Sampler", "Audio"}, &kind) do pm.set_pad_kind(m, i, pm.Pad_Kind(kind))
+	if im.IsItemHovered() do im.SetTooltip("A sampler plays its sample when hit; an audio pad records takes from an input and plays them with the sequence")
+	im.SameLine(0, 12)
 	im.AlignTextToFramePadding()
+	if pad.kind == .Audio {
+		draw_audio_inspector(a, i)
+		return
+	}
 	if pad.sample == 0 {
 		im.TextDisabled("Empty: drop a sample here, or use File > Import")
 		return
@@ -43,30 +51,7 @@ draw_inspector :: proc(user: rawptr) {
 		section(a, "Pad", false)
 	}
 
-	// Name and colour.
-	@(static) name_buf: [32]u8
-	@(static) name_for := -1
-	if name_for != i || !im.IsItemActive() {
-		if name_for != i do name_buf = pad.name
-		name_for = i
-	}
-	im.SetNextItemWidth(-1)
-	if im.InputText("##name", cstring(&name_buf[0]), len(name_buf)) {
-		p := pad
-		p.name = name_buf
-		pm.set_pad(m, i, .Name, "Rename Pad", p)
-	}
-	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
-	// Its colour: click for the swatches and a picker.
-	if im.ColorButton("##color", transmute(im.Vec4)ui.rgb(pad.color), {.NoTooltip, .NoBorder}, {44, 22}) do im.OpenPopup("##colormenu")
-	ui.name("colour")
-	im.SameLine(0, 8)
-	im.AlignTextToFramePadding()
-	im.TextDisabled("Colour")
-	if im.BeginPopup("##colormenu") {
-		pad_color_menu(a, i)
-		im.EndPopup()
-	}
+	pad_name_colour(a, i)
 
 	section(a, "Playback", !wide)
 	mode := int(pad.mode)
@@ -135,6 +120,108 @@ draw_inspector :: proc(user: rawptr) {
 	im.Spacing()
 	im.Spacing()
 	if im.Button(ui.ICON_ERASER + "  Clear Pad") do pm.clear_pad(m, i)
+}
+
+// Pad `i`'s name and colour (click the swatch for a palette and a picker).
+@(private)
+pad_name_colour :: proc(a: ^App, i: int) {
+	m := &a.m
+	pad := m.project.pads[i]
+	@(static) name_buf: [32]u8
+	@(static) name_for := -1
+	if name_for != i || !im.IsItemActive() {
+		if name_for != i do name_buf = pad.name
+		name_for = i
+	}
+	im.SetNextItemWidth(-1)
+	if im.InputText("##name", cstring(&name_buf[0]), len(name_buf)) {
+		p := pad
+		p.name = name_buf
+		pm.set_pad(m, i, .Name, "Rename Pad", p)
+	}
+	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+	// Its colour: click for the swatches and a picker.
+	if im.ColorButton("##color", transmute(im.Vec4)ui.rgb(pad.color), {.NoTooltip, .NoBorder}, {44, 22}) do im.OpenPopup("##colormenu")
+	ui.name("colour")
+	im.SameLine(0, 8)
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Colour")
+	if im.BeginPopup("##colormenu") {
+		pad_color_menu(a, i)
+		im.EndPopup()
+	}
+
+}
+
+// An audio pad's settings: its take in the current sequence, its input,
+// arming and monitoring, its level and EQ.
+@(private)
+draw_audio_inspector :: proc(a: ^App, i: int) {
+	m := &a.m
+	pad := m.project.pads[i]
+	c := pm.current_clip(m, i)
+	seq := m.project.slot + 1
+	if s := app.store_get(&m.project.samples, c.sample); s != nil {
+		im.TextDisabled("%s", fmt.ctprintf("Sequence %d: a take of %.2f s at %.0f BPM", seq, f64(s.frames) / s.rate, c.bpm))
+	} else {
+		im.TextDisabled("%s", fmt.ctprintf("Sequence %d: no take yet (arm it, then record)", seq))
+	}
+	wide := im.GetContentRegionAvail().x >= 720
+	if wide && !im.BeginTable("##audio_inspector", 3, {.BordersInnerV}) do wide = false
+	defer if wide do im.EndTable()
+	if wide {
+		im.TableSetupColumn("a", {.WidthStretch}, 1)
+		im.TableSetupColumn("b", {.WidthFixed}, 2 * (ui.KNOB_SIZE + 14) + 20)
+		im.TableSetupColumn("c", {.WidthFixed}, 3 * (ui.KNOB_SIZE + 14) + 20)
+		im.TableNextColumn()
+		section(a, "Track", false)
+	}
+	pad_name_colour(a, i)
+
+	section(a, "Input", !wide)
+	input := i32(pad.input)
+	inputs := [3]cstring{"Inputs 1 + 2", "Input 1", "Input 2"}
+	im.SetNextItemWidth(min(180, im.GetContentRegionAvail().x))
+	if ui.combo_char("##input", &input, &inputs[0], len(inputs)) {
+		p := pad
+		p.input = pm.Audio_Input(input)
+		pm.set_pad(m, i, .Input, "Set Input", p)
+		app.seal(&m.history)
+	}
+	im.SameLine(0, 16)
+	armed := pm.audio_armed(m, i)
+	if ui.toggle("Arm", &armed) do pm.arm_audio(m, i, armed)
+	if im.IsItemHovered() do im.SetTooltip("Armed, it records while you record (Cmd+R)")
+	im.SameLine(0, 16)
+	mon := pad.monitor
+	if ui.toggle("Monitor", &mon) {
+		p := pad
+		p.monitor = mon
+		pm.set_pad(m, i, .Monitor, "Monitor", p)
+		app.seal(&m.history)
+	}
+	if im.IsItemHovered() do im.SetTooltip("Armed, it plays its input through its strip (use headphones)")
+	if a.host.graph.settings.input_channels == 0 do im.TextColored(transmute(im.Vec4)ui.theme().warn, "No audio input: the device was opened without one")
+
+	if wide do im.TableNextColumn()
+	section(a, "Sound", !wide)
+	knob_f32(a, "Volume", &pad.volume, -48, 12, 0, "%.1f dB", .Volume, "Set Volume")
+	im.SameLine(0, 14)
+	knob_f32(a, "Pan", &pad.pan, -1, 1, 0, "%+.2f", .Pan, "Set Pan")
+	if wide do im.TableNextColumn()
+	section(a, "EQ", !wide)
+	knob_f32(a, "Low", &pad.eq[0], -15, 15, 0, "%+.1f dB", .Eq_Low, "Set EQ Low")
+	im.SameLine(0, 14)
+	knob_f32(a, "Mid", &pad.eq[1], -15, 15, 0, "%+.1f dB", .Eq_Mid, "Set EQ Mid")
+	im.SameLine(0, 14)
+	knob_f32(a, "High", &pad.eq[2], -15, 15, 0, "%+.1f dB", .Eq_High, "Set EQ High")
+	im.Spacing()
+	im.Spacing()
+	im.BeginDisabled(c.sample == 0)
+	if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
+	im.EndDisabled()
+	im.SameLine()
+	if im.Button(ui.ICON_TRASH + "  Clear Pad") do pm.clear_pad(m, i)
 }
 
 // A knob for one f32 field of the selected pad, as an undoable edit.

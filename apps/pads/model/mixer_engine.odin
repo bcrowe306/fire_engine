@@ -240,7 +240,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 	p := e.project
 	mx := &e.mixer
 	mx.any_solo = false
-	for pad in p.pads do if pad.solo && pad.sample != 0 do mx.any_solo = true
+	for pad, i in p.pads do if pad.solo && pad_used(p, i) do mx.any_solo = true
 	mx.any_bus_solo = false
 	for b in p.buses do if b.solo do mx.any_bus_solo = true
 

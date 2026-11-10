@@ -81,6 +81,7 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 			added = true
 		}
 	}
+	if audio_poll(m) do added = true
 	return
 }
 

@@ -41,6 +41,14 @@ pad_audio :: proc(m: ^Model, index: int) -> (Audio, bool) {
 	return a, err == .None
 }
 
+// Sample `id`'s audio, read whole (temp memory).
+sample_audio :: proc(m: ^Model, id: app.Id) -> (Audio, bool) {
+	s := app.store_get(&m.project.samples, id)
+	if s == nil do return {}, false
+	a, err := read_audio(s.path, context.temp_allocator)
+	return a, err == .None
+}
+
 // The frames a pad plays: its region, resolved.
 pad_region :: proc(m: ^Model, index: int) -> (start, end: i64) {
 	pad := &m.project.pads[index]
@@ -123,7 +131,7 @@ chop_to_pads :: proc(m: ^Model, index: int, how: Chop) -> int {
 
 @(private)
 next_empty :: proc(m: ^Model, after: int) -> int {
-	for i in after + 1 ..< PADS do if m.project.pads[i].sample == 0 do return i
+	for i in after + 1 ..< PADS do if !pad_used(&m.project, i) do return i
 	return -1
 }
 

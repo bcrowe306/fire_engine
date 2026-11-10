@@ -44,9 +44,10 @@ draw_sequence :: proc(user: rawptr) {
 	for k in 0 ..< pm.PADS_PER_BANK {
 		index := a.bank * pm.PADS_PER_BANK + k
 		pad := &m.project.pads[index]
-		name := pm.pad_name(pad) if pad.sample != 0 else "—"
+		used := pm.pad_used(&m.project, index)
+		name := pm.pad_name(pad) if used else "—"
 		t := ui.theme()
-		rows[k] = {name = fmt.tprintf("%s  %s", pm.pad_label(index), name), color = ui.rgb(pad.color) if pad.sample != 0 else ui.mix(t.raised, t.text, 0.18)}
+		rows[k] = {name = fmt.tprintf("%s  %s", pm.pad_label(index), name), color = ui.rgb(pad.color) if used else ui.mix(t.raised, t.text, 0.18)}
 	}
 	// Notes of this bank, and which note of the sequence each is.
 	notes := make([dynamic]ui.Roll_Note, context.temp_allocator)

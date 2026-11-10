@@ -38,12 +38,13 @@ draw_pads :: proc(user: rawptr) {
 		a.pad_rects[k] = {pos, {pos.x + side, pos.y + side}}
 		im.SetCursorScreenPos(pos)
 		im.PushIDInt(i32(index))
-		has := pad.sample != 0
+		has := pm.pad_used(p, index)
+		audio := pad.kind == .Audio
 		label := pm.pad_label(index)
 		face := ui.Pad_Face{
 			label     = fmt.tprintf("pad %s", label),
 			name      = pm.pad_name(pad) if has else label,
-			middle    = pm.pad_note_name(index),
+			middle    = (ui.ICON_CIRCLE_DOT + " armed" if pm.audio_armed(&a.m, index) else ui.ICON_MIC + " audio") if audio else pm.pad_note_name(index),
 			tint      = ui.rgb(pad.color),
 			has_sound = has,
 			lit       = a.lit[index] > 0 || a.held[index],
@@ -53,7 +54,7 @@ draw_pads :: proc(user: rawptr) {
 			buttons   = has,
 			drop_type = "PADS_FILE",
 		}
-		if has && a.pad_waves do face.peaks = pad_peaks(a, index)
+		if has && a.pad_waves && !audio do face.peaks = pad_peaks(a, index)
 		switch a.play_mode {
 		case .Pads:
 		case .Keyboard: // the notes of the scale, on the selected pad

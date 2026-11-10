@@ -89,7 +89,7 @@ draw_mixer :: proc(user: rawptr) {
 	if im.BeginChild("##pads", {max(avail.x - buses_w - 8, STRIP_W), avail.y}, {}, {.HorizontalScrollbar}) {
 		h := im.GetContentRegionAvail().y
 		any := false
-		for pad, i in m.project.pads do if pad.sample != 0 {
+		for _, i in m.project.pads do if pm.pad_used(&m.project, i) {
 			if any do im.SameLine()
 			any = true
 			// Off to the side (scrolled away): only its room.
@@ -520,31 +520,40 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32) -> (e: u
 	return
 }
 
-// Mute and Solo (Mute alone without `solo`), as Logic colours them.
+// Mute and Solo (Mute alone without `solo`), as Logic colours them, and
+// for an audio pad its record arm.
 @(private)
-mute_solo :: proc(a: ^App, mute, solo: ^bool) -> (changed: bool) {
+mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: bool) {
 	t := ui.theme()
-	n := 2 if solo != nil else 1
-	w := (inner_w() - 4) / 2 if n == 2 else inner_w()
+	parts := [3]^bool{mute, solo, arm}
+	names := [3]cstring{"M##m", "S##s", "R##r"}
+	probes := [3]string{"mute", "solo", "arm"}
+	letters := [3]string{"M", "S", "R"}
+	tips := [3]cstring{"Mute", "Solo", "Arm: it records while you record"}
+	colors := [3]ui.Color{ui.rgb(0x3d9cf5), t.warn, t.danger}
+	n := 0
+	for x in parts do if x != nil do n += 1
+	w := (inner_w() - 4 * f32(n - 1)) / f32(n)
 	dl := im.GetWindowDrawList()
-	for which in 0 ..< n {
-		on := mute if which == 0 else solo
-		if which == 1 do im.SameLine(0, 4)
+	first := true
+	for on, which in parts {
+		if on == nil do continue
+		if !first do im.SameLine(0, 4)
+		first = false
 		pos := im.GetCursorScreenPos()
-		pressed := im.InvisibleButton("M##m" if which == 0 else "S##s", {w, ROW_H})
-		part("mute" if which == 0 else "solo")
+		pressed := im.InvisibleButton(names[which], {w, ROW_H})
+		part(probes[which])
 		if pressed {
 			on^ = !on^
 			changed = true
 		}
 		hovered := im.IsItemHovered()
-		c := ui.rgb(0x3d9cf5) if which == 0 else t.warn
-		bg := c if on^ else (t.hover if hovered else well(t))
+		bg := colors[which] if on^ else (t.hover if hovered else well(t))
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + ROW_H}, ui.col(bg), 3)
 		im.PushFontFloat(a.platform.fonts.semibold, 12)
-		text_in(dl, pos, {pos.x + w, pos.y + ROW_H}, "M" if which == 0 else "S", t.bg if on^ else t.text_dim)
+		text_in(dl, pos, {pos.x + w, pos.y + ROW_H}, letters[which], t.bg if on^ else t.text_dim)
 		im.PopFont()
-		if hovered do im.SetTooltip("Mute" if which == 0 else "Solo")
+		if hovered do im.SetTooltip("%s", tips[which])
 	}
 	return
 }
@@ -628,11 +637,16 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	if fe.ended do app.seal(&m.history)
 	gap()
 	mute, solo := pad.mute, pad.solo
-	if mute_solo(a, &mute, &solo) {
-		p := pad
-		p.mute, p.solo = mute, solo
-		pm.set_pad(m, i, .Mute if mute != pad.mute else .Solo, "Mute" if mute != pad.mute else "Solo", p)
-		app.seal(&m.history)
+	armed := pm.audio_armed(m, i)
+	if mute_solo(a, &mute, &solo, &armed if pad.kind == .Audio else nil) {
+		if armed != pm.audio_armed(m, i) {
+			pm.arm_audio(m, i, armed)
+		} else {
+			p := pad
+			p.mute, p.solo = mute, solo
+			pm.set_pad(m, i, .Mute if mute != pad.mute else .Solo, "Mute" if mute != pad.mute else "Solo", p)
+			app.seal(&m.history)
+		}
 	}
 	gap()
 	if name_plate(fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&m.project.pads[i])), color) do a.selected = i

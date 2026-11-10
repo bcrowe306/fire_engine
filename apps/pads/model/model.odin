@@ -34,6 +34,28 @@ Pad_Mode :: enum u8 {
 	Hold,     // loops until hit again (or choked)
 }
 
+// What a pad is: a sampler (it plays its sample when hit), or an audio
+// track (it records takes from an input and plays them with the sequence).
+Pad_Kind :: enum u8 {
+	Sampler,
+	Audio,
+}
+
+// The inputs an audio pad records.
+Audio_Input :: enum u8 {
+	Stereo_1_2, // inputs 1 and 2
+	Mono_1,     // input 1, on both sides
+	Mono_2,
+}
+
+// An audio pad's take in one sequence: a file one sequence long (at the
+// tempo it was recorded at), looping with the sequence and following the
+// tempo.
+Clip :: struct {
+	sample: app.Id, // 0 = none
+	bpm:    f64,
+}
+
 // One pad. A plain value (no pointers), so a whole pad can be copied,
 // stored in an undo step and restored.
 Pad :: struct {
@@ -65,6 +87,9 @@ Pad :: struct {
 	inserts:    [PAD_INSERTS]Effect_Slot, // after its EQ
 	mute, solo: bool,
 	sends:      [BUSES]Send, // to the buses, besides its output
+	kind:       Pad_Kind,
+	input:      Audio_Input, // an audio pad's
+	monitor:    bool,        // an armed audio pad plays its input through its strip
 }
 
 // A sample the project holds: a file in its folder.
@@ -83,6 +108,7 @@ Project :: struct {
 	pads:    [PADS]Pad,
 	samples: app.Store(Sample),
 	sequences: [SLOTS]Sequence,
+	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence
 	slot:    int, // the current sequence: what plays and is edited
 	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key N plays pad N (A1 = 0, H16 = 127)
 	perform: Perform, // the arpeggiator and note repeat (`set_perform`)
@@ -157,6 +183,13 @@ project_destroy :: proc(p: ^Project) {
 intern :: proc(p: ^Project, s: string) -> string {
 	x, _ := strings.intern_get(&p.strings, s)
 	return x
+}
+
+// Whether pad `index` makes sound: a sampler with a sample, or an audio
+// pad.
+pad_used :: proc(p: ^Project, index: int) -> bool {
+	pad := &p.pads[index]
+	return pad.sample != 0 || pad.kind == .Audio
 }
 
 // A pad's name.

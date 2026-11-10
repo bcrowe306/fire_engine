@@ -31,6 +31,10 @@ draw_sample :: proc(user: rawptr) {
 	m := &a.m
 	i := a.selected
 	pad := m.project.pads[i]
+	if pad.kind == .Audio {
+		draw_take(a, i)
+		return
+	}
 	s := pm.pad_sample(m, i)
 	if s == nil {
 		im.TextDisabled("%s", fmt.ctprintf("No sample on %s", pm.pad_label(i)))
@@ -167,4 +171,39 @@ draw_tools :: proc(a: ^App) {
 			ui.toast(&a.ws.toasts, .Warning, "No audio input to record from")
 		}
 	}
+}
+
+// An audio pad's take in the current sequence: its waveform, a sequence
+// long, with the playhead while it plays.
+@(private)
+draw_take :: proc(a: ^App, i: int) {
+	m := &a.m
+	pad := m.project.pads[i]
+	c := pm.current_clip(m, i)
+	s := app.store_get(&m.project.samples, c.sample)
+	if s == nil {
+		im.TextDisabled("%s", fmt.ctprintf("No take on %s in sequence %d: arm it (Pad tab or its strip), then record", pm.pad_label(i), m.project.slot + 1))
+		return
+	}
+	w := &a.wave
+	if w.sample != c.sample {
+		delete(w.peaks)
+		w.peaks = nil
+		w.sample, w.frames = c.sample, s.frames
+		w.view, w.selection = {}, {}
+		if audio, ok := pm.sample_audio(m, c.sample); ok && len(audio.channels) > 0 {
+			mono := make([]f32, len(audio.channels[0]), context.temp_allocator)
+			for ch in audio.channels do for &v, k in mono do v += ch[k] / f32(len(audio.channels))
+			w.peaks = ui.peaks_of(mono, 4096)
+		}
+	}
+	im.AlignTextToFramePadding()
+	im.TextDisabled("%s", fmt.ctprintf("Sequence %d · %.2f s at %.0f BPM", m.project.slot + 1, f64(s.frames) / s.rate, c.bpm))
+	im.SameLine()
+	if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
+	im.Spacing()
+	head: i64 = -1
+	if rel, playing := pm.position(&m.engine); playing do head = i64(rel * s.rate * 60 / c.bpm) % max(s.frames, 1)
+	avail := im.GetContentRegionAvail()
+	ui.waveform("wave", w.peaks, w.frames, &w.view, nil, &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head)
 }

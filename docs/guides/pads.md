@@ -188,6 +188,34 @@ Delete clears the pad; View > Light Theme switches theme.
   the next bar**, **at the next beat** or **at once** — exactly there; the
   Sequence panel shows what comes next and when.
 
+## Audio pads
+
+A pad is a **sampler** (it plays its sample when hit) or an **audio
+track**: switch it with **Sampler | Audio** at the top of the Pad tab.
+An audio pad is a pad like any other: it has a strip in the mixer, its
+EQ, inserts, sends, mute and solo, and a row in the sequence. What it
+plays is a **take** per sequence:
+
+- In the Pad tab pick its **input** (inputs 1 + 2, or input 1 or 2 alone,
+  on both sides), **Arm** it (or click **R** on its strip; its pad reads
+  *armed*), and turn **Monitor** on to hear the input through its strip
+  while armed (use headphones).
+- Press **Record** (Cmd+R). After the count-in, if one is set, the input
+  is recorded while the sequence plays; when you stop, the take is folded
+  into the current sequence's take for that pad, exactly one sequence
+  long: every frame lands where it was played, over what was there, so of
+  several passes the last is heard (and a short punch replaces only what
+  it covers). One undo step, **Record Audio**.
+- The take loops with its sequence and follows the tempo (it plays faster
+  or slower). Each sequence has its own: pick another sequence, or let
+  the song move on, and the pad plays that sequence's take, switching
+  exactly where the sequences change.
+- The Sample tab shows the current sequence's take with a playhead;
+  **Clear Take** empties it (Clear Pad empties every sequence's).
+
+Audio is recorded in pattern mode (not while the song plays). A project
+from before audio pads opens with every pad a sampler.
+
 ## The transport
 
 The toolbar under the menus, centred, always showing. Its buttons are
@@ -403,6 +431,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 |---|---|
 | `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, dragging files and search results onto pads |
 | `test_pads.py` | pads by mouse and keys, banks, the Pad tab (modes, Reverse, knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
+| `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Pad tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |

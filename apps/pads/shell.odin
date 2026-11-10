@@ -46,7 +46,7 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { open_midi_dialog((^App)(u)) }})
 	add(acts, {id = "clear_pad", label = "Clear Pad", icon = ui.ICON_ERASER, chord = i32(im.Key.Delete), user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_pad(&a.m, a.selected) },
-		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return a.m.project.pads[a.selected].sample != 0 }})
+		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return pm.pad_used(&a.m.project, a.selected) }})
 	add(acts, {id = "palette", label = "Command Palette", icon = ui.ICON_SEARCH, chord = ui.MOD_CMD | i32(im.Key.K), user = a,
 		run = proc(u: rawptr) { ui.palette_open(&(^App)(u).ws.palette) }})
 	add(acts, {id = "theme", label = "Light Theme", icon = ui.ICON_SUN, user = a,
@@ -784,7 +784,7 @@ drive_expect :: proc(a: ^App, w: []string) -> bool {
 	case "pads_loaded":
 		want, _ := strconv.parse_int(w[2])
 		got := 0
-		for pad in a.m.project.pads do if pad.sample != 0 do got += 1
+		for _, i in a.m.project.pads do if pm.pad_used(&a.m.project, i) do got += 1
 		if got != want do return drive_fail(a, fmt.tprintf("expected %d pads with sounds, got %d", want, got))
 		return true
 	case "points":

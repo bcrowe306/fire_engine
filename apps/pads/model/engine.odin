@@ -8,6 +8,7 @@ import fc "fire:core"
 import "fire:clip"
 import "fire:dsp"
 import "fire:graph"
+import "fire:record"
 import "fire:rt"
 import "fire:sampler"
 import "fire:stream"
@@ -54,6 +55,8 @@ Engine :: struct {
 	built_perform: Perform, // what the router's effects have
 	perform_sent:  bool,
 	preview:   Preview, // the browser's preview (straight to the output)
+	armed:     [PADS]bool, // audio pads armed to record
+	audio_dirty: bool,     // a clip changed: give the players theirs again
 }
 
 // What a pad has in the graph.
@@ -69,6 +72,16 @@ Pad_Nodes :: struct {
 	auto_voice, auto_eq, auto_fader: graph.Node_Id,
 	voice_player, eq_player, fader_player: ^clip.Automation_Player,
 	automated: bool, // it has lanes now (its parameters are the sequence's while playing)
+	// An audio pad: no sampler (`voice` sums what it plays), two clip
+	// players taking turns, its input through a monitor gain, a recorder.
+	audio:      bool,
+	players:    [2]^clip.Audio_Player,
+	player_ids: [2]graph.Node_Id,
+	holds:      [2]Audio_Run, // what each player was given
+	monitor_id: graph.Node_Id,
+	rec_id:     graph.Node_Id,
+	rec:        ^record.Audio_Recorder,
+	rec_on, monitor_on: bool, // as sent
 }
 
 // Adds the router, the sequencer and the metronome to the host's graph and
@@ -161,23 +174,23 @@ sync :: proc(e: ^Engine) {
 		e.router.groups[i] = pad.choke
 		e.router.modes[i] = pad.mode
 		e.router.midi_out[i] = pad.midi_out
-		if src == nil {
-			if n.live {
-				graph.remove_node(g, n.voice)
-				graph.remove_node(g, n.eq)
-				graph.remove_node(g, n.auto_voice)
-				graph.remove_node(g, n.auto_eq)
-				graph.remove_node(g, n.fader)
-				graph.remove_node(g, n.auto_fader)
-				n^ = {}
-				structural = true
-			}
-			continue
+		audio := pad.kind == .Audio
+		want := src != nil || audio
+		// A pad that changes kind (or an audio pad its input) is built again.
+		if n.live && (!want || n.audio != audio || (audio && n.built.input != pad.input)) {
+			remove_pad_nodes(g, n)
+			structural = true
 		}
+		if !want do continue
 		if !n.live {
-			node, handle := sampler.sampler_create({voices = 8, quality = .Sinc_Low})
-			n.handle = handle
-			sid, err := graph.add_node(g, node, 0, 2)
+			voice: fc.Node
+			if audio {
+				voice = dsp.pan_create() // what the players and the monitor sum into (panned: a sampler's zone pans)
+			} else {
+				node, handle := sampler.sampler_create({voices = 8, quality = .Sinc_Low})
+				n.handle, voice = handle, node
+			}
+			sid, err := graph.add_node(g, voice, 2 if audio else 0, 2)
 			if err != .None do continue
 			eid, err2 := graph.add_node(g, dsp.eq_create(3), 2, 2)
 			if err2 != .None {
@@ -204,9 +217,19 @@ sync :: proc(e: ^Engine) {
 			graph.connect_events(g, n.auto_fader, fid)
 			e.seq_dirty = true // its automation
 			for c in 0 ..< 2 do graph.connect(g, sid, c, eid, c) // the EQ into the pad's strip (sync_mixer)
+			if audio do build_audio(e, i, n, pad)
 			structural = true
 			n.built = {} // everything below is new
 			n.built.sample = 0
+			n.built.input = pad.input
+		}
+		if n.audio {
+			fresh := n.built.kind != .Audio || e.resend
+			if fresh || n.built.volume != pad.volume do graph.set_param(g, n.fader, dsp.GAIN_PARAM_DB, f64(pad.volume))
+			if fresh || n.built.pan != pad.pan do graph.set_param(g, n.voice, dsp.PAN_PARAM_POSITION, f64(pad.pan))
+			for b in 0 ..< 3 do if fresh || n.built.eq[b] != pad.eq[b] do graph.set_param(g, n.eq, dsp.eq_band_param(b, .Gain_Db), f64(pad.eq[b]))
+			n.built = pad
+			continue
 		}
 		// The sample map: rebuilt when anything the zone holds changed.
 		if zone_changed(n.built, pad) {
@@ -266,6 +289,7 @@ sync_sequencer :: proc(e: ^Engine) {
 		if rt.spsc_push(&e.router.settings, p.perform) do e.built_perform, e.perform_sent = p.perform, true
 	}
 	sequencer_tick(e)
+	defer sync_audio(e)
 	if !e.seq_dirty do return
 	e.seq_dirty = false
 	// What plays: the song, a sequence about to give way to another, or a
@@ -376,6 +400,10 @@ sync_automation :: proc(e: ^Engine) {
 	for &n, i in e.nodes {
 		if !n.live do continue
 		vc, ec, fc_ := plan_automation(p, e.plan, i)
+		if n.audio && vc != nil { // an audio pad has no sampler to automate
+			clip.automation_clip_release(vc)
+			vc = nil
+		}
 		if vc == nil && ec == nil && fc_ == nil {
 			if n.automated {
 				clip.automation_player_set(n.voice_player, nil, {})
@@ -414,6 +442,7 @@ play :: proc(e: ^Engine, count_in := false) {
 	sync_sequencer(e)
 	from := 0.0
 	if count_in do from = -f64(clamp(e.project.transport.count_in, 0, 2)) * bar_beats(e.project)
+	place_audio(e, from) // the players have what plays from the top before it does
 	transport.locate(e.host.clock, e.timeline, tb.Beats(from))
 	transport.play(e.host.clock, e.timeline)
 }
@@ -499,14 +528,7 @@ hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, 
 // its samples (before loading another project into the model).
 engine_clear :: proc(e: ^Engine) {
 	g := e.host.graph
-	for n in e.nodes do if n.live {
-		graph.remove_node(g, n.voice)
-		graph.remove_node(g, n.eq)
-		graph.remove_node(g, n.auto_voice)
-		graph.remove_node(g, n.auto_eq)
-		graph.remove_node(g, n.fader)
-		graph.remove_node(g, n.auto_fader)
-	}
+	for &n in e.nodes do if n.live do remove_pad_nodes(g, &n)
 	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
 	for b in e.mixer.buses {
 		for f in b.slots do if f.has do graph.remove_node(g, f.id)

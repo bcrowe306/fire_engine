@@ -16,7 +16,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 5 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades
+PROJECT_VERSION :: 6 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -176,6 +176,9 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		}
 		fc.write_i64(w, pad.fade_in)
 		fc.write_i64(w, pad.fade_out)
+		fc.write_u8(w, u8(pad.kind))
+		fc.write_u8(w, u8(pad.input))
+		fc.write_bool(w, pad.monitor)
 	}
 	// Sequences.
 	for s in p.sequences {
@@ -231,6 +234,16 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_u8(w, u8(tr.quantize.grid))
 	fc.write_f32(w, tr.quantize.strength)
 	fc.write_f32(w, tr.quantize.swing)
+	// Audio pads' clips (v6): how many, then each with where it is.
+	n := 0
+	for row in p.clips do for c in row do if c.sample != 0 do n += 1
+	fc.write_int(w, n)
+	for row, slot in p.clips do for c, pad in row do if c.sample != 0 {
+		fc.write_u8(w, u8(slot))
+		fc.write_u8(w, u8(pad))
+		fc.write_u64(w, u64(c.sample))
+		fc.write_f64(w, c.bpm)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -333,6 +346,11 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			pad.fade_in = max(fc.read_i64(r), 0)
 			pad.fade_out = max(fc.read_i64(r), 0)
 		}
+		if version >= 6 {
+			pad.kind = Pad_Kind(min(fc.read_u8(r), u8(max(Pad_Kind))))
+			pad.input = Audio_Input(min(fc.read_u8(r), u8(max(Audio_Input))))
+			pad.monitor = fc.read_bool(r)
+		}
 	}
 	for &s in p.sequences {
 		s.bars = clamp(fc.read_int(r), 1, MAX_BARS)
@@ -392,6 +410,16 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		tr.quantize.grid = Grid(min(fc.read_u8(r), u8(max(Grid))))
 		tr.quantize.strength = clamp(fc.read_f32(r), 0, 1)
 		tr.quantize.swing = clamp(fc.read_f32(r), 0, 1)
+	}
+	if version >= 6 {
+		n := fc.read_int(r)
+		if n < 0 || n > SLOTS * PADS do return
+		for _ in 0 ..< n {
+			slot, pad := int(fc.read_u8(r)), int(fc.read_u8(r))
+			c := Clip{sample = app.Id(fc.read_u64(r)), bpm = fc.read_f64(r)}
+			if slot >= SLOTS || pad >= PADS || app.store_get(&p.samples, c.sample) == nil || !(c.bpm > 0) do continue
+			p.clips[slot][pad] = c
+		}
 	}
 }
 

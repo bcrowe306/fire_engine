@@ -64,6 +64,11 @@ State_Pad :: struct {
 	start, end: i64, // its region (end resolved)
 	fade_in, fade_out: i64,
 	playhead: i64, // the frame it plays now (-1: silent)
+	kind:    string, // "Sampler" or "Audio"
+	input:   string,
+	monitor: bool,
+	armed:   bool,
+	take:    i64, // an audio pad's take in the current sequence: its frames (0: none)
 }
 
 State_Bus :: struct {
@@ -120,7 +125,7 @@ state_json :: proc(a: ^App) -> string {
 	s.project = p.dir
 	s.exporting = a.proj.exporting
 	s.pads = make([dynamic]State_Pad, context.temp_allocator)
-	for &pad, i in p.pads do if pad.sample != 0 {
+	for &pad, i in p.pads do if pm.pad_used(p, i) {
 		sp := State_Pad{index = i, label = pm.pad_label(i), name = pm.pad_name(&pad), mode = enum_name(pad.mode),
 			volume = pad.volume, pan = pad.pan, pitch = pad.pitch, bus = int(pad.bus), mute = pad.mute, solo = pad.solo,
 			slices = pad.slice_count}
@@ -132,6 +137,8 @@ state_json :: proc(a: ^App) -> string {
 		sp.fade_in, sp.fade_out = pad.fade_in, pad.fade_out
 		f, ok := pm.pad_playhead(&m.engine, i)
 		sp.playhead = f if ok else -1
+		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), enum_name(pad.input), pad.monitor, pm.audio_armed(m, i)
+		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames
 		append(&s.pads, sp)
 	}
 	for b in 0 ..= pm.BUSES {

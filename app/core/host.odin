@@ -256,12 +256,17 @@ host_devices :: proc(h: ^Host, allocator := context.allocator) -> ([]backend.Dev
 // Renders `frames` frames through the clock and graph without the device
 // (which must be closed): for exporting. `out` holds one slice per output
 // channel, each at least `frames` long.
-host_render :: proc(h: ^Host, out: [][]f32, frames: int) {
+host_render :: proc(h: ^Host, out: [][]f32, frames: int, inputs: [][]f32 = nil) {
 	for done := 0; done < frames; {
 		n := min(h.settings.max_block, frames - done)
 		views := make([][]f32, len(out), context.temp_allocator)
 		for o, c in out do views[c] = o[done:][:n]
-		run_block(h, nil, views, n, 0)
+		ins: [][]f32
+		if inputs != nil {
+			ins = make([][]f32, len(inputs), context.temp_allocator)
+			for x, c in inputs do ins[c] = x[done:][:n]
+		}
+		run_block(h, ins, views, n, 0)
 		if h.disk != nil && h.settings.fake do record.disk_writer_service(h.disk)
 		done += n
 	}
