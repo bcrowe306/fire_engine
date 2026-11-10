@@ -95,9 +95,9 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 	c := pm.current_clip(m, i)
 	seq := m.project.slot + 1
 	if s := app.store_get(&m.project.samples, c.sample); s != nil {
-		im.TextDisabled("%s", fmt.ctprintf("Sequence %d: a take of %.2f s at %.0f BPM", seq, f64(s.frames) / s.rate, c.bpm))
+		im.TextDisabled("%s", fmt.ctprintf("%s: a take of %.2f s at %.0f BPM", pm.sequence_name(&m.project, seq - 1), f64(s.frames) / s.rate, c.bpm))
 	} else {
-		im.TextDisabled("%s", fmt.ctprintf("Sequence %d: no take yet (arm it, then record)", seq))
+		im.TextDisabled("%s", fmt.ctprintf("%s: no take yet (arm it, then record)", pm.sequence_name(&m.project, seq - 1)))
 	}
 	wide := im.GetContentRegionAvail().x >= 720
 	if wide && !im.BeginTable("##audio_inspector", 3, {.BordersInnerV}) do wide = false

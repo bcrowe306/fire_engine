@@ -28,7 +28,8 @@ def test_performance_effects_while_held(app, fixtures):
     app.wait(10)
     app.cmd("up")
     app.wait(4)
-    app.click("fx 11", window="perform", right=True)  # right-click edits it
+    app.click("fx 11", window="perform", right=True)  # its menu
+    app.click("Edit Effect")
     assert app.state()["detail_tab"] == "Effects"
 
 

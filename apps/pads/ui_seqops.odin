@@ -47,18 +47,7 @@ begin_copy_bars :: proc(a: ^App, slot: int) {
 
 // The items of a sequence's context menu (inside an open popup).
 sequence_menu_items :: proc(a: ^App, slot: int) {
-	m := &a.m
-	if im.MenuItem(ui.ICON_PENCIL + "  Rename…", "F2") do begin_rename_sequence(a, slot)
-	if im.MenuItem(ui.ICON_COPY_PLUS + "  Duplicate", "Cmd+D") do pm.duplicate_sequence(m, slot)
-	if im.MenuItem(ui.ICON_COPY + "  Copy Bars to…") do begin_copy_bars(a, slot)
-	if im.MenuItem(ui.ICON_MERGE + "  Double") do pm.double_sequence(m, slot)
-	own := m.project.sequences[slot].bpm > 0
-	if im.MenuItem(ui.ICON_GAUGE + "  Own Tempo", nil, own) {
-		pm.set_sequence_tempo(m, slot, 0 if own else m.project.bpm)
-		app.seal(&m.history)
-	}
-	im.Separator()
-	if im.MenuItem(ui.ICON_TRASH_2 + "  Clear") do pm.clear_sequence(m, slot)
+	command_items(a, seq_target(slot))
 }
 
 // The current sequence's name (double-click to rename, right-click for its

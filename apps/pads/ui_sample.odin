@@ -199,7 +199,7 @@ draw_take :: proc(a: ^App, i: int) {
 		}
 	}
 	im.AlignTextToFramePadding()
-	im.TextDisabled("%s", fmt.ctprintf("Sequence %d · %.2f s at %.0f BPM", m.project.slot + 1, f64(s.frames) / s.rate, c.bpm))
+	im.TextDisabled("%s", fmt.ctprintf("%s · %.2f s at %.0f BPM", pm.sequence_name(&m.project, m.project.slot), f64(s.frames) / s.rate, c.bpm))
 	im.SameLine()
 	if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
 	im.Spacing()
@@ -207,4 +207,5 @@ draw_take :: proc(a: ^App, i: int) {
 	if rel, playing := pm.position(&m.engine); playing do head = i64(rel * s.rate * 60 / c.bpm) % max(s.frames, 1)
 	avail := im.GetContentRegionAvail()
 	ui.waveform("wave", w.peaks, w.frames, &w.view, nil, &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head)
+	item_menu(a, {kind = .Take, index = i}, "##takemenu")
 }

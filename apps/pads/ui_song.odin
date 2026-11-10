@@ -34,7 +34,7 @@ draw_song :: proc(user: rawptr) {
 	im.SetNextItemWidth(170)
 	if ui.combo("##merge", "Merge into this…") {
 		for k in 0 ..< pm.SLOTS do if k != p.slot && pm.slot_used(m, k) {
-			if im.Selectable(fmt.ctprintf("Sequence %d", k + 1)) do pm.merge_sequences(m, k, p.slot)
+			if im.Selectable(fmt.ctprintf("%s###m%d", pm.sequence_name(p, k), k)) do pm.merge_sequences(m, k, p.slot)
 		}
 		im.EndCombo()
 	}
@@ -58,11 +58,12 @@ draw_song :: proc(user: rawptr) {
 		dl := im.GetWindowDrawList()
 		clicked := im.InvisibleButton("##step", {w, h})
 		ui.name(fmt.tprintf("song step %d", i + 1))
+		item_menu(a, {kind = .Song_Step, index = i}, "##stepmenu")
 		on := i == playing
 		bg := t.accent if on else (t.hover if im.IsItemHovered() else t.raised)
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
 		fg := t.accent_text if on else t.text
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 8}, ui.col(fg), fmt.ctprintf("Sequence %d", st.slot + 1))
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 8}, ui.col(fg), fmt.ctprintf("%s", pm.sequence_name(p, int(st.slot))))
 		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 8 + im.GetTextLineHeightWithSpacing()}, ui.col(t.accent_text if on else t.text_dim),
 			fmt.ctprintf("×%d · %d bar%s", st.repeats, p.sequences[st.slot].bars, "" if p.sequences[st.slot].bars == 1 else "s"))
 		if clicked do pm.select_slot(m, int(st.slot))
@@ -70,7 +71,7 @@ draw_song :: proc(user: rawptr) {
 		if im.BeginDragDropSource() {
 			k := i32(i)
 			im.SetDragDropPayload("SONG_STEP", &k, size_of(k))
-			im.Text("%s", fmt.ctprintf("Sequence %d", st.slot + 1))
+			im.Text("%s", fmt.ctprintf("%s", pm.sequence_name(p, int(st.slot))))
 			im.EndDragDropSource()
 		}
 		if im.BeginDragDropTarget() {

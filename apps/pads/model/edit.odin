@@ -167,6 +167,24 @@ load_onto_pad :: proc(m: ^Model, index: int, path: string) -> fc.Error {
 	return .None
 }
 
+// Copies pad `index` (its sample, settings, voice and, for an audio pad,
+// its takes) onto the next empty pad after it: one undo step. Returns that
+// pad, or -1 when none is free.
+duplicate_pad :: proc(m: ^Model, index: int) -> int {
+	to := -1
+	for k in 1 ..< PADS do if i := (index + k) % PADS; !pad_used(&m.project, i) {
+		to = i
+		break
+	}
+	if to < 0 do return -1
+	app.begin(&m.history, "Duplicate Pad")
+	defer app.end(&m.history)
+	set_pad(m, to, .Whole, "Duplicate Pad", m.project.pads[index])
+	for slot in 0 ..< SLOTS do if c := m.project.clips[slot][index]; c.sample != 0 do set_clip(m, slot, to, "Duplicate Pad", c)
+	app.seal(&m.history)
+	return to
+}
+
 // Empties pad `index`.
 clear_pad :: proc(m: ^Model, index: int) {
 	app.begin(&m.history, "Clear Pad")

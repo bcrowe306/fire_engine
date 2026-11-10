@@ -34,7 +34,8 @@ def test_notes_by_clicking_the_piano_roll(app, fixtures):
     assert app.state()["notes"] == 1
     app.key("cmd+shift+z")
     assert app.state()["notes"] == 2
-    app.click("seq", window="sequence", at=(0.5, 0.97), right=True)  # right-click deletes
+    app.click("seq", window="sequence", at=(0.5, 0.97), right=True)  # its menu
+    app.click("Delete Note")
     assert app.state()["notes"] == 1
 
 

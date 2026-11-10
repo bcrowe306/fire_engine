@@ -262,6 +262,7 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 		a.fx = target
 		show_detail(a, .Effects)
 	}
+	item_menu(a, {kind = .Slot, fx = target}, "##slotmenu")
 	if s.kind != .None && im.IsItemHovered({.DelayShort}) do im.SetTooltip("%s", fmt.ctprintf("%s%s", pm.slot_name(s), "" if s.on else " (off)"))
 }
 
@@ -650,6 +651,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	}
 	gap()
 	if name_plate(fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&m.project.pads[i])), color) do a.selected = i
+	item_menu(a, pad_target(i), "##stripmenu")
 	_ = t
 }
 
@@ -702,4 +704,5 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	}
 	gap()
 	name_plate(pm.bus_name(0 if is_main else b + 1), t.accent if is_main else ui.mix(t.accent, t.text_dim, 0.55))
+	item_menu(a, {kind = .Bus, index = b}, "##busmenu")
 }

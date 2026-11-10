@@ -21,6 +21,7 @@ Seq_State :: struct {
 	slot_was: int,
 	bars_was: int,
 	range:    ui.Roll_Range, // the part marked with Shift-drag (Cmd+C copies it)
+	menu_target: Target, // what the open note or point menu is for
 }
 
 // Transport and sequence settings above, the current bank's pads as rows of
@@ -87,9 +88,18 @@ draw_sequence :: proc(user: rawptr) {
 		a.selected = int(pad)
 	}
 	if e.select >= 0 do st.selected = which[e.select]
-	if e.delete >= 0 {
-		pm.remove_notes(m, slot, {which[e.delete]})
-		st.selected = -1
+	// Right-click: a note's menu, or the marked part's.
+	if e.menu >= 0 {
+		st.menu_target = note_target(slot, which[e.menu])
+		im.OpenPopup("##notemenu")
+	} else if e.menu_part {
+		st.menu_target = {kind = .Part}
+		im.OpenPopup("##notemenu")
+	}
+	if im.BeginPopup("##notemenu") {
+		t := st.menu_target
+		if t.kind != .Note || t.index < len(m.project.sequences[t.slot].notes) do command_items(a, t)
+		im.EndPopup()
 	}
 	if (e.moving >= 0 || e.resizing >= 0) && e.released {
 		i := which[e.moving if e.moving >= 0 else e.resizing]
@@ -156,7 +166,14 @@ draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec
 		pm.set_point(m, slot, first + e.moving, p)
 		if e.released do app.seal(&m.history)
 	}
-	if e.delete >= 0 && e.delete < len(points) do pm.remove_point(m, slot, first + e.delete)
+	if e.menu >= 0 && e.menu < len(points) {
+		st.menu_target = {kind = .Point, slot = slot, index = first + e.menu}
+		im.OpenPopup("##pointmenu")
+	}
+	if im.BeginPopup("##pointmenu") {
+		command_items(a, st.menu_target)
+		im.EndPopup()
+	}
 }
 
 // Play, stop, record and the click; the slot; its length, grid and swing.

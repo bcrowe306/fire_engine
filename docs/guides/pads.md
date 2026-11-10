@@ -226,6 +226,34 @@ Delete clears the pad; View > Light Theme switches theme.
   the next bar**, **at the next beat** or **at once** — exactly there; the
   Sequence panel shows what comes next and when.
 
+## Commands and right-click menus
+
+Everything you can do to something is a command in one list
+(apps/pads/commands.odin): what it applies to (a pad, a note, the marked
+part of the piano roll, a sequence, a song step, an effect slot, a bus,
+a file, an automation point, an audio take), its icon and shortcut. The
+menus are made from it, so right-click anything for what applies:
+
+- **a pad** (on the grid, or its strip's name): play, select, edit its
+  sound, mute, solo, arm, make it an audio track, copy, paste,
+  duplicate to the next empty pad, clear, its colour;
+- **a note**: delete, duplicate after itself, velocity 100/70/40%, chance
+  50%; **the marked part**: copy, paste, duplicate after, delete;
+- **a sequence** (its name, or its entry in the toolbar's list): edit,
+  rename, duplicate, copy bars, double, add to the song, own tempo, clear;
+- **a song step**: edit its sequence, repeat once more or less,
+  duplicate, remove;
+- **an effect slot** (an insert, a bus slot, a performance effect):
+  edit, on, copy, paste, remove; **a bus**: mute, solo, reset;
+- **a file** in the browser: load onto the selected pad or the next empty
+  one, preview; **an automation point**: delete; **a take**: clear;
+- **a knob**: reset to its default, or type a value.
+
+The palette (Cmd+K) lists the selection's commands as well ("Pad:
+Duplicate to Next Empty Pad" acts on the selected pad, "Sequence: …" on
+the current one), and drive scripts (and later control surfaces) run any
+command by its id: `command pad.mute pad 3`.
+
 ## Audio pads
 
 A pad is a **sampler** (it plays its sample when hit) or an **audio
@@ -392,9 +420,11 @@ crash segv|assert|bounds   crash on purpose (the crash reporter's test)
 set N FIELD VALUE    volume, pan, pitch, mode (0..3), choke, reverse (0/1)
 chop N equal K       (or: chop N transients SENSITIVITY)
 theme light|dark     action ID (an action from the palette: undo, bank_b...)
+command ID KIND [I [S]]   a command on something: pad I, note I of sequence S, sequence I,
+                     song_step I, bus I, file PATH, take I (command pad.duplicate pad 0)
 expect pad N FIELD VALUE   sample, name, volume, pan, pitch, mode, start, end, choke
 expect samples K / expect undo NAME / expect selected N / expect bank N / expect dark 0|1
-panel ID             bring a panel (browser, sequence, song, mixer, pads) or a pad tab (sample, pad, effects, perform) to the front
+panel ID             bring a panel (browser, sequence, song, mixer, perform, pads) or a pad tab (sample, env, filter, pitch, lfo, effects, global) to the front
 play / stop / rec on|off / metronome on|off   (rec only arms; the toolbar's Record also plays, counting in)
 slot N / bars N / tempo BPM / swing AMOUNT   (slot 1..32; swing 0..1 on 1/16)
 note PAD BEAT LENGTH [VELOCITY]              a note in the current sequence
@@ -474,6 +504,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
+| `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |

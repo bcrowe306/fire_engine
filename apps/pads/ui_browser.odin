@@ -259,6 +259,7 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 				im.Text("%s", fmt.ctprintf("%s  %s", ui.ICON_FILE_AUDIO, filepath.base(e.path)))
 				im.EndDragDropSource()
 			}
+			if !e.is_dir do item_menu(a, {kind = .File, path = e.path}, "##filemenu")
 			if e.is_dir && im.BeginPopupContextItem("##rowmenu") {
 				if im.MenuItem("Open") do go_into = e.path
 				if im.MenuItem("Add to favourites", nil, false, !pm.is_favorite(b, e.path)) {

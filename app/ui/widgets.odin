@@ -74,6 +74,24 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		frac = (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
 	}
 
+	// Its menu: back to the default, or a value typed.
+	@(static) typed: f32
+	if im.BeginPopupContextItem("##knobmenu") {
+		if im.MenuItem("Reset to Default") {
+			value^ = default
+			e.changed, e.ended = true, true
+		}
+		name("Reset to Default")
+		if im.IsWindowAppearing() do typed = value^
+		im.SetNextItemWidth(120)
+		if im.InputFloat("##type", &typed, 0, 0, "%.3f", {.EnterReturnsTrue}) {
+			value^ = clamp(typed, min_v, max_v)
+			e.changed, e.ended = true, true
+			im.CloseCurrentPopup()
+		}
+		name("Type a Value")
+		im.EndPopup()
+	}
 	// Arc from 7:30 to 4:30 (270°): track, then the value.
 	r := size / 2 - 3
 	a0, a1 := f32(math.PI) * 0.75, f32(math.PI) * 2.25

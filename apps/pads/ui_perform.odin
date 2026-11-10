@@ -15,6 +15,7 @@ Perf_State :: struct {
 	learn_seen: int,  // capture.midi_count when learning began
 	sent, received: u64, // MIDI counts last frame
 	in_lit, out_lit: f32, // seconds the activity lights stay on
+	menu_fx: int, // the performance effect whose menu is open
 }
 
 // Step lengths, as the UI shows them.
@@ -244,10 +245,18 @@ draw_perform :: proc(user: rawptr) {
 			a.perf_held[i] = false
 			if !a.perf_hold do pm.hold_perf_fx(m, i, false)
 		}
-		if hit.selected {
+		if hit.selected && !hit.menu { // Shift- or Cmd-click: edit it
 			a.fx = {.Perf, i, 0}
 			show_detail(a, .Effects)
 		}
+		if hit.menu {
+			a.perf.menu_fx = i
+			im.OpenPopup("##fxmenu")
+		}
+	}
+	if im.BeginPopup("##fxmenu") {
+		command_items(a, {kind = .Slot, fx = {.Perf, a.perf.menu_fx, 0}})
+		im.EndPopup()
 	}
 
 	_ = w

@@ -307,7 +307,8 @@ Roll_Edit :: struct {
 	add:      bool, // a click on empty space: add a note at `at_beat`/`at_key`
 	at_beat:  f64,
 	at_key:   int,
-	delete:   int,  // a right-clicked note (its index), or -1
+	menu:     int,  // a right-clicked note (its index), or -1: open its menu
+	menu_part: bool, // a right-click on the marked range (not on a note)
 	moving:   int,  // a note being dragged (index), or -1
 	resizing: int,  // a note whose end is being dragged, or -1
 	to_start: f64,  // where the dragged note goes (snapped)
@@ -347,7 +348,7 @@ Roll_View :: struct {
 
 // A piano roll: keys up the left, beats across, `notes` as bars. Click
 // empty space to add, drag a note to move it, drag its right end to resize,
-// right-click to delete. Positions snap to `snap` beats (0 = free).
+// right-click for its menu (`menu`). Positions snap to `snap` beats (0 = free).
 // With `range`, Shift-drag marks a range of beats and keys (snapped to
 // bars when the drag is long, else to `snap`); a plain click clears it.
 // `rows` names the rows instead of a keyboard (a drum editor: `rows[k]` is
@@ -355,7 +356,7 @@ Roll_View :: struct {
 piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64, size: im.Vec2, playhead: f64 = -1, rows: []Roll_Row = nil, range: ^Roll_Range = nil, bar: f64 = 4) -> (e: Roll_Edit) {
 	im.PushID(id)
 	defer im.PopID()
-	e.delete, e.moving, e.resizing, e.select = -1, -1, -1, -1
+	e.menu, e.moving, e.resizing, e.select = -1, -1, -1, -1
 	t := current
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -391,7 +392,14 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 		}
 	}
 	if hit >= 0 && edge do im.SetMouseCursor(.ResizeEW)
-	if hovered && im.IsMouseClicked(.Right) && hit >= 0 do e.delete = hit
+	if hovered && im.IsMouseClicked(.Right) {
+		if hit >= 0 {
+			e.menu = hit
+		} else if range != nil && range.on {
+			b, k := to_beat(m.x, grid, beat_w, view), to_key(m.y, grid, row_h, size, view)
+			e.menu_part = b >= range.beat0 && b < range.beat1 && k >= range.key0 && k <= range.key1
+		}
+	}
 	@(static) marking := false
 	@(static) mark_from: [2]f64
 	if range != nil && im.IsItemActivated() && im.IsMouseClicked(.Left) && io.KeyShift && m.x > grid.x {
@@ -534,14 +542,14 @@ Lane_Point :: struct {
 }
 
 // What the user did to a lane: add a point (click empty space), move one
-// (drag), delete one (right-click). The caller makes commands of it.
+// (drag), right-click one for its menu. The caller makes commands of it.
 Lane_Edit :: struct {
 	add:      bool,
 	at:       Lane_Point,
 	moving:   int, // index, or -1
 	to:       Lane_Point,
 	released: bool,
-	delete:   int, // index, or -1
+	menu:     int, // a right-clicked point (index), or -1
 }
 
 // An automation lane: `points` (sorted by beat) joined by lines across
@@ -549,7 +557,7 @@ Lane_Edit :: struct {
 automation_lane :: proc(id: cstring, points: []Lane_Point, beat0, beats: f64, snap: f64, size: im.Vec2, tint: Color = {}) -> (e: Lane_Edit) {
 	im.PushID(id)
 	defer im.PopID()
-	e.moving, e.delete = -1, -1
+	e.moving, e.menu = -1, -1
 	t := current
 	color := tint if tint != {} else t.accent
 	dl := im.GetWindowDrawList()
@@ -573,7 +581,7 @@ automation_lane :: proc(id: cstring, points: []Lane_Point, beat0, beats: f64, sn
 		dx, dy := io.MousePos.x - s.x, io.MousePos.y - s.y
 		if dx * dx + dy * dy < 64 do hit = i
 	}
-	if im.IsItemHovered() && im.IsMouseClicked(.Right) && hit >= 0 do e.delete = hit
+	if im.IsItemHovered() && im.IsMouseClicked(.Right) && hit >= 0 do e.menu = hit
 	if im.IsItemActivated() && im.IsMouseClicked(.Left) {
 		if hit >= 0 {
 			drag = hit

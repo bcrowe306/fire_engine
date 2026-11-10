@@ -51,6 +51,12 @@ App :: struct {
 	wave:     Wave_State,
 	device:   Device_State, // the device tabs' LFO traces
 	seq_ops:  Seq_Ops, // renaming, copying bars, the copied part
+	commands: [dynamic]Command, // everything that can be done to something (commands.odin)
+	pad_clip: pm.Pad, // a copied pad
+	has_pad_clip: bool,
+	slot_clip: pm.Effect_Slot, // a copied effect
+	has_slot_clip: bool,
+	release_at: [pm.PADS]int, // frames until a pad a command played lets go
 	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
 	browser:  pm.Browser,
 	bview:    Browser_View,
@@ -239,6 +245,10 @@ frame :: proc(a: ^App) {
 		n := pm.struck(&a.m.engine, i)
 		if n != a.seen[i] do a.lit[i] = 0.12
 		a.seen[i] = n
+		if a.release_at[i] > 0 {
+			a.release_at[i] -= 1
+			if a.release_at[i] == 0 do pm.hit(&a.m.engine, i, false)
+		}
 	}
 	a.frame += 1
 }

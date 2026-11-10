@@ -46,6 +46,8 @@ def test_the_pad_face_mutes_solos_and_colours(app, fixtures):
     assert not app.pad(0)["mute"]
     # A colour from the right-click menu: on the pad, its strip and its row.
     app.click("pad A2", window="detail", right=True)
+    app.hover("Colour")  # its submenu
+    app.wait(4)
     app.click("colour 1")
     app.key("esc")
     assert app.state()["undo"] == "Set Color"

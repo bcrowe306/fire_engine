@@ -91,6 +91,8 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,
 		run = proc(u: rawptr) { ui.quit(&(^App)(u).platform) }})
+	register_commands(a)
+	register_selection_actions(a, acts)
 }
 
 bank_actions := [pm.BANKS]proc(u: rawptr) {
@@ -252,6 +254,7 @@ subscribe_imports :: proc(a: ^App) {
 //	expect samples K      fail unless the project holds K samples
 //	expect selected N / expect bank N / expect dark 0|1
 //	expect undo NAME      fail unless the next undo step is NAME
+//	command ID KIND [I [S]] run a command on a target: pad I, note I of sequence S, sequence I, song_step I, bus I, file PATH, take I
 //	panel ID              bring a panel (browser, sequence, song, mixer, perform, pads) or a pad tab (sample, env, filter, pitch, lfo, effects, global) to the front
 //	play / stop / rec on|off / metronome on|off   the sequencer
 //	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
@@ -690,6 +693,20 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "action":
 		return len(w) > 1 && ui.run_action(&a.actions, w[1])
+	case "command": // command ID KIND [INDEX [SLOT]]: a command on a target (pad 3, sequence 2...)
+		if len(w) < 3 do return false
+		t: Target
+		ok := false
+		for k in Target_Kind do if strings.to_lower(fmt.tprint(k), context.temp_allocator) == w[2] {
+			t.kind, ok = k, true
+		}
+		if !ok do return drive_fail(a, fmt.tprintf("no target kind %s", w[2]))
+		if len(w) > 3 do t.index = num(w, 3)
+		if len(w) > 4 do t.slot = num(w, 4)
+		if t.kind == .Sequence do t.slot = t.index
+		if t.kind == .File && len(w) > 3 do t.path = absolute(strings.join(w[3:], " ", context.temp_allocator))
+		if !run_command(a, w[1], t) do return drive_fail(a, fmt.tprintf("command %s did not run on %v", w[1], t))
+		return true
 	case "expect":
 		return drive_expect(a, w)
 	}

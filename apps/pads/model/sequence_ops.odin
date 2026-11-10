@@ -155,3 +155,17 @@ copy_bars :: proc(m: ^Model, from, bar_lo, bar_hi: int, pads: ^[PADS]bool, to, a
 	copy_part(&m.project, from, f64(bar_lo - 1) * bb, f64(bar_hi) * bb, pads, &part)
 	paste_part(m, to, &part, f64(at_bar - 1) * bb, replace, "Copy Bars")
 }
+
+// Removes the notes of `pads` (or every pad, nil) starting between beats
+// `lo` and `hi` of sequence `slot`, undoably.
+clear_part :: proc(m: ^Model, slot: int, lo, hi: f64, pads: ^[PADS]bool) {
+	s := m.project.sequences[slot]
+	notes := make([dynamic]Seq_Note, 0, len(s.notes), context.temp_allocator)
+	for n in s.notes {
+		if (pads == nil || pads[n.pad]) && n.start >= lo - 1e-9 && n.start < hi - 1e-9 do continue
+		append(&notes, n)
+	}
+	s.notes = notes[:]
+	set_sequence(m, slot, .Notes, "Delete Notes", s)
+	app.seal(&m.history)
+}

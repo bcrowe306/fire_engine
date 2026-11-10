@@ -91,7 +91,12 @@ draw_pads :: proc(user: rawptr) {
 		// A file from the browser dropped on it.
 		if hit.dropped != "" && pm.load_onto_pad(&a.m, index, hit.dropped) == .None do a.selected = index
 		if im.BeginPopup("##padmenu") {
-			pad_color_menu(a, index)
+			command_items(a, pad_target(index))
+			im.Separator()
+			if im.BeginMenu(ui.ICON_PALETTE + "  Colour") {
+				pad_color_menu(a, index)
+				im.EndMenu()
+			}
 			im.EndPopup()
 		}
 		im.PopID()
