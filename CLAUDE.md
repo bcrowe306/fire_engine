@@ -26,6 +26,17 @@ Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 ./scripts/cloud/linux.sh off     # power off at the end of the session (keep it; `down` destroys)
 ```
 
+### ARM64 Linux test machine (AWS EC2 Graviton, us-east-2)
+
+```bash
+./scripts/cloud/arm.sh up      # start (or create: t4g.small, Ubuntu arm64, Odin, clang, jackd, miniaudio)
+./scripts/cloud/arm.sh test    # copy the working tree and run the suite (two packages at a time: 2 GB)
+./scripts/cloud/arm.sh off     # stop at the end of the session (`down` terminates)
+```
+
+It runs with unlimited CPU credits (standard mode throttles it to 20%, which
+breaks timing tests). No `snd-aloop` on its kernel: ALSA loopback tests skip.
+
 ### Windows test machine (AWS EC2, us-east-2)
 
 ```bash

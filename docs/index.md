@@ -47,6 +47,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 8. [Plug-ins](/guides/plugins/): hosting CLAP plug-ins, and making them from your nodes.
    And [control surfaces](/guides/surfaces/): scripts for hardware controllers.
 9. [Saving sessions](/guides/sessions/): the whole engine to one file, and back.
+10. [Single-board computers](/guides/single-board-computers/): ARM Linux boards like the Raspberry Pi, and what fits on them.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.
 
