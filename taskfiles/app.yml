@@ -24,9 +24,14 @@ tasks:
       - '{{.ROOT_DIR}}/f_engine/**/*.odin'
     generates:
       - '{{.OUT}}/pads{{.EXE}}'
+    # Up to date only if the sources are unchanged and it was built at this OPT
+    # (a debug build is not an optimized one).
+    status:
+      - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}"'
     cmds:
       - mkdir -p {{.OUT}}
       - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} -o:{{.OPT}} -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}
+      - echo {{.OPT}} > {{.OUT}}/pads.opt
 
   gallery:
     desc: 'Build and run the widget gallery (args go to it: task app:gallery -- --drive tests/app_ui/drive/gallery.txt --headless).'
@@ -60,7 +65,8 @@ tasks:
       - task: pads
         vars: {OPT: none}
       - for: { var: SCRIPTS }
-        cmd: '{{.OUT}}/pads{{.EXE}} --fake --headless --drive "{{toSlash .ITEM}}" --out {{.OUT}}/pads_shots'
+        # Each script starts with no preferences of its own (favourites, recent projects), never the user's.
+        cmd: 'rm -rf {{.OUT}}/pads_prefs && {{.OUT}}/pads{{.EXE}} --fake --headless --prefs {{.OUT}}/pads_prefs --drive "{{toSlash .ITEM}}" --out {{.OUT}}/pads_shots'
     vars:
       SCRIPTS:
         sh: ls tests/app_ui/drive/pads*.txt

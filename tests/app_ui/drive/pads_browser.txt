@@ -1,0 +1,72 @@
+# Pads' browser: a tree with back, forward and up, favourites as tabs, a
+# search through every folder under the tab, and the preview (auto-play,
+# stop, tempo sync). Screenshots of the browser.
+size 1440 900
+browse tests/app_ui/fixtures/library
+wait 3
+expect root library
+expect rows 2
+browser toggle Drums
+browser toggle Drums/Kicks
+wait 2
+expect rows 5
+screenshot browser_tree
+# Selecting a sample plays it (auto-play); stop stops it.
+browser select Drums/Kicks/Kick 808.wav
+expect previewing 1
+expect selected_file Kick 808.wav
+wait 6
+screenshot browser_preview
+preview stop
+wait 4
+expect previewing 0
+# By input events: click a file (it plays), then the arrow keys walk the list.
+click 115 248             # Kick 808.wav
+wait 2
+expect selected_file Kick 808.wav
+key down
+wait 2
+expect selected_file Closed Hat.wav
+expect previewing 1
+key down                  # Loops (a folder: Right opens it, Left closes it)
+key right
+wait 2
+expect rows 6
+key left
+wait 2
+expect rows 5
+preview stop
+wait 4
+# Into a folder, up, back and forward.
+browser open Drums
+expect root Drums
+browser up
+expect root library
+browser back
+expect root Drums
+browser forward
+expect root library
+# A favourite: a tab of its own (the default two, and this one).
+browser fav
+expect favorites 3
+wait 2
+screenshot browser_favorite
+# Search: every folder under the tab.
+search loop
+expect results 1
+wait 2
+screenshot browser_search
+search
+# Auto-play off: selecting doesn't play; play does. Synced at 100 BPM while the sequencer plays.
+preview auto off
+browser select Loops/Loop 120.wav
+expect previewing 0
+preview sync on
+tempo 100
+play
+preview play
+expect previewing 1
+wait 6
+screenshot browser_synced
+stop
+preview stop

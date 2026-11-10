@@ -1,5 +1,6 @@
 # Writes the audio fixtures the Pads drive scripts load: a kick, a hat and a
-# one-bar drum loop at 120 BPM (44.1 kHz, 16-bit mono). Run from this folder.
+# one-bar drum loop at 120 BPM (44.1 kHz, 16-bit mono), and a small library
+# of them in folders for the browser. Run from this folder.
 import math, random, struct, wave
 
 RATE = 44100
@@ -31,6 +32,14 @@ for b in range(4):
     for i, v in enumerate(hat(beat // 4)):
         loop[b * beat + beat // 2 + i] += 0.6 * v
 write("loop.wav", loop)
+
+# library/: a small sample library for the browser's scripts.
+import os, shutil
+for d in ("library/Drums/Kicks", "library/Loops"):
+    os.makedirs(d, exist_ok=True)
+shutil.copy("kick.wav", "library/Drums/Kicks/Kick 808.wav")
+shutil.copy("hat.wav", "library/Drums/Closed Hat.wav")
+shutil.copy("loop.wav", "library/Loops/Loop 120.wav")
 
 # beat.mid: one bar of a drum pattern (kick on 36, hat on 37), 480 ticks a beat.
 def vlq(n):

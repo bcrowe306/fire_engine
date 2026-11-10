@@ -6,8 +6,9 @@ description: The Pads sampler built on the application layer — loading, playin
 Pads (`apps/pads`) is a sampler and sequencer built on Fire Engine and its
 [application layer](/guides/app-layer/). It is one binary: SDL3 and Dear
 ImGui are linked in. This page covers what it does so far : samples, the
-sequencer, playing live, the mixer, the song, export and projects
-(milestones 4 to 7 of `app/PLAN.md`). The timeline arranger, stem
+sequencer, playing live, the mixer, the song, export and projects, and
+the layout, mixer strips and browser that followed (milestones 4 to 10 of
+`app/PLAN.md`). The timeline arranger, stem
 splitting and more export formats are for later.
 
 ```bash
@@ -23,6 +24,7 @@ task app:pads OPT=none   # a debug build in .build/app/pads
 | `--drive FILE` | run from a [drive script](#scripts-and-tests) |
 | `--out DIR` | where a script's screenshots go (default `.build/app/shots`) |
 | `--headless` | no window on screen |
+| `--prefs DIR` | where preferences go: recent projects, the browser's favourites (default: the system's place for them) |
 | `--profile N` | draw N frames flat out and print the CPU time per frame (after `--drive`'s script, if given) |
 
 With `--fake`, the simulated device runs on the UI thread as frames go by,
@@ -46,8 +48,31 @@ frame: the icon is dimmed at rest, brightens under the mouse, and takes
 a colour when on — green while playing, red while recording, the accent
 for other toggles.
 
-- **Browser** (left): folders and audio files. Double-click a file to put
-  it on the selected pad, or drag it onto a pad.
+- **Browser** (left): for finding sounds fast.
+  - **Tabs** are favourite folders. A new install has **Documents** and
+    **Project** (the open project's samples). The **+** tab, or the
+    star, adds the folder shown; right-click a folder for **Add to
+    favourites**; right-click a tab to rename it, move it or remove it.
+    Favourites are kept with your preferences, not in the project.
+  - **Back**, **forward** and **up** (Backspace), and the folder's path:
+    click any part to go there. **Refresh** reads the folders again.
+  - The **tree**: click a folder (or its chevron) to open it in place,
+    double-click to go into it. Links to folders work. Only audio files
+    (WAV, AIFF, FLAC, MP3, Ogg) and folders show.
+  - **Search** finds file names (any case) in every folder under the one
+    shown, on a background thread; the results list the path under it.
+  - Click a file to select it, double-click (or Enter) to put it on the
+    selected pad, or drag it onto a pad. With the list focused, the arrow
+    keys move up and down (and preview what they land on); Right and
+    Left open and close a folder.
+  - The **preview**, at the bottom: the file's waveform with a playhead;
+    play/stop (the icon turns to a stop while it plays); **auto-play**
+    (on at first: selecting a file plays it); **sync** (while the
+    sequencer plays, a loop of about 1, 2, 4… 64 beats is stretched to
+    the project's tempo, pitch unchanged, and shows its beats; one-shots
+    play as they are); and the preview's own volume. It plays straight to
+    the output, past the mixer and main's effects, and never into an
+    export.
 - **Pads** (bottom left): 4 banks (A–D) of 16, and the tempo. Click a pad, or press its key —
   `1 2 3 4 / Q W E R / A S D F / Z X C V`, the top row first — to play it
   and select it. Files dropped on the window from the desktop land on the
@@ -229,7 +254,13 @@ Pads adds these commands to [drive scripts](/guides/app-layer/#driving-the-ui-fr
 load N PATH          load a file onto pad N (0..63)
 hit N / release N    play pad N / let it go
 select N / bank N    select a pad / show a bank (0..3)
-browse DIR           show DIR in the browser
+browse DIR           show DIR in the browser (onto its back list)
+browser up|back|forward|refresh|fav   (fav: the folder shown becomes a tab)
+browser open|toggle|select REL        a folder or file under the one shown; tab N
+search QUERY         search under the folder shown ("search" alone stops)
+preview play|stop | auto on|off | sync on|off | volume DB
+expect root NAME / expect rows K / expect results K / expect previewing 0|1
+expect favorites K / expect selected_file NAME
 set N FIELD VALUE    volume, pan, pitch, mode (0..3), choke, reverse (0/1)
 chop N equal K       (or: chop N transients SENSITIVITY)
 theme light|dark     action ID (an action from the palette: undo, bank_b...)
@@ -270,15 +301,23 @@ drag, shortcuts, the palette — and checks the model after each;
 `pads_sequence.txt` covers the sequencer (by command, then by clicks,
 Space and Cmd+R with the pad keys); `pads_perform.txt` the play modes,
 repeat, the arpeggiator, MIDI in and learn, automation and MIDI import;
-`pads_mixer.txt` the buses, inserts, mute, meters and performance effects;
-`pads_project.txt` switching on the grid, the song, save, new, open,
-export and resample (into `.build/app/drive_project`).
+`pads_mixer.txt` the buses, sends, inserts, mute, meters and performance
+effects; `pads_project.txt` switching on the grid, the song, save, new,
+open, export and resample (into `.build/app/drive_project`);
+`pads_browser.txt` the browser on `tests/app_ui/fixtures/library`: the
+tree, clicks and arrow keys, back, forward and up, a favourite, search,
+and the preview (auto-play, stop, sync). `task app:pads-drive` gives
+each script an empty preferences folder (`--prefs .build/app/pads_prefs`),
+so a script never sees or changes your favourites; do the same when you
+run one by hand.
 
 ```bash
 task app:test          # tests/app_* and tests/pads_*, the UI cases, then every pads*.txt script
 task app:pads-drive    # just the scripts (debug build, fake driver, headless)
 .build/app/pads --fake --headless --drive tests/app_ui/drive/pads.txt --out .build/app/pads_shots
+.build/app/pads --fake --headless --prefs .build/app/my_prefs --drive tests/app_ui/drive/pads_browser.txt --out .build/app/pads_shots
 .build/app/pads --fake --headless --profile 600 --drive tests/app_ui/drive/profile_loaded.txt
 ```
 
-The fixtures (samples and `beat.mid`) are made by `tests/app_ui/fixtures/make.py`.
+The fixtures (samples, the `library/` folders and `beat.mid`) are made by
+`tests/app_ui/fixtures/make.py`.

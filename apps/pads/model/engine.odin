@@ -50,6 +50,7 @@ Engine :: struct {
 	mix_dirty: bool, // a bus or performance effect changed
 	built_perform: Perform, // what the router's effects have
 	perform_sent:  bool,
+	preview:   Preview, // the browser's preview (straight to the output)
 }
 
 // What a pad has in the graph.
@@ -100,6 +101,10 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	e.metro_id = graph.add_node(g, dsp.metronome_create({timeline = e.timeline}), 0, 2) or_return
 	for c in 0 ..< 2 do graph.connect(g, e.metro_id, c, graph.OUTPUT, c)
 	build_mixer(e) or_return
+	keep := e.preview // the settings outlive the nodes
+	preview_cancel(&e.preview)
+	e.preview = {volume = keep.volume, auto_play = keep.auto_play, sync = keep.sync, path = keep.path}
+	build_preview(e) or_return
 	e.bpm, e.metro_on = 0, true // the node starts on: sync sets what the project wants
 	e.perform_sent = false
 	e.seq_dirty = true
@@ -111,6 +116,7 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 
 // Releases the samples the engine opened (the graph frees its nodes).
 engine_destroy :: proc(e: ^Engine) {
+	preview_destroy(&e.preview)
 	for _, src in e.sources do stream.source_release(src)
 	delete(e.sources)
 }
@@ -141,6 +147,7 @@ source_of :: proc(e: ^Engine, id: app.Id) -> ^stream.Source {
 // were added or removed.
 sync :: proc(e: ^Engine) {
 	g := e.host.graph
+	preview_poll(e)
 	structural := false
 	for i in 0 ..< PADS {
 		if !e.dirty[i] do continue
@@ -470,12 +477,16 @@ engine_clear :: proc(e: ^Engine) {
 	graph.remove_node(g, e.router_id)
 	graph.remove_node(g, e.player_id)
 	graph.remove_node(g, e.metro_id)
+	graph.remove_node(g, e.preview.id)
+	graph.remove_node(g, e.preview.gain_id)
 	graph.commit(g)
 	transport.remove_timeline(e.host.clock, e.timeline)
 	engine_destroy(e)
 	host := e.host
+	pv := e.preview // its settings stay (they are the user's, not the project's)
 	e^ = {}
 	e.host = host
+	e.preview = {volume = pv.volume, auto_play = pv.auto_play, sync = pv.sync}
 }
 
 // The samples' files moved (Save As): open them again from their new

@@ -111,6 +111,7 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 		}
 	}
 	if len(x.passes) == 0 do return false
+	preview_stop(e) // not into the export
 	x.was_open = e.host.running
 	app.host_close(e.host)
 	x.speed = rate / x.settings.rate

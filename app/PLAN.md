@@ -202,6 +202,8 @@ four platforms), verify, profile, document, commit.
         the transport plays. The loop's length in beats is estimated from
         the file's length, and one-shots play raw.
       - The selected file's waveform shows in the preview strip.
+    *Done:* see docs/guides/pads.md. (Search looks under the folder shown, not
+    always the tab's: what you browsed to is what you search.)
 11. **Later.** The timeline arranger, stem splitting, more export formats.
 
 ## Testing approach

@@ -7,6 +7,7 @@ import "core:os"
 import "core:math"
 import "core:strconv"
 import "core:strings"
+import "core:time"
 
 import app "app:core"
 import "app:ui"
@@ -214,7 +215,10 @@ subscribe_imports :: proc(a: ^App) {
 //	hit N / release N     play pad N, release it
 //	load N PATH           load a file onto pad N
 //	bank N                show bank N (0..3)
-//	browse DIR            show folder DIR in the browser
+//	browse DIR            show folder DIR in the browser (it goes on the back list)
+//	browser up|back|forward|refresh|fav | open|toggle|select REL (under the folder shown) | tab N
+//	search QUERY (\"\" stops) / preview play|stop|auto on|off|sync on|off|volume DB
+//	expect root NAME / expect rows K / expect results K (waits for the search) / expect previewing 0|1 / expect favorites K / expect selected_file NAME
 //	set N FIELD VALUE     set a pad field: volume, pan, pitch, mode (0..3), choke, reverse (0/1)
 //	chop N equal K        chop pad N into K parts (or: chop N transients SENSITIVITY)
 //	expect pad N FIELD VALUE   fail unless pad N's FIELD (sample, name, volume, pan, pitch, mode, start, end, choke) is VALUE
@@ -277,11 +281,49 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 	case "browse":
 		if len(w) > 1 {
-			delete(a.browser.dir)
-			a.browser.dir = strings.clone(strings.join(w[1:], " ", context.temp_allocator))
-			a.browser.scanned = false
+			pm.browser_go(&a.browser, absolute(strings.join(w[1:], " ", context.temp_allocator)))
 			return true
 		}
+	case "browser":
+		// browser up|back|forward|open REL|toggle REL|select REL|down|tab N|refresh
+		b := &a.browser
+		if len(w) < 2 do return false
+		rel := strings.join(w[2:], " ", context.temp_allocator) if len(w) > 2 else ""
+		under, _ := filepath.join({b.root, rel}, context.temp_allocator)
+		switch w[1] {
+		case "up":      return pm.browser_up(b)
+		case "back":    return pm.browser_back(b)
+		case "forward": return pm.browser_forward(b)
+		case "open":    pm.browser_go(b, under)
+		case "toggle":  pm.browser_toggle(b, under)
+		case "select":
+			pm.browser_select(b, under)
+			if pm.is_audio(under) do preview_selected(a, {path = under}, true)
+		case "tab":     pm.browser_set_tab(b, num(w, 2))
+		case "refresh": pm.browser_refresh(b)
+		case "fav":     pm.favorite_add(b, b.root); pm.favorites_save(b, favorites_path(a))
+		case: return false
+		}
+		return true
+	case "search":
+		q := strings.join(w[1:], " ", context.temp_allocator) if len(w) > 1 else ""
+		a.bview.query = {}
+		copy(a.bview.query[:len(a.bview.query) - 1], q)
+		pm.browser_search(&a.browser, q)
+		return true
+	case "preview":
+		// preview stop|play|auto on|off|sync on|off|volume DB
+		e := &a.m.engine
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "stop":   pm.preview_stop(e)
+		case "play":   pm.preview_play(e, a.browser.selected)
+		case "auto":   e.preview.auto_play = len(w) > 2 && w[2] == "on"
+		case "sync":   e.preview.sync = len(w) > 2 && w[2] == "on"
+		case "volume": e.preview.volume = numf(w, 2)
+		case: return false
+		}
+		return true
 	case "bank":
 		if b := num(w, 1); b >= 0 && b < pm.BANKS {
 			a.bank = b
@@ -607,6 +649,15 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	return false
 }
 
+// `path` made absolute (from the working folder), temporary allocator.
+@(private)
+absolute :: proc(path: string) -> string {
+	if filepath.is_abs(path) do return path
+	cwd, _ := os.get_working_directory(context.temp_allocator)
+	full, _ := filepath.join({cwd, path}, context.temp_allocator)
+	return full
+}
+
 // An effect kind by its name in scripts: lowpass, reverb, ring, ...
 @(private)
 effect_kind :: proc(name: string) -> (pm.Effect_Kind, bool) {
@@ -671,6 +722,34 @@ drive_expect :: proc(a: ^App, w: []string) -> bool {
 		return true
 	case "dirty":
 		if pm.model_dirty(&a.m) != (w[2] == "1") do return drive_fail(a, fmt.tprintf("expected dirty %s", w[2]))
+		return true
+	case "root":
+		if filepath.base(a.browser.root) != strings.join(w[2:], " ", context.temp_allocator) do return drive_fail(a, fmt.tprintf("expected the browser in %s, it is in %s", w[2], a.browser.root))
+		return true
+	case "rows":
+		want, _ := strconv.parse_int(w[2])
+		if got := len(pm.browser_rows(&a.browser)); got != want do return drive_fail(a, fmt.tprintf("expected %d browser rows, got %d", want, got))
+		return true
+	case "results":
+		want, _ := strconv.parse_int(w[2])
+		start := time.tick_now()
+		for !pm.search_done(&a.browser.search) && time.tick_since(start) < 5 * time.Second do time.sleep(time.Millisecond)
+		if got := len(pm.search_results(&a.browser.search)); got != want do return drive_fail(a, fmt.tprintf("expected %d search results, got %d", want, got))
+		return true
+	case "previewing":
+		start := time.tick_now()
+		for a.m.engine.preview.loading != nil && time.tick_since(start) < 3 * time.Second {
+			pm.sync(&a.m.engine)
+			time.sleep(time.Millisecond)
+		}
+		if pm.preview_playing(&a.m.engine) != (w[2] == "1") do return drive_fail(a, fmt.tprintf("expected previewing %s", w[2]))
+		return true
+	case "favorites":
+		want, _ := strconv.parse_int(w[2])
+		if len(a.browser.favorites) != want do return drive_fail(a, fmt.tprintf("expected %d favourites, got %d", want, len(a.browser.favorites)))
+		return true
+	case "selected_file":
+		if filepath.base(a.browser.selected) != strings.join(w[2:], " ", context.temp_allocator) do return drive_fail(a, fmt.tprintf("expected %s selected in the browser, got %s", w[2], a.browser.selected))
 		return true
 	case "pads_loaded":
 		want, _ := strconv.parse_int(w[2])

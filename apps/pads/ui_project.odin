@@ -38,19 +38,26 @@ Project_Chosen :: struct {
 
 // --- recent projects -----------------------------------------------------------------------
 
-@(private)
-prefs_path :: proc() -> string {
-	p := sdl.GetPrefPath("Fire Engine", "Pads")
-	if p == nil do return ""
-	dir := strings.clone_from_cstring(cstring(p), context.temp_allocator)
-	sdl.free(rawptr(p))
-	path, _ := filepath.join({dir, "recent.txt"}, context.temp_allocator)
+// The path of preferences file `name`: in --prefs's folder, or the
+// system's place for them (temporary allocator; "" if there is none).
+prefs_file :: proc(a: ^App, name: string) -> string {
+	dir := a.prefs
+	if dir != "" {
+		os.make_directory_all(dir)
+	} else {
+		p := sdl.GetPrefPath("Fire Engine", "Pads")
+		if p == nil do return ""
+		dir = strings.clone_from_cstring(cstring(p), context.temp_allocator)
+		sdl.free(rawptr(p))
+	}
+	path, _ := filepath.join({dir, name}, context.temp_allocator)
 	return path
 }
 
 // Reads the recent projects list (folders that still have a project).
-recent_load :: proc(st: ^Project_State) {
-	path := prefs_path()
+recent_load :: proc(a: ^App) {
+	st := &a.proj
+	path := prefs_file(a, "recent.txt")
 	if path == "" do return
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil do return
@@ -63,7 +70,8 @@ recent_load :: proc(st: ^Project_State) {
 }
 
 // Puts `dir` at the top of the recent projects, and writes the list.
-recent_add :: proc(st: ^Project_State, dir: string) {
+recent_add :: proc(a: ^App, dir: string) {
+	st := &a.proj
 	for r, i in st.recent do if r == dir {
 		delete(r)
 		ordered_remove(&st.recent, i)
@@ -71,7 +79,7 @@ recent_add :: proc(st: ^Project_State, dir: string) {
 	}
 	inject_at(&st.recent, 0, strings.clone(dir))
 	for len(st.recent) > RECENT do delete(pop(&st.recent))
-	if path := prefs_path(); path != "" {
+	if path := prefs_file(a, "recent.txt"); path != "" {
 		_ = os.write_entire_file(path, transmute([]u8)strings.join(st.recent[:], "\n", context.temp_allocator))
 	}
 }
@@ -94,7 +102,7 @@ save_project :: proc(a: ^App) -> bool {
 		return false
 	}
 	a.proj.last_save = time.tick_now()
-	recent_add(&a.proj, a.m.project.dir)
+	recent_add(a, a.m.project.dir)
 	return true
 }
 
@@ -107,7 +115,7 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1
 	a.proj.last_save = time.tick_now()
-	recent_add(&a.proj, dir)
+	recent_add(a, dir)
 	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Opened %s", filepath.base(dir)))
 	return true
 }
@@ -156,7 +164,7 @@ subscribe_project :: proc(a: ^App) {
 			dir := e.path
 			if !strings.has_suffix(dir, ".pads") do dir = strings.concatenate({dir, "/", "Untitled.pads"}, context.temp_allocator)
 			if pm.model_save_as(&a.m, dir) == .None {
-				recent_add(&a.proj, dir)
+				recent_add(a, dir)
 				ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved as %s", filepath.base(dir)))
 			} else {
 				ui.toast(&a.ws.toasts, .Error, "Could not save there")

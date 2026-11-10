@@ -54,6 +54,7 @@ Pad_Field :: enum {
 model_init :: proc(m: ^Model, host: ^app.Host, dir: string, bus: ^app.Bus = nil) -> fc.Error {
 	project_init(&m.project, dir)
 	app.history_init(&m.history, m, bus = bus)
+	m.engine.preview = {volume = -6, auto_play = true}
 	return engine_init(&m.engine, host, &m.project)
 }
 

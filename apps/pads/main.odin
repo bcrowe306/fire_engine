@@ -14,6 +14,7 @@ Options:
 	--out DIR      where the script's screenshots go (default .build/app/shots)
 	--headless     no window on screen (for scripted runs without a display)
 	--fake         the simulated audio driver (no sound card needed)
+	--prefs DIR    where preferences go (recent projects, favourites); default: the system's
 	--profile N    draw N frames as fast as possible and print the CPU time per frame
 	               (after the drive script, if one is given: profile a loaded project)
 */
@@ -46,7 +47,9 @@ App :: struct {
 	held:     [pm.PADS]bool,
 	rec:      pm.Recording,
 	wave:     Wave_State,
-	browser:  Browser,
+	browser:  pm.Browser,
+	bview:    Browser_View,
+	prefs:    string, // where preferences go (--prefs; default: the system's)
 	tools:    Tool_State,
 	seq:      Seq_State,
 	capture:  pm.Capture,
@@ -68,7 +71,7 @@ App :: struct {
 }
 
 main :: proc() {
-	project, drive, out, headless, fake, profile := "", "", ".build/app/shots", false, false, 0
+	project, drive, out, headless, fake, profile, prefs := "", "", ".build/app/shots", false, false, 0, ""
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
 			if i^ + 1 < len(os.args) {
@@ -84,6 +87,7 @@ main :: proc() {
 		case "--headless": headless = true
 		case "--fake":     fake = true
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
+		case "--prefs":    prefs = next(&i)
 		case:
 			fmt.eprintln("pads: unknown option", os.args[i])
 			os.exit(2)
@@ -96,6 +100,7 @@ main :: proc() {
 
 	a := new(App)
 	a.dark = true
+	a.prefs = prefs
 	p := &a.platform
 	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0}) {
 		ui.platform_destroy(p)
@@ -120,7 +125,7 @@ main :: proc() {
 	if f, _ := filepath.join({project, pm.PROJECT_FILE}, context.temp_allocator); os.exists(f) {
 		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project)
 	}
-	recent_load(&a.proj)
+	recent_load(a)
 	a.proj.last_save = time.tick_now()
 	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
 	defer plugin_choice_clear(&a.plugin_choice)
@@ -133,8 +138,9 @@ main :: proc() {
 	subscribe_project(a)
 	setup_workspace(a)
 	defer ui.workspace_destroy(&a.ws)
-	browser_init(&a.browser)
-	defer browser_destroy(&a.browser)
+	a.bview.renaming = -1
+	pm.browser_init(&a.browser, favorites_path(a))
+	defer pm.browser_destroy(&a.browser)
 
 	if drive != "" {
 		if !ui.driver_load(&a.driver, drive, out) do os.exit(1)
