@@ -32,6 +32,7 @@ State :: struct {
 	recording:  bool,
 	song_mode:  bool,
 	song_steps: int,
+	song:       [dynamic]int, // each step's sequence (1-based)
 	notes:      int, // in the current sequence
 	points:     int,
 	bars:       int,
@@ -135,6 +136,8 @@ state_json :: proc(a: ^App) -> string {
 	bar, bt, six := pm.position_of(p, tl if tl < 0 else s.beat)
 	s.position = fmt.tprintf("%d.%d.%d", bar, bt, six)
 	s.song_mode, s.song_steps = p.song_mode, p.song.count
+	s.song = make([dynamic]int, context.temp_allocator)
+	for st in p.song.steps[:p.song.count] do append(&s.song, int(st.slot) + 1)
 	seq := pm.current_sequence(m)
 	s.notes, s.points, s.bars = len(seq.notes), len(seq.points), seq.bars
 	s.undo = app.undo_name(&m.history)

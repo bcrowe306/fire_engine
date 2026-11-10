@@ -231,8 +231,13 @@ Delete clears the pad; View > Light Theme switches theme.
 - **Song** (middle tab): **Pattern** plays the current sequence; **Song**
   plays the chain of steps below, each a sequence played 1–16 times
   (drag a step onto another to move it; with the toolbar's **Loop** on it
-  goes round, otherwise it stops at the end). **Add sequence N** puts the current
-  one at the end; **Merge into this…** lays another sequence's notes and
+  goes round, otherwise it stops at the end). On the right, the
+  **sequences** in use, each with its length, own tempo and how many times
+  the song plays it (the playing one lit): double-click one or its **+** to
+  add it at the end, drag it onto a step to put it before that one or
+  onto the **+** at the end, click it to edit it, right-click for its
+  commands. **Add** (the current sequence's name) puts the current one at
+  the end; **Merge into this…** lays another sequence's notes and
   automation over the current one. In pattern mode, a sequence picked
   while playing takes over **at the end of the playing sequence**, **at
   the next bar**, **at the next beat** or **at once** — exactly there; the
@@ -520,6 +525,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
+| `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the launcher (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |

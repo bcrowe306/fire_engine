@@ -37,8 +37,8 @@ def test_the_song(app, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
     app.cmd("note 0 0 0.25 1")
     app.panel("Song")
-    app.click("Add sequence 1", window="song")
-    app.click("Add sequence 1", window="song")
+    app.click("Add the current sequence", window="song")
+    app.click("Add the current sequence", window="song")
     assert app.state()["song_steps"] == 2
     app.click("Song", window="song")  # the Pattern | Song switch
     assert app.state()["song_mode"]

@@ -52,7 +52,7 @@ def test_a_notes_menu_and_the_palette(app, fixtures):
 def test_steps_slots_buses_files_and_knobs(app, fixtures, library):
     loaded(app, fixtures)
     app.panel("Song")
-    app.click("Add sequence 1", window="song")
+    app.click("Add the current sequence", window="song")
     app.click("song step 1", window="song", right=True)
     app.click("Duplicate Step")
     assert app.state()["song_steps"] == 2

@@ -59,6 +59,23 @@ song_add :: proc(m: ^Model, slot: int, after := -1, repeats := 1) {
 	set_song(m, "Add to Song", s)
 }
 
+// Puts sequence `slot` into the song as step `at` (the steps from there
+// move along), undoably.
+song_insert :: proc(m: ^Model, slot, at: int, repeats := 1) {
+	if at > 0 do song_add(m, slot, at - 1, repeats)
+	else do song_add_first(m, slot, repeats)
+}
+
+@(private)
+song_add_first :: proc(m: ^Model, slot: int, repeats: int) {
+	s := m.project.song
+	if s.count >= SONG_STEPS do return
+	copy(s.steps[1:s.count + 1], s.steps[0:s.count])
+	s.steps[0] = {u8(slot), u8(clamp(repeats, 1, 16))}
+	s.count += 1
+	set_song(m, "Add to Song", s)
+}
+
 // Removes step `i`.
 song_remove :: proc(m: ^Model, i: int) {
 	s := m.project.song

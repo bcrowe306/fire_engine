@@ -13,7 +13,6 @@ draw_song :: proc(user: rawptr) {
 	a := (^App)(user)
 	m := &a.m
 	p := &m.project
-	t := ui.theme()
 
 	mode := 1 if p.song_mode else 0
 	if ui.segmented("song_mode", {"Pattern", "Song"}, &mode) {
@@ -28,8 +27,8 @@ draw_song :: proc(user: rawptr) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("When a sequence picked while playing takes over")
 	im.SameLine(0, 16)
-	add :: ui.ICON_PLUS + "  Add sequence"
-	if im.Button(fmt.ctprintf("%s %d", add, p.slot + 1)) do pm.song_add(m, p.slot)
+	if im.Button(fmt.ctprintf("%s  Add %s###addseq", ui.ICON_PLUS, pm.sequence_name(p, p.slot))) do pm.song_add(m, p.slot)
+	ui.name("Add the current sequence")
 	im.SameLine()
 	im.SetNextItemWidth(170)
 	if ui.combo("##merge", "Merge into this…") {
@@ -41,11 +40,27 @@ draw_song :: proc(user: rawptr) {
 	if im.IsItemHovered() do im.SetTooltip("Lay another sequence's notes over this one")
 	im.Spacing()
 
+	// The steps on the left, the sequences to add on the right.
+	avail := im.GetContentRegionAvail()
+	side_w: f32 = 240
+	if im.BeginChild("##songsteps", {max(avail.x - side_w - 8, 160), avail.y}) do draw_song_steps(a)
+	im.EndChild()
+	im.SameLine(0, 8)
+	if im.BeginChild("##songside", {side_w, avail.y}) do draw_song_side(a)
+	im.EndChild()
+}
+
+// The song's steps in order: drag one to move it, a sequence from the
+// sidebar onto one to put it before, or onto the end to add it.
+@(private)
+draw_song_steps :: proc(a: ^App) {
+	m := &a.m
+	p := &m.project
+	t := ui.theme()
 	// The steps.
 	playing := pm.song_step(&m.engine)
 	if p.song.count == 0 {
-		im.TextDisabled("The song is empty: add the current sequence, pick another, add it, and so on.")
-		return
+		im.TextDisabled("The song is empty: click or drag sequences from the right, or add the current one.")
 	}
 	w: f32 = 104
 	h: f32 = 64
@@ -76,6 +91,7 @@ draw_song :: proc(user: rawptr) {
 		}
 		if im.BeginDragDropTarget() {
 			if pl := im.AcceptDragDropPayload("SONG_STEP"); pl != nil do pm.song_move(m, int((^i32)(pl.Data)^), i)
+			if pl := im.AcceptDragDropPayload("SEQUENCE"); pl != nil do pm.song_insert(m, int((^i32)(pl.Data)^), i) // before this step
 			im.EndDragDropTarget()
 		}
 		// Repeats and removing.
@@ -87,4 +103,75 @@ draw_song :: proc(user: rawptr) {
 		im.EndGroup()
 		im.PopID()
 	}
+	// The end: drop a sequence here to add it.
+	if p.song.count > 0 do ui.flow(w, 8)
+	pos := im.GetCursorScreenPos()
+	im.InvisibleButton("##songend", {w, h})
+	ui.name("song end")
+	dropping := im.GetDragDropPayload() != nil && im.IsItemHovered({.AllowWhenBlockedByActiveItem})
+	im.DrawList_AddRect(im.GetWindowDrawList(), pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.accent if dropping else t.text, 0.7 if dropping else 0.2)), t.radius, 1.5)
+	ts := im.CalcTextSize("+")
+	im.DrawList_AddText(im.GetWindowDrawList(), {pos.x + (w - ts.x) / 2, pos.y + (h - ts.y) / 2}, ui.col(t.text_dim), "+")
+	if im.BeginDragDropTarget() {
+		if pl := im.AcceptDragDropPayload("SEQUENCE"); pl != nil do pm.song_add(m, int((^i32)(pl.Data)^))
+		im.EndDragDropTarget()
+	}
+}
+
+// The sequences in use, to build the song from: each with its length, its
+// own tempo and how many times the song plays it (the playing one lit).
+// Click to edit it, double-click or + to add it to the song's end, drag it
+// onto a step to put it there; right-click for its commands.
+@(private)
+draw_song_side :: proc(a: ^App) {
+	m := &a.m
+	p := &m.project
+	t := ui.theme()
+	im.TextDisabled("Sequences")
+	im.Separator()
+	playing := -1
+	if st := pm.song_step(&m.engine); st >= 0 do playing = int(p.song.steps[st].slot)
+	dl := im.GetWindowDrawList()
+	any := false
+	for k in 0 ..< pm.SLOTS {
+		if !pm.slot_used(m, k) do continue
+		any = true
+		im.PushIDInt(i32(k))
+		s := p.sequences[k]
+		uses := 0
+		for st in p.song.steps[:p.song.count] do if int(st.slot) == k do uses += int(st.repeats)
+		w := im.GetContentRegionAvail().x
+		h: f32 = 46
+		pos := im.GetCursorScreenPos()
+		btn := im.GetFrameHeight()
+		clicked := im.InvisibleButton("##seq", {w - btn - 4, h})
+		ui.name(fmt.tprintf("song seq %d", k + 1))
+		hovered := im.IsItemHovered()
+		if hovered && im.IsMouseDoubleClicked(.Left) do pm.song_add(m, k)
+		else if clicked do pm.select_slot(m, k)
+		item_menu(a, seq_target(k), "##sidemenu")
+		if im.BeginDragDropSource() {
+			slot := i32(k)
+			im.SetDragDropPayload("SEQUENCE", &slot, size_of(slot))
+			im.Text("%s", fmt.ctprintf("%s", pm.sequence_name(p, k)))
+			im.EndDragDropSource()
+		}
+		bg := t.raised
+		if k == playing do bg = ui.mix(t.raised, t.accent, 0.55)
+		else if k == p.slot do bg = ui.mix(t.raised, t.accent, 0.18)
+		if hovered do bg = ui.lighten(bg, 0.06)
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
+		fg := t.accent_text if k == playing else t.text
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6}, ui.col(fg), fmt.ctprintf("%s", pm.sequence_name(p, k)))
+		info := fmt.tprintf("%d bar%s%s", s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "")
+		if uses > 0 do info = fmt.tprintf("%s · ×%d in the song", info, uses)
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6 + im.GetTextLineHeightWithSpacing()}, ui.col(t.accent_text if k == playing else t.text_dim), fmt.ctprintf("%s", info))
+		im.SameLine(0, 4)
+		im.SetCursorScreenPos({pos.x + w - btn, pos.y + (h - btn) / 2})
+		if ui.icon_button(ui.ICON_PLUS, fmt.ctprintf("Add %s to the song's end", pm.sequence_name(p, k))) do pm.song_add(m, k)
+		im.SetCursorScreenPos({pos.x, pos.y + h + 4})
+		im.Dummy({1, 0})
+		im.PopID()
+	}
+	if !any do im.TextDisabled("No sequences yet: make one in the Sequence tab.")
 }
