@@ -314,3 +314,31 @@ tool_timings :: proc(t: ^testing.T) {
 		testing.expectf(t, chop < 2000 && norm < 2000 && stretch < 10_000, "too slow: chop %.0f, normalize %.0f, stretch %.0f ms", chop, norm, stretch)
 	}
 }
+
+@(test)
+a_pad_plays_alone :: proc(t: ^testing.T) {
+	// Pad A1 is note 0: its zone must answer key 0 only (a 0..0 key range
+	// used to mean every key, so every pad's hit played A1 too).
+	r := rig_make(t, "pad_alone")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "a1.wav", 440, 1))
+	pm.load_onto_pad(m, 1, tone(r, "a2.wav", 880, 1))
+	pm.load_onto_pad(m, 127, tone(r, "h16.wav", 660, 1))
+	render(r, 256)
+	pm.hit(&m.engine, 1, true)
+	pm.pad_level(&m.engine, 0) // (reset its meter)
+	out := render(r, 9600)
+	x := out[0][2400:]
+	testing.expectf(t, kit.tone_amplitude(x, SR, 880) > 0.2, "A2 plays")
+	a1, _ := pm.pad_level(&m.engine, 0) // A1's own strip: anything it plays, at any pitch
+	testing.expectf(t, a1[0] == 0, "A1 doesn't play (its meter: %v)", a1[0])
+	pm.hit(&m.engine, 1, false)
+	render(r, 48_000)
+	pm.pad_level(&m.engine, 0)
+	pm.hit(&m.engine, 127, true)
+	out = render(r, 9600)
+	x = out[0][2400:]
+	a1, _ = pm.pad_level(&m.engine, 0)
+	testing.expect(t, kit.tone_amplitude(x, SR, 660) > 0.2 && a1[0] == 0, "H16 (note 127) alone")
+}

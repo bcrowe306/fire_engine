@@ -38,8 +38,9 @@ import "fire:stream"
 Sample_Zone :: struct {
 	source:     ^stream.Source, // in memory (the map retains it)
 	root_key:   u8,  // the key at which it plays at its own pitch
-	key_lo:     u8,  // the keys it answers, inclusive (0 and 0 = every key)
+	key_lo:     u8,  // the keys it answers, inclusive (0 and 0 = every key, unless `exact_keys`)
 	key_hi:     u8,
+	exact_keys: bool, // key_lo..key_hi as given, even 0 and 0 (key 0 alone)
 	vel_lo:     f32, // the velocities it answers, inclusive (0 and 0 = all)
 	vel_hi:     f32,
 	tune_cents: f64,
@@ -100,7 +101,7 @@ sample_map_create :: proc(zones: []Sample_Zone, allocator := context.allocator) 
 		frames := stream.source_info(z.source).frames
 		if zz.end <= 0 do zz.end = frames
 		if zz.loop_end <= 0 do zz.loop_end = zz.end
-		if zz.key_lo == 0 && zz.key_hi == 0 do zz.key_hi = 127
+		if zz.key_lo == 0 && zz.key_hi == 0 && !zz.exact_keys do zz.key_hi = 127
 		if zz.vel_lo == 0 && zz.vel_hi == 0 do zz.vel_hi = 1
 		// A crossfade fits in the loop and in what comes before it.
 		zz.crossfade = min(zz.crossfade, zz.loop_end - zz.loop_start, zz.loop_start - zz.start)

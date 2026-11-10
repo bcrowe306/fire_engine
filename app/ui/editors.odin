@@ -60,6 +60,9 @@ Wave_Edit :: struct {
 // pan with Shift+wheel), drawn from `peaks` (of the whole sound), with
 // `markers` (start, end, loop points, slices) that can be dragged and a
 // selection dragged out with the mouse.
+// The waveform editor's background: black, whatever the theme.
+WAVE_BG :: Color{0, 0, 0, 1}
+
 waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, markers: []Marker, selection: ^[2]i64, size: im.Vec2, tint: Color = {}) -> (e: Wave_Edit) {
 	im.PushID(id)
 	defer im.PopID()
@@ -138,10 +141,11 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		e.zoomed = true
 	}
 
-	// Drawing.
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(t.raised), t.radius)
+	// Drawing: on black (in either theme), as audio editors show waves.
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(WAVE_BG), t.radius)
 	im.DrawList_PushClipRect(dl, pos, {pos.x + size.x, pos.y + size.y}, true)
 	mid := pos.y + size.y / 2
+	im.DrawList_AddLine(dl, {pos.x, mid}, {pos.x + size.x, mid}, col(rgb(0x2a2c33)), 1) // the zero line
 	if selection != nil && selection[1] > selection[0] {
 		x0 := to_x(f64(selection[0]), view^, pos, size)
 		x1 := to_x(f64(selection[1]), view^, pos, size)

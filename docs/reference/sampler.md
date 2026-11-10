@@ -135,6 +135,7 @@ Sample_Zone :: struct {
 	root_key: u8,
 	key_lo: u8,
 	key_hi: u8,
+	exact_keys: bool,
 	vel_lo: f32,
 	vel_hi: f32,
 	tune_cents: f64,
@@ -158,8 +159,9 @@ One sample of an instrument and when it plays.
 |-------|-------------|
 | `source` | in memory (the map retains it) |
 | `root_key` | the key at which it plays at its own pitch |
-| `key_lo` | the keys it answers, inclusive (0 and 0 = every key) |
+| `key_lo` | the keys it answers, inclusive (0 and 0 = every key, unless `exact_keys`) |
 | `key_hi` |  |
+| `exact_keys` | key_lo..key_hi as given, even 0 and 0 (key 0 alone) |
 | `vel_lo` | the velocities it answers, inclusive (0 and 0 = all) |
 | `vel_hi` |  |
 | `tune_cents` |  |

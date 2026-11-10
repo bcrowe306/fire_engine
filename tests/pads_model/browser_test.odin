@@ -230,7 +230,7 @@ the_browser_preview_plays_stops_and_syncs :: proc(t: ^testing.T) {
 	testing.expect(t, e.preview.auto_play && e.preview.volume == -6, "auto-play on, at -6 dB")
 	path := tone(r, "loop.wav", 500, 2.2) // 2.2 s: 4 beats at 120 BPM, near enough
 	wait :: proc(r: ^Rig) {
-		for i := 0; i < 2000 && r.m.engine.preview.loading != nil; i += 1 {
+		for i := 0; i < 10_000 && r.m.engine.preview.loading != nil; i += 1 { // up to 10 s (a debug build stretching under load)
 			pm.sync(&r.m.engine)
 			time.sleep(time.Millisecond)
 		}

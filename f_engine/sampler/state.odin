@@ -21,7 +21,7 @@ register_types :: proc(reg: ^core.Node_Registry, streamer: ^stream.Streamer) -> 
 // Writes `m` as a SAMPLE_MAP_TAG chunk: each zone with its file's path (see
 // `core.write_path`). Nil writes an empty chunk.
 write_sample_map :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, m: ^Sample_Map) {
-	core.begin_chunk(w, SAMPLE_MAP_TAG, 2)
+	core.begin_chunk(w, SAMPLE_MAP_TAG, 3)
 	if m != nil {
 		core.write_int(w, len(m.zones))
 		for z in m.zones {
@@ -48,6 +48,8 @@ write_sample_map :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, m: ^Sam
 			core.write_bool(w, z.reverse)
 			core.write_f64(w, z.pan)
 		}
+		// Version 3: whether each zone's keys are exact.
+		for z in m.zones do core.write_bool(w, z.exact_keys)
 	}
 	core.end_chunk(w)
 }
@@ -91,6 +93,10 @@ read_sample_map :: proc(r: ^core.State_Reader, ctx: ^core.Load_Context, streamer
 			z.reverse = core.read_bool(&cr)
 			z.pan = core.read_f64(&cr)
 		}
+		if cr.err != .None do return nil, .Invalid_Data
+	}
+	if ch.version >= 3 {
+		for &z in zones do z.exact_keys = core.read_bool(&cr)
 		if cr.err != .None do return nil, .Invalid_Data
 	}
 	return sample_map_create(zones, allocator)

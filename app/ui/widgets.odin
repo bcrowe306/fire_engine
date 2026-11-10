@@ -269,13 +269,19 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		inset: f32 = 6
 		w := size.x - 2 * inset
 		mid := pos.y + size.y / 2
-		half := size.y * 0.3
-		wc := col(with_alpha(mix(face.tint, t.text, 0.25), 0.28))
-		cols := int(w)
+		half := size.y * 0.34
+		// Plainly visible, a lighter shade of the pad's colour.
+		wc := col(with_alpha(mix(face.tint, t.text, 0.45), 0.8))
+		// A filled bar per column: the loudest and quietest of the peaks it covers.
+		cols := max(int(w), 1)
+		n := len(face.peaks)
 		for x in 0 ..< cols {
-			p := face.peaks[x * len(face.peaks) / max(cols, 1)]
+			i0 := x * n / cols
+			i1 := max((x + 1) * n / cols, i0 + 1)
+			lo, hi: f32 = 0, 0
+			for pk in face.peaks[i0:min(i1, n)] do lo, hi = min(lo, pk.lo), max(hi, pk.hi)
 			px := pos.x + inset + f32(x)
-			im.DrawList_AddLine(dl, {px, mid - p.hi * half}, {px, mid - p.lo * half + 1}, wc, 1)
+			im.DrawList_AddRectFilled(dl, {px, mid - hi * half}, {px + 1, mid - lo * half + 1}, wc)
 		}
 	}
 	if face.selected do im.DrawList_AddRect(dl, {pos.x - 1, pos.y - 1}, {max_.x + 1, max_.y + 1}, col(t.accent), r + 1, 2)
@@ -295,8 +301,8 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		mc := strings.clone_to_cstring(face.middle, context.temp_allocator)
 		ms := im.CalcTextSize(mc)
 		at := im.Vec2{math.round(pos.x + max((size.x - ms.x) / 2, pad_x)), math.round(pos.y + (size.y - ms.y) / 2)}
-		if len(face.peaks) > 0 { // readable over the waveform
-			im.DrawList_AddRectFilled(dl, {at.x - 4, at.y - 1}, {at.x + ms.x + 4, at.y + ms.y + 1}, col(with_alpha(fill, 0.85)), 4)
+		if len(face.peaks) > 0 { // readable over the waveform: a faint backing just its size
+			im.DrawList_AddRectFilled(dl, {at.x - 3, at.y}, {at.x + ms.x + 3, at.y + ms.y}, col(with_alpha(fill, 0.55)), 3)
 		}
 		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.85) if face.lit || hit.held || face.has_sound else t.text_dim), mc)
 	}

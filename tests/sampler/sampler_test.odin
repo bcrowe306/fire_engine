@@ -115,6 +115,20 @@ zones_answer_their_keys_and_velocities :: proc(t: ^testing.T) {
 }
 
 @(test)
+exact_keys_make_zero_to_zero_key_zero_alone :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	// Key 0 to 0 is every key, unless the zone says its keys are exact.
+	any_key := play(t, {{source = l.sine, root_key = 0}}, 9_600, {on(0, 40)})
+	testing.expect(t, kit.peak(any_key.channels[0]) > 0.1, "0 and 0: every key")
+	exact := []sampler.Sample_Zone{{source = l.sine, root_key = 0, exact_keys = true}}
+	other := play(t, exact, 9_600, {on(0, 40)})
+	testing.expect_value(t, kit.peak(other.channels[0]), 0)
+	zero := play(t, exact, 9_600, {on(0, 0)})
+	testing.expect(t, kit.peak(zero.channels[0]) > 0.01, "exact: key 0 still plays")
+}
+
+@(test)
 loops_sustain_and_samples_end :: proc(t: ^testing.T) {
 	l := lab_make()
 	defer lab_destroy(l)

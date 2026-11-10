@@ -468,7 +468,7 @@ zone_of :: proc(pad: Pad, index: int, src: ^stream.Source) -> sampler.Sample_Zon
 	key := pad_key(index)
 	loop := pad.mode == .Loop || pad.mode == .Hold
 	return {
-		source = src, root_key = key, key_lo = key, key_hi = key,
+		source = src, root_key = key, key_lo = key, key_hi = key, exact_keys = true, // pad 1 is key 0: only key 0
 		start = pad.start, end = pad.end,
 		loop = loop, loop_start = pad.loop_start if pad.loop_end > 0 else pad.start, loop_end = pad.loop_end,
 		loop_mode = pad.loop_mode, crossfade = pad.crossfade,
