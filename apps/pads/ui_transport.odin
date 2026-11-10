@@ -119,7 +119,7 @@ draw_toolbar :: proc(user: rawptr) {
 	// beat of the new tempo); the fourth tap starts playback where a fifth
 	// would land.
 	if pm.tap_start_due(&st.taps, st.clock) && !playing do pm.play(e)
-	since := st.clock - st.tapped
+	since := st.clock - st.tapped if st.tapped > 0 else 1e9 // never tapped: dark
 	lit := since < 0.12
 	if st.taps.start_at > 0 {
 		beat_s := 60 / p.bpm
@@ -135,7 +135,7 @@ draw_toolbar :: proc(user: rawptr) {
 	pressed := im.Button("Tap")
 	if lit || glow > 0 do im.PopStyleColor(3)
 	if pressed {
-		st.tapped = st.clock
+		st.tapped = max(st.clock, 1e-6)
 		if b := pm.tap(&st.taps, st.clock); b > 0 {
 			pm.set_bpm(m, f64(int(b * 10 + 0.5)) / 10)
 			app.seal(&m.history)

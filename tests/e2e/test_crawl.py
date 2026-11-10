@@ -21,7 +21,7 @@ PLACES = [
     ("detail", "Sample"),
     ("detail", "Pad"),
     ("detail", "Effects"),
-    ("detail", "Perform"),
+    ("perform", "Perform"),
     ("browser", None),
     ("##toolbar", None),
 ]
@@ -41,7 +41,7 @@ def loaded(app, fixtures):
 @pytest.mark.parametrize("window, tab", PLACES, ids=[f"{w.strip('#')}-{t or 'main'}" for w, t in PLACES])
 def test_clicking_everything_does_not_crash(app, fixtures, window, tab):
     loaded(app, fixtures)
-    if window in ("song", "mixer"):
+    if window in ("song", "mixer", "perform"):
         app.panel(tab)
     elif tab:
         app.click(tab, window="detail")

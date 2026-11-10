@@ -160,6 +160,7 @@ setup_workspace :: proc(a: ^App) {
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Center)
 	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Center)
 	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Center)
+	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Center)
 	ui.panel_add(w, {id = "detail", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_detail, user = a, flags = {.NoScrollbar, .NoScrollWithMouse}}, .Bottom)
 	ui.panel_focus(w, "sequence")
 }
@@ -239,7 +240,7 @@ subscribe_imports :: proc(a: ^App) {
 //	expect samples K      fail unless the project holds K samples
 //	expect selected N / expect bank N / expect dark 0|1
 //	expect undo NAME      fail unless the next undo step is NAME
-//	panel ID              bring a panel (browser, sequence, song, mixer, pads) or a pad tab (sample, pad, effects, perform) to the front
+//	panel ID              bring a panel (browser, sequence, song, mixer, perform, pads) or a pad tab (sample, pad, effects) to the front
 //	play / stop / rec on|off / metronome on|off   the sequencer
 //	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
 //	note PAD BEAT LENGTH [VELOCITY]   add a note to the current sequence
@@ -628,7 +629,6 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "sample":            show_detail(a, .Sample)
 		case "pad", "inspector":  show_detail(a, .Pad)
 		case "effect", "effects": show_detail(a, .Effects)
-		case "perform":           show_detail(a, .Perform)
 		case "pads":              ui.panel_focus(&a.ws, "detail")
 		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 		}

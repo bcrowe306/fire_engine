@@ -38,10 +38,10 @@ port.
 The **transport toolbar** runs across the top, under the menus, whatever
 panel or tab is in front (see [The transport](#the-transport)). Below it
 the layout follows Ableton Live's: the **Browser** down the left; the
-**Sequence**, **Song** and **Mixer** as tabs in the middle; and along the
-bottom, the **Pads** panel — the pad grid on the left and, on the right,
-the selected pad in four tabs: **Sample**, **Pad**, **Effects** and
-**Perform** — and at the far right, the selected pad's channel strip (the
+**Sequence**, **Song**, **Mixer** and **Perform** as tabs in the middle;
+and along the bottom, the **Pads** panel — the pad grid on the left and,
+on the right, the selected pad in three tabs: **Sample**, **Pad** and
+**Effects** — and at the far right, the selected pad's channel strip (the
 mixer's, without its EQ, inserts and sends: output, pan, fader, meter,
 mute and solo). Drag the divider between the grid and the tabs to give
 either more room (double-click it to go back to a square grid). Panels
@@ -134,11 +134,11 @@ for other toggles.
   right-click to delete). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
   the sequencer plays them.
-- **Perform** (bottom tab): how the pads play — **Pads**, each its
+- **Perform** (a panel beside the Mixer): how the pads play — **Pads**, each its
   own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
   triads, sevenths, power chords) on the selected pad, from any root and
   octave, the bottom-left pad the root; **Velocity**, the selected pad at
-  16 velocities. **Note repeat** retriggers held pads on the grid;
+  16 velocities. Under note repeat and the arpeggiator, a bar of their steps lights the one playing (bright while it is on). **Note repeat** retriggers held pads on the grid;
   the **arpeggiator** walks held notes (up, down, up-down, random, as
   played; 1–4 octaves; gate; latch). MIDI: activity lights, **Learn**
   (the next note you play plays the selected pad), and **MIDI out** (the
@@ -167,7 +167,7 @@ for other toggles.
   plug-in), on or off (a 15 ms fade), and a knob for each setting. A
   plug-in that can't be found plays nothing and says so. A pad's volume
   is its fader, after its inserts; the volume lane of a sequence moves it.
-- **Performance effects** (in the Perform tab): 16 effects on main, each
+- **Performance effects** (in the Perform panel): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
   distortion. **Hold** latches them. Right-click one to change what it is

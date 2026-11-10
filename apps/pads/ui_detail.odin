@@ -10,7 +10,6 @@ Detail_Tab :: enum u8 {
 	Sample,
 	Pad,
 	Effects,
-	Perform,
 }
 
 // The bottom panel's state: its tab, and how wide the pads are.
@@ -20,8 +19,8 @@ Detail_State :: struct {
 	pads_width: f32, // 0: as wide as the pads are tall
 }
 
-DETAIL_NAMES := [Detail_Tab]string{.Sample = "Sample", .Pad = "Pad", .Effects = "Effects", .Perform = "Perform"}
-DETAIL_ICONS := [Detail_Tab]string{.Sample = ui.ICON_AUDIO_WAVEFORM, .Pad = ui.ICON_SLIDERS_HORIZONTAL, .Effects = ui.ICON_WAND_SPARKLES, .Perform = ui.ICON_KEYBOARD_MUSIC}
+DETAIL_NAMES := [Detail_Tab]string{.Sample = "Sample", .Pad = "Pad", .Effects = "Effects"}
+DETAIL_ICONS := [Detail_Tab]string{.Sample = ui.ICON_AUDIO_WAVEFORM, .Pad = ui.ICON_SLIDERS_HORIZONTAL, .Effects = ui.ICON_WAND_SPARKLES}
 
 // Width of the divider between the pads and the tabs.
 @(private) DIVIDER :: 9
@@ -80,7 +79,6 @@ draw_detail :: proc(user: rawptr) {
 						case .Sample:  draw_sample(a)
 						case .Pad:     draw_inspector(a)
 						case .Effects: draw_effect(a)
-						case .Perform: draw_perform(a)
 						}
 					}
 					im.EndChild()

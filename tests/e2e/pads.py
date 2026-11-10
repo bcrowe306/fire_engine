@@ -161,7 +161,7 @@ class Pads:
 
     def panel(self, name):
         """Brings panel `name` to the front by clicking its tab ("Sequence",
-        "Song", "Mixer", "Browser", "Pads"; their tabs show an icon before
+        "Song", "Mixer", "Perform", "Browser", "Pads"; their tabs show an icon before
         the name, so a menu of the same name isn't what is clicked)."""
         self.click("  " + name)
 

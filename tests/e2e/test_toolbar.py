@@ -16,7 +16,7 @@ def test_it_shows_whatever_is_in_front(app):
         app.panel(panel)
         app.expect_item("Play (Space)")
         app.expect_item("tempo")
-    app.click("Perform", window="detail")
+    app.panel("Perform")
     app.expect_item("Record (Cmd+R)")
 
 
