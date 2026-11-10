@@ -53,6 +53,8 @@ App :: struct {
 	bview:    Browser_View,
 	prefs:    string, // where preferences go (--prefs; default: the system's)
 	control:  ui.Control, // --control: a test harness's live commands
+	pad_waves: bool, // the pads show their sound's waveform (View > Pad Waveforms)
+	peaks:    map[app.Id][]ui.Peak, // per sample, for the pads' faces
 	tools:    Tool_State,
 	seq:      Seq_State,
 	capture:  pm.Capture,
@@ -106,7 +108,12 @@ main :: proc() {
 	}
 
 	a := new(App)
-	a.dark = true
+	a.dark, a.pad_waves = true, true
+	a.peaks = make(map[app.Id][]ui.Peak)
+	defer {
+		for _, p in a.peaks do delete(p)
+		delete(a.peaks)
+	}
 	a.prefs = prefs
 	p := &a.platform
 	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0}) {
@@ -297,8 +304,9 @@ Grid_Held :: struct {
 	count:    int,
 }
 
-// The computer keyboard as a 4×4 pad grid, top row first.
-PAD_KEYS := [16]im.Key{._1, ._2, ._3, ._4, .Q, .W, .E, .R, .A, .S, .D, .F, .Z, .X, .C, .V}
+// The computer keyboard as the 4×4 pad grid, pad 1 first: the bottom row
+// (Z X C V) is pads 1–4, the top row (1 2 3 4) pads 13–16, as they sit.
+PAD_KEYS := [16]im.Key{.Z, .X, .C, .V, .A, .S, .D, .F, .Q, .W, .E, .R, ._1, ._2, ._3, ._4}
 
 play_keys :: proc(a: ^App) {
 	io := im.GetIO()

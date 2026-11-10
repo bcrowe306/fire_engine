@@ -256,7 +256,7 @@ draw_controls :: proc(user: rawptr) {
 	for n, i in names {
 		if i > 0 do im.SameLine(0, 10)
 		im.PushIDInt(i32(i))
-		hit := ui.pad("pad", n if n != "" else "Empty", fmt.tprintf("A%d", i + 1) if n != "" else "", tints[i], n != "", i == 2 && (s.frame / 20) % 2 == 0, s.selected == i)
+		hit := ui.pad("pad", {name = n if n != "" else "Empty", middle = fmt.tprintf("A%d", i + 1) if n != "" else "", tint = tints[i], has_sound = n != "", lit = i == 2 && (s.frame / 20) % 2 == 0, selected = s.selected == i, buttons = n != ""})
 		if hit.pressed || hit.selected do s.selected = i
 		im.PopID()
 	}

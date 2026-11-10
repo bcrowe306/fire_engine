@@ -1,5 +1,5 @@
 /*
-Pads' model, without its GUI: the project (64 pads in 4 banks, the samples
+Pads' model, without its GUI: the project (128 pads in 8 banks, the samples
 they play), the commands that change it, and what keeps the engine in step
 with it. The GUI (apps/pads) draws this; tests drive it headless.
 
@@ -17,8 +17,8 @@ import "fire:sampler"
 
 // Pads in a bank, and banks.
 PADS_PER_BANK :: 16
-// Banks of pads (A to D).
-BANKS :: 4
+// Banks of pads (A to H).
+BANKS :: 8
 // Every pad.
 PADS :: PADS_PER_BANK * BANKS
 // Choke groups a pad can join (1 to CHOKE_GROUPS; 0 = none).
@@ -82,7 +82,7 @@ Project :: struct {
 	samples: app.Store(Sample),
 	sequences: [SLOTS]Sequence,
 	slot:    int, // the current sequence: what plays and is edited
-	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key 36 is A1, up to D16
+	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key N plays pad N (A1 = 0, H16 = 127)
 	perform: Perform, // the arpeggiator and note repeat (`set_perform`)
 	buses:   [BUSES]Bus,
 	main:    Bus,
@@ -107,7 +107,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	for &s in p.sequences do s = default_sequence()
 	p.perf_fx = default_perf_fx()
 	p.perform = {arp = {rate = .Sixteenth, gate = 0.5, octaves = 1}, repeat = {rate = .Sixteenth, gate = 0.5}}
-	for &k, key in p.midi_map do k = i16(key - PAD_KEY_BASE) if key >= PAD_KEY_BASE && key < PAD_KEY_BASE + PADS else -1
+	for &k, key in p.midi_map do k = i16(key) if key < PADS else -1 // note N plays pad N (A1 = 0)
 	app.store_init(&p.samples)
 	strings.intern_init(&p.strings)
 	p.dir = intern(p, dir)
@@ -137,17 +137,23 @@ set_pad_name :: proc(pad: ^Pad, name: string) {
 	copy(pad.name[:len(pad.name) - 1], name)
 }
 
-// "A1".."D16": a pad's label.
+// "A1".."H16": a pad's label.
 pad_label :: proc(index: int, allocator := context.temp_allocator) -> string {
-	letters := "ABCD"
+	letters := "ABCDEFGH"
 	return strings.concatenate({letters[index / PADS_PER_BANK:][:1], itoa(index % PADS_PER_BANK + 1, allocator)}, allocator)
 }
 
-// The MIDI key pad `index` answers in the engine.
-PAD_KEY_BASE :: 36
-// The key of pad `index`.
+// The note pad `index` is (and, in the engine, the key its sampler answers
+// to): A1 is 0, H16 is 127.
 pad_key :: proc "contextless" (index: int) -> u8 {
-	return u8(PAD_KEY_BASE + index)
+	return u8(clamp(index, 0, 127))
+}
+
+// "C-2 · 0": a pad's note, as its face shows it.
+pad_note_name :: proc(index: int) -> string {
+	names := [12]string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
+	k := int(pad_key(index))
+	return strings.concatenate({names[k % 12], itoa(k / 12 - 2) if k / 12 >= 2 else strings.concatenate({"-", itoa(2 - k / 12)}, context.temp_allocator), " · ", itoa(k)}, context.temp_allocator)
 }
 
 @(private)

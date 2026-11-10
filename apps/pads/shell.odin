@@ -52,11 +52,14 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "theme", label = "Light Theme", icon = ui.ICON_SUN, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); set_dark(a, !a.dark) },
 		checked = proc(u: rawptr) -> bool { return !(^App)(u).dark }})
+	add(acts, {id = "pad_waves", label = "Pad Waveforms", icon = ui.ICON_AUDIO_WAVEFORM, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); a.pad_waves = !a.pad_waves },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).pad_waves }})
 	add(acts, {id = "reset_layout", label = "Reset Layout", icon = ui.ICON_LAYOUT_DASHBOARD, user = a,
 		run = proc(u: rawptr) { ui.workspace_reset_layout(&(^App)(u).ws) }})
 	for b in 0 ..< pm.BANKS {
-		ids := [4]string{"bank_a", "bank_b", "bank_c", "bank_d"}
-		labels := [4]string{"Bank A", "Bank B", "Bank C", "Bank D"}
+		ids := [pm.BANKS]string{"bank_a", "bank_b", "bank_c", "bank_d", "bank_e", "bank_f", "bank_g", "bank_h"}
+		labels := [pm.BANKS]string{"Bank A", "Bank B", "Bank C", "Bank D", "Bank E", "Bank F", "Bank G", "Bank H"}
 		add(acts, {id = ids[b], label = labels[b], icon = ui.ICON_LAYOUT_GRID, chord = ui.MOD_CMD | (i32(im.Key._1) + i32(b)), user = a,
 			run = bank_actions[b]})
 	}
@@ -78,11 +81,15 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { ui.quit(&(^App)(u).platform) }})
 }
 
-bank_actions := [4]proc(u: rawptr) {
+bank_actions := [pm.BANKS]proc(u: rawptr) {
 	proc(u: rawptr) { (^App)(u).bank = 0 },
 	proc(u: rawptr) { (^App)(u).bank = 1 },
 	proc(u: rawptr) { (^App)(u).bank = 2 },
 	proc(u: rawptr) { (^App)(u).bank = 3 },
+	proc(u: rawptr) { (^App)(u).bank = 4 },
+	proc(u: rawptr) { (^App)(u).bank = 5 },
+	proc(u: rawptr) { (^App)(u).bank = 6 },
+	proc(u: rawptr) { (^App)(u).bank = 7 },
 }
 
 set_dark :: proc(a: ^App, dark: bool) {
@@ -131,9 +138,13 @@ draw_menu :: proc(user: rawptr) {
 		im.EndMenu()
 	}
 	if im.BeginMenu("View") {
-		for id in ([]string{"bank_a", "bank_b", "bank_c", "bank_d"}) do ui.menu_action(&a.actions, id)
+		if im.BeginMenu("Bank") {
+			for id in ([]string{"bank_a", "bank_b", "bank_c", "bank_d", "bank_e", "bank_f", "bank_g", "bank_h"}) do ui.menu_action(&a.actions, id)
+			im.EndMenu()
+		}
 		im.Separator()
 		ui.menu_action(&a.actions, "theme")
+		ui.menu_action(&a.actions, "pad_waves")
 		ui.menu_action(&a.actions, "reset_layout")
 		im.EndMenu()
 	}

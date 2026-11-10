@@ -102,7 +102,7 @@ router_create :: proc(allocator := context.allocator) -> (fc.Node, ^Router) {
 	rt.spsc_init(&r.taken, 1024, allocator)
 	rt.spsc_init(&r.settings, 16, allocator)
 	r.next_id = 1 << 30 // apart from the sequencer's and the effects' ids
-	for &m, k in r.midi_map do m = i16(k - PAD_KEY_BASE) if k >= PAD_KEY_BASE && k < PAD_KEY_BASE + PADS else -1
+	for &m, k in r.midi_map do m = i16(k) if k < PADS else -1
 	pf.arp_init(&r.arp, {})
 	pf.repeat_init(&r.repeat, {})
 	return fc.node_make(&router_vtable, r, allocator), r
@@ -111,8 +111,8 @@ router_create :: proc(allocator := context.allocator) -> (fc.Node, ^Router) {
 // The pad a key plays, or -1.
 @(private)
 pad_of_key :: proc "contextless" (key: u8) -> int {
-	i := int(key) - PAD_KEY_BASE
-	return i if i >= 0 && i < PADS else -1
+	i := int(key)
+	return i if i < PADS else -1
 }
 
 // [rt]

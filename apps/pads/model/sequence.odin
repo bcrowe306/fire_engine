@@ -396,9 +396,13 @@ slot_used :: proc(m: ^Model, slot: int) -> bool {
 	return len(m.project.sequences[slot].notes) > 0
 }
 
+// The General MIDI drum key a drum file's kick is on (A1 when importing drums).
+GM_KICK :: 36
+
 // How a MIDI file's notes find pads (see `import_midi`).
 Midi_Import :: enum u8 {
-	By_Map,    // each key plays the pad the MIDI map gives it (drums: key 36 is A1); other keys are skipped
+	Drums,     // General MIDI drums: key 36 (the kick) is A1, 37 is A2, ...; keys below 36 are skipped
+	By_Map,    // each key plays the pad the MIDI map gives it (by default key N is pad N); other keys are skipped
 	On_Pad,    // every note plays pad `pad`, pitched (a melody or a bass line)
 }
 
@@ -406,7 +410,7 @@ Midi_Import :: enum u8 {
 // as one undo step: its notes (every track), as long as the file (whole
 // bars, at most MAX_BARS). Returns how many notes it brought in, or -1 if
 // the file could not be read.
-import_midi :: proc(m: ^Model, path: string, slot: int, how := Midi_Import.By_Map, pad := 0) -> int {
+import_midi :: proc(m: ^Model, path: string, slot: int, how := Midi_Import.Drums, pad := 0) -> int {
 	mf, err := clip.midi_file_read(path, context.temp_allocator)
 	if err != .None do return -1
 	defer clip.midi_file_destroy(&mf)
@@ -419,6 +423,9 @@ import_midi :: proc(m: ^Model, path: string, slot: int, how := Midi_Import.By_Ma
 		for n in c.notes {
 			sn := Seq_Note{start = f64(n.start), length = f64(n.length), velocity = n.velocity, probability = 1}
 			switch how {
+			case .Drums:
+				if n.key < GM_KICK || int(n.key) - GM_KICK >= PADS do continue
+				sn.pad = u8(int(n.key) - GM_KICK)
 			case .By_Map:
 				p := m.project.midi_map[n.key]
 				if p < 0 do continue

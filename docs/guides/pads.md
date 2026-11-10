@@ -1,6 +1,6 @@
 ---
 title: Pads
-description: The Pads sampler built on the application layer — loading, playing and shaping samples on 64 pads, chopping, stretching and editing them, and driving and testing it from scripts.
+description: The Pads sampler built on the application layer — loading, playing and shaping samples on 128 pads, chopping, stretching and editing them, and driving and testing it from scripts.
 ---
 
 Pads (`apps/pads`) is a sampler and sequencer built on Fire Engine and its
@@ -57,7 +57,7 @@ for other toggles.
     Favourites are kept with your preferences, not in the project.
   - **Back**, **forward** and **up** (Backspace), and the folder's path:
     click any part to go there. **Refresh** reads the folders again.
-  - The **tree**: click a folder (or its chevron) to open it in place,
+  - The **tree**: click a folder to open it in place (its icon shows it open),
     double-click to go into it. Links to folders work. Only audio files
     (WAV, AIFF, FLAC, MP3, Ogg) and folders show.
   - **Search** finds file names (any case) in every folder under the one
@@ -74,11 +74,26 @@ for other toggles.
     play as they are); and the preview's own volume. It plays straight to
     the output, past the mixer and main's effects, and never into an
     export.
-- **Pads** (bottom left): 4 banks (A–D) of 16, and the tempo. Click a pad, or press its key —
-  `1 2 3 4 / Q W E R / A S D F / Z X C V`, the top row first — to play it
-  and select it. Files dropped on the window from the desktop land on the
-  pad under the mouse.
-- **Pad** (bottom tab): the selected pad's name and colour; its mode
+- **Pads** (bottom left): 128 pads in 8 banks (A–H) of 16, numbered from
+  the bottom left (pad 1) up, as on an MPC, and the tempo. Click a pad, or
+  press its key, to play it and select it. The keys sit as the pads do:
+  `Z X C V` is the bottom row (pads 1–4), then `A S D F`, `Q W E R`, and
+  `1 2 3 4` the top (pads 13–16). Each pad shows:
+  - its sample's name at the top, centred (cut off at the pad's edge);
+  - its note in the middle: pad N is MIDI note N−1, so A1 is `C-2 · 0`
+    and H16 is `G8 · 127` (what a MIDI controller plays it with);
+  - **M**ute (bottom left) and **S**olo (bottom right): the same switches
+    as its mixer strip's;
+  - behind them, the sound's waveform (the region it plays); **View > Pad
+    Waveforms** turns these off.
+
+  Right-click a pad for its colour: 24 swatches and a picker (also behind
+  the colour button in the Pad tab). The colour shows on the pad, its
+  mixer strip and its row in the sequencer. Hovering a pad tells its key
+  and mode. Files dropped on the window from the desktop, or from the
+  browser, land on the pad under the mouse.
+- **Pad** (bottom tab): the selected pad's name and colour (click it for
+  the swatches and picker); its mode
   (**One-shot** plays to the end, **Gate** while held, **Loop** loops
   while held, **Hold** loops until hit again); reverse; loop direction and
   crossfade; choke group (a pad cuts the others in its group); volume,
@@ -99,7 +114,8 @@ for other toggles.
   record (Cmd+R) and the metronome; the slot (32 of them, those with notes
   marked); length (1–64 bars, ×2 doubles with the notes); the grid (1/4
   to 1/64, triplets), Quantize (Cmd+U) and Live (quantize while
-  recording); swing (on 1/8 or 1/16). Below, the current bank's pads as
+  recording); swing (on 1/8 or 1/16). Below, the current bank's pads (pad
+  1 at the bottom, as on the grid) as
   rows: click to add a note, drag to move, drag its end to resize,
   right-click to delete; the wheel scrolls the rows when they don't all
   fit. Under the rows, a lane: each note's velocity, its chance (the
@@ -147,10 +163,12 @@ for other toggles.
   distortion. **Hold** latches them. Right-click one to change what it is
   in the Effects tab.
 - **File > Import MIDI File…** reads a `.mid` into the current sequence:
-  drum keys onto the pads by the MIDI map (key 36 is A1).
+  as General MIDI drums: key 36 (the kick) onto A1, 37 onto A2, and on.
+  (`import_midi` in the model can also go by the MIDI map, where key N is
+  pad N, or put every note on one pad, pitched.)
 
 Every change is undoable (Cmd+Z / Cmd+Shift+Z; Ctrl elsewhere). A knob
-drag is one step. Cmd+K opens the command palette; Cmd+1..4 switch banks;
+drag is one step. Cmd+K opens the command palette; Cmd+1..8 switch banks (or View > Bank);
 Delete clears the pad; View > Light Theme switches theme.
 
 - **Song** (middle tab): **Pattern** plays the current sequence; **Song**
@@ -170,6 +188,9 @@ A project is a folder, `Name.pads`: `project.fire` (a
 samples, sequences, song, mixer, MIDI map and settings) and `samples/`
 (every imported, recorded, edited, chopped or resampled file is copied
 there), so a project moves as one folder.
+
+Projects saved before there were 128 pads open with their 64 pads in
+banks A–D, and keep their own MIDI map (where key 36 played A1).
 
 - **File > New** (Cmd+N), **Open…** (Cmd+O, a folder), **Open Recent**
   (the last 8, kept in the user's preferences folder), **Save** (Cmd+S),

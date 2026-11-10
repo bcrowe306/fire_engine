@@ -1,23 +1,23 @@
 # Pads driven by real input events only (mouse, keys, shortcuts, the palette):
-# what a user does, checked against the model. Coordinates are logical points
-# in a 1440×900 window.
+# what a user does, checked against the model. Items are found by label (the
+# probe); the window is 1440×900.
 size 1440 900
 browse tests/app_ui/fixtures
 wait 4
 load 0 tests/app_ui/fixtures/kick.wav
 wait 2
-key 2                      # the A2 key plays (selects) pad 1
+key x                      # the A2 key (bottom row: Z X C V) plays (selects) pad 1
 wait 2
 expect selected 1
-key q                      # A5
+key a                      # A5 (second row from the bottom)
 wait 2
 expect selected 4
-click 320 619              # pad A1 with the mouse (the bottom panel)
+click_item "pad A1" in detail   # pad A1 with the mouse (bottom left)
 wait 2
 expect selected 0
 panel pad                  # the Pad tab, beside the pads
 wait 3
-drag 916 692 916 608 12    # the Volume knob, upwards
+drag_by Volume in detail 0 -84 12   # the Volume knob, upwards
 wait 2
 expect undo Set Volume
 expect pad 0 volume 12
@@ -36,7 +36,7 @@ expect pad 0 sample kick
 key cmd+2                  # Bank B
 wait 2
 expect bank 1
-click 289 556              # the A segment
+click_item A in detail     # the A segment
 wait 2
 expect bank 0
 key cmd+k                  # the command palette

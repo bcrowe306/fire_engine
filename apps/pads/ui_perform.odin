@@ -149,8 +149,7 @@ draw_perform :: proc(user: rawptr) {
 		if i % 4 != 0 do im.SameLine(0, gap)
 		fx := m.project.perf_fx[i]
 		im.PushIDInt(i32(5000 + i))
-		hit := ui.pad("fx", pm.perf_label(fx), fmt.tprintf("FX %d", i + 1), ui.theme().accent, true, fx.on, a.fx == pm.Fx_Target{.Perf, i, 0}, {side, side * 0.62})
-		ui.name(fmt.tprintf("fx %d", i + 1))
+		hit := ui.pad("fx", {label = fmt.tprintf("fx %d", i + 1), name = pm.perf_label(fx), middle = fmt.tprintf("FX %d", i + 1), tint = ui.theme().accent, has_sound = true, lit = fx.on, selected = a.fx == pm.Fx_Target{.Perf, i, 0}}, {side, side * 0.62})
 		im.PopID()
 		if hit.pressed {
 			a.perf_held[i] = true

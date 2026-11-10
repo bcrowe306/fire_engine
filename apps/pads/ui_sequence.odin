@@ -38,10 +38,11 @@ draw_sequence :: proc(user: rawptr) {
 	draw_transport(a)
 	im.Spacing()
 
-	// The editor: 16 rows (the bank's pads, the first at the top).
+	// The editor: 16 rows (the bank's pads, the first at the bottom, as on
+	// the grid and as a piano roll's low notes).
 	rows := make([]ui.Roll_Row, pm.PADS_PER_BANK, context.temp_allocator)
 	for k in 0 ..< pm.PADS_PER_BANK {
-		index := a.bank * pm.PADS_PER_BANK + (pm.PADS_PER_BANK - 1 - k)
+		index := a.bank * pm.PADS_PER_BANK + k
 		pad := &m.project.pads[index]
 		name := pm.pad_name(pad) if pad.sample != 0 else "—"
 		t := ui.theme()
@@ -52,7 +53,7 @@ draw_sequence :: proc(user: rawptr) {
 	which := make([dynamic]int, context.temp_allocator)
 	for n, i in s.notes {
 		if int(n.pad) / pm.PADS_PER_BANK != a.bank do continue
-		k := pm.PADS_PER_BANK - 1 - int(n.pad) % pm.PADS_PER_BANK
+		k := int(n.pad) % pm.PADS_PER_BANK
 		append(&notes, ui.Roll_Note{start = n.start, length = n.length, key = k, velocity = n.velocity, selected = i == st.selected,
 			color = ui.rgb(m.project.pads[n.pad].color)})
 		append(&which, i)
@@ -63,18 +64,18 @@ draw_sequence :: proc(user: rawptr) {
 	lane_h: f32 = 56
 	roll_h := max(avail.y - lane_h - im.GetStyle().ItemSpacing.y - 4, 4 * ROW_MIN)
 	// As many rows as fit at ROW_MIN or taller; the wheel scrolls the rest
-	// (the bank's first pad at the top to begin with).
+	// (the bank's first pads, at the bottom, to begin with).
 	keys := clamp(int(roll_h / ROW_MIN), 4, pm.PADS_PER_BANK)
 	if st.view.keys != keys {
 		st.view.keys = keys
-		st.view.key0 = pm.PADS_PER_BANK - keys
+		st.view.key0 = 0
 	}
 	st.view.key0 = clamp(st.view.key0, 0, pm.PADS_PER_BANK - keys)
 	roll_h = f32(keys) * (roll_h / f32(keys))
 	st.view.beat0, st.view.beats = 0, length
 	snap := pm.grid_beats(st.grid)
 	e := ui.piano_roll("seq", notes[:], &st.view, snap, {avail.x, roll_h}, beat if playing else -1, rows)
-	bank_pad :: proc(a: ^App, key: int) -> u8 { return u8(a.bank * pm.PADS_PER_BANK + (pm.PADS_PER_BANK - 1 - key)) }
+	bank_pad :: proc(a: ^App, key: int) -> u8 { return u8(a.bank * pm.PADS_PER_BANK + key) }
 	if e.add && e.at_key >= 0 && e.at_key < pm.PADS_PER_BANK && e.at_beat < length {
 		pad := bank_pad(a, e.at_key)
 		pm.add_note(m, slot, {start = e.at_beat, length = snap, pad = pad, velocity = 0.8, probability = 1})

@@ -209,8 +209,8 @@ draw_crumbs :: proc(a: ^App) {
 	}
 }
 
-// The rows: folders with a chevron (click it, or the folder, to open it in
-// place; double-click to go into it), files to select, hear and load.
+// The rows: folders (click to open one in place, its icon showing it open;
+// double-click to go into it), files to select, hear and load.
 @(private)
 draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 	b := &a.browser
@@ -270,13 +270,9 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			// Drawn: the selection, the indent, a chevron and an icon, the name.
 			if selected do im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + BROWSER_ROW}, ui.col(ui.with_alpha(t.accent, 0.35)), 4)
 			else if hovered do im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + BROWSER_ROW}, ui.col(t.hover), 4)
-			x := pos.x + 4 + f32(e.depth) * 14
+			// A folder's icon says whether it is open (no chevron as well).
+			x := pos.x + 6 + f32(e.depth) * 16
 			ty := pos.y + (BROWSER_ROW - im.GetTextLineHeight()) / 2
-			if e.is_dir {
-				open := b.expanded[e.path]
-				im.DrawList_AddText(dl, {x, ty}, ui.col(t.text_dim), fmt.ctprintf("%s", ui.ICON_CHEVRON_DOWN if open else ui.ICON_CHEVRON_RIGHT))
-			}
-			x += 16
 			icon := ui.ICON_FOLDER if e.is_dir else ui.ICON_FILE_AUDIO
 			if e.is_dir && b.expanded[e.path] do icon = ui.ICON_FOLDER_OPEN
 			im.DrawList_AddText(dl, {x, ty}, ui.col(t.warn if e.is_dir else t.accent), fmt.ctprintf("%s", icon))

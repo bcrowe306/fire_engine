@@ -204,7 +204,93 @@ four platforms), verify, profile, document, commit.
       - The selected file's waveform shows in the preview strip.
     *Done:* see docs/guides/pads.md. (Search looks under the folder shown, not
     always the tab's: what you browsed to is what you search.)
-11. **Later.** The timeline arranger, stem splitting, more export formats.
+11. **Pads: 128 pads and the pad's face.**
+    - *128 pads* in 8 banks (A–H) of 16, numbered from the bottom left
+      (pad 1) up, as on an MPC.
+      - Cmd+1…8 switch banks.
+      - The computer keys mirror the grid: Z X C V is the bottom row
+        (pads 1–4), 1 2 3 4 the top (pads 13–16).
+      - The sequencer's rows follow (pad 1 at the bottom, like a piano
+        roll's low notes).
+    - *Notes:* pad N answers to MIDI note N−1 (A1 = 0, H16 = 127).
+      - The engine's own key per pad (now 36 + index, which would pass
+        127) becomes the pad's note, routed so no two pads share one.
+      - Projects saved with 64 pads load into banks A–D and keep their own
+        MIDI map.
+    - *Project file v3:* 128 pads, colours.
+    - *The pad's face:*
+      - the sample name at the top, centred and clipped to the pad
+      - the note name and number in the middle (C-2 · 0)
+      - Mute at the bottom left and Solo at the bottom right: the track's
+        own mute and solo, the same as its mixer strip
+      - behind them, the sample's waveform: on at first, with View > Pad
+        Waveforms to turn it off
+    - *Colours:*
+      - Right-click a pad, or its colour in the Pad tab, for 24 swatches
+        and a full colour picker.
+      - The colour shows on the pad, its mixer strip and its sequencer row.
+    - *Browser:* folders show their open or closed folder icon and no
+      chevron.
+    *Done:* see docs/guides/pads.md. (A MIDI file imports as General MIDI
+    drums, key 36 onto A1, now that note N is pad N.)
+12. **Pads: the transport toolbar.**
+    - *Placement:* a bar under the menus, always visible whatever panel or
+      tab shows, its controls centred. Its buttons are bare icons whose
+      colour shows state.
+    - *Transport:*
+      - play, stop, record
+      - loop on/off: off plays the sequence or song once and stops; this
+        replaces the Song tab's toggle
+      - count-in: off, 1 or 2 bars of click before recording
+      - the position (bar.beat.tick, and the length)
+      - the current sequence's number (pick one, or step with arrows)
+    - *Tempo:*
+      - Dragging changes it by 1 BPM; with Shift, by 0.1 (typing gives any
+        value).
+      - Tap tempo: the average of the last taps, reset after 2 s without
+        one.
+      - Time signature (beats per bar and beat unit) for the metronome,
+        the grid, bars and exports.
+    - *Metronome:* on/off, its volume, and "only while recording" (and
+      during count-in).
+    - *Input quantize:* the grid (1/4–1/64, triplets), a strength (0–100%:
+      how far a recorded note moves toward the grid) and swing.
+    - *The Sequence panel:* play, record and the metronome move from its
+      toolbar to this one, and the BPM field leaves the Pads panel.
+    - *Engine work:*
+      - capture: quantize strength and swing
+      - the metronome: its level, and only while recording
+      - count-in: the clock runs a bar or two of click before the sequence
+        starts and recording begins
+      - loop off: the plan runs once
+      - time signature: the meter on the clock; bars and grid lengths from
+        it
+13. **Pads: tracks, and audio recorded into slots.**
+    - *Tracks:* each of the 128 pads is a track with a kind, a device and
+      a mixer channel (its strip).
+      - A *Sampler* track (the default) plays its sample when hit, as now.
+      - An *Audio* track plays the audio clip it holds for each sequence
+        slot.
+      - Synths and other devices come later. The track's device is what
+        the bottom panel shows: a Sampler's Sample, Pad and Effects tabs,
+        or an Audio track's clip.
+    - *Recording audio:*
+      - An audio track has a record-arm button, on its pad and its strip,
+        and an input (in 1–2, 1, 2…).
+      - Record, after the count-in, captures that input into the current
+        sequence slot as an audio clip. The clip plays and loops with the
+        sequence, follows the song, and goes into exports and stems.
+      - A new take replaces the old, and undo brings it back.
+      - Hitting an audio track's pad auditions its clip.
+    - *The model:* Pad becomes Track (kind, device settings, channel);
+      clips live in the project folder (samples/) like samples.
+    - *Project file v4:* tracks and clips. v3 and older files load as
+      Sampler tracks.
+    - *Tests:* headless model tests (recording through the fake driver's
+      input, playback timing, undo); e2e tests for arming, recording and
+      the device panel.
+14. **Later.** The timeline arranger, internal devices (synths, drum
+    machines) on tracks, stem splitting, more export formats.
 
 ## Testing approach
 

@@ -202,22 +202,52 @@ Pad_Hit :: struct {
 	held:     bool,
 	velocity: f32,  // 0..1, from where it was hit: higher is harder
 	selected: bool, // clicked with Shift or Cmd, or right-clicked: select without playing
+	menu:     bool, // right-clicked (for a menu: its colour)
+	mute:     bool, // its Mute button was clicked
+	solo:     bool, // its Solo button was clicked
+	dropped:  string, // a drag-and-drop payload of `Pad_Face.drop_type` let go on it (temporary allocator)
 }
 
-// A sampler pad: `name` and a small `detail` line, coloured with `tint`
-// when it has a sound, lit while `lit` (playing), outlined when
-// `selected`.
-pad :: proc(id: cstring, name: string, detail: string, tint: Color, has_sound, lit, selected: bool, size := PAD_SIZE) -> (hit: Pad_Hit) {
+// What a pad shows: its name centred at the top (clipped to the pad), a
+// line in the middle (its note), Mute and Solo at the bottom corners, and
+// optionally its sound's waveform behind.
+Pad_Face :: struct {
+	label:     string, // what a test finds it by ("pad A1"; its buttons "pad A1 mute", "pad A1 solo")
+	name:      string,
+	middle:    string,
+	tint:      Color,
+	has_sound: bool,
+	lit:       bool, // playing
+	selected:  bool,
+	peaks:     []Peak, // the waveform behind (nil: none)
+	mute:      bool,
+	solo:      bool,
+	buttons:   bool, // show Mute and Solo
+	drop_type: cstring, // the drag-and-drop payload it takes (nil: none)
+}
+
+// A sampler pad (see Pad_Face): hit it to play it (higher is harder);
+// Shift- or Cmd-click, or right-click, to select it without playing.
+pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	im.PushID(id)
 	defer im.PopID()
 	t := current
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
-	im.InvisibleButton("##pad", size, {.MouseButtonLeft, .MouseButtonRight})
+	// AllowOverlap: its Mute and Solo buttons sit on it.
+	im.InvisibleButton("##pad", size, {.MouseButtonLeft, .MouseButtonRight, .AllowOverlap})
+	if face.label != "" do name(face.label)
+	if face.drop_type != nil && im.BeginDragDropTarget() {
+		if payload := im.AcceptDragDropPayload(face.drop_type); payload != nil {
+			hit.dropped = strings.clone(strings.string_from_ptr((^u8)(payload.Data), int(payload.DataSize)), context.temp_allocator)
+		}
+		im.EndDragDropTarget()
+	}
 	io := im.GetIO()
 	if im.IsItemActivated() {
 		if im.IsMouseClicked(.Right) || io.KeyShift || io.KeySuper {
 			hit.selected = true
+			hit.menu = im.IsMouseClicked(.Right)
 		} else {
 			hit.pressed = true
 			hit.velocity = clamp(1 - (io.MousePos.y - pos.y) / size.y * 0.6, 0.2, 1)
@@ -226,21 +256,76 @@ pad :: proc(id: cstring, name: string, detail: string, tint: Color, has_sound, l
 	hit.held = im.IsItemActive()
 	if im.IsItemDeactivated() do hit.released = true
 	hovered := im.IsItemHovered()
+	max_ := im.Vec2{pos.x + size.x, pos.y + size.y}
 
+	// The body, and the waveform behind.
 	fill := t.raised
-	if has_sound do fill = mix(t.raised, tint, 0.35)
+	if face.has_sound do fill = mix(t.raised, face.tint, 0.35)
 	if hovered do fill = lighten(fill, 0.06)
-	if lit || hit.held do fill = mix(fill, tint if has_sound else t.accent, 0.7)
+	if face.lit || hit.held do fill = mix(fill, face.tint if face.has_sound else t.accent, 0.7)
 	r := t.radius + 2
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(fill), r)
-	if has_sound do im.DrawList_AddRectFilled(dl, {pos.x + 10, pos.y + size.y - 8}, {pos.x + size.x - 10, pos.y + size.y - 5}, col(tint), 2)
-	if selected do im.DrawList_AddRect(dl, {pos.x - 1, pos.y - 1}, {pos.x + size.x + 1, pos.y + size.y + 1}, col(t.accent), r + 1, 2)
-	pad_x, pad_y: f32 = 10, 8
-	name_c := strings.clone_to_cstring(name, context.temp_allocator)
-	im.DrawList_AddText(dl, {pos.x + pad_x, pos.y + pad_y}, col(t.text if has_sound else t.text_dim), name_c)
-	if detail != "" {
-		dc := strings.clone_to_cstring(detail, context.temp_allocator)
-		im.DrawList_AddText(dl, {pos.x + pad_x, pos.y + pad_y + im.GetTextLineHeight() + 1}, col(with_alpha(t.text, 0.75) if lit || hit.held else t.text_dim), dc)
+	im.DrawList_AddRectFilled(dl, pos, max_, col(fill), r)
+	if len(face.peaks) > 0 {
+		inset: f32 = 6
+		w := size.x - 2 * inset
+		mid := pos.y + size.y / 2
+		half := size.y * 0.3
+		wc := col(with_alpha(mix(face.tint, t.text, 0.25), 0.28))
+		cols := int(w)
+		for x in 0 ..< cols {
+			p := face.peaks[x * len(face.peaks) / max(cols, 1)]
+			px := pos.x + inset + f32(x)
+			im.DrawList_AddLine(dl, {px, mid - p.hi * half}, {px, mid - p.lo * half + 1}, wc, 1)
+		}
+	}
+	if face.selected do im.DrawList_AddRect(dl, {pos.x - 1, pos.y - 1}, {max_.x + 1, max_.y + 1}, col(t.accent), r + 1, 2)
+
+	// The name, centred at the top and clipped to the pad.
+	text_c := t.text if face.has_sound else t.text_dim
+	pad_x, pad_y: f32 = 6, 6
+	im.DrawList_PushClipRect(dl, {pos.x + pad_x, pos.y}, {max_.x - pad_x, max_.y}, true)
+	if face.name != "" {
+		nc := strings.clone_to_cstring(face.name, context.temp_allocator)
+		ns := im.CalcTextSize(nc)
+		x := pos.x + max((size.x - ns.x) / 2, pad_x) // too long: from the left, cut at the right
+		im.DrawList_AddText(dl, {math.round(x), pos.y + pad_y}, col(text_c), nc)
+	}
+	// The middle line (the note).
+	if face.middle != "" {
+		mc := strings.clone_to_cstring(face.middle, context.temp_allocator)
+		ms := im.CalcTextSize(mc)
+		at := im.Vec2{math.round(pos.x + max((size.x - ms.x) / 2, pad_x)), math.round(pos.y + (size.y - ms.y) / 2)}
+		if len(face.peaks) > 0 { // readable over the waveform
+			im.DrawList_AddRectFilled(dl, {at.x - 4, at.y - 1}, {at.x + ms.x + 4, at.y + ms.y + 1}, col(with_alpha(fill, 0.85)), 4)
+		}
+		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.85) if face.lit || hit.held || face.has_sound else t.text_dim), mc)
+	}
+	im.DrawList_PopClipRect(dl)
+
+	// Mute and Solo, bottom left and right.
+	if face.buttons && size.x >= 56 && size.y >= 48 {
+		bs := im.Vec2{min(size.x * 0.28, 22), min(size.y * 0.24, 18)}
+		at := [2]im.Vec2{{pos.x + 5, max_.y - bs.y - 5}, {max_.x - bs.x - 5, max_.y - bs.y - 5}}
+		for which in 0 ..< 2 {
+			im.SetCursorScreenPos(at[which])
+			pressed := im.InvisibleButton("##m" if which == 0 else "##s", bs)
+			if face.label != "" do name(strings.concatenate({face.label, " mute" if which == 0 else " solo"}, context.temp_allocator))
+			bh := im.IsItemHovered()
+			on := face.mute if which == 0 else face.solo
+			if pressed {
+				if which == 0 do hit.mute = true
+				else do hit.solo = true
+			}
+			c := rgb(0x3d9cf5) if which == 0 else t.warn
+			bg := c if on else (with_alpha(t.bg, 0.55) if bh else with_alpha(t.bg, 0.3))
+			im.DrawList_AddRectFilled(dl, at[which], {at[which].x + bs.x, at[which].y + bs.y}, col(bg), 3)
+			lc: cstring = "M" if which == 0 else "S"
+			ls := im.CalcTextSize(lc)
+			im.DrawList_AddText(dl, {math.round(at[which].x + (bs.x - ls.x) / 2), math.round(at[which].y + (bs.y - ls.y) / 2)}, col(t.bg if on else (t.text if bh else t.text_dim)), lc)
+			if bh do im.SetTooltip("%s", cstring("Mute" if which == 0 else "Solo"))
+		}
+		im.SetCursorScreenPos(pos)
+		im.Dummy(size)
 	}
 	return
 }

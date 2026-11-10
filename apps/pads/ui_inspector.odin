@@ -9,8 +9,6 @@ import pm "model"
 import im "deps:imgui"
 import "fire:sampler"
 
-// Pad colours to choose from.
-PAD_COLORS := [8]u32{0xff7a59, 0xffc14d, 0x5ad1a5, 0x58a6ff, 0x9b8cff, 0xff6fae, 0x7ad3ff, 0xb5c0cf}
 
 // The selected pad's settings.
 draw_inspector :: proc(user: rawptr) {
@@ -59,17 +57,15 @@ draw_inspector :: proc(user: rawptr) {
 		pm.set_pad(m, i, .Name, "Rename Pad", p)
 	}
 	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
-	for c, k in PAD_COLORS {
-		if k > 0 do im.SameLine(0, 6)
-		im.PushIDInt(i32(k))
-		col := ui.rgb(c)
-		if im.ColorButton("##c", transmute(im.Vec4)col, {.NoTooltip, .NoBorder}, {22, 22}) && pad.color != c {
-			p := pad
-			p.color = c
-			pm.set_pad(m, i, .Color, "Set Color", p)
-			app.seal(&m.history)
-		}
-		im.PopID()
+	// Its colour: click for the swatches and a picker.
+	if im.ColorButton("##color", transmute(im.Vec4)ui.rgb(pad.color), {.NoTooltip, .NoBorder}, {44, 22}) do im.OpenPopup("##colormenu")
+	ui.name("colour")
+	im.SameLine(0, 8)
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Colour")
+	if im.BeginPopup("##colormenu") {
+		pad_color_menu(a, i)
+		im.EndPopup()
 	}
 
 	section(a, "Playback", !wide)

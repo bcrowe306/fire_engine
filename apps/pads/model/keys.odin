@@ -81,12 +81,10 @@ degree_pitch :: proc "contextless" (k: Keys, degree: int) -> int {
 	return k.root + steps[d] + 12 * (oct + k.octave)
 }
 
-// The pitches pad `k` (0..15, bottom-left to top-right on a 4×4 grid: the
-// row of pads 13..16 lowest) plays in keyboard mode: one, or a chord.
+// The pitches pad `k` (0..15, numbered from the bottom left as the grid
+// is: pad 1 the lowest) plays in keyboard mode: one, or a chord.
 keyboard_pitches :: proc(k: Keys, pad: int, out: ^[4]int) -> []int {
-	// Pads are numbered from the top-left; notes rise from the bottom row.
-	row := 3 - pad / 4
-	degree := row * 4 + pad % 4
+	degree := pad
 	switch k.chord {
 	case .Off:
 		out[0] = degree_pitch(k, degree)
@@ -109,6 +107,5 @@ keyboard_pitches :: proc(k: Keys, pad: int, out: ^[4]int) -> []int {
 // Velocity mode: pad `k`'s velocity (the bottom-left softest, the top-right
 // loudest).
 velocity_of_pad :: proc "contextless" (pad: int) -> f32 {
-	row := 3 - pad / 4
-	return f32(row * 4 + pad % 4 + 1) / 16
+	return f32(pad + 1) / 16
 }

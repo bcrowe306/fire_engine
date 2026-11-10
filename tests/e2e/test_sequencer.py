@@ -26,22 +26,22 @@ def test_play_stop_and_the_metronome(app, fixtures):
 
 def test_notes_by_clicking_the_piano_roll(app, fixtures):
     loaded(app, fixtures)
-    app.click("seq", window="sequence", at=(0.5, 0.03))  # the top row (A1), mid-bar
+    app.click("seq", window="sequence", at=(0.5, 0.97))  # the bottom row (A1), mid-bar
     s = app.state()
     assert s["notes"] == 1 and s["undo"] == "Add Note"
-    app.click("seq", window="sequence", at=(0.75, 0.09))  # A2
+    app.click("seq", window="sequence", at=(0.75, 0.91))  # A2, the next row up
     assert app.state()["notes"] == 2
     app.key("cmd+z")
     assert app.state()["notes"] == 1
     app.key("cmd+shift+z")
     assert app.state()["notes"] == 2
-    app.click("seq", window="sequence", at=(0.5, 0.03), right=True)  # right-click deletes
+    app.click("seq", window="sequence", at=(0.5, 0.97), right=True)  # right-click deletes
     assert app.state()["notes"] == 1
 
 
 def test_length_double_and_clear(app, fixtures):
     loaded(app, fixtures)
-    app.click("seq", window="sequence", at=(0.3, 0.03))
+    app.click("seq", window="sequence", at=(0.3, 0.97))
     app.click("×2", window="sequence")
     s = app.state()
     assert s["bars"] == 2 and s["notes"] == 2
@@ -55,7 +55,7 @@ def test_recording_by_playing_the_pads(app, fixtures):
     s = app.state()
     assert s["recording"] and s["playing"]
     for _ in range(3):
-        app.key("1")
+        app.key("z")  # A1
         app.wait(15)
     app.key("cmd+r")
     app.key("space")
@@ -64,7 +64,7 @@ def test_recording_by_playing_the_pads(app, fixtures):
 
 def test_the_lanes(app, fixtures):
     loaded(app, fixtures)
-    app.click("seq", window="sequence", at=(0.5, 0.03))
+    app.click("seq", window="sequence", at=(0.5, 0.97))
     app.click("Chance", window="sequence")
     app.expect_item("lane", window="sequence")
     app.click("Automation", window="sequence")

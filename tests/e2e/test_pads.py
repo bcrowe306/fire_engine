@@ -13,20 +13,44 @@ def test_pads_play_and_select_by_mouse_and_keys(app, fixtures):
     load(app, fixtures, 1, "hat.wav")
     app.click("pad A2", window="detail")
     assert app.state()["selected"] == 1
-    app.key("1")  # the A1 key
+    app.key("z")  # the A1 key: the bottom row (Z X C V) is pads 1-4
     assert app.state()["selected"] == 0
-    app.key("q")  # A5
+    app.key("a")  # A5, the next row up
     assert app.state()["selected"] == 4
+    app.key("1")  # A13, the top row
+    assert app.state()["selected"] == 12
 
 
 def test_banks(app):
     app.click("B", window="detail")
     assert app.state()["bank"] == 1
     app.expect_item("pad B1", window="detail")
+    app.click("H", window="detail")
+    assert app.state()["bank"] == 7
+    app.expect_item("pad H16", window="detail")
     app.click("A", window="detail")
     assert app.state()["bank"] == 0
-    app.key("cmd+3")
-    assert app.state()["bank"] == 2
+    app.key("cmd+8")
+    assert app.state()["bank"] == 7
+
+
+def test_the_pad_face_mutes_solos_and_colours(app, fixtures):
+    load(app, fixtures, 0, "kick.wav")
+    load(app, fixtures, 1, "hat.wav")
+    app.click("pad A1 mute", window="detail")
+    assert app.pad(0)["mute"] and app.state()["selected"] == 0 or app.pad(0)["mute"]
+    app.click("pad A2 solo", window="detail")
+    assert app.pad(1)["solo"]
+    app.panel("Mixer")
+    app.click("A1 mute", window="mixer")  # the same switch as the strip's
+    assert not app.pad(0)["mute"]
+    # A colour from the right-click menu: on the pad, its strip and its row.
+    app.click("pad A2", window="detail", right=True)
+    app.click("colour 1")
+    app.key("esc")
+    assert app.state()["undo"] == "Set Color"
+    app.key("cmd+z")
+    assert app.state()["undo"] != "Set Color"
 
 
 def test_the_pad_tab_edits_and_undoes(app, fixtures):

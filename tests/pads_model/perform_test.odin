@@ -74,18 +74,18 @@ keyboard_hits_play_the_pad_pitched :: proc(t: ^testing.T) {
 	// Scales: the bottom-left pad is the root; major degrees; a triad.
 	k := pm.Keys{scale = .Major}
 	pitches: [4]int
-	testing.expect_value(t, pm.keyboard_pitches(k, 12, &pitches)[0], 0)
-	testing.expect_value(t, pm.keyboard_pitches(k, 13, &pitches)[0], 2)
-	testing.expect_value(t, pm.keyboard_pitches(k, 8, &pitches)[0], 7) // second row from the bottom: degree 4
+	testing.expect_value(t, pm.keyboard_pitches(k, 0, &pitches)[0], 0) // pad 1, bottom left
+	testing.expect_value(t, pm.keyboard_pitches(k, 1, &pitches)[0], 2)
+	testing.expect_value(t, pm.keyboard_pitches(k, 4, &pitches)[0], 7) // second row from the bottom: degree 4
 	testing.expect_value(t, pm.degree_pitch(k, 7), 12)
 	k.chord = .Triad
-	triad := pm.keyboard_pitches(k, 12, &pitches)
+	triad := pm.keyboard_pitches(k, 0, &pitches)
 	testing.expect(t, len(triad) == 3 && triad[1] == 4 && triad[2] == 7, "C major")
 	k.root, k.scale = 9, .Minor // A minor
-	triad = pm.keyboard_pitches(k, 12, &pitches)
+	triad = pm.keyboard_pitches(k, 0, &pitches)
 	testing.expect(t, triad[0] == 9 && triad[1] == 12 && triad[2] == 16, "A minor")
-	testing.expect_value(t, pm.velocity_of_pad(12), 1.0 / 16)
-	testing.expect_value(t, pm.velocity_of_pad(3), 1)
+	testing.expect_value(t, pm.velocity_of_pad(0), 1.0 / 16) // pad 1, bottom left: softest
+	testing.expect_value(t, pm.velocity_of_pad(15), 1)       // pad 16, top right
 }
 
 @(test)
@@ -95,22 +95,22 @@ midi_in_plays_pads_and_learns :: proc(t: ^testing.T) {
 	m := &r.m
 	c: pm.Capture
 	defer pm.capture_destroy(&c)
-	app.host_midi_inject(&r.host, {0x90, 36, 100}) // key 36: A1
+	app.host_midi_inject(&r.host, {0x90, 0, 100}) // key 0: A1 (note N plays pad N)
 	out := render(r, 4800)
-	testing.expect(t, kit.peak(out[0][:]) > 0.1, "key 36 plays A1")
+	testing.expect(t, kit.peak(out[0][:]) > 0.1, "key 0 plays A1")
 	pm.capture_poll(m, &c)
-	testing.expect_value(t, c.midi_key, 36)
-	app.host_midi_inject(&r.host, {0x80, 36, 0})
+	testing.expect_value(t, c.midi_key, 0)
+	app.host_midi_inject(&r.host, {0x80, 0, 0})
 	render(r, 9600)
-	// Learn key 50 for pad 1 (an octave up): it plays it, undoably.
+	// Learn key 50 for pad 1: it plays it, undoably.
 	pm.learn_midi(m, 50, 1)
-	testing.expect_value(t, pm.midi_key_of(m, 1), 37) // its own key comes first
+	testing.expect_value(t, pm.midi_key_of(m, 1), 1) // its own key comes first
 	pm.sync(&m.engine)
 	app.host_midi_inject(&r.host, {0x90, 50, 100})
 	out = render(r, 3000)
 	testing.expectf(t, kit.tone_amplitude(out[0][:], SR, 880) > kit.tone_amplitude(out[0][:], SR, 440), "key 50 plays pad 1")
 	app.undo(&m.history)
-	testing.expect_value(t, m.project.midi_map[50], 50 - 36)
+	testing.expect_value(t, m.project.midi_map[50], 50) // pad 50's again
 	// MIDI out: pad 0's hits go out as MIDI.
 	pad := m.project.pads[0]
 	pad.midi_out = {on = true, channel = 9, key = 42}
@@ -171,10 +171,13 @@ a_midi_file_becomes_a_sequence :: proc(t: ^testing.T) {
 	defer clip.midi_clip_release(c)
 	path, _ := filepath.join({r.dir, "beat.mid"}, context.temp_allocator)
 	testing.expect_value(t, clip.midi_file_write(path, {{name = "drums", clip = c}}), clip.File_Error.None)
-	testing.expect_value(t, pm.import_midi(m, path, 3), 2)
+	testing.expect_value(t, pm.import_midi(m, path, 3), 2) // as General MIDI drums
 	s := m.project.sequences[3]
 	testing.expect_value(t, s.bars, 2)
 	testing.expect(t, s.notes[0].pad == 0 && s.notes[1].pad == 2 && s.notes[1].start == 1, "on their pads")
+	// By the MIDI map: key N is pad N (all three keys have a pad).
+	testing.expect_value(t, pm.import_midi(m, path, 5, .By_Map), 3)
+	testing.expect(t, m.project.sequences[5].notes[0].pad == 36, "key 36: pad 36 (C5)")
 	// On one pad, pitched.
 	testing.expect_value(t, pm.import_midi(m, path, 4, .On_Pad, 5), 3)
 	n := m.project.sequences[4].notes[0]

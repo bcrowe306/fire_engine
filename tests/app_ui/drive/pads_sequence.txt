@@ -44,10 +44,10 @@ expect playing 1
 key space                 # stop
 wait 4
 expect playing 0
-# Record: Cmd+R arms and plays; the 1 key plays (and records) pad A1.
+# Record: Cmd+R arms and plays; the Z key plays (and records) pad A1.
 key cmd+r
 wait 20
-key 1
+key z
 wait 10
 key cmd+r
 wait 4

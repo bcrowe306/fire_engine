@@ -16,7 +16,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 2 // 2: pads' sends
+PROJECT_VERSION :: 3 // 2: pads' sends; 3: 128 pads (the count is written)
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -145,7 +145,8 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_int(w, p.slot)
 	fc.write_bool(w, p.song_mode)
 	fc.write_u8(w, u8(p.switch_at))
-	// Pads.
+	// Pads: how many, then each.
+	fc.write_int(w, PADS)
 	for &pad in p.pads {
 		fc.write_string(w, pad_name(&pad))
 		fc.write_u32(w, pad.color)
@@ -280,7 +281,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	p.slot = clamp(fc.read_int(r), 0, SLOTS - 1)
 	p.song_mode = fc.read_bool(r)
 	p.switch_at = Switch_At(min(fc.read_u8(r), u8(max(Switch_At))))
-	for &pad in p.pads {
+	// Pads: 64 before version 3, then as many as were written.
+	count := 64 if version < 3 else clamp(fc.read_int(r), 0, PADS)
+	for &pad in p.pads[count:] do pad = default_pad()
+	for &pad in p.pads[:count] {
 		pad = default_pad()
 		set_pad_name(&pad, fc.read_string(r))
 		pad.color = fc.read_u32(r)

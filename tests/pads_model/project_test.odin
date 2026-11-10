@@ -24,6 +24,13 @@ busy_project :: proc(r: ^Rig) {
 	pad.volume, pad.pan, pad.mode, pad.choke, pad.bus = -6, 0.25, .Gate, 2, 1
 	pad.sends[2] = {level = 0.5, pre = true}
 	pm.set_pad(m, 1, .Whole, "Edit", pad)
+	// A pad past the first 64 (banks E–H, project file v3), with its own colour.
+	pm.load_onto_pad(m, 100, tone(r, "high.wav", 1320, 0.08, decay = true))
+	hp := m.project.pads[100]
+	hp.color = 0xc77dff
+	pm.set_pad(m, 100, .Color, "Colour", hp)
+	pad = m.project.pads[1]
+	pm.set_pad(m, 1, .Whole, "Edit", pad)
 	pm.add_note(m, 0, {start = 0, length = 0.25, pad = 0, velocity = 0.9})
 	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 1, velocity = 0.5, pitch = 7, probability = 0.5})
 	pm.add_point(m, 0, {pad = 0, param = .Volume, beat = 0, value = -12})
@@ -67,10 +74,11 @@ a_project_saves_and_loads_whole :: proc(t: ^testing.T) {
 	log.infof("project: save %.2f ms, load %.2f ms", saved, time.duration_milliseconds(time.tick_since(t0)))
 	p := &r2.m.project
 	testing.expect_value(t, p.bpm, 97)
-	testing.expect_value(t, app.store_len(&p.samples), 2)
+	testing.expect_value(t, app.store_len(&p.samples), 3)
 	testing.expect_value(t, pm.pad_name(&p.pads[0]), "kick")
 	testing.expect(t, p.pads[1] == before.pads[1], "pad 1 the same")
 	testing.expect(t, p.pads[0] == before.pads[0], "pad 0 the same (with its insert)")
+	testing.expect(t, p.pads[100] == before.pads[100] && p.pads[100].color == 0xc77dff, "pad 100 (G5) the same")
 	s := p.sequences[0]
 	testing.expect(t, len(s.notes) == 2 && s.notes[1].pitch == 7 && s.notes[1].probability == 0.5 && s.swing == 0.3 && s.swing_grid == .Eighth, "the sequence")
 	testing.expect_value(t, len(s.points), 1)
@@ -133,8 +141,8 @@ exports_mixdown_stems_and_to_a_pad :: proc(t: ^testing.T) {
 	// Stems: a file per pad with a sound.
 	stems, _ := filepath.join({dir, "stems"}, context.temp_allocator)
 	files = pm.export_all(m, {source = .Song, stems = .Pads, encoding = .Float32}, stems, &x)
-	testing.expect_value(t, len(files), 2)
-	if len(files) == 2 {
+	testing.expect_value(t, len(files), 3) // pads 0, 1 and 100
+	if len(files) == 3 {
 		k, _ := pm.read_audio(files[0]) // pad 0 only: 440 Hz
 		testing.expect(t, kit.tone_amplitude(k.channels[0][:4800], 48_000, 880) < 0.01, "pad 0's stem has no hat")
 	}
