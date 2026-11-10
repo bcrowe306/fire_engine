@@ -1,6 +1,7 @@
 package test_pads_model
 
 import "core:log"
+import "core:os"
 import "core:path/filepath"
 import "core:time"
 import "core:testing"
@@ -170,7 +171,13 @@ a_midi_file_becomes_a_sequence :: proc(t: ^testing.T) {
 	clip.midi_builder_destroy(&b)
 	defer clip.midi_clip_release(c)
 	path, _ := filepath.join({r.dir, "beat.mid"}, context.temp_allocator)
-	testing.expect_value(t, clip.midi_file_write(path, {{name = "drums", clip = c}}), clip.File_Error.None)
+	if werr := clip.midi_file_write(path, {{name = "drums", clip = c}}); werr != .None {
+		// Seen now and then on the Linux machine: say why the system refused.
+		probe := os.write_entire_file(path, []u8{0})
+		log.errorf("writing %s failed (%v); a plain write: %v; the folder exists: %v", path, werr, probe, os.is_dir(r.dir))
+		testing.fail(t)
+		return
+	}
 	testing.expect_value(t, pm.import_midi(m, path, 3), 2) // as General MIDI drums
 	s := m.project.sequences[3]
 	testing.expect_value(t, s.bars, 2)

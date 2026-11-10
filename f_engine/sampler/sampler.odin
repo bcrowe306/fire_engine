@@ -8,6 +8,15 @@ give it to a sampler node, which plays the notes it receives with a
 band-limited resampler per voice, an amp envelope, and per-note tuning,
 volume and pan. Zones that match a note together all play (layers).
 
+Each voice also has a filter (lowpass, highpass, bandpass or notch, 12 or
+24 dB, with resonance, key and velocity tracking and its own envelope), a
+pitch envelope, velocity to pitch and key tracking, and two LFOs (sine,
+triangle, saws, square, sample & hold; free, retriggered or synced to the
+beat) that reach volume, pan, pitch, cutoff and resonance through a table
+of modulation routes. All of it is parameters (see modulation.odin);
+`sampler_live` tells a UI what the newest voice is doing, and
+`voice_filter_design` gives the filter it would draw.
+
 	zones := []sampler.Sample_Zone{
 		{source = piano_c3, root_key = 48, key_hi = 54},
 		{source = piano_f3, root_key = 53, key_lo = 55, key_hi = 127},
@@ -170,6 +179,31 @@ sampler_params := [?]core.Param_Info {
 	{id = SAMPLER_PARAM_VELOCITY, name = "Velocity", unit = .Percent, min = 0, max = 100, default = 80, flags = {.Automatable}},
 	{id = SAMPLER_PARAM_GAIN_DB, name = "Gain", unit = .Decibels, min = -60, max = 12, default = 0, smoothing = .Linear, smoothing_ms = 20, flags = {.Automatable}},
 	{id = SAMPLER_PARAM_TRANSPOSE, name = "Transpose", unit = .Semitones, min = -48, max = 48, default = 0, flags = {.Automatable, .Stepped}},
+	// The voice's filter, pitch, LFOs and routes (modulation.odin).
+	{id = SAMPLER_PARAM_FILTER_TYPE, name = "Filter Type", min = 0, max = f64(max(Voice_Filter)), default = 0, flags = {.Stepped}},
+	{id = SAMPLER_PARAM_FILTER_SLOPE, name = "Filter Slope", min = 0, max = 1, default = 0, flags = {.Stepped}},
+	{id = SAMPLER_PARAM_FILTER_CUTOFF, name = "Cutoff", unit = .Hertz, min = 20, max = 20_000, default = 20_000, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_RESONANCE, name = "Resonance", unit = .Percent, min = 0, max = 100, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_KEYTRACK, name = "Filter Key Tracking", unit = .Percent, min = 0, max = 100, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_VELOCITY, name = "Filter Velocity", unit = .Percent, min = -100, max = 100, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_ENV, name = "Filter Envelope", unit = .Percent, min = -100, max = 100, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_ATTACK, name = "Filter Attack", min = 0.0005, max = 10, default = 0.001, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_DECAY, name = "Filter Decay", min = 0.005, max = 10, default = 0.5, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_SUSTAIN, name = "Filter Sustain", unit = .Percent, min = 0, max = 100, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FILTER_RELEASE, name = "Filter Release", min = 0.005, max = 20, default = 0.2, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_ENV, name = "Pitch Envelope", unit = .Semitones, min = -48, max = 48, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_ATTACK, name = "Pitch Attack", min = 0.0005, max = 10, default = 0.001, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_DECAY, name = "Pitch Decay", min = 0.005, max = 10, default = 0.3, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_SUSTAIN, name = "Pitch Sustain", unit = .Percent, min = 0, max = 100, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_RELEASE, name = "Pitch Release", min = 0.005, max = 20, default = 0.2, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_VELOCITY, name = "Pitch Velocity", unit = .Semitones, min = -24, max = 24, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_PITCH_KEYTRACK, name = "Pitch Key Tracking", unit = .Percent, min = 0, max = 100, default = 100, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_FINE_TUNE, name = "Fine Tune", min = -100, max = 100, default = 0, flags = {.Automatable}},
+	LFO_PARAM_INFOS[0], LFO_PARAM_INFOS[1], LFO_PARAM_INFOS[2], LFO_PARAM_INFOS[3], LFO_PARAM_INFOS[4], LFO_PARAM_INFOS[5],
+	LFO_PARAM_INFOS[6], LFO_PARAM_INFOS[7], LFO_PARAM_INFOS[8], LFO_PARAM_INFOS[9], LFO_PARAM_INFOS[10], LFO_PARAM_INFOS[11],
+	ROUTE_PARAM_INFOS[0], ROUTE_PARAM_INFOS[1], ROUTE_PARAM_INFOS[2], ROUTE_PARAM_INFOS[3], ROUTE_PARAM_INFOS[4], ROUTE_PARAM_INFOS[5],
+	ROUTE_PARAM_INFOS[6], ROUTE_PARAM_INFOS[7], ROUTE_PARAM_INFOS[8], ROUTE_PARAM_INFOS[9], ROUTE_PARAM_INFOS[10], ROUTE_PARAM_INFOS[11],
+	ROUTE_PARAM_INFOS[12], ROUTE_PARAM_INFOS[13], ROUTE_PARAM_INFOS[14], ROUTE_PARAM_INFOS[15], ROUTE_PARAM_INFOS[16], ROUTE_PARAM_INFOS[17],
 }
 
 // The fastest a voice plays its sample (two octaves up at equal rates).
@@ -194,6 +228,9 @@ Sampler :: struct {
 	clock:       u64,
 	allocator:   mem.Allocator,
 	playhead:    i64, // atomic: the sample frame the newest sounding voice reads (-1: none)
+	lfo_auto:    [LFOS]f64, // the free-running LFOs' phases (cycles)
+	live:        Sampler_Live, // published under `live_seq`
+	live_seq:    u64,
 }
 
 @(private)
@@ -216,7 +253,18 @@ Sampler_Voice :: struct {
 	pan:        f64,
 	held:       bool, // the note is down (a released one stops looping)
 	tail:       int,  // frames fed after the sample's end; the voice ends once the resampler has drained
+	note_velocity: f64, // 0..1, as played
+	fenv, penv: dsp.Adsr, // the filter's and the pitch's envelopes
+	filt:       [2][2]dsp.Svf_State, // the filter: two stages, two channels
+	lfo_phase:  [LFOS]f64, // Trigger LFOs' phases (cycles)
+	age:        int, // frames since its note-on (its modulation is evaluated on this grid)
+	mod:        Voice_Mod, // its modulation for the chunk it is in
+	ended:      int, // its age when its sample ended (-1: still playing)
 }
+
+// Frames a filtered voice rings on after its sample ends.
+@(private)
+FILTER_TAIL :: 4096
 
 @(private)
 sampler_vtable := core.Node_VTable {
@@ -408,7 +456,7 @@ note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
 		v^ = {
 			on = true, map_ = m, zone = &z, id = ev.id, channel = ev.channel, key = ev.key, started = s.clock,
 			velocity = (1 - sens + sens * f64(ev.velocity)) * math.pow(10, z.gain_db / 20),
-			pos = z.start, phase = f64(z.start), mono = v.mono, stereo = v.stereo, volume = 1, pan = 0.5 + 0.5 * z.pan, held = true,
+			pos = z.start, phase = f64(z.start), mono = v.mono, stereo = v.stereo, volume = 1, pan = 0.5 + 0.5 * z.pan, held = true, ended = -1,
 		}
 		if s.settings.quality != .Cubic {
 			dsp.resampler_reset(&v.mono)
@@ -416,6 +464,8 @@ note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
 		}
 		dsp.adsr_set(&v.amp, s.params[SAMPLER_PARAM_ATTACK - 1], s.params[SAMPLER_PARAM_DECAY - 1], s.params[SAMPLER_PARAM_SUSTAIN - 1] * 0.01, s.params[SAMPLER_PARAM_RELEASE - 1], s.sample_rate)
 		dsp.adsr_gate(&v.amp, true)
+		v.note_velocity = f64(ev.velocity)
+		mod_note_on(s, v)
 	}
 }
 
@@ -440,7 +490,10 @@ pick_voice :: proc "contextless" (s: ^Sampler) -> int {
 @(private)
 note_off :: proc "contextless" (v: ^Sampler_Voice) {
 	v.held = false
-	if !v.zone.one_shot do dsp.adsr_gate(&v.amp, false)
+	if !v.zone.one_shot {
+		dsp.adsr_gate(&v.amp, false)
+		mod_note_off(v)
+	}
 }
 
 // [rt] Fades a voice out over CHOKE_SECONDS, one-shot or not.
@@ -462,32 +515,60 @@ sampler_render :: proc(s: ^Sampler, ctx: ^core.Process_Context, from, to: int) {
 	outs := len(ctx.outputs)
 	for c in 0 ..< outs do for i in from ..< to do ctx.outputs[c][i] = 0
 	gain0 := s.gain
+	newest: ^Sampler_Voice
+	newest_mod: Voice_Mod
 	for &v in s.voices {
 		if !v.on do continue
 		s.gain = gain0 // every voice sees the same gain ramp
-		render_voice(s, &v, n)
-		l, r := math.cos(v.pan * math.PI / 2), math.sin(v.pan * math.PI / 2)
-		for i in 0 ..< n {
-			k := dsp.adsr_next(&v.amp) * v.velocity * v.volume * dsp.db_to_gain(dsp.smoothed_next(&s.gain))
-			if outs == 1 {
-				ctx.outputs[0][from + i] += f32(k * 0.5 * (f64(s.mixed[0][i]) + f64(s.mixed[1][i])))
-			} else if outs >= 2 {
-				ctx.outputs[0][from + i] += f32(k * l * math.SQRT_TWO * f64(s.mixed[0][i]))
-				ctx.outputs[1][from + i] += f32(k * r * math.SQRT_TWO * f64(s.mixed[1][i]))
+		// In chunks on the voice's own grid of MOD_CHUNK frames: its
+		// modulation, then its frames at that pitch, filtered, then mixed.
+		done := 0
+		for done < n {
+			c := min(n - done, MOD_CHUNK - v.age % MOD_CHUNK)
+			if v.age % MOD_CHUNK == 0 {
+				// Done? Checked on the voice's own grid, whatever the blocks.
+				// Its sample over, a filtered voice rings on a little.
+				if v.tail > 512 && v.ended < 0 do v.ended = v.age
+				if v.amp.stage == .Idle || (v.ended >= 0 && (!v.mod.filter || v.age - v.ended >= FILTER_TAIL)) {
+					v.on = false
+					break
+				}
+				v.mod = voice_mod(s, &v, from + done, ctx.transport)
 			}
+			m := &v.mod
+			render_voice(s, &v, done, c, m.semis)
+			if m.filter do voice_filter(s, &v, m, done, c)
+			pan := clamp(v.pan + m.pan, 0, 1)
+			l, r := math.cos(pan * math.PI / 2), math.sin(pan * math.PI / 2)
+			for i in done ..< done + c {
+				dsp.adsr_next(&v.fenv)
+				dsp.adsr_next(&v.penv)
+				k := dsp.adsr_next(&v.amp) * v.velocity * v.volume * m.volume * dsp.db_to_gain(dsp.smoothed_next(&s.gain))
+				if outs == 1 {
+					ctx.outputs[0][from + i] += f32(k * 0.5 * (f64(s.mixed[0][i]) + f64(s.mixed[1][i])))
+				} else if outs >= 2 {
+					ctx.outputs[0][from + i] += f32(k * l * math.SQRT_TWO * f64(s.mixed[0][i]))
+					ctx.outputs[1][from + i] += f32(k * r * math.SQRT_TWO * f64(s.mixed[1][i]))
+				}
+			}
+			v.age += c
+			done += c
 		}
-		if v.amp.stage == .Idle || v.tail > 512 do v.on = false
+		if v.on && (newest == nil || v.started > newest.started) do newest, newest_mod = &v, v.mod
 	}
-	if !has_voices(s) do for _ in 0 ..< n do dsp.smoothed_next(&s.gain)
+	// The gain ramp moves on by the render, however far each voice got.
+	s.gain = gain0
+	for _ in 0 ..< n do dsp.smoothed_next(&s.gain)
 	// The playhead: where the newest voice still sounding reads.
 	head: i64 = -1
-	newest: u64 = 0
-	for &v in s.voices do if v.on && v.started >= newest {
-		newest = v.started
+	latest: u64 = 0
+	for &v in s.voices do if v.on && v.started >= latest {
+		latest = v.started
 		k := i64(v.phase) if s.settings.quality == .Cubic else v.pos
 		head = playing_frame(v.zone, k)
 	}
 	intrinsics.atomic_store(&s.playhead, head)
+	mod_render_end(s, n, newest if newest != nil && newest.on else nil, newest_mod, ctx.transport)
 }
 
 // [rt] The sample frame a voice that has played `k` frames reads (its loop
@@ -520,24 +601,20 @@ sampler_playhead :: proc "contextless" (s: ^Sampler) -> (frame: i64, playing: bo
 	return f, f >= 0
 }
 
-@(private)
-has_voices :: proc "contextless" (s: ^Sampler) -> bool {
-	for v in s.voices do if v.on do return true
-	return false
-}
 
 // [rt] Renders `n` frames of a voice into `s.mixed` (left, right), at its pitch.
 @(private)
-render_voice :: proc(s: ^Sampler, v: ^Sampler_Voice, n: int) {
+render_voice :: proc(s: ^Sampler, v: ^Sampler_Voice, at, n: int, extra_semis: f64) {
 	z := v.zone
 	frames := stream.source_frames(z.source)
 	info := stream.source_info(z.source)
-	semis := f64(v.key) - f64(z.root_key) + z.tune_cents / 100 + v.tuning + s.params[SAMPLER_PARAM_TRANSPOSE - 1]
+	track := param(s, SAMPLER_PARAM_PITCH_KEYTRACK) * 0.01
+	semis := (f64(v.key) - f64(z.root_key)) * track + z.tune_cents / 100 + v.tuning + s.params[SAMPLER_PARAM_TRANSPOSE - 1] + extra_semis
 	speed := min(math.pow(2, semis / 12) * info.sample_rate / s.sample_rate, MAX_SPEED)
 	if s.settings.quality == .Cubic {
-		render_cubic(s, v, frames, n, speed)
+		render_cubic(s, v, frames, at, n, speed)
 	} else {
-		render_sinc(s, v, frames, n, speed)
+		render_sinc(s, v, frames, at, n, speed)
 	}
 }
 
@@ -591,14 +668,14 @@ read_frame :: #force_inline proc "contextless" (z: ^Sample_Zone, data: []f32, id
 
 // [rt] 4-point Hermite interpolation straight from the sample.
 @(private)
-render_cubic :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, n: int, speed: f64) #no_bounds_check {
+render_cubic :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, at, n: int, speed: f64) #no_bounds_check {
 	z := v.zone
 	if frames == nil {
-		for c in 0 ..< 2 do for i in 0 ..< n do s.mixed[c][i] = 0
+		for c in 0 ..< 2 do for i in at ..< at + n do s.mixed[c][i] = 0
 		return
 	}
 	stereo := len(frames) > 1
-	for i in 0 ..< n {
+	for i in at ..< at + n {
 		k := i64(math.floor(v.phase))
 		t := f32(v.phase - f64(k))
 		for c in 0 ..< (2 if stereo else 1) {
@@ -618,7 +695,7 @@ render_cubic :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, n: int, sp
 // [rt] Band-limited: gathers the frames the resampler needs (looping, and
 // silence past the end), then resamples, with one channel for mono samples.
 @(private)
-render_sinc :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, n: int, speed: f64) #no_bounds_check {
+render_sinc :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, at, n: int, speed: f64) #no_bounds_check {
 	z := v.zone
 	channels := 1 if frames != nil && len(frames) == 1 else 2
 	r := &v.mono if channels == 1 else &v.stereo
@@ -629,7 +706,7 @@ render_sinc :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, n: int, spe
 		v.pos += 1 // never wraps: frame_at maps loops (which play through the release too)
 	}
 	in_ := [2][]f32{s.scratch[0][:need], s.scratch[1][:need]}
-	out := [2][]f32{s.mixed[0][:n], s.mixed[1][:n]}
+	out := [2][]f32{s.mixed[0][at:][:n], s.mixed[1][at:][:n]}
 	_, produced := dsp.resampler_process(r, in_[:channels], out[:channels], speed)
 	for c in 0 ..< channels do for i in produced ..< n do out[c][i] = 0
 	if channels == 1 do copy(out[1], out[0])

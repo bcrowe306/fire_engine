@@ -18,6 +18,15 @@ give it to a sampler node, which plays the notes it receives with a
 band-limited resampler per voice, an amp envelope, and per-note tuning,
 volume and pan. Zones that match a note together all play (layers).
 
+Each voice also has a filter (lowpass, highpass, bandpass or notch, 12 or
+24 dB, with resonance, key and velocity tracking and its own envelope), a
+pitch envelope, velocity to pitch and key tracking, and two LFOs (sine,
+triangle, saws, square, sample & hold; free, retriggered or synced to the
+beat) that reach volume, pan, pitch, cutoff and resonance through a table
+of modulation routes. All of it is parameters (see modulation.odin);
+`sampler_live` tells a UI what the newest voice is doing, and
+`voice_filter_design` gives the filter it would draw.
+
 ```odin
 zones := []sampler.Sample_Zone{
 	{source = piano_c3, root_key = 48, key_hi = 54},
@@ -36,6 +45,274 @@ streamer's `ram_bytes` (16 MB decoded by default) into memory; larger
 ones play silent here.
 
 ## Constants
+
+### MOD_CHUNK
+
+```odin
+MOD_CHUNK :: 32
+```
+
+Frames between a voice's modulation updates (its filter's coefficients,
+its speed, its pan).
+
+### LFOS
+
+```odin
+LFOS :: 2
+```
+
+LFOs, and modulation routes (a table: each route a source, a destination
+and an amount; today's sources are the LFOs).
+
+### MOD_ROUTES
+
+```odin
+MOD_ROUTES :: 6
+```
+
+Modulation routes.
+
+### SAMPLER_PARAM_FILTER_TYPE
+
+```odin
+SAMPLER_PARAM_FILTER_TYPE : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of the voice filter's type (a `Voice_Filter`; default Off).
+
+### SAMPLER_PARAM_FILTER_SLOPE
+
+```odin
+SAMPLER_PARAM_FILTER_SLOPE : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of its slope: 0 = 12 dB/octave, 1 = 24.
+
+### SAMPLER_PARAM_FILTER_CUTOFF
+
+```odin
+SAMPLER_PARAM_FILTER_CUTOFF : core.Param_Id : core.Param_Id(10)
+```
+
+Parameter id of its cutoff, in Hz (20..20000, default 20000).
+
+### SAMPLER_PARAM_FILTER_RESONANCE
+
+```odin
+SAMPLER_PARAM_FILTER_RESONANCE : core.Param_Id : core.Param_Id(11)
+```
+
+Parameter id of its resonance, in percent (0..100).
+
+### SAMPLER_PARAM_FILTER_KEYTRACK
+
+```odin
+SAMPLER_PARAM_FILTER_KEYTRACK : core.Param_Id : core.Param_Id(12)
+```
+
+Parameter id of its key tracking, in percent: 100 = the cutoff follows the key (from C3).
+
+### SAMPLER_PARAM_FILTER_VELOCITY
+
+```odin
+SAMPLER_PARAM_FILTER_VELOCITY : core.Param_Id : core.Param_Id(13)
+```
+
+Parameter id of velocity's hold on the cutoff, in percent (±100: softer notes up to 4 octaves darker, or brighter).
+
+### SAMPLER_PARAM_FILTER_ENV
+
+```odin
+SAMPLER_PARAM_FILTER_ENV : core.Param_Id : core.Param_Id(14)
+```
+
+Parameter id of the filter envelope's amount, in percent (±100 = ±6 octaves).
+
+### SAMPLER_PARAM_FILTER_ATTACK
+
+```odin
+SAMPLER_PARAM_FILTER_ATTACK : core.Param_Id : core.Param_Id(15)
+```
+
+Parameter id of the filter envelope's attack, in seconds.
+
+### SAMPLER_PARAM_FILTER_DECAY
+
+```odin
+SAMPLER_PARAM_FILTER_DECAY : core.Param_Id : core.Param_Id(16)
+```
+
+Parameter id of the filter envelope's decay, in seconds.
+
+### SAMPLER_PARAM_FILTER_SUSTAIN
+
+```odin
+SAMPLER_PARAM_FILTER_SUSTAIN : core.Param_Id : core.Param_Id(17)
+```
+
+Parameter id of the filter envelope's sustain, in percent.
+
+### SAMPLER_PARAM_FILTER_RELEASE
+
+```odin
+SAMPLER_PARAM_FILTER_RELEASE : core.Param_Id : core.Param_Id(18)
+```
+
+Parameter id of the filter envelope's release, in seconds.
+
+### SAMPLER_PARAM_PITCH_ENV
+
+```odin
+SAMPLER_PARAM_PITCH_ENV : core.Param_Id : core.Param_Id(19)
+```
+
+Parameter id of the pitch envelope's amount, in semitones (±48).
+
+### SAMPLER_PARAM_PITCH_ATTACK
+
+```odin
+SAMPLER_PARAM_PITCH_ATTACK : core.Param_Id : core.Param_Id(20)
+```
+
+Parameter id of the pitch envelope's attack, in seconds.
+
+### SAMPLER_PARAM_PITCH_DECAY
+
+```odin
+SAMPLER_PARAM_PITCH_DECAY : core.Param_Id : core.Param_Id(21)
+```
+
+Parameter id of the pitch envelope's decay, in seconds.
+
+### SAMPLER_PARAM_PITCH_SUSTAIN
+
+```odin
+SAMPLER_PARAM_PITCH_SUSTAIN : core.Param_Id : core.Param_Id(22)
+```
+
+Parameter id of the pitch envelope's sustain, in percent.
+
+### SAMPLER_PARAM_PITCH_RELEASE
+
+```odin
+SAMPLER_PARAM_PITCH_RELEASE : core.Param_Id : core.Param_Id(23)
+```
+
+Parameter id of the pitch envelope's release, in seconds.
+
+### SAMPLER_PARAM_PITCH_VELOCITY
+
+```odin
+SAMPLER_PARAM_PITCH_VELOCITY : core.Param_Id : core.Param_Id(24)
+```
+
+Parameter id of velocity's hold on pitch, in semitones at full velocity (±24).
+
+### SAMPLER_PARAM_PITCH_KEYTRACK
+
+```odin
+SAMPLER_PARAM_PITCH_KEYTRACK : core.Param_Id : core.Param_Id(25)
+```
+
+Parameter id of key tracking, in percent: 100 = each key a semitone, 0 = every key the root.
+
+### SAMPLER_PARAM_FINE_TUNE
+
+```odin
+SAMPLER_PARAM_FINE_TUNE : core.Param_Id : core.Param_Id(26)
+```
+
+Parameter id of fine tuning, in cents (±100).
+
+### SAMPLER_PARAM_LFO_SHAPE
+
+```odin
+SAMPLER_PARAM_LFO_SHAPE : core.Param_Id : core.Param_Id(27)
+```
+
+Parameter id of LFO 1's shape (an `Lfo_Shape`); LFO `k`'s parameters are
+`sampler_lfo_param(k, ...)`.
+
+### SAMPLER_PARAM_LFO_MODE
+
+```odin
+SAMPLER_PARAM_LFO_MODE : core.Param_Id : core.Param_Id(28)
+```
+
+Parameter id of LFO 1's mode (an `Lfo_Mode`).
+
+### SAMPLER_PARAM_LFO_RATE
+
+```odin
+SAMPLER_PARAM_LFO_RATE : core.Param_Id : core.Param_Id(29)
+```
+
+Parameter id of LFO 1's rate, in Hz (Auto and Trigger).
+
+### SAMPLER_PARAM_LFO_SYNC_RATE
+
+```odin
+SAMPLER_PARAM_LFO_SYNC_RATE : core.Param_Id : core.Param_Id(30)
+```
+
+Parameter id of LFO 1's synced rate (Sync): an index into `LFO_SYNC_BEATS`.
+
+### SAMPLER_PARAM_LFO_FADE
+
+```odin
+SAMPLER_PARAM_LFO_FADE : core.Param_Id : core.Param_Id(31)
+```
+
+Parameter id of LFO 1's fade-in from each note's start, in seconds.
+
+### SAMPLER_PARAM_LFO_PHASE
+
+```odin
+SAMPLER_PARAM_LFO_PHASE : core.Param_Id : core.Param_Id(32)
+```
+
+Parameter id of LFO 1's start phase, in degrees (Trigger).
+
+### LFO_PARAMS
+
+```odin
+LFO_PARAMS :: 6
+```
+
+Parameters per LFO.
+
+### SAMPLER_PARAM_ROUTE_SOURCE
+
+```odin
+SAMPLER_PARAM_ROUTE_SOURCE : core.Param_Id : core.Param_Id(27 + LFOS * LFO_PARAMS)
+```
+
+Parameter id of route 1's source (a `Mod_Source`); route `r`'s parameters
+are `sampler_route_param(r, ...)`.
+
+### SAMPLER_PARAM_ROUTE_DEST
+
+```odin
+SAMPLER_PARAM_ROUTE_DEST : core.Param_Id : SAMPLER_PARAM_ROUTE_SOURCE + 1
+```
+
+Parameter id of route 1's destination (a `Mod_Dest`).
+
+### SAMPLER_PARAM_ROUTE_AMOUNT
+
+```odin
+SAMPLER_PARAM_ROUTE_AMOUNT : core.Param_Id : SAMPLER_PARAM_ROUTE_SOURCE + 2
+```
+
+Parameter id of route 1's amount, in percent (±100).
+
+### ROUTE_PARAMS
+
+```odin
+ROUTE_PARAMS :: 3
+```
+
+Parameters per route.
 
 ### SAMPLER_PARAM_ATTACK
 
@@ -126,6 +403,119 @@ SAMPLE_MAP_TAG : core.Tag : core.Tag{'S', 'M', 'A', 'P'}
 Chunk tag of a saved sample map.
 
 ## Types
+
+### Voice_Filter
+
+```odin
+Voice_Filter :: enum u8 {
+	Off,
+	Lowpass,
+	Highpass,
+	Bandpass,
+	Notch,
+}
+```
+
+The voice filter's types (SAMPLER_PARAM_FILTER_TYPE).
+
+### Lfo_Shape
+
+```odin
+Lfo_Shape :: enum u8 {
+	Sine,
+	Triangle,
+	Saw_Up,
+	Saw_Down,
+	Square,
+	Sample_Hold,
+}
+```
+
+LFO waveforms (SAMPLER_PARAM_LFO_SHAPE).
+
+| Value | Description |
+|-------|-------------|
+| `Sine` |  |
+| `Triangle` |  |
+| `Saw_Up` |  |
+| `Saw_Down` |  |
+| `Square` |  |
+| `Sample_Hold` | a new random level each cycle |
+
+### Lfo_Mode
+
+```odin
+Lfo_Mode :: enum u8 {
+	Auto,
+	Trigger,
+	Sync,
+}
+```
+
+How an LFO runs (SAMPLER_PARAM_LFO_MODE).
+
+| Value | Description |
+|-------|-------------|
+| `Auto` | free-running, shared by every voice, at its rate in Hz |
+| `Trigger` | each note starts it again, at its rate in Hz |
+| `Sync` | locked to the beat, at its synced rate (in beats) |
+
+### Mod_Source
+
+```odin
+Mod_Source :: enum u8 {
+	None,
+	Lfo_1,
+	Lfo_2,
+}
+```
+
+A modulation route's source (SAMPLER_PARAM_ROUTE_SOURCE).
+
+### Mod_Dest
+
+```odin
+Mod_Dest :: enum u8 {
+	None,
+	Volume,
+	Pan,
+	Pitch,
+	Cutoff,
+	Resonance,
+}
+```
+
+What a route modulates (SAMPLER_PARAM_ROUTE_DEST). At ±100%: volume ±100%
+(tremolo), pan ±1, pitch ±12 semitones, cutoff ±5 octaves, resonance ±1.
+
+### Sampler_Live
+
+```odin
+Sampler_Live :: struct {
+	sounding: bool,
+	amp: f64,
+	filter_env: f64,
+	pitch_env: f64,
+	cutoff: f64,
+	resonance: f64,
+	lfo: [2]f64,
+	age: int,
+}
+```
+
+What a sampler is doing now, for a UI: the newest voice's envelopes,
+its modulated filter and the LFOs' levels.
+
+| Field | Description |
+|-------|-------------|
+| `sounding` |  |
+| `amp` |  |
+| `filter_env` |  |
+| `pitch_env` | 0..1 |
+| `cutoff` | Hz, with modulation (the setting when nothing sounds) |
+| `resonance` | 0..1, with modulation |
+| `lfo` | −1..1 |
+| `age` | frames since its note-on |
 
 ### Sample_Zone
 
@@ -265,6 +655,41 @@ not marked [rt] are for the control thread. Fields are internal.
 
 ## Procedures
 
+### sampler_lfo_param
+
+```odin
+sampler_lfo_param :: proc "contextless"(k: int, first: core.Param_Id) -> core.Param_Id
+```
+
+LFO `k`'s parameter `first` is LFO 1's (SAMPLER_PARAM_LFO_SHAPE..PHASE).
+
+### sampler_route_param
+
+```odin
+sampler_route_param :: proc "contextless"(r: int, first: core.Param_Id) -> core.Param_Id
+```
+
+Route `r`'s parameter `first` is route 1's (SAMPLER_PARAM_ROUTE_SOURCE..AMOUNT).
+
+### voice_filter_design
+
+```odin
+voice_filter_design :: proc "contextless"(type: Voice_Filter, steep: bool, cutoff: f64, res: f64, sample_rate: f64) -> (c: [2]dsp.Svf_Coeffs, stages: int)
+```
+
+Any thread. The voice filter's two stages for `type`, `steep` (24 dB),
+`cutoff` (Hz) and `res` (0..1), and how many are used: what the sampler
+runs, and what a UI can draw (with `dsp.svf_response`, multiplying the
+stages' gains).
+
+### sampler_live
+
+```odin
+sampler_live :: proc "contextless"(s: ^Sampler) -> (l: Sampler_Live)
+```
+
+Any thread. What the sampler is doing now (see `Sampler_Live`).
+
 ### sample_map_create
 
 ```odin
@@ -352,10 +777,26 @@ no longer fits its zone.
 
 ## Variables
 
+### LFO_SYNC_BEATS
+
+```odin
+LFO_SYNC_BEATS: [11]f64
+```
+
+The synced rates' lengths in beats (SAMPLER_PARAM_LFO_SYNC_RATE indexes it).
+
+### LFO_SYNC_NAMES
+
+```odin
+LFO_SYNC_NAMES: [11]string
+```
+
+Their names: "4 bars".."1/32", then triplets.
+
 ### sampler_params
 
 ```odin
-sampler_params: [7]core.Param_Info
+sampler_params: [56]core.Param_Info
 ```
 
 Parameter table of the sampler node, as returned by `node_params`. Read-only.
