@@ -85,6 +85,22 @@ MIDI_SONG_POSITION : u8 : u8(0xF2)
 
 MIDI Song Position Pointer: a 14-bit position in sixteenth notes, LSB first.
 
+### CLOCK_TAG
+
+```odin
+CLOCK_TAG : core.Tag : core.Tag{'C', 'L', 'C', 'K'}
+```
+
+Chunk tag of a saved clock.
+
+### MIDI_CLOCK_TYPE_ID
+
+```odin
+MIDI_CLOCK_TYPE_ID :: "fire.midi_clock"
+```
+
+Saved-state ID of `midi_clock_create` nodes.
+
 ### MIN_LOOP
 
 ```odin
@@ -359,6 +375,50 @@ each segment time is continuous for the grid and every timeline. Events
 `host_ns` is the presentation time of the block's first frame
 (`backend.Io_Block.output_ns`); 0 if unknown. Audio thread only; never
 allocates.
+
+### save
+
+```odin
+save :: proc(c: ^Clock, w: ^core.State_Writer) -> core.Error
+```
+
+Control thread. Writes the clock as a CLOCK_TAG chunk: the live tempo and
+meter, the leader and tempo override, and every timeline with its tempo
+map, rate, position and loop, as last asked for (commands still waiting
+for their beat included). Positions are the timelines' current ones.
+A `Sync` is not saved.
+
+### load
+
+```odin
+load :: proc(c: ^Clock, chunk: core.Chunk, allocator: mem.Allocator = context.allocator) -> (remap: []core.Timeline_Remap, err: core.Error)
+```
+
+Control thread. Restores a clock saved by `save` into `c`, which should
+have no timelines yet (see `clear`): adds the timelines, stopped at their
+saved positions, and sets the tempo, meter, leader and override, all at
+the next block. Returns how saved timeline IDs map to the new ones (for
+`core.Load_Context.timelines`), allocated with `allocator`.
+`.Invalid_Data` for a malformed chunk; `.Out_Of_Memory` if the timelines
+do not fit in `max_timelines` or the command queue.
+
+### clear
+
+```odin
+clear :: proc(c: ^Clock) -> core.Error
+```
+
+Control thread. Removes every timeline and clears the leader, ready for
+`load`.
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry) -> core.Error
+```
+
+Registers this package's node types (the MIDI clock), so saved state can
+name them. Control thread.
 
 ### default_settings
 

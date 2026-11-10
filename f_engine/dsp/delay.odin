@@ -78,6 +78,8 @@ delay_vtable := core.Node_VTable {
 	release = delay_release,
 	params  = proc(self: rawptr) -> []core.Param_Info { return delay_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Delay)(self), allocator) },
+	type_id = DELAY_TYPE_ID,
+	state_version = 1,
 }
 
 // Control thread. Allocates a `Delay` node at its defaults. Free it with

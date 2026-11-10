@@ -74,6 +74,8 @@ compressor_vtable := core.Node_VTable {
 	},
 	params  = proc(self: rawptr) -> []core.Param_Info { return compressor_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Compressor)(self), allocator) },
+	type_id = COMPRESSOR_TYPE_ID,
+	state_version = 1,
 }
 
 // Control thread. Allocates a `Compressor` node at its defaults. Free it

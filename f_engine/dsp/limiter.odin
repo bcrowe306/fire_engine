@@ -70,6 +70,9 @@ limiter_vtable := core.Node_VTable {
 	latency = proc(self: rawptr) -> int { return (^Limiter)(self).lookahead - 1 },
 	params  = proc(self: rawptr) -> []core.Param_Info { return limiter_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Limiter)(self), allocator) },
+	type_id = LIMITER_TYPE_ID,
+	state_version = 1,
+	save = save_limiter,
 }
 
 // Control thread. Allocates a `Limiter` node looking `lookahead_ms` ahead

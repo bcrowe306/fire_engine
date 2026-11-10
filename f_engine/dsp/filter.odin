@@ -57,6 +57,9 @@ filter_vtable := core.Node_VTable {
 	},
 	params  = proc(self: rawptr) -> []core.Param_Info { return filter_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Filter)(self), allocator) },
+	type_id = FILTER_TYPE_ID,
+	state_version = 1,
+	save = save_filter,
 }
 
 // Control thread. Allocates a `Filter` node starting in `mode`. Free it with

@@ -126,11 +126,18 @@ run_node :: proc(g: ^Graph, p: ^Plan, i: i32, frames: int, t0: i64, transport: ^
 		}
 	}
 
-	// Events: due parameter changes first, then each event source in
-	// connection order; then a stable sort by offset.
+	// Events: a loaded node's starting values, then due parameter changes,
+	// then each event source in connection order; then a stable sort by
+	// offset. Parameter events share `max_pending_params` places per block.
 	n := 0
+	for s.initial_next < len(s.initial) && n < g.settings.max_pending_params {
+		v := s.initial[s.initial_next]
+		pn.events[n] = {0, core.Param_Ramp{v.param, v.value, 0}}
+		n += 1
+		s.initial_next += 1
+	}
 	due := 0
-	for due < s.pending_len && s.pending[due].at < t0 + i64(frames) {
+	for due < s.pending_len && n < g.settings.max_pending_params && s.pending[due].at < t0 + i64(frames) {
 		c := s.pending[due]
 		at := u32(max(c.at - t0, 0))
 		pn.events[n] = {at, core.Param_Value{c.param, c.value}} if c.ramp < 0 else {at, core.Param_Ramp{c.param, c.value, u32(c.ramp)}}

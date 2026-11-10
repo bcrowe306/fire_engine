@@ -53,6 +53,8 @@ Automation_Player :: struct {
 	events:      int,
 	continuous:  bool, // the previous call ran and nothing has jumped since
 	dropped:     u64,  // atomic: events that did not fit, or lanes beyond max_lanes
+	// Control thread: a clip from a loader, set once prepared.
+	deferred: Deferred(^Automation_Clip),
 }
 
 @(private)
@@ -143,6 +145,13 @@ automation_player_vtable := core.Node_VTable {
 		p.scratch, ae3 = make([]core.Event, p.settings.max_events, a)
 		if ae1 != nil || ae2 != nil || ae3 != nil do return .Out_Of_Memory
 		if rt.spsc_init(&p.retired, 64, a) != nil do return .Out_Of_Memory
+		if p.deferred.set {
+			d := p.deferred
+			p.deferred = {}
+			err := automation_player_set(p, d.clip, d.placement)
+			automation_clip_release(d.clip)
+			return err
+		}
 		return .None
 	},
 	release = proc(self: rawptr, a: mem.Allocator) {
@@ -160,6 +169,7 @@ automation_player_vtable := core.Node_VTable {
 	process = automation_player_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) {
 		p := (^Automation_Player)(self)
+		if p.deferred.set do automation_clip_release(p.deferred.clip) // never prepared
 		for cfg in p.live {
 			automation_clip_release(cfg.clip)
 			free(cfg, p.allocator)
@@ -168,6 +178,9 @@ automation_player_vtable := core.Node_VTable {
 		rt.spsc_destroy(&p.commands, p.allocator)
 		free(p, a)
 	},
+	type_id = AUTOMATION_PLAYER_TYPE_ID,
+	state_version = 1,
+	save    = save_automation_player,
 }
 
 @(private)

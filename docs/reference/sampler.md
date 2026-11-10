@@ -101,6 +101,22 @@ MAX_SPEED :: 4.0
 
 The fastest a voice plays its sample (two octaves up at equal rates).
 
+### SAMPLER_TYPE_ID
+
+```odin
+SAMPLER_TYPE_ID :: "fire.sampler"
+```
+
+Saved-state ID of `sampler_create` nodes (settings and sample map).
+
+### SAMPLE_MAP_TAG
+
+```odin
+SAMPLE_MAP_TAG : core.Tag : core.Tag{'S', 'M', 'A', 'P'}
+```
+
+Chunk tag of a saved sample map.
+
 ## Types
 
 ### Sample_Zone
@@ -256,6 +272,36 @@ sampler_set_map :: proc(s: ^Sampler, m: ^Sample_Map) -> core.Error
 Control thread. Plays `m` from the next block (nil: silence). Notes
 already sounding finish on the old map, which is released once they
 have. The sampler takes its own reference.
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry, streamer: ^stream.Streamer) -> core.Error
+```
+
+Registers the sampler, opening sample files through `streamer` (which
+must outlive the registry). Control thread.
+
+### write_sample_map
+
+```odin
+write_sample_map :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, m: ^Sample_Map)
+```
+
+Writes `m` as a SAMPLE_MAP_TAG chunk: each zone with its file's path (see
+`core.write_path`). Nil writes an empty chunk.
+
+### read_sample_map
+
+```odin
+read_sample_map :: proc(r: ^core.State_Reader, ctx: ^core.Load_Context, streamer: ^stream.Streamer, allocator: mem.Allocator = context.allocator) -> (m: ^Sample_Map, err: core.Error)
+```
+
+Reads a map written by `write_sample_map` from the reader's next chunk,
+opening each file through `streamer`: a new map with one reference, or
+nil for a saved nil map. `.Invalid_Data` for a malformed chunk;
+`.Device_Error` if a file cannot be opened; `.Invalid_Argument` if a file
+no longer fits its zone.
 
 ## Variables
 

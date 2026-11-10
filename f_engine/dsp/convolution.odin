@@ -261,6 +261,9 @@ convolution_vtable := core.Node_VTable {
 		delete(v.ir, v.allocator)
 		free(v, v.allocator)
 	},
+	type_id = CONVOLUTION_TYPE_ID,
+	state_version = 1,
+	save = save_convolution,
 }
 
 // Control thread. A `Convolution` node with impulse response `ir` (planar,

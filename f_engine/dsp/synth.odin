@@ -125,6 +125,9 @@ synth_vtable := core.Node_VTable {
 		delete(s.voices, s.allocator)
 		free(s, s.allocator)
 	},
+	type_id = SYNTH_TYPE_ID,
+	state_version = 1,
+	save = save_synth,
 }
 
 // Control thread. A `Synth` node with `voices` voices (1..SYNTH_MAX_VOICES)

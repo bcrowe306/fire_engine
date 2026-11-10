@@ -38,6 +38,8 @@ gain_vtable := core.Node_VTable {
 	release = proc(self: rawptr, allocator: mem.Allocator) {},
 	params  = proc(self: rawptr) -> []core.Param_Info { return gain_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Gain)(self), allocator) },
+	type_id = GAIN_TYPE_ID,
+	state_version = 1,
 }
 
 // Control thread. Allocates a `Gain` node with `allocator`. Free it with

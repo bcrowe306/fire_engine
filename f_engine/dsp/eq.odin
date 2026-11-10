@@ -83,6 +83,9 @@ eq_vtable := core.Node_VTable {
 		delete(q.names, q.allocator)
 		free(q, q.allocator)
 	},
+	type_id = EQ_TYPE_ID,
+	state_version = 1,
+	save = save_eq,
 }
 
 // Control thread. Allocates an `Eq` node of `bands` bands (1..EQ_MAX_BANDS),

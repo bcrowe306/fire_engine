@@ -113,6 +113,9 @@ modulation_vtable := core.Node_VTable {
 		return nil
 	},
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Modulation)(self), allocator) },
+	type_id = MODULATION_TYPE_ID,
+	state_version = 1,
+	save = save_modulation,
 }
 
 // Control thread. A chorus node: up to 4 voices per channel, each a copy

@@ -61,6 +61,8 @@ Audio_Player :: struct {
 	// Stretch mode.
 	stretch_rate:  f64, // stretcher input per output frame, last chunk
 	stretch_carry: f64, // fraction of an input frame owed to the next chunk
+	// Control thread: a clip from a loader, set once prepared.
+	deferred: Deferred(^Audio_Clip),
 }
 
 // Frames over which starts fade in and stops and jumps crossfade.
@@ -216,6 +218,13 @@ audio_player_vtable := core.Node_VTable {
 		p := (^Audio_Player)(self)
 		p.sample_rate = cfg.sample_rate
 		if rt.spsc_init(&p.retired, 64, a) != nil do return .Out_Of_Memory
+		if p.deferred.set {
+			d := p.deferred
+			p.deferred = {}
+			err := audio_player_set(p, d.clip, d.placement)
+			audio_clip_release(d.clip)
+			return err
+		}
 		return .None
 	},
 	release = proc(self: rawptr, a: mem.Allocator) {
@@ -228,6 +237,7 @@ audio_player_vtable := core.Node_VTable {
 	process = audio_player_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) {
 		p := (^Audio_Player)(self)
+		if p.deferred.set do audio_clip_release(p.deferred.clip) // never prepared
 		for cfg in p.live {
 			audio_clip_release(cfg.clip)
 			audio_config_free(p, cfg)
@@ -235,6 +245,9 @@ audio_player_vtable := core.Node_VTable {
 		delete(p.live)
 		free(p, a)
 	},
+	type_id = AUDIO_PLAYER_TYPE_ID,
+	state_version = 1,
+	save    = save_audio_player,
 }
 
 // --- audio thread ------------------------------------------------------------------------------

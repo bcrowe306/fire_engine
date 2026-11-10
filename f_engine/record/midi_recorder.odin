@@ -71,6 +71,9 @@ midi_recorder_vtable := core.Node_VTable {
 	reset   = proc(self: rawptr) {},
 	release = proc(self: rawptr, allocator: mem.Allocator) {},
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { midi_recorder_free((^Midi_Recorder)(self)) },
+	type_id = MIDI_RECORDER_TYPE_ID,
+	state_version = 1,
+	save    = save_midi_recorder,
 }
 
 // Control thread. Makes a recorder node with no audio channels: connect

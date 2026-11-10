@@ -68,6 +68,39 @@ MAX_CHANNELS :: 64
 
 Most channels a take may have.
 
+### AUDIO_RECORDER_TYPE_ID
+
+```odin
+AUDIO_RECORDER_TYPE_ID :: "fire.audio_recorder"
+```
+
+Saved-state ID of `audio_recorder_create` nodes (settings only: takes and
+arming are not saved).
+
+### MIDI_RECORDER_TYPE_ID
+
+```odin
+MIDI_RECORDER_TYPE_ID :: "fire.midi_recorder"
+```
+
+Saved-state ID of `midi_recorder_create` nodes (settings only).
+
+### AUTOMATION_RECORDER_TYPE_ID
+
+```odin
+AUTOMATION_RECORDER_TYPE_ID :: "fire.automation_recorder"
+```
+
+Saved-state ID of `automation_recorder_create` nodes (settings only).
+
+### LATENCY_PROBE_TYPE_ID
+
+```odin
+LATENCY_PROBE_TYPE_ID :: "fire.latency_probe"
+```
+
+Saved-state ID of `latency_probe_create` nodes.
+
 ## Types
 
 ### Audio_Recorder_Settings
@@ -608,4 +641,13 @@ disk_writer_service :: proc(d: ^Disk_Writer) -> bool
 Writes everything the recorders have queued. Returns whether there was
 anything to do. The disk thread calls it; in `manual` mode, the app does
 (any thread but the audio thread).
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry, disk: ^Disk_Writer = nil) -> core.Error
+```
+
+Registers this package's nodes. Audio recorders are registered only with
+a `disk` to write through (it must outlive the registry). Control thread.
 

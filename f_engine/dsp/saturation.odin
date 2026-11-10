@@ -87,6 +87,9 @@ saturation_vtable := core.Node_VTable {
 	latency = proc(self: rawptr) -> int { return (^Saturation)(self).latency },
 	params  = proc(self: rawptr) -> []core.Param_Info { return saturation_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Saturation)(self), allocator) },
+	type_id = SATURATION_TYPE_ID,
+	state_version = 1,
+	save = save_saturation,
 }
 
 // Control thread. A `Saturation` node, `oversample` 1, 2, 4 or 8 times

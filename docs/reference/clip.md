@@ -47,6 +47,54 @@ DECLICK_FRAMES :: 128
 
 Frames over which starts fade in and stops and jumps crossfade.
 
+### MIDI_PLAYER_TYPE_ID
+
+```odin
+MIDI_PLAYER_TYPE_ID :: "fire.midi_player"
+```
+
+Saved-state ID of `midi_player_create` nodes (with their clip).
+
+### AUDIO_PLAYER_TYPE_ID
+
+```odin
+AUDIO_PLAYER_TYPE_ID :: "fire.audio_player"
+```
+
+Saved-state ID of `audio_player_create` nodes (with their clip).
+
+### AUTOMATION_PLAYER_TYPE_ID
+
+```odin
+AUTOMATION_PLAYER_TYPE_ID :: "fire.automation_player"
+```
+
+Saved-state ID of `automation_player_create` nodes (with their clip).
+
+### MIDI_CLIP_TAG
+
+```odin
+MIDI_CLIP_TAG : core.Tag : core.Tag{'M', 'C', 'L', 'P'}
+```
+
+Chunk tags of saved clips.
+
+### AUDIO_CLIP_TAG
+
+```odin
+AUDIO_CLIP_TAG : core.Tag : core.Tag{'A', 'C', 'L', 'P'}
+```
+
+Chunk tag of a saved audio clip (its source's path and its settings).
+
+### AUTOMATION_CLIP_TAG
+
+```odin
+AUTOMATION_CLIP_TAG : core.Tag : core.Tag{'U', 'C', 'L', 'P'}
+```
+
+Chunk tag of a saved automation clip.
+
 ## Types
 
 ### Audio_Mode
@@ -539,6 +587,19 @@ The contents of a Standard MIDI File. Free with `midi_file_destroy`.
 | `ppq` | the file's ticks per quarter note |
 | `allocator` |  |
 
+### Player_Env
+
+```odin
+Player_Env :: struct {
+	streamer: ^stream.Streamer,
+	stretcher: ^Stretcher_VTable,
+}
+```
+
+What loading players needs from the app: the streamer audio clips read
+through, and the stretcher for `.Stretch` clips (nil: such players load
+without one, and their clips are refused). Must outlive the registry.
+
 ### Stretcher_VTable
 
 ```odin
@@ -945,4 +1006,69 @@ map's tempos and time signatures (ramps written as steps every eighth
 note; nil: 120 BPM in 4/4), then one track per clip with its name, notes
 and controllers. Per-note expression has no MIDI 1.0 form and is not
 written. Times are rounded to `ppq` ticks per quarter note.
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry, env: ^Player_Env = nil) -> core.Error
+```
+
+Registers the three players. Audio players are registered only if
+`env.streamer` is set. Control thread.
+
+### write_midi_clip
+
+```odin
+write_midi_clip :: proc(w: ^core.State_Writer, c: ^Midi_Clip)
+```
+
+Writes `c` as a MIDI_CLIP_TAG chunk (nil: an empty chunk, read back as nil).
+
+### read_midi_clip
+
+```odin
+read_midi_clip :: proc(r: ^core.State_Reader, allocator: mem.Allocator = context.allocator) -> (^Midi_Clip, core.Error)
+```
+
+Reads a clip written by `write_midi_clip` from the reader's next chunk:
+a new clip with one reference (yours), or nil for a saved nil clip.
+`.Invalid_Data` for a malformed chunk.
+
+### write_automation_clip
+
+```odin
+write_automation_clip :: proc(w: ^core.State_Writer, c: ^Automation_Clip)
+```
+
+Writes `c` as an AUTOMATION_CLIP_TAG chunk (nil: an empty chunk).
+
+### read_automation_clip
+
+```odin
+read_automation_clip :: proc(r: ^core.State_Reader, allocator: mem.Allocator = context.allocator) -> (^Automation_Clip, core.Error)
+```
+
+Reads a clip written by `write_automation_clip` from the reader's next
+chunk (as `read_midi_clip`).
+
+### write_audio_clip
+
+```odin
+write_audio_clip :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, c: ^Audio_Clip)
+```
+
+Writes `c` as an AUDIO_CLIP_TAG chunk: its source's path (see
+`core.write_path`) and its settings (nil: an empty chunk).
+
+### read_audio_clip
+
+```odin
+read_audio_clip :: proc(r: ^core.State_Reader, ctx: ^core.Load_Context, streamer: ^stream.Streamer, allocator: mem.Allocator = context.allocator) -> (^Audio_Clip, core.Error)
+```
+
+Reads a clip written by `write_audio_clip` from the reader's next chunk,
+opening its file through `streamer`: a new clip with one reference, or
+nil for a saved nil clip. `.Invalid_Data` for a malformed chunk;
+`.Device_Error` if the file cannot be opened; `.Invalid_Argument` if the
+file no longer fits the clip (shorter, say).
 

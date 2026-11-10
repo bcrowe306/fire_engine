@@ -110,6 +110,9 @@ automation_recorder_vtable := core.Node_VTable {
 	reset   = proc(self: rawptr) {},
 	release = proc(self: rawptr, allocator: mem.Allocator) {},
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { automation_recorder_free((^Automation_Recorder)(self)) },
+	type_id = AUTOMATION_RECORDER_TYPE_ID,
+	state_version = 1,
+	save    = save_automation_recorder,
 }
 
 // Control thread. Makes a recorder node with no audio channels. Event-connect

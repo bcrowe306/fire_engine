@@ -53,6 +53,54 @@ OUTPUT : Node_Id : Node_Id{1, 1}
 The graph's audio and event output: connect into it to reach the device's
 output channels and the caller's event writer.
 
+### GRAPH_TAG
+
+```odin
+GRAPH_TAG : core.Tag : core.Tag{'G', 'R', 'P', 'H'}
+```
+
+Chunk tag of a saved graph: its NODE chunks, then CONN.
+
+### NODE_TAG
+
+```odin
+NODE_TAG : core.Tag : core.Tag{'N', 'O', 'D', 'E'}
+```
+
+Chunk tag of one saved node: index, type and channels, then PARM and DATA.
+
+### PARAMS_TAG
+
+```odin
+PARAMS_TAG : core.Tag : core.Tag{'P', 'A', 'R', 'M'}
+```
+
+Chunk tag of a node's saved parameter values.
+
+### DATA_TAG
+
+```odin
+DATA_TAG : core.Tag : core.Tag{'D', 'A', 'T', 'A'}
+```
+
+Chunk tag of a node's own state; its version is the type's `state_version`.
+
+### CONNECTIONS_TAG
+
+```odin
+CONNECTIONS_TAG : core.Tag : core.Tag{'C', 'O', 'N', 'N'}
+```
+
+Chunk tag of a graph's saved connections.
+
+### GRAPH_TYPE_ID
+
+```odin
+GRAPH_TYPE_ID :: "fire.graph"
+```
+
+ID under which nested graphs (`as_node`) are saved.
+
 ## Types
 
 ### Node_Id
@@ -128,6 +176,53 @@ Graph :: struct {...}
 
 A graph. Create with `create`; all procs except `process` are control
 thread only. Fields are internal.
+
+### Node_Remap
+
+```odin
+Node_Remap :: struct {
+	saved: u32,
+	now: Node_Id,
+}
+```
+
+A node of a saved graph and the ID it has after `load`.
+
+| Field | Description |
+|-------|-------------|
+| `saved` | the node's index when saved (`Node_Id.index`) |
+| `now` |  |
+
+### Missing_Node
+
+```odin
+Missing_Node :: struct {
+	id: Node_Id,
+	type_id: string,
+	err: core.Error,
+}
+```
+
+A node `load` could not make: kept as a silent placeholder (see
+`is_placeholder`) that saves back exactly what was loaded.
+
+| Field | Description |
+|-------|-------------|
+| `id` |  |
+| `type_id` | allocated with the load's allocator |
+| `err` | .Unsupported: no such type registered; else the loader's error |
+
+### Load_Result
+
+```odin
+Load_Result :: struct {
+	nodes: []Node_Remap,
+	missing: []Missing_Node,
+	allocator: mem.Allocator,
+}
+```
+
+What `load` did. Free with `load_result_destroy`.
 
 ## Procedures
 
@@ -329,4 +424,78 @@ process :: proc(user: rawptr, b: ^backend.Io_Block) {
 	graph.process((^graph.Graph)(user), &ctx)
 }
 ```
+
+### load_result_destroy
+
+```odin
+load_result_destroy :: proc(r: ^Load_Result)
+```
+
+Frees what `load` returned.
+
+### remap
+
+```odin
+remap :: proc(r: Load_Result, saved: u32) -> (Node_Id, bool)
+```
+
+The ID a saved node has after loading, from `r.nodes`.
+
+### save
+
+```odin
+save :: proc(g: ^Graph, w: ^core.State_Writer, ctx: ^core.Save_Context) -> core.Error
+```
+
+Control thread. Writes the graph as a GRAPH_TAG chunk: every node (its
+type, channel counts, parameter values and own state) and every
+connection. Parameter values are the last ones `set_param` or
+`set_param_ramp` set; parameters never set are not saved, so they start
+as a freshly made node of the type has them. Values that automation or
+modulation moves are saved as their base. Fails with `.Unsupported` if a
+node's type cannot be saved (no `type_id`), or with the node's own error;
+the writer then holds a partial chunk, so discard it.
+
+### load
+
+```odin
+load :: proc(g: ^Graph, c: core.Chunk, ctx: ^core.Load_Context, allocator: mem.Allocator = context.allocator, commit_now: bool = true) -> (result: Load_Result, err: core.Error)
+```
+
+Control thread. Adds the nodes and connections of a GRAPH_TAG chunk to
+`g` (usually empty but for INPUT and OUTPUT) and commits them all at once,
+so a running graph switches in one block. Node types come from
+`ctx.registry`; a node whose type is not registered, or whose loader
+fails, becomes a silent placeholder that keeps its saved state (listed in
+`Load_Result.missing`). Loaded nodes start at their saved parameter
+values without smoothing. Connections to channels a graph lacks are
+skipped. With `commit_now` false, the caller commits (to make other edits
+in the same switch). On failure nothing loaded stays in the graph.
+`.Invalid_Data` for a malformed chunk.
+
+### nodes
+
+```odin
+nodes :: proc(g: ^Graph, allocator: mem.Allocator = context.allocator) -> []Node_Id
+```
+
+The nodes in the graph (not INPUT and OUTPUT), in index order. Control
+thread; the slice is allocated with `allocator`.
+
+### is_placeholder
+
+```odin
+is_placeholder :: proc(g: ^Graph, id: Node_Id) -> bool
+```
+
+Whether `id` is a placeholder for a node `load` could not make.
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry) -> core.Error
+```
+
+Registers the node types this package provides (nested graphs, as made
+by `as_node`), so saved state can name them.
 

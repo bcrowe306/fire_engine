@@ -34,6 +34,17 @@ and release belong to one thread, CLAP's "main thread"; the graph's audio
 thread processes. `fire:clap/sdk` goes the other way: it makes CLAP
 plug-ins from Fire Engine nodes.
 
+## Constants
+
+### PLUGIN_TYPE_ID
+
+```odin
+PLUGIN_TYPE_ID :: "fire.clap"
+```
+
+Saved-state ID of hosted plug-ins (`plugin_create`): the library's path,
+the plug-in's id, the host settings and the plug-in's own state.
+
 ## Types
 
 ### Plugin_Description
@@ -184,7 +195,9 @@ library_open :: proc(path: string) -> (l: ^Library, err: core.Error)
 
 Control thread. Opens the library at `path` (a .clap file, or a macOS
 .clap bundle) and lists its plug-ins, or returns the one already open
-there (one more reference). Libraries are shared by the whole process,
+there (one more reference; paths are compared made absolute and
+cleaned, so `a/../b.clap` and `b.clap` are one library: CLAP initializes a
+library once). Libraries are shared by the whole process,
 so they live in the heap allocator, whoever opens them. `.Device_Error`
 if it doesn't load or isn't a compatible CLAP library. Close with
 `library_close`.
@@ -313,4 +326,15 @@ plugin_gui_close :: proc(p: ^Plugin)
 ```
 
 Main thread. Closes the editor.
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry, log: proc(severity: i32, message: string) = nil) -> core.Error
+```
+
+Registers hosted plug-ins. Loaded plug-ins log through `log` (nil:
+dropped). A plug-in whose library or id is missing loads as a
+placeholder, keeping its state. Control thread (the plug-ins' main
+thread).
 

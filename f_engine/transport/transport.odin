@@ -98,6 +98,8 @@ Clock :: struct {
 	in_use:      []bool,
 	maps:        [dynamic]^tb.Tempo_Map, // every map copy not yet freed
 	seq:         u64,
+	set:         Set_State, // what was last asked for, for `save`
+	lines_set:   []Timeline_Set,
 
 	// Control → audio.
 	commands: rt.Spsc_Queue(Command),
@@ -116,6 +118,25 @@ Clock :: struct {
 	status_timelines: []Timeline_Status_Atomic,
 	dropped_commands: u64, // atomic
 	dropped_events:   u64, // atomic
+}
+
+// Control thread: the last values asked for (taking effect or not yet).
+@(private)
+Set_State :: struct {
+	tempo:    f64,
+	meter:    tb.Meter,
+	leader:   core.Timeline_Id,
+	override: bool,
+}
+
+@(private)
+Timeline_Set :: struct {
+	tmap:       ^tb.Tempo_Map, // the copy last sent (the audio thread reads it too, never changes it)
+	rate:       f64,
+	position:   tb.Beats, // last located to (used when no block has run since)
+	looping:    bool,
+	loop_start: tb.Beats,
+	loop_end:   tb.Beats,
 }
 
 // What the control thread can read about the clock (see `status`). Values are
@@ -188,6 +209,7 @@ create :: proc(settings: Settings, allocator := context.allocator) -> (c: ^Clock
 	c = new(Clock, allocator)
 	if c == nil do return nil, .Out_Of_Memory
 	c.settings, c.allocator = s, allocator
+	c.set = {tempo = s.bpm, meter = s.meter}
 	if err = init_all(c); err != .None {
 		destroy(c)
 		return nil, err
@@ -209,6 +231,8 @@ init_all :: proc(c: ^Clock) -> core.Error {
 	c.status_timelines, ae = make([]Timeline_Status_Atomic, s.max_timelines, a)
 	if ae != nil do return .Out_Of_Memory
 	c.timelines, ae = make([]Timeline, s.max_timelines, a)
+	if ae != nil do return .Out_Of_Memory
+	c.lines_set, ae = make([]Timeline_Set, s.max_timelines, a)
 	if ae != nil do return .Out_Of_Memory
 	c.snapshot, ae = make([]core.Timeline_State, s.max_timelines, a)
 	if ae != nil do return .Out_Of_Memory
@@ -232,6 +256,7 @@ destroy :: proc(c: ^Clock) {
 	delete(c.in_use, a)
 	delete(c.status_timelines, a)
 	delete(c.timelines, a)
+	delete(c.lines_set, a)
 	delete(c.snapshot, a)
 	delete(c.schedule, a)
 	delete(c.events, a)
@@ -271,6 +296,7 @@ add_timeline :: proc(c: ^Clock, tempo_map: ^tb.Tempo_Map = nil) -> (id: core.Tim
 		return {}, .Out_Of_Memory
 	}
 	c.in_use[slot] = true
+	c.lines_set[slot] = {tmap = copy_, rate = 1}
 	return id, .None
 }
 
@@ -290,6 +316,7 @@ set_tempo_map :: proc(c: ^Clock, id: core.Timeline_Id, tempo_map: ^tb.Tempo_Map)
 	check(c, id) or_return
 	copy_ := copy_map(c, tempo_map) or_return
 	if !push(c, {kind = .Set_Map, timeline = id, tmap = copy_}) do return .Out_Of_Memory
+	c.lines_set[id.index].tmap = copy_
 	return .None
 }
 
@@ -307,7 +334,9 @@ stop :: proc(c: ^Clock, id: core.Timeline_Id, at: When = nil) -> core.Error {
 // Control thread. Moves a timeline to local position `beat`. A playing
 // timeline keeps playing from there; a stopped one starts there when played.
 locate :: proc(c: ^Clock, id: core.Timeline_Id, beat: tb.Beats, at: When = nil) -> core.Error {
-	return command(c, {kind = .Locate, timeline = id, when_ = at, a = beat})
+	command(c, {kind = .Locate, timeline = id, when_ = at, a = beat}) or_return
+	c.lines_set[id.index].position = beat
+	return .None
 }
 
 // Control thread. Loops a timeline between local beats `start` and `end`
@@ -315,12 +344,17 @@ locate :: proc(c: ^Clock, id: core.Timeline_Id, beat: tb.Beats, at: When = nil) 
 // does not wrap until it is located back inside.
 set_loop :: proc(c: ^Clock, id: core.Timeline_Id, start, end: tb.Beats, at: When = nil) -> core.Error {
 	if end - start < MIN_LOOP do return .Invalid_Argument
-	return command(c, {kind = .Set_Loop, timeline = id, when_ = at, a = start, b = end})
+	command(c, {kind = .Set_Loop, timeline = id, when_ = at, a = start, b = end}) or_return
+	l := &c.lines_set[id.index]
+	l.looping, l.loop_start, l.loop_end = true, start, end
+	return .None
 }
 
 // Control thread. Stops a timeline looping.
 clear_loop :: proc(c: ^Clock, id: core.Timeline_Id, at: When = nil) -> core.Error {
-	return command(c, {kind = .Clear_Loop, timeline = id, when_ = at})
+	command(c, {kind = .Clear_Loop, timeline = id, when_ = at}) or_return
+	c.lines_set[id.index].looping = false
+	return .None
 }
 
 // Control thread. Sets how many local beats a timeline advances per grid
@@ -328,7 +362,9 @@ clear_loop :: proc(c: ^Clock, id: core.Timeline_Id, at: When = nil) -> core.Erro
 // always runs at 1.
 set_rate :: proc(c: ^Clock, id: core.Timeline_Id, rate: f64, at: When = nil) -> core.Error {
 	if !(rate > 0) do return .Invalid_Argument
-	return command(c, {kind = .Set_Rate, timeline = id, when_ = at, value = rate})
+	command(c, {kind = .Set_Rate, timeline = id, when_ = at, value = rate}) or_return
+	c.lines_set[id.index].rate = rate
+	return .None
 }
 
 // Control thread. Sets the live tempo (`MIN_BPM` to `MAX_BPM`). It is the
@@ -336,7 +372,9 @@ set_rate :: proc(c: ^Clock, id: core.Timeline_Id, rate: f64, at: When = nil) -> 
 // `set_tempo_override` is on.
 set_tempo :: proc(c: ^Clock, bpm: f64, at: When = nil) -> core.Error {
 	if !(bpm >= MIN_BPM && bpm <= MAX_BPM) do return .Invalid_Argument
-	return push_command(c, {kind = .Set_Tempo, when_ = at, value = bpm})
+	push_command(c, {kind = .Set_Tempo, when_ = at, value = bpm}) or_return
+	c.set.tempo = bpm
+	return .None
 }
 
 // Control thread. Sets the live meter, which makes the bar grid while no
@@ -344,7 +382,9 @@ set_tempo :: proc(c: ^Clock, bpm: f64, at: When = nil) -> core.Error {
 // next downbeat).
 set_meter :: proc(c: ^Clock, meter: tb.Meter, at: When = tb.Quantize.Bar) -> core.Error {
 	if meter.numerator <= 0 || meter.denominator <= 0 do return .Invalid_Argument
-	return push_command(c, {kind = .Set_Meter, when_ = at, meter = meter})
+	push_command(c, {kind = .Set_Meter, when_ = at, meter = meter}) or_return
+	c.set.meter = meter
+	return .None
 }
 
 // Control thread. Makes `id` the leader (the zero ID: no leader). While the
@@ -353,13 +393,17 @@ set_meter :: proc(c: ^Clock, meter: tb.Meter, at: When = tb.Quantize.Bar) -> cor
 // where it was.
 set_leader :: proc(c: ^Clock, id: core.Timeline_Id, at: When = nil) -> core.Error {
 	if id != {} do check(c, id) or_return
-	return push_command(c, {kind = .Set_Leader, timeline = id, when_ = at})
+	push_command(c, {kind = .Set_Leader, timeline = id, when_ = at}) or_return
+	c.set.leader = id
+	return .None
 }
 
 // Control thread. While on, the live tempo wins over the leader's tempo map
 // (its meters still apply): for tap tempo or an external clock.
 set_tempo_override :: proc(c: ^Clock, on: bool, at: When = nil) -> core.Error {
-	return push_command(c, {kind = .Set_Override, when_ = at, flag = on})
+	push_command(c, {kind = .Set_Override, when_ = at, flag = on}) or_return
+	c.set.override = on
+	return .None
 }
 
 // An outside clock the engine follows, such as Ableton Link (`fire:link`).

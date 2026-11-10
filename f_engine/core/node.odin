@@ -21,6 +21,15 @@ Node_VTable :: struct {
 	// input (lookahead, linear-phase filters, plugin latency). May be nil: 0.
 	// The graph delays parallel paths to compensate.
 	latency: proc(self: rawptr) -> int,
+	// The ID this node type is registered under for loading saved state
+	// (see `Node_Registry`), such as "fire.gain". "" = cannot be saved.
+	type_id: string,
+	// Version of what `save` writes; the loader receives it.
+	state_version: u32,
+	// Control thread. Writes what the type's `Node_Loader` needs to make the
+	// node again: construction settings and any state its parameters do not
+	// hold (the graph saves parameter values itself). May be nil: nothing.
+	save: proc(self: rawptr, w: ^State_Writer, ctx: ^Save_Context) -> Error,
 }
 
 // Lifecycle state of a `Node`, tracked by `node_prepare` and `node_release`.
@@ -108,6 +117,15 @@ find_param :: proc(params: []Param_Info, id: Param_Id) -> (Param_Info, bool) {
 		if p.id == id do return p, true
 	}
 	return {}, false
+}
+
+// Control thread. Writes the node's own state (see `Node_VTable.save`) as
+// the payload of the current chunk. `.Unsupported` if the type cannot be
+// saved.
+node_save :: proc(n: ^Node, w: ^State_Writer, ctx: ^Save_Context) -> Error {
+	if n.vtable == nil || n.vtable.type_id == "" do return .Unsupported
+	if n.vtable.save == nil do return .None
+	return n.vtable.save(n.data, w, ctx)
 }
 
 // Frames of latency the node reports (0 if it doesn't). Control thread.

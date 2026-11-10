@@ -22,6 +22,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:sampler`](/reference/sampler/) | A sampler: multi-sample instruments with key and velocity zones, loops and one-shots, band-limited pitch-shifting |
 | [`fire:clap`](/reference/clap/) | Hosting CLAP plug-ins as graph nodes: parameters, notes and MIDI, transport, latency, state, editors |
 | [`fire:clap/sdk`](/reference/clap/sdk/) | Making CLAP plug-ins from Fire Engine nodes |
+| [`fire:session`](/reference/session/) | Saving and loading whole sessions: clock, timelines, nodes with their parameters, clips and plug-in state, in a versioned file |
 | [`fire:surface`](/reference/surface/) | Control-surface scripts in dynamic libraries: MIDI, transport, app-published controls, graph parameters |
 | [`fire:stretch`](/reference/stretch/) | Time-stretching for audio clips: Signalsmith Stretch, ported to Odin |
 | [`fire:stream`](/reference/stream/) | Disk streaming: files read ahead on background threads, instant jumps to cue points |
@@ -45,6 +46,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
 7. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
 8. [Plug-ins](/guides/plugins/): hosting CLAP plug-ins, and making them from your nodes.
    And [control surfaces](/guides/surfaces/): scripts for hardware controllers.
+9. [Saving sessions](/guides/sessions/): the whole engine to one file, and back.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.
 

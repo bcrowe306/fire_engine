@@ -57,6 +57,8 @@ Midi_Player :: struct {
 	window_end: tb.Beats, // last timeline position handled (inclusive)
 	continuous: bool,     // the previous call played and nothing has jumped since
 	dropped:    u64,      // atomic: notes or events that did not fit
+	// Control thread: a clip from a loader, set once prepared.
+	deferred: Deferred(^Midi_Clip),
 }
 
 @(private)
@@ -127,6 +129,13 @@ midi_player_vtable := core.Node_VTable {
 		p.scratch, ae = make([]core.Event, p.settings.max_events, a)
 		if ae != nil do return .Out_Of_Memory
 		if rt.spsc_init(&p.retired, 64, a) != nil do return .Out_Of_Memory
+		if p.deferred.set {
+			d := p.deferred
+			p.deferred = {}
+			err := midi_player_set(p, d.clip, d.placement)
+			midi_clip_release(d.clip)
+			return err
+		}
 		return .None
 	},
 	release = proc(self: rawptr, a: mem.Allocator) {
@@ -143,6 +152,7 @@ midi_player_vtable := core.Node_VTable {
 	process = midi_player_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) {
 		p := (^Midi_Player)(self)
+		if p.deferred.set do midi_clip_release(p.deferred.clip) // never prepared
 		for cfg in p.live {
 			midi_clip_release(cfg.clip)
 			free(cfg, p.allocator)
@@ -150,6 +160,9 @@ midi_player_vtable := core.Node_VTable {
 		delete(p.live)
 		free(p, a)
 	},
+	type_id = MIDI_PLAYER_TYPE_ID,
+	state_version = 1,
+	save    = save_midi_player,
 }
 
 // Frees configs the audio thread has finished with.

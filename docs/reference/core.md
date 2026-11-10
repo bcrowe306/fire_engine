@@ -29,6 +29,14 @@ NOTE_ID_ANY : Note_Id : Note_Id(-1)
 
 Wildcard `Note_Id`: the event is not tied to a specific note instance.
 
+### CHUNK_HEADER_SIZE
+
+```odin
+CHUNK_HEADER_SIZE :: 16
+```
+
+Size of a chunk header in bytes.
+
 ## Types
 
 ### Error
@@ -41,6 +49,7 @@ Error :: enum u8 {
 	Invalid_State,
 	Unsupported,
 	Device_Error,
+	Invalid_Data,
 }
 ```
 
@@ -55,6 +64,7 @@ Result code for control-thread operations such as `node_prepare`.
 | `Invalid_State` | the call is not legal in the object's current state |
 | `Unsupported` | the requested format or feature is not available |
 | `Device_Error` | the OS or driver reported a failure |
+| `Invalid_Data` | saved state or a file is malformed, truncated or of an unknown kind |
 
 ### Note_Id
 
@@ -410,6 +420,9 @@ Node_VTable :: struct {
 	params: proc(self: rawptr) -> []Param_Info,
 	destroy: proc(self: rawptr, allocator: mem.Allocator),
 	latency: proc(self: rawptr) -> int,
+	type_id: string,
+	state_version: u32,
+	save: proc(self: rawptr, w: ^State_Writer, ctx: ^Save_Context) -> Error,
 }
 ```
 
@@ -425,6 +438,9 @@ from the device SDK look the same to the graph.
 | `params` | Static parameter table (may be nil for nodes without parameters). |
 | `destroy` | Control thread. Free the node's own state (the inverse of its `*_create`). |
 | `latency` | Control thread, after prepare. Frames by which the output lags the input (lookahead, linear-phase filters, plugin latency). May be nil: 0. The graph delays parallel paths to compensate. |
+| `type_id` | The ID this node type is registered under for loading saved state (see `Node_Registry`), such as "fire.gain". "" = cannot be saved. |
+| `state_version` | Version of what `save` writes; the loader receives it. |
+| `save` | Control thread. Writes what the type's `Node_Loader` needs to make the node again: construction settings and any state its parameters do not hold (the graph saves parameter values itself). May be nil: nothing. |
 
 ### Node_State
 
@@ -468,6 +484,149 @@ Create with a node type's `*_create` proc and free with `node_destroy`.
 | `config` | the config of the last successful prepare |
 | `allocator` | the allocator `prepare` used, reused by `release` |
 | `create_allocator` | the allocator that owns `data` |
+
+### Tag
+
+```odin
+Tag :: [4]u8
+```
+
+A chunk's four-byte type, such as `Tag{'N', 'O', 'D', 'E'}`.
+
+### Chunk
+
+```odin
+Chunk :: struct {
+	tag: Tag,
+	version: u32,
+	data: []u8,
+}
+```
+
+One chunk, as `read_chunk` finds it: its tag, its version and its
+payload (a slice of the reader's data).
+
+### State_Writer
+
+```odin
+State_Writer :: struct {
+	buf: [dynamic]u8,
+	open: [dynamic]int,
+	err: Error,
+}
+```
+
+Builds a tree of chunks in memory. Initialize with `state_writer_init`;
+write with `begin_chunk`, the `write_*` procs and `end_chunk`; take the
+result with `state_writer_bytes`. A failed allocation is remembered in
+`err` and later writes do nothing. Control thread.
+
+| Field | Description |
+|-------|-------------|
+| `buf` |  |
+| `open` | offsets of the size fields of chunks begun but not ended |
+| `err` |  |
+
+### State_Reader
+
+```odin
+State_Reader :: struct {
+	data: []u8,
+	pos: int,
+	err: Error,
+}
+```
+
+Reads values and chunks from a payload (or a whole saved buffer), in
+order. Reading past the end, or a malformed chunk, sets `err` to
+`.Invalid_Data`; from then on every read returns zero. Never allocates
+unless a proc says so. Any thread.
+
+### Save_Context
+
+```odin
+Save_Context :: struct {
+	dir: string,
+}
+```
+
+What node `save` procs get: where the saved state will live, so file
+paths can be stored relative to it (see `write_path`).
+
+| Field | Description |
+|-------|-------------|
+| `dir` | directory of the file being saved; "" = paths stay as given |
+
+### Timeline_Remap
+
+```odin
+Timeline_Remap :: struct {
+	saved: Timeline_Id,
+	now: Timeline_Id,
+}
+```
+
+A saved timeline ID and the ID it has after loading.
+
+### Load_Context
+
+```odin
+Load_Context :: struct {
+	dir: string,
+	timelines: []Timeline_Remap,
+	registry: ^Node_Registry,
+	allocator: mem.Allocator,
+	sample_rate: f64,
+	max_block: int,
+}
+```
+
+What node loaders get: how to find files and timelines saved alongside.
+
+| Field | Description |
+|-------|-------------|
+| `dir` | directory of the file being loaded; "" = none |
+| `timelines` | timelines restored before the nodes |
+| `registry` | for nodes that hold other nodes |
+| `allocator` | for anything kept past the load |
+| `sample_rate` | The graph being loaded into (set by `graph.load`). |
+| `max_block` |  |
+
+### Node_Loader
+
+```odin
+Node_Loader :: proc(data: rawptr, r: ^State_Reader, version: u32, ctx: ^Load_Context, allocator: mem.Allocator) -> (Node, Error)
+```
+
+Makes a node again from what its `Node_VTable.save` wrote: `r` reads the
+node's own chunk (`version` is that chunk's version) and `data` is what
+the type was registered with (a streamer, a plug-in host...). Control
+thread. Returns the node unprepared, as its `*_create` proc would.
+
+### Node_Type
+
+```odin
+Node_Type :: struct {
+	id: string,
+	load: Node_Loader,
+	data: rawptr,
+}
+```
+
+A node type that saved state can name. `id` is stable forever once
+shipped and matches the vtable's `type_id`.
+
+### Node_Registry
+
+```odin
+Node_Registry :: struct {
+	types: map[string]Node_Type,
+}
+```
+
+The node types a load can make, by ID. Initialize with `registry_init`;
+each package registers its own types (`dsp.register_types`, ...), and
+apps add theirs with `register_type`. Control thread.
 
 ### Timeline_Id
 
@@ -724,6 +883,16 @@ find_param :: proc(params: []Param_Info, id: Param_Id) -> (Param_Info, bool)
 
 Looks up the parameter with `id` in `params`. Returns false if absent.
 
+### node_save
+
+```odin
+node_save :: proc(n: ^Node, w: ^State_Writer, ctx: ^Save_Context) -> Error
+```
+
+Control thread. Writes the node's own state (see `Node_VTable.save`) as
+the payload of the current chunk. `.Unsupported` if the type cannot be
+saved.
+
 ### node_latency
 
 ```odin
@@ -731,6 +900,348 @@ node_latency :: proc(n: ^Node) -> int
 ```
 
 Frames of latency the node reports (0 if it doesn't). Control thread.
+
+### state_writer_init
+
+```odin
+state_writer_init :: proc(w: ^State_Writer, allocator: mem.Allocator = context.allocator)
+```
+
+Prepares `w` for writing, allocating with `allocator`.
+
+### state_writer_destroy
+
+```odin
+state_writer_destroy :: proc(w: ^State_Writer)
+```
+
+Frees what `w` allocated, including the bytes `state_writer_bytes`
+returned (clone them first to keep them).
+
+### state_writer_bytes
+
+```odin
+state_writer_bytes :: proc(w: ^State_Writer) -> ([]u8, Error)
+```
+
+Everything written so far, or `w.err` if a write failed or a chunk is
+still open (`.Invalid_State`). The bytes belong to the writer.
+
+### begin_chunk
+
+```odin
+begin_chunk :: proc(w: ^State_Writer, tag: Tag, version: u32)
+```
+
+Starts a chunk inside the current one (or at the top level). Everything
+written until the matching `end_chunk` is its payload.
+
+### end_chunk
+
+```odin
+end_chunk :: proc(w: ^State_Writer)
+```
+
+Ends the chunk `begin_chunk` started last.
+
+### write_chunk
+
+```odin
+write_chunk :: proc(w: ^State_Writer, tag: Tag, version: u32, data: []u8)
+```
+
+Writes a whole chunk whose payload is `data` (for state another component
+produced, such as a plug-in's).
+
+### write_payload
+
+```odin
+write_payload :: proc(w: ^State_Writer, data: []u8)
+```
+
+Writes `data` as it is, with no length: for a payload saved earlier.
+
+### write_u8
+
+```odin
+write_u8 :: proc(w: ^State_Writer, v: u8)
+```
+
+Writes one byte.
+
+### write_bool
+
+```odin
+write_bool :: proc(w: ^State_Writer, v: bool)
+```
+
+Writes `v` as one byte, 0 or 1.
+
+### write_u32
+
+```odin
+write_u32 :: proc(w: ^State_Writer, v: u32)
+```
+
+Writes a little-endian u32.
+
+### write_u64
+
+```odin
+write_u64 :: proc(w: ^State_Writer, v: u64)
+```
+
+Writes a little-endian u64.
+
+### write_i64
+
+```odin
+write_i64 :: proc(w: ^State_Writer, v: i64)
+```
+
+Writes a little-endian i64.
+
+### write_int
+
+```odin
+write_int :: proc(w: ^State_Writer, v: int)
+```
+
+Writes `v` as a little-endian i64 (sizes and counts).
+
+### write_f64
+
+```odin
+write_f64 :: proc(w: ^State_Writer, v: f64)
+```
+
+Writes an IEEE 754 f64, little-endian.
+
+### write_f32
+
+```odin
+write_f32 :: proc(w: ^State_Writer, v: f32)
+```
+
+Writes an IEEE 754 f32, little-endian.
+
+### write_bytes
+
+```odin
+write_bytes :: proc(w: ^State_Writer, data: []u8)
+```
+
+Writes a length (u64) and then the bytes.
+
+### write_string
+
+```odin
+write_string :: proc(w: ^State_Writer, s: string)
+```
+
+Writes a string as `write_bytes` does (UTF-8, no terminator).
+
+### write_f32s
+
+```odin
+write_f32s :: proc(w: ^State_Writer, samples: []f32)
+```
+
+Writes a count (u64) and then the samples as f32s.
+
+### state_reader
+
+```odin
+state_reader :: proc "contextless"(data: []u8) -> State_Reader
+```
+
+A reader over `data` (a saved buffer, or a chunk's payload).
+
+### chunk_reader
+
+```odin
+chunk_reader :: proc "contextless"(c: Chunk) -> State_Reader
+```
+
+A reader over the payload of `c`.
+
+### read_chunk
+
+```odin
+read_chunk :: proc "contextless"(r: ^State_Reader) -> (c: Chunk, ok: bool)
+```
+
+Reads the chunk at the reader's position and moves past it. `ok` is false
+at the end of the data (no error) or for a malformed chunk (`err` set).
+
+### find_chunk
+
+```odin
+find_chunk :: proc "contextless"(r: ^State_Reader, tag: Tag) -> (c: Chunk, ok: bool)
+```
+
+Reads chunks until one tagged `tag` (skipping others). `ok` is false if
+there is none before the end.
+
+### reader_done
+
+```odin
+reader_done :: proc "contextless"(r: ^State_Reader) -> bool
+```
+
+Whether the reader is at the end of its data (or failed).
+
+### read_u8
+
+```odin
+read_u8 :: proc "contextless"(r: ^State_Reader) -> u8
+```
+
+Reads one byte.
+
+### read_bool
+
+```odin
+read_bool :: proc "contextless"(r: ^State_Reader) -> bool
+```
+
+Reads a byte written by `write_bool`.
+
+### read_u32
+
+```odin
+read_u32 :: proc "contextless"(r: ^State_Reader) -> u32
+```
+
+Reads a little-endian u32.
+
+### read_u64
+
+```odin
+read_u64 :: proc "contextless"(r: ^State_Reader) -> u64
+```
+
+Reads a little-endian u64.
+
+### read_i64
+
+```odin
+read_i64 :: proc "contextless"(r: ^State_Reader) -> i64
+```
+
+Reads a little-endian i64.
+
+### read_int
+
+```odin
+read_int :: proc "contextless"(r: ^State_Reader) -> int
+```
+
+Reads an i64 written by `write_int`, as an int.
+
+### read_f64
+
+```odin
+read_f64 :: proc "contextless"(r: ^State_Reader) -> f64
+```
+
+Reads an f64.
+
+### read_f32
+
+```odin
+read_f32 :: proc "contextless"(r: ^State_Reader) -> f32
+```
+
+Reads an f32.
+
+### read_bytes
+
+```odin
+read_bytes :: proc "contextless"(r: ^State_Reader) -> []u8
+```
+
+Reads bytes written by `write_bytes`: a slice of the reader's data (copy
+it to keep it past the data's lifetime).
+
+### read_string
+
+```odin
+read_string :: proc "contextless"(r: ^State_Reader) -> string
+```
+
+Reads a string written by `write_string`: a view of the reader's data
+(clone it to keep it).
+
+### read_f32s
+
+```odin
+read_f32s :: proc(r: ^State_Reader, allocator: mem.Allocator = context.allocator) -> []f32
+```
+
+Reads samples written by `write_f32s` into a new slice from `allocator`.
+Nil when there are none or on error (`r.err`; `.Out_Of_Memory` if the
+allocation failed).
+
+### registry_init
+
+```odin
+registry_init :: proc(reg: ^Node_Registry, allocator: mem.Allocator = context.allocator)
+```
+
+Prepares an empty registry.
+
+### registry_destroy
+
+```odin
+registry_destroy :: proc(reg: ^Node_Registry)
+```
+
+Frees the registry (not what types were registered with).
+
+### register_type
+
+```odin
+register_type :: proc(reg: ^Node_Registry, t: Node_Type) -> Error
+```
+
+Adds `t`, replacing any type registered with the same ID. `t.id` must
+outlive the registry (a constant, typically).
+
+### find_type
+
+```odin
+find_type :: proc(reg: ^Node_Registry, id: string) -> (Node_Type, bool)
+```
+
+The type registered as `id`.
+
+### load_timeline
+
+```odin
+load_timeline :: proc(ctx: ^Load_Context, saved: Timeline_Id) -> Timeline_Id
+```
+
+The ID a loaded timeline has now (`saved` itself when the load did not
+restore that timeline).
+
+### write_path
+
+```odin
+write_path :: proc(w: ^State_Writer, ctx: ^Save_Context, path: string)
+```
+
+Writes a file path so it can be found again if the saved state moves with
+its files: the path as given (made absolute), and relative to `ctx.dir`.
+
+### read_path
+
+```odin
+read_path :: proc(r: ^State_Reader, ctx: ^Load_Context, allocator: mem.Allocator = context.allocator) -> string
+```
+
+Reads a path written by `write_path`: the relative path under `ctx.dir`
+if that file exists, else the absolute one. Allocated with `allocator`.
 
 ### transport_grid_at
 

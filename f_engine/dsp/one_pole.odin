@@ -36,6 +36,8 @@ one_pole_vtable := core.Node_VTable {
 	release = one_pole_release,
 	params  = proc(self: rawptr) -> []core.Param_Info { return one_pole_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^One_Pole_Lowpass)(self), allocator) },
+	type_id = ONE_POLE_TYPE_ID,
+	state_version = 1,
 }
 
 // Control thread. Allocates a `One_Pole_Lowpass` node with `allocator`. Free it

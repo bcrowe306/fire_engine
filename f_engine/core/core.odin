@@ -15,6 +15,7 @@ Error :: enum u8 {
 	Invalid_State,    // the call is not legal in the object's current state
 	Unsupported,      // the requested format or feature is not available
 	Device_Error,     // the OS or driver reported a failure
+	Invalid_Data,     // saved state or a file is malformed, truncated or of an unknown kind
 }
 
 // Maps an allocator error to `Error`: `.None` stays `.None`, anything else is

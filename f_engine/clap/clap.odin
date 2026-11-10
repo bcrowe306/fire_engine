@@ -66,12 +66,18 @@ Library :: struct {
 
 // Control thread. Opens the library at `path` (a .clap file, or a macOS
 // .clap bundle) and lists its plug-ins, or returns the one already open
-// there (one more reference). Libraries are shared by the whole process,
+// there (one more reference; paths are compared made absolute and
+// cleaned, so `a/../b.clap` and `b.clap` are one library: CLAP initializes a
+// library once). Libraries are shared by the whole process,
 // so they live in the heap allocator, whoever opens them. `.Device_Error`
 // if it doesn't load or isn't a compatible CLAP library. Close with
 // `library_close`.
 library_open :: proc(path: string) -> (l: ^Library, err: core.Error) {
 	allocator := runtime.heap_allocator()
+	path := path
+	if abs, aerr := filepath.abs(path, context.temp_allocator); aerr == nil {
+		path, _ = filepath.clean(abs, context.temp_allocator)
+	}
 	sync.guard(&libraries_lock)
 	for x in libraries do if x.path == path {
 		x.refs += 1
@@ -230,6 +236,7 @@ Requests :: struct {
 // are for the main (control) thread. Fields are internal.
 Plugin :: struct {
 	library:      ^Library,
+	id:           string, // the plug-in's id in the library
 	plugin:       ^c.Plugin,
 	host:         c.Host,
 	settings:     Host_Settings,
@@ -316,6 +323,9 @@ plugin_vtable := core.Node_VTable {
 	latency = proc(self: rawptr) -> int { return (^Plugin)(self).latency },
 	params  = proc(self: rawptr) -> []core.Param_Info { return (^Plugin)(self).infos },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { plugin_free((^Plugin)(self)) },
+	type_id = PLUGIN_TYPE_ID,
+	state_version = 1,
+	save    = save_plugin,
 }
 
 // Control thread (from here on, the plug-in's main thread). Makes the
@@ -328,6 +338,7 @@ plugin_create :: proc(lib: ^Library, id: string, settings: Host_Settings, alloca
 	if !known do return {}, nil, .Invalid_Argument
 	p = new(Plugin, allocator)
 	p.library, p.settings, p.allocator = lib, settings, allocator
+	p.id = strings.clone(id, allocator)
 	if p.settings.max_events <= 0 do p.settings.max_events = 2048
 	p.main_thread = sync.current_thread_id()
 	p.host = {
@@ -344,6 +355,7 @@ plugin_create :: proc(lib: ^Library, id: string, settings: Host_Settings, alloca
 	if p.plugin == nil || !p.plugin.init(p.plugin) {
 		if p.plugin != nil do p.plugin.destroy(p.plugin)
 		library_close(lib)
+		delete(p.id, allocator)
 		free(p, allocator)
 		return {}, nil, .Device_Error
 	}
@@ -700,6 +712,7 @@ plugin_free :: proc(p: ^Plugin) {
 	delete(p.cookies, p.allocator)
 	delete(p.in_ports, p.allocator)
 	delete(p.out_ports, p.allocator)
+	delete(p.id, p.allocator)
 	free(p, p.allocator)
 }
 

@@ -579,6 +579,110 @@ SATURATION_PARAM_MIX : core.Param_Id : core.Param_Id(4)
 
 Parameter id of the `Saturation`'s mix with the dry signal, in percent (0..100, default 100).
 
+### GAIN_TYPE_ID
+
+```odin
+GAIN_TYPE_ID :: "fire.gain"
+```
+
+Saved-state ID of `gain_create` nodes (see `register_types`).
+
+### ONE_POLE_TYPE_ID
+
+```odin
+ONE_POLE_TYPE_ID :: "fire.one_pole"
+```
+
+Saved-state ID of `one_pole_create` nodes.
+
+### FILTER_TYPE_ID
+
+```odin
+FILTER_TYPE_ID :: "fire.filter"
+```
+
+Saved-state ID of `filter_create` nodes.
+
+### EQ_TYPE_ID
+
+```odin
+EQ_TYPE_ID :: "fire.eq"
+```
+
+Saved-state ID of `eq_create` nodes.
+
+### MODULATION_TYPE_ID
+
+```odin
+MODULATION_TYPE_ID :: "fire.modulation"
+```
+
+Saved-state ID of chorus, flanger and phaser nodes (the kind is saved).
+
+### REVERB_TYPE_ID
+
+```odin
+REVERB_TYPE_ID :: "fire.reverb"
+```
+
+Saved-state ID of `reverb_create` nodes.
+
+### DELAY_TYPE_ID
+
+```odin
+DELAY_TYPE_ID :: "fire.delay"
+```
+
+Saved-state ID of `delay_create` nodes.
+
+### GATE_TYPE_ID
+
+```odin
+GATE_TYPE_ID :: "fire.gate"
+```
+
+Saved-state ID of `gate_create` nodes.
+
+### COMPRESSOR_TYPE_ID
+
+```odin
+COMPRESSOR_TYPE_ID :: "fire.compressor"
+```
+
+Saved-state ID of `compressor_create` nodes.
+
+### LIMITER_TYPE_ID
+
+```odin
+LIMITER_TYPE_ID :: "fire.limiter"
+```
+
+Saved-state ID of `limiter_create` nodes.
+
+### SATURATION_TYPE_ID
+
+```odin
+SATURATION_TYPE_ID :: "fire.saturation"
+```
+
+Saved-state ID of `saturation_create` nodes.
+
+### SYNTH_TYPE_ID
+
+```odin
+SYNTH_TYPE_ID :: "fire.synth"
+```
+
+Saved-state ID of `synth_create` nodes.
+
+### CONVOLUTION_TYPE_ID
+
+```odin
+CONVOLUTION_TYPE_ID :: "fire.convolution"
+```
+
+Saved-state ID of `convolution_create` nodes (the impulse response is saved).
+
 ### SYNTH_PARAM_OSC1_SHAPE
 
 ```odin
@@ -2633,6 +2737,15 @@ smoothed_next :: proc "contextless"(s: ^Smoothed_Value) -> f64
 ```
 
 **Realtime-safe** (callable on the audio thread). Advance one sample and return the new value.
+
+### register_types
+
+```odin
+register_types :: proc(reg: ^core.Node_Registry) -> core.Error
+```
+
+Registers every node type of this package, so saved state can name them.
+Control thread.
 
 ### stft_init
 

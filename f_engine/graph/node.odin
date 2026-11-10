@@ -41,4 +41,7 @@ graph_node_vtable := core.Node_VTable {
 	params  = proc(self: rawptr) -> []core.Param_Info { return nil },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { destroy((^Graph)(self)) },
 	latency = proc(self: rawptr) -> int { return (^Graph)(self).latency },
+	type_id = GRAPH_TYPE_ID,
+	state_version = GRAPH_VERSION,
+	save    = save_graph_node,
 }

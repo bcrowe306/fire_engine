@@ -90,6 +90,8 @@ reverb_vtable := core.Node_VTable {
 	release = reverb_release,
 	params  = proc(self: rawptr) -> []core.Param_Info { return reverb_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { free((^Reverb)(self), allocator) },
+	type_id = REVERB_TYPE_ID,
+	state_version = 1,
 }
 
 // Control thread. Allocates a `Reverb` node at its defaults. Free it with

@@ -6,6 +6,7 @@ import "core:math"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 import "core:sync"
 
 import "fire:audiofile"
@@ -102,6 +103,9 @@ audio_recorder_vtable := core.Node_VTable {
 	reset   = proc(self: rawptr) {},
 	release = proc(self: rawptr, allocator: mem.Allocator) {},
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { audio_recorder_free((^Audio_Recorder)(self)) },
+	type_id = AUDIO_RECORDER_TYPE_ID,
+	state_version = 1,
+	save    = save_audio_recorder,
 }
 
 // Control thread. Makes a recorder node with `settings.channels` inputs and
@@ -114,6 +118,8 @@ audio_recorder_create :: proc(disk: ^Disk_Writer, settings: Audio_Recorder_Setti
 	r = new(Audio_Recorder, allocator)
 	if r == nil do return {}, nil, .Out_Of_Memory
 	r.settings, r.allocator, r.disk = settings, allocator, disk
+	r.settings.directory = strings.clone(settings.directory, allocator) // kept, so the caller's may go
+	r.settings.name = strings.clone(settings.name, allocator)
 	r.gate = {timeline = settings.timeline, latency = settings.latency_frames}
 	if r.settings.encoding == .Int8 do r.settings.encoding = .Float32 // the zero value
 	seconds := settings.buffer_seconds if settings.buffer_seconds > 0 else 4
@@ -209,6 +215,8 @@ audio_recorder_free :: proc(r: ^Audio_Recorder) {
 	rt.spsc_destroy(&r.messages, r.allocator)
 	rt.spsc_destroy(&r.commands, r.allocator)
 	delete(r.blocks, r.allocator)
+	delete(r.settings.directory, r.allocator)
+	delete(r.settings.name, r.allocator)
 	free(r, r.allocator)
 }
 

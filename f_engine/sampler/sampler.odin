@@ -210,6 +210,9 @@ sampler_vtable := core.Node_VTable {
 	release = sampler_release,
 	params  = proc(self: rawptr) -> []core.Param_Info { return sampler_params[:] },
 	destroy = proc(self: rawptr, allocator: mem.Allocator) { sampler_free((^Sampler)(self)) },
+	type_id = SAMPLER_TYPE_ID,
+	state_version = 1,
+	save    = save_sampler,
 }
 
 // Control thread. Makes a sampler node (no audio inputs, stereo out; mono

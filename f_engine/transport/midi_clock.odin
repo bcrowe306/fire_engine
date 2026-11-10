@@ -50,6 +50,9 @@ midi_clock_vtable := core.Node_VTable {
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error { return .None },
 	process = midi_clock_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) { free(self, a) },
+	type_id = MIDI_CLOCK_TYPE_ID,
+	state_version = 1,
+	save    = save_midi_clock,
 }
 
 @(private)

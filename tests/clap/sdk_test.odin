@@ -5,6 +5,7 @@ import "core:testing"
 import "fire:clap"
 import "fire:core"
 import "fire:dsp"
+import "fire:graph"
 import kit "fire:testkit"
 
 odin_bundle :: proc() -> string { return #directory + "/../../.build/clap/FireOdin.clap" }
@@ -96,4 +97,54 @@ sdk_params_latency_and_state :: proc(t: ^testing.T) {
 	defer core.node_destroy(&lim)
 	render_with(t, &lim, input, kit.default_render_config())
 	testing.expect_value(t, core.node_latency(&lim), 239)
+}
+
+// A hosted plug-in in a graph is saved with its library, id and state, and
+// loads back through the registry sounding the same.
+@(test)
+hosted_plugins_save_with_the_graph :: proc(t: ^testing.T) {
+	lib, err := clap.library_open(odin_bundle())
+	if !testing.expect_value(t, err, core.Error.None) do return
+	defer clap.library_close(lib)
+	reg: core.Node_Registry
+	core.registry_init(&reg)
+	defer core.registry_destroy(&reg)
+	clap.register_types(&reg)
+	graph.register_types(&reg)
+
+	st := graph.default_settings(SR, 512)
+	st.workers = 0
+	a, _ := graph.create(st)
+	node, _, _ := clap.plugin_create(lib, "dev.fire-engine.odin.gain", {})
+	id, _ := graph.add_node(a, node, 2, 2)
+	graph.set_param_ramp(a, id, dsp.GAIN_PARAM_DB, -9, 0)
+	for c in 0 ..< 2 {
+		graph.connect(a, graph.INPUT, c, id, c)
+		graph.connect(a, id, c, graph.OUTPUT, c)
+	}
+	graph.commit(a)
+	input := kit.buffer_make(2, 9_600, SR, context.temp_allocator)
+	kit.sine(input.channels[0], SR, 440, 0.5)
+	kit.sine(input.channels[1], SR, 330, 0.5)
+	an := graph.as_node(a)
+	want := render_with(t, &an, input, kit.default_render_config()) // the plug-in now holds -9 dB itself
+	w: core.State_Writer
+	core.state_writer_init(&w, context.temp_allocator)
+	testing.expect_value(t, graph.save(a, &w, nil), core.Error.None)
+	data, _ := core.state_writer_bytes(&w)
+	graph.destroy(a)
+
+	b, _ := graph.create(st)
+	defer graph.destroy(b)
+	r := core.state_reader(data)
+	c, _ := core.read_chunk(&r)
+	ctx := core.Load_Context{registry = &reg, allocator = context.allocator}
+	res, lerr := graph.load(b, c, &ctx)
+	defer graph.load_result_destroy(&res)
+	testing.expect_value(t, lerr, core.Error.None)
+	testing.expect_value(t, len(res.missing), 0)
+	bn := graph.as_node(b)
+	got := render_with(t, &bn, input, kit.default_render_config())
+	testing.expectf(t, kit.compare_buffers(want, got).max_abs_error == 0, "loaded plug-in differs by %v", kit.compare_buffers(want, got).max_abs_error)
+	kit.expect_near(t, kit.linear_to_db(kit.peak(got.channels[0][4_800:])), -6.0206 - 9, 0.01, "-9 dB after loading")
 }

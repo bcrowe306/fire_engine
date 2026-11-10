@@ -54,6 +54,9 @@ latency_probe_vtable := core.Node_VTable {
 		delete(p.capture, allocator)
 		free(p, allocator)
 	},
+	type_id = LATENCY_PROBE_TYPE_ID,
+	state_version = 1,
+	save    = save_latency_probe,
 }
 
 // Control thread. Makes a probe node with one input and one output.

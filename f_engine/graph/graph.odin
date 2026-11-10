@@ -155,6 +155,13 @@ Slot :: struct {
 	events_out:   core.Event_Writer,
 	pending:      []Param_Change, // audio thread: sorted by `at`
 	pending_len:  int,
+	// Control thread: the last value set for each parameter (for `save`).
+	values:       [dynamic]core.Param_Value,
+	// Values a loaded node starts from, applied unsmoothed before anything
+	// else (written before the slot reaches a plan; then the audio thread
+	// reads them, advancing `initial_next`).
+	initial:      []core.Param_Value,
+	initial_next: int,
 }
 
 @(private)
@@ -335,6 +342,7 @@ set_param :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, value: f64, at: 
 	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, value, at, -1}) {
 		return .Out_Of_Memory // queue full: the audio thread is not running or far behind
 	}
+	remember_value(s, param, value)
 	return .None
 }
 
@@ -349,6 +357,7 @@ set_param_ramp :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, target: f64
 	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, target, at, i64(frames)}) {
 		return .Out_Of_Memory
 	}
+	remember_value(s, param, target)
 	return .None
 }
 
@@ -418,6 +427,7 @@ new_slot :: proc(g: ^Graph, kind: Slot_Kind, node: core.Node, in_channels, out_c
 	s.scratch = make([][]f32, in_channels, g.allocator)
 	s.event_buffer = make([]core.Event, g.settings.max_events, g.allocator)
 	s.pending = make([]Param_Change, g.settings.max_pending_params, g.allocator)
+	s.values = make([dynamic]core.Param_Value, g.allocator)
 	if (out_channels > 0 && s.outputs == nil) || (in_channels > 0 && s.scratch == nil) || s.event_buffer == nil || s.pending == nil {
 		return s, .Out_Of_Memory
 	}
@@ -443,6 +453,8 @@ slot_free_buffers :: proc(g: ^Graph, s: ^Slot) {
 	delete(s.scratch, g.allocator)
 	delete(s.event_buffer, g.allocator)
 	delete(s.pending, g.allocator)
+	delete(s.values)
+	delete(s.initial, g.allocator)
 }
 
 // A removed slot whose last plan is gone: destroy the node, reuse the index.
@@ -486,6 +498,16 @@ reaches :: proc(g: ^Graph, from, to: u32) -> bool {
 		for c in g.conns do if c.src == n && !seen[c.dst] do append(&stack, c.dst)
 	}
 	return false
+}
+
+// The value a parameter was last set to, for saving.
+@(private)
+remember_value :: proc(s: ^Slot, param: core.Param_Id, value: f64) {
+	for &v in s.values do if v.param == param {
+		v.value = value
+		return
+	}
+	append(&s.values, core.Param_Value{param, value})
 }
 
 @(private)
