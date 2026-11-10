@@ -48,6 +48,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
    And [control surfaces](/guides/surfaces/): scripts for hardware controllers.
 9. [Saving sessions](/guides/sessions/): the whole engine to one file, and back.
 10. [Single-board computers](/guides/single-board-computers/): ARM Linux boards like the Raspberry Pi, and what fits on them.
+11. [Building](/guides/building/) every part with Task, and [the application layer](/guides/app-layer/): GUI apps with SDL3 and Dear ImGui, driven from scripts for testing.
 
 The [design notes](/design/graph/) explain how the engine works inside and why.
 

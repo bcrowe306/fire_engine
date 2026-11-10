@@ -1,0 +1,16 @@
+# Milestone 1 smoke test: the window, ImGui and the fonts draw, input reaches
+# widgets, and both themes look right. Coordinates are logical points.
+size 1280 800
+wait 3
+screenshot m1_dark
+drag 150 131 280 131 6   # the Volume slider, to the right
+wait 2
+click 48 164             # the Enabled checkbox: off
+click 160 197            # the Name field
+text hello pads
+key enter
+wait 2
+screenshot m1_dark_after_input
+theme light
+wait 2
+screenshot m1_light

@@ -1,0 +1,2 @@
+# The static SDL3 and ImGui libraries: build them with `task deps`
+vendor/sdl3/lib/*/*SDL3*

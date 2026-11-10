@@ -1,0 +1,79 @@
+# Third-party libraries the app layer links statically: SDL3 and Dear ImGui.
+# Sources are fetched at pinned versions into .deps/ (gitignored) and the
+# libraries are built into the vendored bindings' folders, where the Odin
+# packages look for them:
+#
+#   vendor/sdl3/lib/<os>_<arch>/libSDL3.a  (SDL3-static.lib on Windows)
+#   vendor/imgui/libimgui_<os>_<arch>.a     (imgui_windows_x86_64.lib on Windows)
+#
+# Needs git, CMake, a C/C++ compiler and Python 3 (for dear_bindings).
+# Linux also needs SDL's build dependencies (see docs/guides/app-layer.md).
+version: '3'
+
+vars:
+  DEPS: '{{.ROOT_DIR}}/.deps'
+  SDL_VERSION: release-3.4.16
+  IMGUI_VERSION: v1.92.9b-docking
+  DEAR_BINDINGS_VERSION: DearBindings_v0.21_ImGui_v1.92.9b-docking
+  # The names the bindings use for this platform.
+  SDL_PLATFORM: '{{if eq OS "windows"}}windows_x86_64{{else}}{{OS}}_{{ARCH}}{{end}}'
+  IMGUI_PLATFORM: '{{if eq OS "darwin"}}macosx{{else}}{{OS}}{{end}}_{{if eq ARCH "amd64"}}x86_64{{else}}{{ARCH}}{{end}}'
+  SDL_LIB: '{{if eq OS "windows"}}SDL3-static.lib{{else}}libSDL3.a{{end}}'
+  IMGUI_LIB: '{{if eq OS "windows"}}imgui_{{.IMGUI_PLATFORM}}.lib{{else}}libimgui_{{.IMGUI_PLATFORM}}.a{{end}}'
+  PYTHON: '{{if eq OS "windows"}}{{.DEPS}}/venv/Scripts/python.exe{{else}}{{.DEPS}}/venv/bin/python{{end}}'
+  CMAKE_FLAGS: '-DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'
+
+tasks:
+  default:
+    desc: Fetch and build every static library the app layer needs (SDL3, then ImGui).
+    cmds:
+      - task: sdl3
+      - task: imgui
+
+  sdl3:
+    desc: Fetch SDL3 at the pinned tag and build it as a static library.
+    status:
+      - test -f {{.ROOT_DIR}}/vendor/sdl3/lib/{{.SDL_PLATFORM}}/{{.SDL_LIB}}
+    cmds:
+      - task: clone
+        vars: {URL: 'https://github.com/libsdl-org/SDL.git', REF: '{{.SDL_VERSION}}', DIR: '{{.DEPS}}/src/SDL'}
+      - cmake -S {{.DEPS}}/src/SDL -B {{.DEPS}}/build/sdl3 {{.CMAKE_FLAGS}} -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+      - cmake --build {{.DEPS}}/build/sdl3 --config Release --parallel {{numCPU}}
+      - cmake --install {{.DEPS}}/build/sdl3 --config Release --prefix {{.DEPS}}/sdl3
+      - mkdir -p {{.ROOT_DIR}}/vendor/sdl3/lib/{{.SDL_PLATFORM}}
+      - cp {{.DEPS}}/sdl3/lib/{{.SDL_LIB}} {{.ROOT_DIR}}/vendor/sdl3/lib/{{.SDL_PLATFORM}}/
+
+  imgui:
+    desc: Fetch ImGui and dear_bindings at the pinned tags, generate the C API, and build ImGui with its SDL3 and SDL_GPU backends as a static library.
+    deps: [sdl3]
+    status:
+      - test -f {{.ROOT_DIR}}/vendor/imgui/{{.IMGUI_LIB}}
+    cmds:
+      - task: clone
+        vars: {URL: 'https://github.com/ocornut/imgui.git', REF: '{{.IMGUI_VERSION}}', DIR: '{{.DEPS}}/src/imgui'}
+      - task: clone
+        vars: {URL: 'https://github.com/dearimgui/dear_bindings.git', REF: '{{.DEAR_BINDINGS_VERSION}}', DIR: '{{.DEPS}}/src/dear_bindings'}
+      - '{{if eq OS "windows"}}python{{else}}python3{{end}} -m venv {{.DEPS}}/venv'
+      - '{{.PYTHON}} -m pip install --quiet -r {{.DEPS}}/src/dear_bindings/requirements.txt'
+      - mkdir -p {{.DEPS}}/generated
+      - '{{.PYTHON}} {{.DEPS}}/src/dear_bindings/dear_bindings.py --nogeneratedefaultargfunctions -o {{.DEPS}}/generated/dcimgui {{.DEPS}}/src/imgui/imgui.h'
+      - >-
+        cmake -S {{.ROOT_DIR}}/vendor/imgui -B {{.DEPS}}/build/imgui {{.CMAKE_FLAGS}}
+        -DIMGUI_DIR={{.DEPS}}/src/imgui -DGENERATED_DIR={{.DEPS}}/generated
+        -DSDL3_INCLUDE={{.DEPS}}/sdl3/include -DOUTPUT_NAME={{if eq OS "windows"}}imgui_{{.IMGUI_PLATFORM}}{{else}}libimgui_{{.IMGUI_PLATFORM}}{{end}}
+        -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY={{.ROOT_DIR}}/vendor/imgui
+        -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE={{.ROOT_DIR}}/vendor/imgui
+      - cmake --build {{.DEPS}}/build/imgui --config Release --parallel {{numCPU}}
+
+  clean:
+    desc: Remove fetched sources, build trees and the built libraries.
+    cmds:
+      - rm -rf {{.DEPS}} {{.ROOT_DIR}}/vendor/sdl3/lib
+      - rm -f {{.ROOT_DIR}}/vendor/imgui/*.a {{.ROOT_DIR}}/vendor/imgui/*.lib
+
+  clone:
+    internal: true
+    status:
+      - test -d {{.DIR}}/.git
+    cmds:
+      - git clone --quiet --depth 1 --branch {{.REF}} {{.URL}} {{.DIR}}

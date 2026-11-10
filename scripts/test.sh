@@ -31,7 +31,7 @@ cd "$ROOT"
 read -r -a OPTS <<< "${FIRE_OPT:-none}"
 ARTIFACTS="${FIRE_ARTIFACTS_DIR:-$ROOT/.test_artifacts}"
 # Absolute: serial packages run from their own directory.
-case "$ARTIFACTS" in /*) ;; *) ARTIFACTS="$ROOT/$ARTIFACTS" ;; esac
+case "$ARTIFACTS" in /* | [A-Za-z]:*) ;; *) ARTIFACTS="$ROOT/$ARTIFACTS" ;; esac # C:/... is absolute too
 TIMEOUT="${FIRE_TIMEOUT:-600}"
 JOBS_MAX="${FIRE_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 rm -rf "$ARTIFACTS"
@@ -126,7 +126,7 @@ run_one() {
 	local bin="$WORK/test_$tag.bin"
 	# shellcheck disable=SC2046 # one word per define
 	FIRE_ARTIFACTS_DIR="$artifacts" run_with_timeout "$TIMEOUT" \
-		odin test "tests/$pkg" -collection:fire=f_engine -o:"$opt" $(defines "$pkg") \
+		odin test "tests/$pkg" -collection:fire=f_engine -collection:app=app -collection:deps=vendor -o:"$opt" $(defines "$pkg") \
 		-vet -strict-style -out:"$bin" \
 		> "$LOGS/$tag.log" 2>&1
 	echo $? > "$LOGS/$tag.status"
@@ -137,7 +137,7 @@ build_one() {
 	local pkg="$1" opt="$2"
 	local tag="${pkg}_${opt}"
 	# shellcheck disable=SC2046
-	odin build "tests/$pkg" -build-mode:test -collection:fire=f_engine -o:"$opt" $(defines "$pkg") \
+	odin build "tests/$pkg" -build-mode:test -collection:fire=f_engine -collection:app=app -collection:deps=vendor -o:"$opt" $(defines "$pkg") \
 		-vet -strict-style -out:"$WORK/test_$tag.bin" > "$LOGS/$tag.log" 2>&1
 	echo $? > "$LOGS/$tag.status"
 }

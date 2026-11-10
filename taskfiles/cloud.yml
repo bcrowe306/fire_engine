@@ -1,0 +1,49 @@
+# The cloud test machines (credentials in secrets.env). For each MACHINE
+# (linux, arm, windows): up, test, sync, ssh, off, status. Stop machines with
+# `off` at the end of a session; `down` destroys and is left to the scripts.
+#
+#   task cloud:up MACHINE=arm
+#   task cloud:test MACHINE=linux -- dsp
+version: '3'
+
+vars:
+  MACHINE: '{{.MACHINE | default "linux"}}'
+
+tasks:
+  up:
+    desc: Start (or create) a test machine. MACHINE=linux|arm|windows
+    cmds:
+      - bash ./scripts/cloud/{{.MACHINE}}.sh up
+
+  test:
+    desc: Copy the working tree to a test machine and run the test suite there (args go to test.sh).
+    cmds:
+      - bash ./scripts/cloud/{{.MACHINE}}.sh test {{.CLI_ARGS}}
+
+  sync:
+    desc: Copy the working tree to a test machine.
+    cmds:
+      - bash ./scripts/cloud/{{.MACHINE}}.sh sync
+
+  ssh:
+    desc: Run a command (task cloud:ssh MACHINE=arm -- uname -a), or open a shell, on a test machine.
+    interactive: true
+    cmds:
+      - bash ./scripts/cloud/{{.MACHINE}}.sh ssh {{.CLI_ARGS}}
+
+  off:
+    desc: Stop a test machine (it is kept; its disk is still billed).
+    cmds:
+      - bash ./scripts/cloud/{{.MACHINE}}.sh off
+
+  off:all:
+    desc: Stop every test machine.
+    cmds:
+      - bash ./scripts/cloud/linux.sh off
+      - bash ./scripts/cloud/arm.sh off
+      - bash ./scripts/cloud/windows.sh off
+
+  status:
+    desc: Show a test machine's state.
+    cmds:
+      - bash ./scripts/cloud/{{.MACHINE}}.sh status

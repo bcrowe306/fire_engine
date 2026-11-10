@@ -1,0 +1,21 @@
+# Fire Engine build procedures, run with Task (https://taskfile.dev):
+#
+#   task --list        every task with a description
+#   task deps          fetch and build SDL3 and Dear ImGui (static), once per machine
+#   task app:pads      build the Pads app into .build/app/pads
+#   task engine:test   run the engine's test suite
+#
+# Every task is a few plain commands; read taskfiles/*.yml to run them by
+# hand. See docs/guides/building.md.
+version: '3'
+
+includes:
+  deps: ./taskfiles/deps.yml
+  engine: ./taskfiles/engine.yml
+  app: ./taskfiles/app.yml
+  cloud: ./taskfiles/cloud.yml
+
+tasks:
+  default:
+    cmds:
+      - task --list

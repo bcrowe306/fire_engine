@@ -1,0 +1,53 @@
+# The application layer (app/) and the apps built on it (apps/). Builds
+# link SDL3 and Dear ImGui statically, so each app is one executable; run
+# `task deps` once first.
+#
+#   task app:pads             build .build/app/pads (optimized)
+#   task app:run              build and run Pads
+#   task app:drive -- FILE    run Pads with a drive script (input events and screenshots)
+#   task app:test             test app:core and app:ui headless
+version: '3'
+
+vars:
+  OUT: '{{.ROOT_DIR}}/.build/app'
+  EXE: '{{if eq OS "windows"}}.exe{{end}}'
+  COLLECTIONS: -collection:fire={{.ROOT_DIR}}/f_engine -collection:app={{.ROOT_DIR}}/app -collection:deps={{.ROOT_DIR}}/vendor
+  OPT: '{{.OPT | default "speed"}}'
+
+tasks:
+  pads:
+    desc: 'Build Pads into .build/app/pads (OPT=none for a debug build).'
+    sources:
+      - '{{.ROOT_DIR}}/apps/pads/**/*.odin'
+      - '{{.ROOT_DIR}}/app/**/*.odin'
+      - '{{.ROOT_DIR}}/f_engine/**/*.odin'
+    generates:
+      - '{{.OUT}}/pads{{.EXE}}'
+    cmds:
+      - mkdir -p {{.OUT}}
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} -o:{{.OPT}} -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}
+
+  run:
+    desc: Build and run Pads.
+    deps: [pads]
+    cmds:
+      - '{{.OUT}}/pads{{.EXE}} {{.CLI_ARGS}}'
+
+  drive:
+    desc: 'Run Pads with a drive script: task app:drive -- tests/app/drive/smoke.txt (see docs/guides/app-layer.md).'
+    deps: [pads]
+    cmds:
+      - '{{.OUT}}/pads{{.EXE}} --drive {{.CLI_ARGS}}'
+
+  test:
+    desc: 'Test the application layer: the headless packages (tests/app_*), then the UI cases that need a window (apps/ui_tests).'
+    cmds:
+      - bash ./scripts/test.sh $(cd tests && ls -d app_* | tr '\n' ' ')
+      - task: ui-tests
+
+  ui-tests:
+    desc: 'Run the UI cases that need a window and a GPU, headless (or some: task app:ui-tests -- driven_input_reaches_widgets).'
+    cmds:
+      - mkdir -p {{.OUT}}
+      - odin build {{.ROOT_DIR}}/apps/ui_tests {{.COLLECTIONS}} -o:none -vet -strict-style -out:{{.OUT}}/ui_tests{{.EXE}}
+      - '{{.OUT}}/ui_tests{{.EXE}} --out {{.OUT}}/ui_tests_shots {{.CLI_ARGS}}'

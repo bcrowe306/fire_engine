@@ -18,6 +18,22 @@ Packages run concurrently; each package's full log is in `.test_artifacts/.run/<
 A package that runs longer than `FIRE_TIMEOUT` seconds (default 600) is killed and fails.
 Concurrent invocations need different `FIRE_ARTIFACTS_DIR`s.
 
+### Taskfiles and the app layer
+
+Every build procedure is also a Task (`task --list`; Taskfile.yml and
+taskfiles/). The app layer (`app/`, apps in `apps/`) links SDL3 and Dear
+ImGui statically:
+
+```bash
+task deps                 # once per machine: fetch + build static SDL3 and ImGui (into vendor/, gitignored)
+task app:pads             # build .build/app/pads (collections: fire, app=app, deps=vendor)
+task app:test             # tests/app_* (headless) + apps/ui_tests (UI cases with a window, main thread)
+.build/app/pads --headless --drive tests/app_ui/drive/smoke.txt --out .build/app/shots   # scripted run + screenshots
+```
+
+Look at the screenshots after UI changes (layout, spacing, padding).
+See docs/guides/building.md and docs/guides/app-layer.md.
+
 ### Linux test machine (DigitalOcean)
 
 ```bash

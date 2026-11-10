@@ -14,3 +14,12 @@ secrets.env
 
 # Fetched and built by scripts/link.sh (Ableton Link is GPLv2+; never commit)
 third_party/
+
+# Fetched sources and build trees for the app layer's static libraries (task deps)
+.deps/
+vendor/sdl3/lib/
+vendor/imgui/*.a
+vendor/imgui/*.lib
+
+# Task's checksum cache
+.task/

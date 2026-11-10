@@ -1,0 +1,46 @@
+# The engine's build and test procedures. Each task runs a script in
+# scripts/, which can also be run by hand (see CLAUDE.md and the guides).
+version: '3'
+
+tasks:
+  test:
+    desc: 'Run every test package (or one: task engine:test -- dsp). Env: FIRE_OPT, FIRE_JOBS, FIRE_TIMEOUT.'
+    cmds:
+      - bash ./scripts/test.sh {{.CLI_ARGS}}
+
+  test:both:
+    desc: Run every test package at -o:none and -o:speed (do this before committing).
+    env:
+      FIRE_OPT: none speed
+    cmds:
+      - bash ./scripts/test.sh {{.CLI_ARGS}}
+
+  docs:
+    desc: Regenerate docs/reference from doc comments.
+    cmds:
+      - bash ./scripts/docs.sh
+
+  docs:check:
+    desc: Check the reference is current and every exported symbol is documented.
+    cmds:
+      - bash ./scripts/docs.sh --check
+
+  examples:
+    desc: 'Build and run examples/ headless (or one: task engine:examples -- session).'
+    cmds:
+      - bash ./scripts/examples.sh {{.CLI_ARGS}}
+
+  clap:
+    desc: Build the CLAP test plug-ins (tests/clap skips without them).
+    cmds:
+      - bash ./scripts/clap.sh
+
+  link:
+    desc: Fetch and build Ableton Link (GPL, into third_party/) for fire:link.
+    cmds:
+      - bash ./scripts/link.sh
+
+  surface:
+    desc: Build the C control-surface test script (tests/surface skips without it).
+    cmds:
+      - bash ./scripts/surface.sh
