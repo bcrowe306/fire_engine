@@ -74,10 +74,12 @@ Lane_Param :: enum u8 {
 	Eq_Low, // dB
 	Eq_Mid,
 	Eq_High,
+	Cutoff,    // Hz
+	Resonance, // percent
 }
 
 // Lane names, as the UI shows them.
-LANE_NAMES := [Lane_Param]cstring{.Volume = "Volume", .Pitch = "Pitch", .Eq_Low = "EQ low", .Eq_Mid = "EQ mid", .Eq_High = "EQ high"}
+LANE_NAMES := [Lane_Param]cstring{.Volume = "Volume", .Pitch = "Pitch", .Eq_Low = "EQ low", .Eq_Mid = "EQ mid", .Eq_High = "EQ high", .Cutoff = "Cutoff", .Resonance = "Resonance"}
 
 // A lane parameter's range, in its units.
 lane_range :: proc "contextless" (p: Lane_Param) -> (lo, hi: f32) {
@@ -85,6 +87,8 @@ lane_range :: proc "contextless" (p: Lane_Param) -> (lo, hi: f32) {
 	case .Volume:                   return -48, 12
 	case .Pitch:                    return -24, 24
 	case .Eq_Low, .Eq_Mid, .Eq_High: return -15, 15
+	case .Cutoff:                   return 20, 20_000
+	case .Resonance:                return 0, 100
 	}
 	return 0, 1
 }

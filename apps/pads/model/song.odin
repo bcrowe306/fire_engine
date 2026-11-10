@@ -255,6 +255,8 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 				case .Eq_Low:  clip.automation_add_point(&eb, dsp.eq_band_param(0, .Gain_Db), at, v); any_eq = true
 				case .Eq_Mid:  clip.automation_add_point(&eb, dsp.eq_band_param(1, .Gain_Db), at, v); any_eq = true
 				case .Eq_High: clip.automation_add_point(&eb, dsp.eq_band_param(2, .Gain_Db), at, v); any_eq = true
+				case .Cutoff:    clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_FILTER_CUTOFF, at, v); any_voice = true
+				case .Resonance: clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_FILTER_RESONANCE, at, v); any_voice = true
 				}
 			}
 		}

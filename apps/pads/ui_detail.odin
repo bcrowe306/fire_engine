@@ -8,8 +8,12 @@ import im "deps:imgui"
 // The tabs beside the pads in the bottom panel: what the selected pad is.
 Detail_Tab :: enum u8 {
 	Sample,
-	Pad,
+	Env,
+	Filter,
+	Pitch,
+	Lfo,
 	Effects,
+	Global,
 }
 
 // The bottom panel's state: its tab, and how wide the pads are.
@@ -19,8 +23,15 @@ Detail_State :: struct {
 	pads_width: f32, // 0: as wide as the pads are tall
 }
 
-DETAIL_NAMES := [Detail_Tab]string{.Sample = "Sample", .Pad = "Pad", .Effects = "Effects"}
-DETAIL_ICONS := [Detail_Tab]string{.Sample = ui.ICON_AUDIO_WAVEFORM, .Pad = ui.ICON_SLIDERS_HORIZONTAL, .Effects = ui.ICON_WAND_SPARKLES}
+DETAIL_NAMES := [Detail_Tab]string{.Sample = "Sample", .Env = "Env", .Filter = "Filter", .Pitch = "Pitch", .Lfo = "LFO", .Effects = "Effects", .Global = "Global"}
+DETAIL_ICONS := [Detail_Tab]string{.Sample = ui.ICON_AUDIO_WAVEFORM, .Env = ui.ICON_CHART_SPLINE, .Filter = ui.ICON_AUDIO_LINES, .Pitch = ui.ICON_MOVE_VERTICAL, .Lfo = ui.ICON_ACTIVITY, .Effects = ui.ICON_WAND_SPARKLES, .Global = ui.ICON_SLIDERS_HORIZONTAL}
+
+// Whether a tab belongs to the selected pad (an audio pad has no voice).
+@(private)
+tab_shown :: proc(a: ^App, tab: Detail_Tab) -> bool {
+	if a.m.project.pads[a.selected].kind != .Audio do return true
+	return tab == .Sample || tab == .Effects || tab == .Global
+}
 
 // Width of the divider between the pads and the tabs.
 @(private) DIVIDER :: 9
@@ -69,6 +80,7 @@ draw_detail :: proc(user: rawptr) {
 	if im.BeginChild("##detail", {max(im.GetContentRegionAvail().x - strip_room, 100), avail.y}, {.AlwaysUseWindowPadding}) {
 		if im.BeginTabBar("##detail_tabs") {
 			for tab in Detail_Tab {
+				if !tab_shown(a, tab) do continue
 				flags: im.TabItemFlags
 				if st.show > 0 && st.tab == tab do flags += {.SetSelected}
 				label := fmt.ctprintf("%s  %s###%s", DETAIL_ICONS[tab], DETAIL_NAMES[tab], DETAIL_NAMES[tab])
@@ -77,8 +89,14 @@ draw_detail :: proc(user: rawptr) {
 					if im.BeginChild("##tab", {0, 0}) {
 						switch tab {
 						case .Sample:  draw_sample(a)
-						case .Pad:     draw_inspector(a)
-						case .Effects: draw_effect(a)
+						case .Env:     draw_env(a)
+						case .Filter:  draw_filter(a)
+						case .Pitch:   draw_pitch(a)
+						case .Lfo:     draw_lfo(a)
+						case .Effects:
+							draw_pad_eq(a)
+							draw_effect(a)
+						case .Global:  draw_global(a)
 						}
 					}
 					im.EndChild()

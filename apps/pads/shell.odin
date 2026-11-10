@@ -240,7 +240,7 @@ subscribe_imports :: proc(a: ^App) {
 //	expect samples K      fail unless the project holds K samples
 //	expect selected N / expect bank N / expect dark 0|1
 //	expect undo NAME      fail unless the next undo step is NAME
-//	panel ID              bring a panel (browser, sequence, song, mixer, perform, pads) or a pad tab (sample, pad, effects) to the front
+//	panel ID              bring a panel (browser, sequence, song, mixer, perform, pads) or a pad tab (sample, env, filter, pitch, lfo, effects, global) to the front
 //	play / stop / rec on|off / metronome on|off   the sequencer
 //	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
 //	note PAD BEAT LENGTH [VELOCITY]   add a note to the current sequence
@@ -627,7 +627,11 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) < 2 do return false
 		switch w[1] {
 		case "sample":            show_detail(a, .Sample)
-		case "pad", "inspector":  show_detail(a, .Pad)
+		case "pad", "inspector", "global": show_detail(a, .Global)
+		case "env":               show_detail(a, .Env)
+		case "filter":            show_detail(a, .Filter)
+		case "pitch":             show_detail(a, .Pitch)
+		case "lfo":               show_detail(a, .Lfo)
 		case "effect", "effects": show_detail(a, .Effects)
 		case "pads":              ui.panel_focus(&a.ws, "detail")
 		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))

@@ -6,7 +6,7 @@ button; undo and Clear Take."""
 
 def audio_pad(app, index=1):
     app.click(f"pad A{index + 1}", window="detail")
-    app.click("Pad", window="detail")
+    app.click("Global", window="detail")
     app.click("Audio", window="detail")
     p = app.pad(index)
     assert p["kind"] == "Audio" and p["take"] == 0, p

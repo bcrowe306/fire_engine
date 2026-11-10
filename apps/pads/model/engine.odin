@@ -177,7 +177,7 @@ sync :: proc(e: ^Engine) {
 		audio := pad.kind == .Audio
 		want := src != nil || audio
 		// A pad that changes kind (or an audio pad its input) is built again.
-		if n.live && (!want || n.audio != audio || (audio && n.built.input != pad.input)) {
+		if n.live && (!want || n.audio != audio || (audio && n.built.input != pad.input) || (!audio && n.built.sample != 0 && n.built.voice.voices != pad.voice.voices)) {
 			remove_pad_nodes(g, n)
 			structural = true
 		}
@@ -187,7 +187,7 @@ sync :: proc(e: ^Engine) {
 			if audio {
 				voice = dsp.pan_create() // what the players and the monitor sum into (panned: a sampler's zone pans)
 			} else {
-				node, handle := sampler.sampler_create({voices = 8, quality = .Sinc_Low})
+				node, handle := sampler.sampler_create({voices = clamp(pad.voice.voices, 1, 32), quality = .Sinc_Low})
 				n.handle, voice = handle, node
 			}
 			sid, err := graph.add_node(g, voice, 2 if audio else 0, 2)
@@ -245,9 +245,9 @@ sync :: proc(e: ^Engine) {
 		}
 		fresh := n.built.sample == 0 || e.resend
 		set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
-		set(g, n.voice, sampler.SAMPLER_PARAM_TRANSPOSE, n.built.pitch, pad.pitch, fresh)
-		set(g, n.voice, sampler.SAMPLER_PARAM_ATTACK, n.built.attack, pad.attack, fresh)
-		set(g, n.voice, sampler.SAMPLER_PARAM_RELEASE, n.built.release, pad.release, fresh)
+		// The voice: its envelopes, filter, pitch, LFOs and routes.
+		was, now := voice_params(n.built), voice_params(pad)
+		for v, k in now do if fresh || v != was[k] do graph.set_param(g, n.voice, fc.Param_Id(k + 1), v)
 		for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
 		n.built = pad
 	}
@@ -560,4 +560,59 @@ mark_all_sources_stale :: proc(e: ^Engine) {
 	clear(&e.sources)
 	for &n in e.nodes do n.built.sample = 0 // their zones again
 	mark_all(e)
+}
+
+// Every sampler parameter pad `pad` sets, by id - 1 (transpose aside: it
+// is the pad's pitch, sent with it).
+voice_params :: proc(pad: Pad) -> (out: [len(sampler.sampler_params)]f64) {
+	for info, k in sampler.sampler_params do out[k] = info.default
+	v := pad.voice
+	put :: proc(out: ^[len(sampler.sampler_params)]f64, id: fc.Param_Id, x: f64) { out[id - 1] = x }
+	put(&out, sampler.SAMPLER_PARAM_ATTACK, f64(pad.attack))
+	put(&out, sampler.SAMPLER_PARAM_DECAY, f64(v.decay))
+	put(&out, sampler.SAMPLER_PARAM_SUSTAIN, f64(v.sustain) * 100)
+	put(&out, sampler.SAMPLER_PARAM_RELEASE, f64(pad.release))
+	put(&out, sampler.SAMPLER_PARAM_TRANSPOSE, f64(pad.pitch))
+	put(&out, sampler.SAMPLER_PARAM_FILTER_TYPE, f64(v.filter))
+	put(&out, sampler.SAMPLER_PARAM_FILTER_SLOPE, 1 if v.steep else 0)
+	put(&out, sampler.SAMPLER_PARAM_FILTER_CUTOFF, f64(v.cutoff))
+	put(&out, sampler.SAMPLER_PARAM_FILTER_RESONANCE, f64(v.resonance) * 100)
+	put(&out, sampler.SAMPLER_PARAM_FILTER_KEYTRACK, f64(v.key_track) * 100)
+	put(&out, sampler.SAMPLER_PARAM_FILTER_VELOCITY, f64(v.vel_cutoff) * 100)
+	put(&out, sampler.SAMPLER_PARAM_FILTER_ENV, f64(v.filter_env) * 100)
+	put(&out, sampler.SAMPLER_PARAM_FILTER_ATTACK, f64(v.filter_adsr[0]))
+	put(&out, sampler.SAMPLER_PARAM_FILTER_DECAY, f64(v.filter_adsr[1]))
+	put(&out, sampler.SAMPLER_PARAM_FILTER_SUSTAIN, f64(v.filter_adsr[2]) * 100)
+	put(&out, sampler.SAMPLER_PARAM_FILTER_RELEASE, f64(v.filter_adsr[3]))
+	put(&out, sampler.SAMPLER_PARAM_PITCH_ENV, f64(v.pitch_env))
+	put(&out, sampler.SAMPLER_PARAM_PITCH_ATTACK, f64(v.pitch_adsr[0]))
+	put(&out, sampler.SAMPLER_PARAM_PITCH_DECAY, f64(v.pitch_adsr[1]))
+	put(&out, sampler.SAMPLER_PARAM_PITCH_SUSTAIN, f64(v.pitch_adsr[2]) * 100)
+	put(&out, sampler.SAMPLER_PARAM_PITCH_RELEASE, f64(v.pitch_adsr[3]))
+	put(&out, sampler.SAMPLER_PARAM_PITCH_VELOCITY, f64(v.vel_pitch))
+	put(&out, sampler.SAMPLER_PARAM_PITCH_KEYTRACK, f64(v.pitch_track) * 100)
+	put(&out, sampler.SAMPLER_PARAM_FINE_TUNE, f64(v.fine))
+	for l, k in v.lfos {
+		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_SHAPE), f64(l.shape))
+		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_MODE), f64(l.mode))
+		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_RATE), f64(l.rate))
+		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_SYNC_RATE), f64(l.sync))
+		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_FADE), f64(l.fade))
+		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_PHASE), f64(l.phase))
+	}
+	for r, k in v.routes {
+		put(&out, sampler.sampler_route_param(k, sampler.SAMPLER_PARAM_ROUTE_SOURCE), f64(r.source))
+		put(&out, sampler.sampler_route_param(k, sampler.SAMPLER_PARAM_ROUTE_DEST), f64(r.dest))
+		put(&out, sampler.sampler_route_param(k, sampler.SAMPLER_PARAM_ROUTE_AMOUNT), f64(r.amount) * 100)
+	}
+	return
+}
+
+// What pad `index`'s sampler is doing now (its newest voice's envelopes,
+// its filter with modulation and automation, the LFOs), for the device
+// tabs' live drawings; false without a sampler.
+pad_live :: proc(e: ^Engine, index: int) -> (sampler.Sampler_Live, bool) {
+	n := &e.nodes[index]
+	if !n.live || n.handle == nil do return {}, false
+	return sampler.sampler_live(n.handle), true
 }

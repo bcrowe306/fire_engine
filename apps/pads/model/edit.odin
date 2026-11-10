@@ -52,6 +52,18 @@ Pad_Field :: enum {
 	Kind,
 	Input,
 	Monitor,
+	Voice, // a field of the voice (see `set_voice`)
+}
+
+// Changes one setting of pad `index`'s voice, undoably: `key` names the
+// setting (drags of the same one merge into one step), `name` the step.
+set_voice :: proc(m: ^Model, index: int, key: int, name: string, v: Voice) {
+	if index < 0 || index >= PADS do return
+	old := m.project.pads[index]
+	if old.voice == v do return
+	new := old
+	new.voice = v
+	app.set_value(&m.history, name, {app.Id(index + 1), int(Pad_Field.Voice) * 1000 + key}, old, new, apply_pad)
 }
 
 // Prepares the model for a project in `dir` on `host`.

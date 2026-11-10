@@ -57,7 +57,7 @@ def test_outputs_and_inserts(app, fixtures):
     app.click("Low-pass")
     assert app.pad(0)["inserts"][0] == "Low-pass"
     app.click("A1 eq", window="mixer")
-    assert app.state()["detail_tab"] == "Pad"
+    assert app.state()["detail_tab"] == "Effects"  # the EQ is there
 
 
 def test_the_peak_readout_resets(app, fixtures):

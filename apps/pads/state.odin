@@ -69,6 +69,9 @@ State_Pad :: struct {
 	monitor: bool,
 	armed:   bool,
 	take:    i64, // an audio pad's take in the current sequence: its frames (0: none)
+	attack, release: f32,
+	voice:   pm.Voice, // its envelopes, filter, pitch, LFOs and routes
+	cutoff_now: f64, // the filter's cutoff as it plays now (modulated, automated)
 }
 
 State_Bus :: struct {
@@ -138,6 +141,8 @@ state_json :: proc(a: ^App) -> string {
 		f, ok := pm.pad_playhead(&m.engine, i)
 		sp.playhead = f if ok else -1
 		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), enum_name(pad.input), pad.monitor, pm.audio_armed(m, i)
+		sp.attack, sp.release, sp.voice = pad.attack, pad.release, pad.voice
+		if l, live := pm.pad_live(&m.engine, i); live do sp.cutoff_now = l.cutoff
 		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames
 		append(&s.pads, sp)
 	}

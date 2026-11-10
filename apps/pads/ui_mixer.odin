@@ -605,7 +605,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		eq := pad.eq
 		if eq_thumb(&eq, color) {
 			a.selected = i
-			show_detail(a, .Pad)
+			show_detail(a, .Effects)
 		}
 		gap()
 		for s, k in pad.inserts {

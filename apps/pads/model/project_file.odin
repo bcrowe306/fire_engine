@@ -7,6 +7,7 @@ import "core:strings"
 import app "app:core"
 import fc "fire:core"
 import "fire:perform"
+import "fire:sampler"
 import "fire:session"
 
 // The project file in a project folder.
@@ -16,7 +17,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 6 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips
+PROJECT_VERSION :: 7 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -179,6 +180,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u8(w, u8(pad.kind))
 		fc.write_u8(w, u8(pad.input))
 		fc.write_bool(w, pad.monitor)
+		write_voice(w, pad.voice)
 	}
 	// Sequences.
 	for s in p.sequences {
@@ -351,6 +353,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			pad.input = Audio_Input(min(fc.read_u8(r), u8(max(Audio_Input))))
 			pad.monitor = fc.read_bool(r)
 		}
+		if version >= 7 do pad.voice = read_voice(r)
 	}
 	for &s in p.sequences {
 		s.bars = clamp(fc.read_int(r), 1, MAX_BARS)
@@ -435,4 +438,73 @@ model_new :: proc(m: ^Model, dir: string) -> fc.Error {
 	project_init(&m.project, dir)
 	app.history_init(&m.history, m, bus = bus)
 	return engine_init(&m.engine, host, &m.project)
+}
+
+@(private)
+write_voice :: proc(w: ^fc.State_Writer, v: Voice) {
+	fc.write_f32(w, v.decay)
+	fc.write_f32(w, v.sustain)
+	fc.write_u8(w, u8(v.filter))
+	fc.write_bool(w, v.steep)
+	for x in ([?]f32{v.cutoff, v.resonance, v.key_track, v.vel_cutoff, v.filter_env}) do fc.write_f32(w, x)
+	for x in v.filter_adsr do fc.write_f32(w, x)
+	fc.write_f32(w, v.pitch_env)
+	for x in v.pitch_adsr do fc.write_f32(w, x)
+	for x in ([?]f32{v.vel_pitch, v.pitch_track, v.fine}) do fc.write_f32(w, x)
+	for l in v.lfos {
+		fc.write_u8(w, u8(l.shape))
+		fc.write_u8(w, u8(l.mode))
+		fc.write_f32(w, l.rate)
+		fc.write_u8(w, l.sync)
+		fc.write_f32(w, l.fade)
+		fc.write_f32(w, l.phase)
+	}
+	for r in v.routes {
+		fc.write_u8(w, u8(r.source))
+		fc.write_u8(w, u8(r.dest))
+		fc.write_f32(w, r.amount)
+	}
+	fc.write_int(w, v.voices)
+}
+
+@(private)
+read_voice :: proc(r: ^fc.State_Reader) -> (v: Voice) {
+	v = default_voice()
+	v.decay = clamp(fc.read_f32(r), 0.005, 10)
+	v.sustain = clamp(fc.read_f32(r), 0, 1)
+	v.filter = sampler.Voice_Filter(min(fc.read_u8(r), u8(max(sampler.Voice_Filter))))
+	v.steep = fc.read_bool(r)
+	v.cutoff = clamp(fc.read_f32(r), 20, 20_000)
+	v.resonance = clamp(fc.read_f32(r), 0, 1)
+	v.key_track = clamp(fc.read_f32(r), 0, 1)
+	v.vel_cutoff = clamp(fc.read_f32(r), -1, 1)
+	v.filter_env = clamp(fc.read_f32(r), -1, 1)
+	for &x in v.filter_adsr do x = fc.read_f32(r)
+	v.pitch_env = clamp(fc.read_f32(r), -48, 48)
+	for &x in v.pitch_adsr do x = fc.read_f32(r)
+	v.vel_pitch = clamp(fc.read_f32(r), -24, 24)
+	v.pitch_track = clamp(fc.read_f32(r), 0, 1)
+	v.fine = clamp(fc.read_f32(r), -100, 100)
+	for &l in v.lfos {
+		l.shape = sampler.Lfo_Shape(min(fc.read_u8(r), u8(max(sampler.Lfo_Shape))))
+		l.mode = sampler.Lfo_Mode(min(fc.read_u8(r), u8(max(sampler.Lfo_Mode))))
+		l.rate = clamp(fc.read_f32(r), 0.01, 40)
+		l.sync = min(fc.read_u8(r), u8(len(sampler.LFO_SYNC_BEATS) - 1))
+		l.fade = clamp(fc.read_f32(r), 0, 10)
+		l.phase = clamp(fc.read_f32(r), 0, 360)
+	}
+	for &rt in v.routes {
+		rt.source = sampler.Mod_Source(min(fc.read_u8(r), u8(max(sampler.Mod_Source))))
+		rt.dest = sampler.Mod_Dest(min(fc.read_u8(r), u8(max(sampler.Mod_Dest))))
+		rt.amount = clamp(fc.read_f32(r), -1, 1)
+	}
+	v.voices = clamp(fc.read_int(r), 1, 32)
+	// The envelopes' times and sustains, in range.
+	for adsr in ([]^[4]f32{&v.filter_adsr, &v.pitch_adsr}) {
+		adsr[0] = clamp(adsr[0], 0.0005, 10)
+		adsr[1] = clamp(adsr[1], 0.005, 10)
+		adsr[2] = clamp(adsr[2], 0, 1)
+		adsr[3] = clamp(adsr[3], 0.005, 20)
+	}
+	return
 }

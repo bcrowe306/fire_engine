@@ -42,8 +42,9 @@ col :: proc "contextless" (c: Color) -> u32 {
 
 // A rotary knob: drag up and down (Shift for fine), scroll, double-click
 // to reset to `default`. Shows `format` of the value under it, and the
-// label above.
-knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE) -> (e: Edit) {
+// label above. With `log_scale` (min_v > 0) it turns in ratios: times and
+// frequencies, where the small end needs room.
+knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false) -> (e: Edit) {
 	im.PushID(label)
 	defer im.PopID()
 	t := current
@@ -61,12 +62,21 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	im.SetCursorScreenPos({pos.x + (w - size) / 2, pos.y + label_h + 4})
 	im.InvisibleButton("##knob", {size, size})
 	name(string(shown))
-	e = drag_value(value, min_v, max_v, default, size * 3)
+	frac: f32
+	if log_scale && min_v > 0 && max_v > min_v {
+		span := math.ln(max_v / min_v)
+		u := math.ln(clamp(value^, min_v, max_v) / min_v) / span
+		e = drag_value(&u, 0, 1, math.ln(clamp(default, min_v, max_v) / min_v) / span, size * 3)
+		if e.changed do value^ = min_v * math.exp(u * span)
+		frac = u
+	} else {
+		e = drag_value(value, min_v, max_v, default, size * 3)
+		frac = (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
+	}
 
 	// Arc from 7:30 to 4:30 (270°): track, then the value.
 	r := size / 2 - 3
 	a0, a1 := f32(math.PI) * 0.75, f32(math.PI) * 2.25
-	frac := (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
 	thickness: f32 = 4
 	im.DrawList_PathArcTo(dl, center, r, a0, a1, 32)
 	im.DrawList_PathStroke(dl, col(t.raised), thickness)

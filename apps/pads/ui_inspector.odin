@@ -10,50 +10,15 @@ import im "deps:imgui"
 import "fire:sampler"
 
 
-// The selected pad's settings.
-draw_inspector :: proc(user: rawptr) {
-	a := (^App)(user)
+// How the selected pad plays its sample: one-shot, gate, loop or hold;
+// reversed; its choke group; a loop's mode and crossfade. One row over the
+// Sample tab.
+draw_playback :: proc(a: ^App) {
 	m := &a.m
 	i := a.selected
 	pad := m.project.pads[i]
-	f := a.platform.fonts
-
-	im.PushFontFloat(f.bold, 18)
-	im.Text("%s", fmt.ctprintf("%s", pm.pad_label(i)))
-	im.PopFont()
-	im.SameLine(0, 12)
-	kind := int(pad.kind)
-	if ui.segmented("kind", {"Sampler", "Audio"}, &kind) do pm.set_pad_kind(m, i, pm.Pad_Kind(kind))
-	if im.IsItemHovered() do im.SetTooltip("A sampler plays its sample when hit; an audio pad records takes from an input and plays them with the sequence")
-	im.SameLine(0, 12)
-	im.AlignTextToFramePadding()
-	if pad.kind == .Audio {
-		draw_audio_inspector(a, i)
-		return
-	}
-	if pad.sample == 0 {
-		im.TextDisabled("Empty: drop a sample here, or use File > Import")
-		return
-	}
 	s := pm.pad_sample(m, i)
-	im.TextDisabled("%s", fmt.ctprintf("%s · %.2f s · %.0f Hz · %s", s.name, f64(s.frames) / s.rate, s.rate, "stereo" if s.channels > 1 else "mono"))
-
-	// Wide (the bottom panel): three columns, as a device would lay out;
-	// narrow: one after another.
-	wide := im.GetContentRegionAvail().x >= 720
-	if wide && !im.BeginTable("##inspector", 3, {.BordersInnerV}) do wide = false
-	defer if wide do im.EndTable()
-	if wide {
-		im.TableSetupColumn("a", {.WidthStretch}, 1)
-		im.TableSetupColumn("b", {.WidthFixed}, 5 * (ui.KNOB_SIZE + 14) + 20)
-		im.TableSetupColumn("c", {.WidthFixed}, 3 * (ui.KNOB_SIZE + 14) + 20)
-		im.TableNextColumn()
-		section(a, "Pad", false)
-	}
-
-	pad_name_colour(a, i)
-
-	section(a, "Playback", !wide)
+	if s == nil do return
 	mode := int(pad.mode)
 	if ui.segmented("mode", {"One-shot", "Gate", "Loop", "Hold"}, &mode) {
 		p := pad
@@ -61,6 +26,7 @@ draw_inspector :: proc(user: rawptr) {
 		pm.set_pad(m, i, .Mode, "Set Mode", p)
 		app.seal(&m.history)
 	}
+	im.SameLine(0, 16)
 	rev := pad.reverse
 	if ui.toggle("Reverse", &rev) {
 		p := pad
@@ -68,18 +34,8 @@ draw_inspector :: proc(user: rawptr) {
 		pm.set_pad(m, i, .Reverse, "Reverse", p)
 		app.seal(&m.history)
 	}
-	choke := i32(pad.choke)
-	groups := [pm.CHOKE_GROUPS + 1]cstring{"No choke group", "Choke group 1", "Choke group 2", "Choke group 3", "Choke group 4", "Choke group 5", "Choke group 6"}
-	im.SameLine(0, 16)
-	im.SetNextItemWidth(min(180, im.GetContentRegionAvail().x))
-	if ui.combo_char("##choke", &choke, &groups[0], len(groups)) {
-		p := pad
-		p.choke = u8(choke)
-		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
-		app.seal(&m.history)
-	}
-
 	if pad.mode == .Loop || pad.mode == .Hold {
+		im.SameLine(0, 16)
 		lm := int(pad.loop_mode)
 		if ui.segmented("loop_mode", {"Forward", "Ping-pong"}, &lm) {
 			p := pad
@@ -97,29 +53,6 @@ draw_inspector :: proc(user: rawptr) {
 		}
 		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
 	}
-	if wide do im.TableNextColumn()
-	section(a, "Sound", !wide)
-	knob_f32(a, "Volume", &pad.volume, -48, 12, 0, "%.1f dB", .Volume, "Set Volume")
-	im.SameLine(0, 14)
-	knob_f32(a, "Pan", &pad.pan, -1, 1, 0, "%+.2f", .Pan, "Set Pan")
-	im.SameLine(0, 14)
-	knob_f32(a, "Pitch", &pad.pitch, -24, 24, 0, "%+.1f st", .Pitch, "Set Pitch")
-	im.SameLine(0, 14)
-	knob_f32(a, "Attack", &pad.attack, 0, 2, 0.001, "%.3f s", .Attack, "Set Attack")
-	im.SameLine(0, 14)
-	knob_f32(a, "Release", &pad.release, 0.005, 5, 0.05, "%.2f s", .Release, "Set Release")
-
-	if wide do im.TableNextColumn()
-	section(a, "EQ", !wide)
-	knob_f32(a, "Low", &pad.eq[0], -15, 15, 0, "%+.1f dB", .Eq_Low, "Set EQ Low")
-	im.SameLine(0, 14)
-	knob_f32(a, "Mid", &pad.eq[1], -15, 15, 0, "%+.1f dB", .Eq_Mid, "Set EQ Mid")
-	im.SameLine(0, 14)
-	knob_f32(a, "High", &pad.eq[2], -15, 15, 0, "%+.1f dB", .Eq_High, "Set EQ High")
-
-	im.Spacing()
-	im.Spacing()
-	if im.Button(ui.ICON_ERASER + "  Clear Pad") do pm.clear_pad(m, i)
 }
 
 // Pad `i`'s name and colour (click the swatch for a palette and a picker).
@@ -226,10 +159,10 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 
 // A knob for one f32 field of the selected pad, as an undoable edit.
 @(private)
-knob_f32 :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, default: f32, format: cstring, field: pm.Pad_Field, step: string) {
+knob_f32 :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, default: f32, format: cstring, field: pm.Pad_Field, step: string, log_scale := false) {
 	m := &a.m
 	v := value^
-	e := ui.knob(label, &v, lo, hi, default, format)
+	e := ui.knob(label, &v, lo, hi, default, format, log_scale = log_scale)
 	if e.changed {
 		p := m.project.pads[a.selected]
 		set_field(&p, field, v)

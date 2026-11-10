@@ -56,6 +56,61 @@ Clip :: struct {
 	bpm:    f64,
 }
 
+// The sampler's voice beyond its amp's attack and release: the rest of
+// its amp envelope, its filter, its pitch envelope, two LFOs and their
+// routes, and how many notes it plays at once. A plain value (part of a Pad).
+Voice :: struct {
+	decay, sustain: f32, // the amp envelope's (seconds; 0..1)
+	filter:   sampler.Voice_Filter,
+	steep:    bool, // 24 dB (else 12)
+	cutoff:   f32,  // Hz
+	resonance: f32, // 0..1
+	key_track: f32, // 0..1: the cutoff follows the key
+	vel_cutoff: f32, // -1..1
+	filter_env: f32, // -1..1 (±6 octaves)
+	filter_adsr: [4]f32, // attack, decay (s), sustain (0..1), release (s)
+	pitch_env: f32, // semitones
+	pitch_adsr: [4]f32,
+	vel_pitch: f32, // semitones at full velocity
+	pitch_track: f32, // 0..1: keys transpose (1 = a semitone a key)
+	fine:     f32, // cents
+	lfos:     [sampler.LFOS]Lfo,
+	routes:   [sampler.MOD_ROUTES]Route,
+	voices:   int, // notes at once (1..32)
+}
+
+// One LFO's settings.
+Lfo :: struct {
+	shape: sampler.Lfo_Shape,
+	mode:  sampler.Lfo_Mode,
+	rate:  f32, // Hz (Auto, Trigger)
+	sync:  u8,  // index into sampler.LFO_SYNC_BEATS (Sync)
+	fade:  f32, // seconds
+	phase: f32, // degrees
+}
+
+// A modulation route: `source` moves `dest` by `amount` (-1..1).
+Route :: struct {
+	source: sampler.Mod_Source,
+	dest:   sampler.Mod_Dest,
+	amount: f32,
+}
+
+// The voice a pad starts with: a full amp sustain, the filter open and off,
+// no pitch envelope, LFOs at 2 Hz going nowhere (routes 1-3 from LFO 1, 4-6
+// from LFO 2), 8 notes.
+default_voice :: proc() -> (v: Voice) {
+	v.decay, v.sustain = 1, 1
+	v.cutoff = 20_000
+	v.filter_adsr = {0.001, 0.5, 0, 0.2}
+	v.pitch_adsr = {0.001, 0.3, 0, 0.2}
+	v.pitch_track = 1
+	for &l in v.lfos do l = {rate = 2, sync = 4}
+	for &r, i in v.routes do r.source = .Lfo_1 if i < sampler.MOD_ROUTES / 2 else .Lfo_2
+	v.voices = 8
+	return
+}
+
 // One pad. A plain value (no pointers), so a whole pad can be copied,
 // stored in an undo step and restored.
 Pad :: struct {
@@ -90,6 +145,7 @@ Pad :: struct {
 	kind:       Pad_Kind,
 	input:      Audio_Input, // an audio pad's
 	monitor:    bool,        // an armed audio pad plays its input through its strip
+	voice:      Voice,       // a sampler pad's voice (envelopes, filter, pitch, LFOs)
 }
 
 // A sample the project holds: a file in its folder.
@@ -154,7 +210,7 @@ default_transport :: proc() -> Transport {
 
 // The default pad: one-shot, full volume, centred.
 default_pad :: proc() -> Pad {
-	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff}
+	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice()}
 }
 
 // Prepares an empty project in `dir`.

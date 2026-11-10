@@ -53,12 +53,13 @@ def test_the_pad_face_mutes_solos_and_colours(app, fixtures):
     assert app.state()["undo"] != "Set Color"
 
 
-def test_the_pad_tab_edits_and_undoes(app, fixtures):
+def test_playback_and_the_global_tab_edit_and_undo(app, fixtures):
     load(app, fixtures, 0, "kick.wav")
-    app.click("Pad", window="detail")
+    app.click("Sample", window="detail")  # how it plays: over its wave
     app.click("Gate", window="detail")
     assert app.pad(0)["mode"] == "Gate"
     app.click("Reverse", window="detail")
+    app.click("Global", window="detail")
     app.drag_by("Volume", 0, 60, window="detail")  # down: quieter
     assert app.pad(0)["volume"] < -3
     app.key("cmd+z")

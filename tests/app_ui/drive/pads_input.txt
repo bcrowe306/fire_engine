@@ -15,7 +15,7 @@ expect selected 4
 click_item "pad A1" in detail   # pad A1 with the mouse (bottom left)
 wait 2
 expect selected 0
-panel pad                  # the Pad tab, beside the pads
+panel global               # the Global tab, beside the pads
 wait 3
 drag_by Volume in detail 0 -84 12   # the Volume knob, upwards
 wait 2

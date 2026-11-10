@@ -52,6 +52,7 @@ draw_sample :: proc(user: rawptr) {
 			w.peaks = ui.peaks_of(mono, 4096)
 		}
 	}
+	draw_playback(a)
 	draw_tools(a)
 	im.Spacing()
 

@@ -24,6 +24,14 @@ busy_project :: proc(r: ^Rig) {
 	pad.volume, pad.pan, pad.mode, pad.choke, pad.bus = -6, 0.25, .Gate, 2, 1
 	pad.sends[2] = {level = 0.5, pre = true}
 	pad.fade_in, pad.fade_out = 120, 240 // (project file v5)
+	// Its voice (v7): a resonant 24 dB lowpass with an envelope, a pitch
+	// envelope, both LFOs routed.
+	pad.voice.filter, pad.voice.steep, pad.voice.cutoff, pad.voice.resonance = .Lowpass, true, 900, 0.4
+	pad.voice.filter_env, pad.voice.filter_adsr = 0.6, {0.01, 0.4, 0.2, 0.3}
+	pad.voice.pitch_env, pad.voice.fine, pad.voice.voices = -7, 12, 4
+	pad.voice.lfos[1] = {shape = .Sample_Hold, mode = .Sync, rate = 3, sync = 6, fade = 0.5, phase = 90}
+	pad.voice.routes[0] = {source = .Lfo_1, dest = .Cutoff, amount = 0.3}
+	pad.voice.routes[4] = {source = .Lfo_2, dest = .Pan, amount = -0.5}
 	pm.set_pad(m, 1, .Whole, "Edit", pad)
 	// A pad past the first 64 (banks E–H, project file v3), with its own colour.
 	pm.load_onto_pad(m, 100, tone(r, "high.wav", 1320, 0.08, decay = true))

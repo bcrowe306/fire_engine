@@ -1,0 +1,38 @@
+# The sampler's device tabs with a note held: the amp envelope, the filter
+# (its response moving with its envelope), pitch, the LFOs, Global.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+panel sample
+click_item "Gate" in detail
+panel env
+hit 0
+wait 20
+screenshot device_env
+panel filter
+click_item "Low-pass" in detail
+click_item "24 dB" in detail
+drag_by "Env" 0 -40 in detail
+drag_by "Resonance" 0 -50 in detail
+drag_by "Cutoff" 0 70 in detail
+hover_item "pad A16" in detail
+release 0
+hit 0
+wait 6
+screenshot device_filter
+panel pitch
+drag_by "Amount" 0 -30 in detail
+hover_item "pitch now" in detail
+release 0
+hit 0
+wait 4
+screenshot device_pitch
+panel lfo
+click_item "LFO 1 route 1" in detail
+click_item "Cutoff"
+wait 40
+screenshot device_lfo
+release 0
+panel global
+wait 2
+screenshot device_global

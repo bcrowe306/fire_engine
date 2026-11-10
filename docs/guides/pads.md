@@ -40,8 +40,8 @@ panel or tab is in front (see [The transport](#the-transport)). Below it
 the layout follows Ableton Live's: the **Browser** down the left; the
 **Sequence**, **Song**, **Mixer** and **Perform** as tabs in the middle;
 and along the bottom, the **Pads** panel — the pad grid on the left and,
-on the right, the selected pad in three tabs: **Sample**, **Pad** and
-**Effects** — and at the far right, the selected pad's channel strip (the
+on the right, the selected pad's device in tabs: **Sample**, **Env**,
+**Filter**, **Pitch**, **LFO**, **Effects** and **Global** — and at the far right, the selected pad's channel strip (the
 mixer's, without its EQ, inserts and sends: output, pan, fader, meter,
 mute and solo). Drag the divider between the grid and the tabs to give
 either more room (double-click it to go back to a square grid). Panels
@@ -92,17 +92,43 @@ for other toggles.
     Waveforms** turns these off.
 
   Right-click a pad for its colour: 24 swatches and a picker (also behind
-  the colour button in the Pad tab). The colour shows on the pad, its
+  the colour button in the Global tab). The colour shows on the pad, its
   mixer strip and its row in the sequencer. Hovering a pad tells its key
   and mode. Files dropped on the window from the desktop, or from the
   browser, land on the pad under the mouse.
-- **Pad** (bottom tab): the selected pad's name and colour (click it for
-  the swatches and picker); its mode
-  (**One-shot** plays to the end, **Gate** while held, **Loop** loops
-  while held, **Hold** loops until hit again); reverse; loop direction and
-  crossfade; choke group (a pad cuts the others in its group); volume,
-  pan, pitch, attack and release; a three-band EQ.
-- **Sample** (bottom tab): the waveform, on black. Drag **S** and **E** (by
+- **The device tabs** show what each setting does to the sound as it
+  plays: plots on black, with the newest note's place on them.
+  - **Env**: the amp envelope as a curve: drag the attack's peak, the
+    decay's end (up and down: the sustain) and the release's end; knobs
+    under it. A dot rides the curve while a note sounds.
+  - **Filter**: off, low-pass, high-pass, band-pass or notch (each button
+    shows its curve), 12 or 24 dB. The response plot shows the setting
+    faintly and, brightly, the filter as it is now — its envelope, the
+    velocity, key tracking, LFOs and automation all move it. Drag its
+    handle sideways for the cutoff and up for resonance (Shift: fine).
+    Beside it the filter's own envelope (drawn as deep as its amount);
+    knobs for cutoff, resonance, key tracking, velocity, the envelope's
+    amount and its A, D, S, R.
+  - **Pitch**: the pitch envelope (upside down for a negative amount),
+    how many semitones it has the newest note at now, and knobs for its
+    amount, velocity to pitch, key tracking and A, D, S, R.
+  - **LFO**: two, side by side: a shape (sine, triangle, saw up and down,
+    square, sample & hold), **Auto** (free-running), **Trigger** (each
+    note starts it again) or **Sync** (to the beat: 4 bars to 1/16T), its
+    rate, fade-in and phase. Its trace scrolls by live over its shape.
+    Each sends to up to three destinations (volume, pan, pitch, cutoff,
+    resonance) with an amount each — routes the engine keeps in a table
+    that will grow into a full modulation matrix.
+  - **Effects**: the pad's three-band EQ, then the effect slot being
+    edited.
+  - **Global**: sampler or audio track, name and colour (click it for the
+    swatches and picker), choke group (a pad cuts the others in its
+    group), volume, pan, transpose, fine tune, how many notes it plays at
+    once, Clear Pad. An audio pad shows only Sample, Effects and Global.
+- **Sample** (bottom tab): how the pad plays — **One-shot** to the end,
+  **Gate** while held, **Loop** loops while held, **Hold** loops until hit
+  again; reverse; a loop's direction and crossfade — over the waveform,
+  on black. Drag **S** and **E** (by
   their tags or their lines) to set the region the pad plays, **L** for the
   loop; drag the squares under the tags in from the region's ends to fade
   it in and out (a ramp shows each fade; the fades are the pad's, so the
@@ -146,7 +172,7 @@ for other toggles.
 - **Mixer** (middle tab): a channel strip, as in Logic, for every pad
   with a sound (all banks; it scrolls sideways), then buses A–D and main
   pinned on the right. From the top:
-  - the pad's **EQ** curve (click it for the Pad tab, where the EQ is);
+  - the pad's **EQ** curve (click it for the Effects tab, where the EQ is);
   - its two **inserts** (a bus and main have five slots);
   - its four **sends**, one per bus: drag a send up and down for its
     level (Shift for fine), double-click to turn it on at 0 dB or off,
@@ -194,12 +220,12 @@ Delete clears the pad; View > Light Theme switches theme.
 ## Audio pads
 
 A pad is a **sampler** (it plays its sample when hit) or an **audio
-track**: switch it with **Sampler | Audio** at the top of the Pad tab.
+track**: switch it with **Sampler | Audio** at the top of the Global tab.
 An audio pad is a pad like any other: it has a strip in the mixer, its
 EQ, inserts, sends, mute and solo, and a row in the sequence. What it
 plays is a **take** per sequence:
 
-- In the Pad tab pick its **input** (inputs 1 + 2, or input 1 or 2 alone,
+- In the Global tab pick its **input** (inputs 1 + 2, or input 1 or 2 alone,
   on both sides), **Arm** it (or click **R** on its strip; its pad reads
   *armed*), and turn **Monitor** on to hear the input through its strip
   while armed (use headphones).
@@ -435,8 +461,9 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | File | What it uses |
 |---|---|
 | `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, dragging files and search results onto pads |
-| `test_pads.py` | pads by mouse and keys, banks, the Pad tab (modes, Reverse, knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
-| `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Pad tab and the strip's R), recording a take from the fake device's input, Clear Take |
+| `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
+| `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
+| `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |

@@ -219,3 +219,33 @@ notes_of_a_pad_and_pitch_never_overlap :: proc(t: ^testing.T) {
 	app.undo(&m.history)
 	testing.expect_value(t, count(m, 3), 2)
 }
+
+@(test)
+a_pads_voice_reaches_its_sampler :: proc(t: ^testing.T) {
+	r := rig_make(t, "voice_params")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "bright.wav", 6000, 0.5))
+	pm.hit(&m.engine, 0, true)
+	open := render(r, 9600)
+	pm.hit(&m.engine, 0, false)
+	render(r, 9600)
+	v := m.project.pads[0].voice
+	v.filter, v.cutoff = .Lowpass, 500
+	pm.set_voice(m, 0, 1, "Set Cutoff", v)
+	v.cutoff = 400 // a drag: one step
+	pm.set_voice(m, 0, 1, "Set Cutoff", v)
+	testing.expect_value(t, len(m.history.undo), 2) // the load, then the drag
+	pm.hit(&m.engine, 0, true)
+	dark := render(r, 9600)
+	a, b := kit.tone_amplitude(open[0][4800:], 48_000, 6000), kit.tone_amplitude(dark[0][4800:], 48_000, 6000)
+	testing.expectf(t, b < a * 0.05, "the lowpass at 400 Hz takes 6 kHz out (%v → %v)", a, b)
+	live, ok := pm.pad_live(&m.engine, 0)
+	testing.expect(t, ok && live.sounding && abs(live.cutoff - 400) < 1, "what the sampler does now")
+	// A cutoff lane moves it (what the filter tab's curve follows).
+	pm.add_point(m, 0, {pad = 0, param = .Cutoff, beat = 0, value = 3000})
+	pm.play(&m.engine)
+	render(r, 4800)
+	live, _ = pm.pad_live(&m.engine, 0)
+	testing.expectf(t, abs(live.cutoff - 3000) < 1, "automated (%v Hz)", live.cutoff)
+}

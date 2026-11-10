@@ -49,6 +49,8 @@ App :: struct {
 	held:     [pm.PADS]bool,
 	rec:      pm.Recording,
 	wave:     Wave_State,
+	device:   Device_State, // the device tabs' LFO traces
+	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
 	browser:  pm.Browser,
 	bview:    Browser_View,
 	prefs:    string, // where preferences go (--prefs; default: the system's)
