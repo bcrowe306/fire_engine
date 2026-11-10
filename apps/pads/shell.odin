@@ -175,7 +175,7 @@ setup_workspace :: proc(a: ^App) {
 	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Center)
 	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Center)
 	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Center)
-	ui.panel_add(w, {id = "detail", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_detail, user = a, flags = {.NoScrollbar, .NoScrollWithMouse}}, .Bottom)
+	ui.panel_add(w, {id = "detail", title = "Devices", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_detail, user = a, flags = {.NoScrollbar, .NoScrollWithMouse}, no_tab = true}, .Bottom)
 	ui.panel_focus(w, "sequence")
 }
 

@@ -209,6 +209,15 @@ class Pads:
     def expect_item(self, label, window=None):
         self.cmd(f"expect_item {self._target(label, window)}")
 
+    def sampler_tab(self):
+        """Clicks the bottom panel's first device tab, the pad's sampler
+        ("A1 kick · Sampler"), whatever the pad is called."""
+        for it in self.items("Sampler", "detail"):
+            if it["label"].endswith("· Sampler") or it["label"].endswith("· Audio"):
+                self.click(it["label"], window="detail")
+                return
+        raise PadsError("no sampler tab")
+
     def reveal(self, label, window, over, tries=12):
         """Scrolls the panel under item `over` (with the wheel, as a person
         would) until item `label` shows."""

@@ -118,6 +118,8 @@ draw_detail :: proc(user: rawptr) {
 		}
 	}
 	t := ui.theme()
+	// Along the top, where a panel's tab would be: the track's devices.
+	device_tabs(a)
 	avail := im.GetContentRegionAvail()
 	// The pads: a square grid as tall as the panel, unless dragged wider or narrower.
 	header := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y * 2
@@ -146,7 +148,7 @@ draw_detail :: proc(user: rawptr) {
 	strip_room: f32 = STRIP_W + 12
 	im.PushStyleVarVec2(.WindowPadding, {im.GetStyle().WindowPadding.x, 0})
 	if im.BeginChild("##detail", {max(im.GetContentRegionAvail().x - strip_room, 100), avail.y}, {.AlwaysUseWindowPadding}) {
-		draw_devices(a)
+		device_content(a)
 	}
 	im.EndChild()
 	im.PopStyleVar()
@@ -164,98 +166,102 @@ draw_detail :: proc(user: rawptr) {
 	if st.show > 0 do st.show -= 1
 }
 
-// The track's devices, a tab each: a pad's instrument (the sampler's own
-// tabs inside), its EQ and its inserts; a bus's slots; a performance
-// effect. A + tab puts an effect in the first empty slot.
+// The track's devices, a tab each, across the top of the panel: a pad's
+// sampler ("A1 kick · Sampler"; an audio pad's "· Audio"), its EQ and its
+// inserts; a bus's slots; a performance effect. A + tab puts an effect in
+// the first empty slot. The tabs choose; `device_content` draws.
 @(private)
-draw_devices :: proc(a: ^App) {
+device_tabs :: proc(a: ^App) {
 	m := &a.m
 	st := &a.detail
 	tr := st.track
-	if !im.BeginTabBar("##devices") do return
+	if !im.BeginTabBar("##devices", {.FittingPolicyScroll}) do return
 	defer im.EndTabBar()
-	tab :: proc(st: ^Detail_State, label: cstring, d: Device) -> bool {
-		flags: im.TabItemFlags
-		if st.show > 0 && st.device == d do flags += {.SetSelected}
-		if !im.BeginTabItem(label, nil, flags) do return false
+	tab :: proc(st: ^Detail_State, label: cstring, d: Device, flags: im.TabItemFlags = {}) -> bool {
+		f := flags
+		if st.show > 0 && st.device == d do f += {.SetSelected}
+		if !im.BeginTabItem(label, nil, f) do return false
 		if st.show == 0 do st.device = d
+		im.EndTabItem()
 		return true
 	}
-	slot_tab :: proc(a: ^App, st: ^Detail_State, fx: pm.Fx_Target, what: string) {
+	slot_tab :: proc(a: ^App, st: ^Detail_State, fx: pm.Fx_Target) -> bool {
 		s, _ := pm.target_slot(&a.m, fx)
-		if s.kind == .None do return
+		if s.kind == .None do return false
 		label := fmt.ctprintf("%s  %s%s###dev%d", ui.ICON_WAND_SPARKLES, pm.slot_name(s), "" if s.on else " (off)", fx.slot)
-		if tab(st, label, {.Slot, fx.slot}) {
-			item_menu(a, {kind = .Slot, fx = fx}, "##devmenu")
-			a.fx = fx
-			if im.BeginChild("##device", {0, 0}) do draw_effect(a)
-			im.EndChild()
-			im.EndTabItem()
-		} else {
-			item_menu(a, {kind = .Slot, fx = fx}, "##devmenu")
-		}
-		_ = what
+		tab(st, label, {.Slot, fx.slot})
+		item_menu(a, {kind = .Slot, fx = fx}, "##devmenu")
+		return true
 	}
-	add_tab :: proc(a: ^App, st: ^Detail_State, fx: pm.Fx_Target) {
-		// An empty slot clicked (in the mixer, say): here, to fill it.
-		flags: im.TabItemFlags = {.Trailing}
-		if st.show > 0 && st.device == {.Slot, fx.slot} do flags += {.SetSelected}
-		if im.BeginTabItem(ui.ICON_PLUS + "###devadd", nil, flags) {
-			im.TextDisabled("Put an effect in the chain:")
-			im.Spacing()
-			for k in pm.Effect_Kind {
-				if k == .None || k == .Plugin do continue
-				defer ui.name(fmt.tprintf("add %s", pm.EFFECT_NAMES[k]))
-				if int(k) > 1 && (int(k) - 1) % 6 != 0 do im.SameLine()
-				if im.Button(fmt.ctprintf("%s###add%d", pm.EFFECT_NAMES[k], int(k)), {110, 0}) {
-					pm.set_target_slot(&a.m, fx, pm.new_effect(k), "Add Effect")
-					show_device(a, fx)
-				}
-			}
-			im.EndTabItem()
-		}
+	add_tab :: proc(st: ^Detail_State, slot: int) {
+		tab(st, ui.ICON_PLUS + "###devadd", {.Slot, slot}, {.Trailing})
 		if im.IsItemHovered() do im.SetTooltip("Add an effect")
+	}
+	first_empty :: proc(a: ^App, kind: pm.Fx_Target_Kind, index, slots: int) -> int {
+		for k in 0 ..< slots do if s, _ := pm.target_slot(&a.m, {kind, index, k}); s.kind == .None do return k
+		return -1
 	}
 	switch tr.kind {
 	case .Pad:
 		i := tr.index
-		pad := m.project.pads[i]
-		instr := fmt.ctprintf("%s  %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, "Audio" if pad.kind == .Audio else "Sampler")
-		if tab(st, instr, {.Instrument, 0}) {
-			draw_sampler_tabs(a)
-			im.EndTabItem()
-		}
-		if tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0}) {
-			if im.BeginChild("##device", {0, 0}) do draw_pad_eq(a)
-			im.EndChild()
-			im.EndTabItem()
-		}
-		empty := -1
-		for k in 0 ..< pm.PAD_INSERTS {
-			fx := pm.Fx_Target{.Pad, i, k}
-			s, _ := pm.target_slot(m, fx)
-			if s.kind == .None {
-				if empty < 0 do empty = k
-				continue
-			}
-			slot_tab(a, st, fx, "insert")
-		}
-		if empty >= 0 do add_tab(a, st, {.Pad, i, empty})
+		pad := &m.project.pads[i]
+		name := pm.pad_name(pad) if pm.pad_used(&m.project, i) else ""
+		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, pm.pad_label(i), " " if name != "" else "", name, "Audio" if pad.kind == .Audio else "Sampler")
+		tab(st, instr, {.Instrument, 0})
+		item_menu(a, pad_target(i), "##instmenu")
+		tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0})
+		for k in 0 ..< pm.PAD_INSERTS do slot_tab(a, st, {.Pad, i, k})
+		if e := first_empty(a, .Pad, i, pm.PAD_INSERTS); e >= 0 do add_tab(st, e)
 	case .Bus:
-		empty := -1
-		for k in 0 ..< pm.BUS_SLOTS {
-			fx := pm.Fx_Target{.Bus, tr.index, k}
-			s, _ := pm.target_slot(m, fx)
-			if s.kind == .None {
-				if empty < 0 do empty = k
-				continue
-			}
-			slot_tab(a, st, fx, "slot")
-		}
-		if empty >= 0 do add_tab(a, st, {.Bus, tr.index, empty})
-		if empty == 0 && st.device.kind == .Slot do im.TextDisabled("%s", fmt.ctprintf("%s has no effects yet: + adds one", pm.bus_name(0 if tr.index == pm.BUSES else tr.index + 1)))
+		bus_label := fmt.ctprintf("%s  %s###devbus", ui.ICON_SLIDERS_VERTICAL, pm.bus_name(0 if tr.index == pm.BUSES else tr.index + 1))
+		im.TabItemButton(bus_label, {.Leading, .NoTooltip})
+		for k in 0 ..< pm.BUS_SLOTS do slot_tab(a, st, {.Bus, tr.index, k})
+		if e := first_empty(a, .Bus, tr.index, pm.BUS_SLOTS); e >= 0 do add_tab(st, e)
 	case .Perf:
-		slot_tab(a, st, {.Perf, tr.index, 0}, "performance effect")
+		slot_tab(a, st, {.Perf, tr.index, 0})
+	}
+}
+
+// The device in front: the sampler (its own tabs), the EQ, an effect, or
+// the + tab's effects to put in an empty slot.
+@(private)
+device_content :: proc(a: ^App) {
+	m := &a.m
+	st := &a.detail
+	tr := st.track
+	switch st.device.kind {
+	case .Instrument:
+		if tr.kind == .Pad do draw_sampler_tabs(a)
+	case .Eq:
+		if tr.kind == .Pad do draw_pad_eq(a)
+	case .Slot:
+		fx: pm.Fx_Target
+		switch tr.kind {
+		case .Pad:  fx = {.Pad, tr.index, st.device.slot}
+		case .Bus:  fx = {.Bus, tr.index, st.device.slot}
+		case .Perf: fx = {.Perf, tr.index, 0}
+		}
+		s, ok := pm.target_slot(m, fx)
+		if !ok do return
+		if s.kind != .None || tr.kind == .Perf {
+			a.fx = fx
+			draw_effect(a)
+			return
+		}
+		// An empty slot: what to put in it.
+		im.TextDisabled("Put an effect in the chain:")
+		im.Spacing()
+		n := 0
+		for k in pm.Effect_Kind {
+			if k == .None || k == .Plugin do continue
+			if n % 6 != 0 do im.SameLine()
+			n += 1
+			if im.Button(fmt.ctprintf("%s###add%d", pm.EFFECT_NAMES[k], int(k)), {110, 0}) {
+				pm.set_target_slot(m, fx, pm.new_effect(k), "Add Effect")
+				show_device(a, fx)
+			}
+			ui.name(fmt.tprintf("add %s", pm.EFFECT_NAMES[k]))
+		}
 	}
 }
 

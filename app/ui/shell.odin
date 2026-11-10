@@ -300,6 +300,7 @@ Panel :: struct {
 	user:  rawptr,
 	flags: im.WindowFlags,
 	focus: int, // frames left to bring it to the front (its tab, when docked): docking settles over the first frames
+	no_tab: bool, // docked, it shows no tab of its own (it draws its own tabs; it stays where the layout puts it)
 }
 
 // Where a panel goes in the default layout.
@@ -395,12 +396,19 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 			im.SetNextWindowFocus()
 			p.focus -= 1
 		}
+		if p.no_tab {
+			wc := im.WindowClass{ParentViewportId = ~im.ID(0), DockNodeFlagsOverrideSet = DOCK_NODE_NO_TAB_BAR, DockingAllowUnclassed = true}
+			im.SetNextWindowClass(&wc)
+		}
 		if im.Begin(w.titles[p.id], &p.open, p.flags) do p.draw(p.user)
 		im.End()
 	}
 	if actions != nil do palette_draw(&w.palette, actions)
 	toasts_draw(&w.toasts)
 }
+
+// ImGuiDockNodeFlags_NoTabBar, an internal flag (bit 12): a node with no tab bar.
+@(private) DOCK_NODE_NO_TAB_BAR :: transmute(im.DockNodeFlags)i32(1 << 12)
 
 // ImGuiDockNodeFlags_DockSpace, an internal flag (bit 10).
 @(private) DOCK_NODE_DOCKSPACE :: transmute(im.DockNodeFlags)i32(1 << 10)

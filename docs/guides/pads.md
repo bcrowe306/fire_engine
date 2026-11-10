@@ -39,13 +39,16 @@ The **transport toolbar** runs across the top, under the menus, whatever
 panel or tab is in front (see [The transport](#the-transport)). Below it
 the layout follows Ableton Live's: the **Browser** down the left; the
 **Sequence**, **Song**, **Mixer** and **Perform** as tabs in the middle;
-and along the bottom, the **Pads** panel — the pad grid on the left and,
-on the right, the devices of a track, a tab each — as Ableton's device
-view — and at the far right, that track's channel strip (a pad's is the
+and along the bottom, the device view (as Ableton's): across its top,
+where a panel's tab would be, a tab for each device of a track; below,
+the pad grid on the left (always there, to pick another pad), the device
+in front, and at the far right the track's channel strip (a pad's is the
 mixer's without its EQ, inserts and sends: output, pan, fader, meter,
-mute and solo). A pad's chain is its **Sampler** (with its own tabs:
+mute and solo). The bottom panel stays where it is (it has no tab of its
+own to drag). A pad is a sampler device: its chain starts with **A1 kick
+· Sampler** (with its own tabs:
 **Sample**, **Env**, **Filter**, **Pitch**, **LFO**, **Global**; an audio
-pad's is **Audio**), its **EQ**, then each insert with an effect, and
+pad's is **· Audio**), its **EQ**, then each insert with an effect, and
 **+** to put an effect in the next empty insert. Click an effect slot
 anywhere (a strip's insert, a bus's slot, a performance effect's Edit) and
 the panel shows that track's chain with that effect in front: a bus shows
