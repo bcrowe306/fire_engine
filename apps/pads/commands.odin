@@ -111,6 +111,10 @@ register_commands :: proc(a: ^App) {
 		run = proc(a: ^App, t: Target) { pm.hit(&a.m.engine, t.index, true); a.release_at[t.index] = 12 }, enabled = pad_has})
 	add(c, {id = "pad.select", label = "Select", icon = ui.ICON_MOUSE_POINTER, kinds = {.Pad}, group = 0,
 		run = proc(a: ^App, t: Target) { a.selected = t.index }})
+	add(c, {id = "pad.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Pad}, group = 0,
+		run = proc(a: ^App, t: Target) { begin_rename_pad(a, t.index) }})
+	add(c, {id = "pad.piano", label = "Edit in the Piano Roll", icon = ui.ICON_PIANO, kinds = {.Pad}, group = 0,
+		run = proc(a: ^App, t: Target) { a.selected = t.index; a.seq.piano, a.seq.piano_pad, a.seq.view.key0 = true, t.index, -1; ui.panel_focus(&a.ws, "sequence") }})
 	add(c, {id = "pad.edit", label = "Edit Sound", icon = ui.ICON_SLIDERS_HORIZONTAL, kinds = {.Pad}, group = 0,
 		run = proc(a: ^App, t: Target) { a.selected = t.index; show_detail(a, .Sample) }})
 	add(c, {id = "pad.mute", label = "Mute", icon = ui.ICON_VOLUME_X, kinds = {.Pad}, group = 1,
@@ -154,25 +158,14 @@ register_commands :: proc(a: ^App) {
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.sequences[t.slot].notes[t.index].probability < 1 }})
 
 	// The marked part.
-	add(c, {id = "part.copy", label = "Copy", icon = ui.ICON_COPY, kinds = {.Part}, group = 0, keys = "Cmd+C", run = proc(a: ^App, t: Target) { copy_marked(a) }})
+	add(c, {id = "part.copy", label = "Copy", icon = ui.ICON_COPY, kinds = {.Part}, group = 0, keys = "Cmd+C", run = proc(a: ^App, t: Target) { copy_marked(a) },
+		enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
 	add(c, {id = "part.paste", label = "Paste Here", icon = ui.ICON_CLIPBOARD_PASTE, kinds = {.Part}, group = 0, keys = "Cmd+V",
 		run = proc(a: ^App, t: Target) { paste_marked(a) }, enabled = proc(a: ^App, t: Target) -> bool { return a.seq_ops.has_part }})
-	add(c, {id = "part.duplicate", label = "Duplicate After", icon = ui.ICON_COPY_PLUS, kinds = {.Part}, group = 0,
-		run = proc(a: ^App, t: Target) {
-			r := &a.seq.range
-			if copy_marked(a) {
-				span := r.beat1 - r.beat0
-				r.beat0, r.beat1 = r.beat1, r.beat1 + span
-				paste_marked(a)
-			}
-		}})
-	add(c, {id = "part.delete", label = "Delete Notes", icon = ui.ICON_TRASH_2, kinds = {.Part}, group = 1,
-		run = proc(a: ^App, t: Target) {
-			r := a.seq.range
-			pads: [pm.PADS]bool
-			for k in r.key0 ..= r.key1 do if k >= 0 && k < pm.PADS_PER_BANK do pads[a.bank * pm.PADS_PER_BANK + k] = true
-			pm.clear_part(&a.m, a.m.project.slot, r.beat0, r.beat1, &pads)
-		}})
+	add(c, {id = "part.duplicate", label = "Duplicate After", icon = ui.ICON_COPY_PLUS, kinds = {.Part}, group = 0, keys = "Cmd+D",
+		run = proc(a: ^App, t: Target) { duplicate_selection(a) }, enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
+	add(c, {id = "part.delete", label = "Delete Notes", icon = ui.ICON_TRASH_2, kinds = {.Part}, group = 1, keys = "Delete",
+		run = proc(a: ^App, t: Target) { delete_selection(a) }, enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
 
 	// Sequences.
 	add(c, {id = "seq.select", label = "Edit", icon = ui.ICON_LIST_MUSIC, kinds = {.Sequence}, group = 0, run = proc(a: ^App, t: Target) { pm.select_slot(&a.m, t.slot) }})
@@ -281,7 +274,7 @@ register_selection_actions :: proc(a: ^App, acts: ^ui.Actions) {
 			enabled = proc(u: rawptr) -> bool {
 				s := (^Selection_Action)(u)
 				t := selection_target(s.app, s.cmd.kinds)
-				if t.kind == .Part && !s.app.seq.range.on do return false
+				if t.kind == .Part && len(s.app.seq.sel) == 0 && s.cmd.id != "part.paste" do return false
 				return s.cmd.enabled == nil || s.cmd.enabled(s.app, t)
 			}})
 	}

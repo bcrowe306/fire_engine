@@ -209,6 +209,8 @@ Seq_Field :: enum {
 	Automation,
 	Name,
 	Tempo,
+	Paint, // notes drawn in one drag (one undo step)
+	Erase, // notes swept away in one drag
 }
 
 // Replaces slot `slot`'s sequence with `new` (copied), undoably, as an edit

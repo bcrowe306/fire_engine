@@ -1,6 +1,6 @@
 """Sequences by mouse and keys: renamed (double-click, its menu, F2),
-duplicated, their own tempo, bars copied to another (the dialog), a
-marked part copied and pasted (Shift-drag, Cmd+C, Cmd+V)."""
+duplicated, their own tempo, bars copied to another (the dialog), notes
+box-selected, copied and pasted (Cmd+C, Cmd+V)."""
 
 import os
 
@@ -64,15 +64,13 @@ def test_mark_copy_and_paste(app, fixtures):
     loaded(app, fixtures)
     roll = [i for i in app.items("seq", "sequence") if i["label"] == "seq"][0]["rect"]
     x0, y0, x1, y1 = roll
-    # Shift-drag across the bottom two rows (A1, A2), the second half of the bar.
-    app.cmd("hold shift")
-    app.cmd(f"drag {x0 + (x1 - x0) * 0.55} {y1 - 3} {x0 + (x1 - x0) * 0.98} {y1 - (y1 - y0) / 16 * 1.5} 10")
+    # Box-select across the bottom two rows (A1, A2), the second half of the bar.
+    app.cmd(f"drag {x0 + (x1 - x0) * 0.58} {y1 - 3} {x0 + (x1 - x0) * 0.98} {y1 - (y1 - y0) / 16 * 1.5} 10")
     app.wait(3)
-    app.cmd("let shift")
-    assert app.state()["marked"]
+    assert app.state()["selected_notes"] == 3  # A1's at 3, A2's at 2.5 and 3.5
     app.screenshot("marked")
     app.key("cmd+c")
     app.click("Next sequence")
     app.key("cmd+v")
     s = seqs(app)
-    assert s[2]["notes"] == 4, s  # beats 2 and 3 of both rows
+    assert s[2]["notes"] == 3, s

@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:math"
 import "core:strings"
 
 import app "app:core"
@@ -25,6 +26,9 @@ Seq_Ops :: struct {
 	},
 	part:     pm.Seq_Part, // copied (Cmd+C), to paste (Cmd+V)
 	has_part: bool,
+	rename_pad: int, // the pad being renamed
+	pad_buf:  [32]u8,
+	pad_open: bool,
 }
 
 // Starts renaming sequence `slot` (a popup with its name, selected).
@@ -89,8 +93,9 @@ sequence_head :: proc(a: ^App) {
 	}
 }
 
-// The rename popup and the Copy bars dialog, when open. Once a frame.
+// The rename popups and the Copy bars dialog, when open. Once a frame.
 draw_seq_dialogs :: proc(a: ^App) {
+	draw_pad_rename(a)
 	m := &a.m
 	o := &a.seq_ops
 	if o.rename_open {
@@ -161,24 +166,119 @@ draw_seq_dialogs :: proc(a: ^App) {
 	}
 }
 
-// Copies the marked part of the piano roll (Cmd+C): its bars, and the rows
-// marked. False if nothing is marked.
+// The selected notes' first bar (in beats), and the length in whole bars
+// from there to their last end.
+@(private)
+selection_span :: proc(a: ^App) -> (lo, beats: f64) {
+	bar := pm.bar_beats(&a.m.project)
+	first, last := max(f64), f64(0)
+	for n in a.seq.sel {
+		first = min(first, n.start)
+		last = max(last, n.start + n.length)
+	}
+	lo = math.floor(first / bar + 1e-9) * bar
+	return lo, max(math.ceil((last - lo) / bar - 1e-9), 1) * bar
+}
+
+// Copies the selected notes (Cmd+C), from their first bar. False if none
+// are selected.
 copy_marked :: proc(a: ^App) -> bool {
-	r := a.seq.range
-	if !r.on do return false
-	pads: [pm.PADS]bool
-	for k in r.key0 ..= r.key1 do if k >= 0 && k < pm.PADS_PER_BANK do pads[a.bank * pm.PADS_PER_BANK + k] = true
-	pm.copy_part(&a.m.project, a.m.project.slot, r.beat0, r.beat1, &pads, &a.seq_ops.part)
+	if len(a.seq.sel) == 0 do return false
+	part := &a.seq_ops.part
+	pm.part_destroy(part)
+	lo, beats := selection_span(a)
+	part.beats = beats
+	for n in a.seq.sel {
+		x := n
+		x.start -= lo
+		append(&part.notes, x)
+		part.pads[n.pad] = true
+	}
 	a.seq_ops.has_part = true
-	ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Copied %d note%s", len(a.seq_ops.part.notes), "" if len(a.seq_ops.part.notes) == 1 else "s"))
+	ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Copied %d note%s", len(part.notes), "" if len(part.notes) == 1 else "s"))
 	return true
 }
 
-// Pastes what was copied into the current sequence (Cmd+V): at the marked
-// part's start, else at its first bar. Its rows replace what they had there.
+// Pastes what was copied into the current sequence (Cmd+V), laid over what
+// is there: where the menu was opened, else at the selection's first bar,
+// else at the first bar. What it pasted is selected.
 paste_marked :: proc(a: ^App) -> bool {
 	if !a.seq_ops.has_part do return false
-	at := a.seq.range.beat0 if a.seq.range.on else 0
-	pm.paste_part(&a.m, a.m.project.slot, &a.seq_ops.part, at)
+	at := 0.0
+	if a.seq.paste_at >= 0 {
+		bar := pm.bar_beats(&a.m.project)
+		at = math.floor(a.seq.paste_at / pm.grid_beats(a.seq.grid) + 1e-9) * pm.grid_beats(a.seq.grid) if a.seq.paste_at > 0 else 0
+		_ = bar
+	} else if len(a.seq.sel) > 0 {
+		at, _ = selection_span(a)
+	}
+	pm.paste_part(&a.m, a.m.project.slot, &a.seq_ops.part, at, replace = false)
+	clear(&a.seq.sel)
+	for n in a.seq_ops.part.notes {
+		x := n
+		x.start += at
+		append(&a.seq.sel, x)
+	}
 	return true
+}
+
+// Duplicates the selected notes after themselves (from the bar after
+// their last).
+duplicate_selection :: proc(a: ^App) {
+	if !copy_marked(a) do return
+	lo, beats := selection_span(a)
+	a.seq.paste_at = -1
+	clear(&a.seq.sel)
+	pm.paste_part(&a.m, a.m.project.slot, &a.seq_ops.part, lo + beats, replace = false)
+	for n in a.seq_ops.part.notes {
+		x := n
+		x.start += lo + beats
+		append(&a.seq.sel, x)
+	}
+}
+
+// Removes the selected notes.
+delete_selection :: proc(a: ^App) {
+	pm.remove_note_values(&a.m, a.m.project.slot, a.seq.sel[:])
+	app.seal(&a.m.history)
+	clear(&a.seq.sel)
+}
+
+// Whether the editor's keys act on notes: it has the keyboard, with notes selected.
+editing_notes :: proc(a: ^App) -> bool {
+	return a.seq.focused && len(a.seq.sel) > 0
+}
+
+// Starts renaming pad `i` (a popup with its name).
+begin_rename_pad :: proc(a: ^App, i: int) {
+	o := &a.seq_ops
+	o.rename_pad = i
+	o.pad_buf = {}
+	copy(o.pad_buf[:len(o.pad_buf) - 1], pm.pad_name(&a.m.project.pads[i]))
+	o.pad_open = true
+}
+
+// The pad rename popup, when open. Once a frame.
+draw_pad_rename :: proc(a: ^App) {
+	o := &a.seq_ops
+	if o.pad_open {
+		im.OpenPopup("Rename Pad")
+		o.pad_open = false
+	}
+	if im.BeginPopupModal("Rename Pad", nil, {.AlwaysAutoResize}) {
+		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
+		im.SetNextItemWidth(260)
+		done := im.InputText("##pad_rename", cstring(&o.pad_buf[0]), len(o.pad_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		ui.name("pad rename")
+		if done || im.Button("Rename") {
+			p := a.m.project.pads[o.rename_pad]
+			pm.set_pad_name(&p, strings.truncate_to_byte(string(o.pad_buf[:]), 0))
+			pm.set_pad(&a.m, o.rename_pad, .Name, "Rename Pad", p)
+			app.seal(&a.m.history)
+			im.CloseCurrentPopup()
+		}
+		im.SameLine()
+		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		im.EndPopup()
+	}
 }

@@ -176,16 +176,33 @@ for other toggles.
   **Own tempo** (it plays at its own tempo, which takes over exactly where
   the sequence does, in the song or switching live); **Copy Bars to…**
   (from its menu or the palette: bars, every pad or one or a bank, into
-  another sequence at a bar, replacing or laid over). Shift-drag in the
-  rows to mark a part (whole bars when long), Cmd+C to copy it, and Cmd+V
-  to paste it into any sequence, at its marked part or its first bar.
-  Its length (1–64 bars, ×2 doubles with the notes); the
+  another sequence at a bar, replacing or laid over). Its length (1–64 bars, ×2 doubles with the notes); the
   grid (1/4 to 1/64, triplets) and Quantize (Cmd+U, the notes there);
   swing (on 1/8 or 1/16). Below, the current bank's pads (pad
   1 at the bottom, as on the grid) as
-  rows: click to add a note, drag to move, drag its end to resize,
-  right-click to delete; the wheel scrolls the rows when they don't all
-  fit. Notes of one pad (and pitch) never overlap: a note cuts short the
+  rows, edited with four tools (on the row over the editor, or the keys
+  while it has the keyboard; Escape: back to Select):
+  - **Select** (V): click a note (Shift-click adds or takes away), drag on
+    empty space to box-select, drag selected notes to move them, their
+    ends to resize them all, double-click empty space to add one;
+  - **Draw** (B): click to add a note, drag along a row to paint one on
+    each grid step (one undo step), click a note to remove it;
+  - **Erase** (E): click or sweep across notes to remove them;
+  - **Move** (M): drag the selection (Alt-drag copies it), in time and to
+    other rows.
+  With notes selected, Delete removes them, Cmd+D duplicates them after
+  themselves, Cmd+C copies and Cmd+V pastes them (into any sequence; at
+  the selection's bar, or where the grid's menu was opened); right-click
+  a note for its commands and the selection's.
+  Click a row's name to select its pad (its strip and devices follow) and
+  every note in its row, and to hear it (the **headphones** turn that
+  off); right-click it for the pad's commands (**Rename…**, colour, mute,
+  solo, its piano roll...). **Drums | Piano roll** switches to one pad's
+  notes on a keyboard (its own pitch is the marked C3, four octaves each
+  way; double-click a row's name to open it), where it plays
+  chromatically. **Fold** shows only the rows that have notes (drums: the
+  pads used, from every bank; piano roll: the pitches used). The wheel
+  scrolls the rows when they don't all fit. Notes of one pad (and pitch) never overlap: a note cuts short the
   one before it, replaces one that starts with it, and takes over one it
   covers (a note it reaches into keeps the part after it), however it got
   there (drawn, moved, pasted, recorded, imported). Under the rows, a lane: each note's velocity, its chance (the
@@ -553,6 +570,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
+| `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the launcher (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |

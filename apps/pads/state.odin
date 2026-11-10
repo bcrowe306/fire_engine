@@ -43,7 +43,10 @@ State :: struct {
 	project:    string,
 	exporting:  bool,
 	sequences:  [dynamic]State_Sequence, // the ones in use
-	marked:     bool, // a part of the piano roll is marked
+	marked:     bool, // notes are selected in the sequence editor
+	selected_notes: int,
+	tool:       string, // the editor's tool: Select, Draw, Erase, Move
+	piano_roll: bool,   // the editor shows one pad's piano roll
 	perf_on:    [pm.PERF_FX]bool, // the performance effects held (or latched)
 	perf_now:   [pm.PERF_FX]f32,  // how hard each plays while held (-1: its own)
 	perf_intensity: [pm.PERF_FX]f32, // each one's own
@@ -156,7 +159,10 @@ state_json :: proc(a: ^App) -> string {
 	for sq, k in p.sequences do if pm.slot_used(m, k) || k == p.slot {
 		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes)})
 	}
-	s.marked = a.seq.range.on
+	s.marked = len(a.seq.sel) > 0
+	s.selected_notes = len(a.seq.sel)
+	s.tool = enum_name(a.seq.tool)
+	s.piano_roll = a.seq.piano
 	s.fx_params = make([dynamic][2]f32, context.temp_allocator)
 	if fx, ok := pm.target_slot(m, a.fx); ok do for prm in fx.params[:fx.count] do append(&s.fx_params, [2]f32{f32(prm.id), prm.value})
 	for fx, k in p.perf_fx do s.perf_on[k] = fx.on

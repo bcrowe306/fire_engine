@@ -34,6 +34,7 @@ def test_a_pads_menu(app, fixtures):
 def test_a_notes_menu_and_the_palette(app, fixtures):
     loaded(app, fixtures)
     app.panel("Sequence")
+    app.tool("Draw")
     app.click("seq", window="sequence", at=(0.6, 0.97))  # a note on A1
     app.click("seq", window="sequence", at=(0.6, 0.97), right=True)
     app.click("Velocity 40%")

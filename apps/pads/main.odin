@@ -58,6 +58,7 @@ App :: struct {
 	slot_clip: pm.Effect_Slot, // a copied effect
 	has_slot_clip: bool,
 	release_at: [pm.PADS]int, // frames until a pad a command played lets go
+	audition_off: struct { pad, pitch, frames: int }, // a pitched audition to let go
 	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
 	browser:  pm.Browser,
 	bview:    Browser_View,
@@ -246,6 +247,10 @@ frame :: proc(a: ^App) {
 		n := pm.struck(&a.m.engine, i)
 		if n != a.seen[i] do a.lit[i] = 0.12
 		a.seen[i] = n
+		if i == a.audition_off.pad && a.audition_off.frames > 0 {
+			a.audition_off.frames -= 1
+			if a.audition_off.frames == 0 do pm.hit(&a.m.engine, i, false, pitch = i8(a.audition_off.pitch), keyboard = true)
+		}
 		if a.release_at[i] > 0 {
 			a.release_at[i] -= 1
 			if a.release_at[i] == 0 do pm.hit(&a.m.engine, i, false)

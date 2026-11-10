@@ -28,8 +28,9 @@ expect slot 2
 expect notes 0
 slot 1
 expect notes 8
-# By input events: a click in the editor adds a note (pad A4, beat 4).
-click 774 177
+# By input events: with the Draw tool, a click in the editor adds a note (pad A4, beat 4).
+click_item "Draw (B): click to add, drag along a row to paint, click a note to remove it" in sequence
+click_item "seq" in sequence at 0.95 0.78
 wait 2
 expect notes 9
 expect undo Add Note

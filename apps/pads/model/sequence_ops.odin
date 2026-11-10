@@ -169,3 +169,49 @@ clear_part :: proc(m: ^Model, slot: int, lo, hi: f64, pads: ^[PADS]bool) {
 	set_sequence(m, slot, .Notes, "Delete Notes", s)
 	app.seal(&m.history)
 }
+
+// Replaces notes `old` of sequence `slot` with `new` (moved, resized,
+// sent to other pads), or with `copy` adds `new` beside them: one edit of
+// `field` named `name` (drags merge until sealed). The new notes are the
+// newest, so they win where they overlap; ones that fall outside the
+// sequence are left out. Returns the notes as they landed.
+replace_notes :: proc(m: ^Model, slot: int, old, new: []Seq_Note, copy: bool, field: Seq_Field, name: string) -> []Seq_Note {
+	s := m.project.sequences[slot]
+	length := seq_beats(&m.project, s)
+	notes := make([dynamic]Seq_Note, 0, len(s.notes) + len(new), context.temp_allocator)
+	for n in s.notes {
+		gone := false
+		if !copy do for o in old do if o == n {
+			gone = true
+			break
+		}
+		if !gone do append(&notes, n)
+	}
+	landed := make([dynamic]Seq_Note, 0, len(new), context.temp_allocator)
+	for n in new {
+		x := n
+		if x.start < -1e-9 || x.start >= length - 1e-9 || int(x.pad) >= PADS do continue
+		x.start = max(x.start, 0)
+		x.length = clamp(x.length, 1.0 / 64, length)
+		x.probability = x.probability if x.probability > 0 else 1
+		append(&notes, x)
+		append(&landed, x)
+	}
+	s.notes = notes[:]
+	set_sequence(m, slot, field, name, s)
+	return landed[:]
+}
+
+// Removes notes `gone` from sequence `slot` (by value), as an edit of
+// `field` named `name` (sweeps merge until sealed).
+remove_note_values :: proc(m: ^Model, slot: int, gone: []Seq_Note, field := Seq_Field.Notes, name := "Delete Notes") {
+	s := m.project.sequences[slot]
+	notes := make([dynamic]Seq_Note, 0, len(s.notes), context.temp_allocator)
+	outer: for n in s.notes {
+		for g in gone do if g == n do continue outer
+		append(&notes, n)
+	}
+	if len(notes) == len(s.notes) do return
+	s.notes = notes[:]
+	set_sequence(m, slot, field, name, s)
+}

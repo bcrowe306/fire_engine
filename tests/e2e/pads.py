@@ -209,6 +209,14 @@ class Pads:
     def expect_item(self, label, window=None):
         self.cmd(f"expect_item {self._target(label, window)}")
 
+    def tool(self, name):
+        """Picks a sequence editor tool by its button: Select, Draw, Erase, Move."""
+        for it in self.items(name, "sequence"):
+            if it["label"].startswith(name + " ("):
+                self.click(it["label"], window="sequence")
+                return
+        raise PadsError(f"no tool {name}")
+
     def sampler_tab(self):
         """Clicks the bottom panel's first device tab, the pad's sampler
         ("A1 kick · Sampler"), whatever the pad is called."""

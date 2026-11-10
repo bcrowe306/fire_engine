@@ -25,6 +25,7 @@ def test_play_stop_and_the_metronome(app, fixtures):
 
 def test_notes_by_clicking_the_piano_roll(app, fixtures):
     loaded(app, fixtures)
+    app.tool("Draw")
     app.click("seq", window="sequence", at=(0.5, 0.97))  # the bottom row (A1), mid-bar
     s = app.state()
     assert s["notes"] == 1 and s["undo"] == "Add Note"
@@ -41,6 +42,7 @@ def test_notes_by_clicking_the_piano_roll(app, fixtures):
 
 def test_length_double_and_clear(app, fixtures):
     loaded(app, fixtures)
+    app.tool("Draw")
     app.click("seq", window="sequence", at=(0.3, 0.97))
     app.click("×2", window="sequence")
     s = app.state()
@@ -64,6 +66,7 @@ def test_recording_by_playing_the_pads(app, fixtures):
 
 def test_the_lanes(app, fixtures):
     loaded(app, fixtures)
+    app.tool("Draw")
     app.click("seq", window="sequence", at=(0.5, 0.97))
     app.click("Chance", window="sequence")
     app.expect_item("lane", window="sequence")
