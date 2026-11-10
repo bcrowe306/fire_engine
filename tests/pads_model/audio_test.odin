@@ -75,6 +75,14 @@ an_audio_pad_records_a_take_and_plays_it_with_the_sequence :: proc(t: ^testing.T
 	testing.expect_value(t, s.frames, i64(bar)) // one sequence long
 
 	// Played back with the sequence: the last pass first, then the first's end.
+	// (Once the take's start is buffered, as the app's players are before a
+	// play: they get what plays from the top while stopped.)
+	for _ in 0 ..< 400 {
+		render(r, 256)
+		if pm.audio_ready(&m.engine) do break
+		time.sleep(5 * time.Millisecond)
+	}
+	testing.expect(t, pm.audio_ready(&m.engine), "the take is buffered")
 	pm.play(&m.engine)
 	out := render_in(r, {make([]f32, bar, context.temp_allocator), make([]f32, bar, context.temp_allocator)})
 	first, second := hz_of(out[0][bar / 8:][:bar / 4]), hz_of(out[0][bar * 5 / 8:][:bar / 4])

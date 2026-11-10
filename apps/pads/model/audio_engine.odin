@@ -197,3 +197,13 @@ audio_runs :: proc(pl: Plan, beat: f64) -> (cur, next: Audio_Run) {
 	}
 	return
 }
+
+// Whether every audio pad's players can start without a dropout (their
+// takes' starts are buffered): a take just recorded or placed needs a
+// moment from the disk.
+audio_ready :: proc(e: ^Engine) -> bool {
+	for &n in e.nodes do if n.live && n.audio {
+		for pl in n.players do if pl != nil && !clip.audio_player_ready(pl) do return false
+	}
+	return true
+}
