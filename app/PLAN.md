@@ -128,7 +128,7 @@ four platforms), verify, profile, document, commit.
 6. **Pads: mixer and FX.** Inserts, buses, main, performance FX, CLAP
    plug-ins in slots. *Done:* see docs/guides/pads.md.
 7. **Pads: song, export, save.** Slot chain, mixdown and stems and
-   resample, project folders, autosave.
+   resample, project folders, autosave. *Done:* see docs/guides/pads.md.
 8. **Later.** The timeline arranger, stem splitting, more export formats.
 
 ## Testing approach

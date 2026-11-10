@@ -5,9 +5,10 @@ description: The Pads sampler built on the application layer — loading, playin
 
 Pads (`apps/pads`) is a sampler and sequencer built on Fire Engine and its
 [application layer](/guides/app-layer/). It is one binary: SDL3 and Dear
-ImGui are linked in. This page covers what it does so far (samples, the
-sequencer, playing live and the mixer: milestones 4 to 6 of
-`app/PLAN.md`); song mode, export and saving come next.
+ImGui are linked in. This page covers what it does so far : samples, the
+sequencer, playing live, the mixer, the song, export and projects
+(milestones 4 to 7 of `app/PLAN.md`). The timeline arranger, stem
+splitting and more export formats are for later.
 
 ```bash
 task deps        # once per machine: the static SDL3 and ImGui libraries
@@ -17,7 +18,7 @@ task app:pads OPT=none   # a debug build in .build/app/pads
 
 | Option | |
 |---|---|
-| `--project DIR` | the project folder (default: a new one in the temporary folder) |
+| `--project DIR` | a project folder: opens the project in it, or starts one there (default: a new one in the temporary folder) |
 | `--fake` | the simulated audio driver: no sound card needed |
 | `--drive FILE` | run from a [drive script](#scripts-and-tests) |
 | `--out DIR` | where a script's screenshots go (default `.build/app/shots`) |
@@ -98,11 +99,44 @@ Every change is undoable (Cmd+Z / Cmd+Shift+Z; Ctrl elsewhere). A knob
 drag is one step. Cmd+K opens the command palette; Cmd+1..4 switch banks;
 Delete clears the pad; View > Light Theme switches theme.
 
+- **Song** (bottom): **Pattern** plays the current sequence; **Song**
+  plays the chain of steps below, each a sequence played 1–16 times
+  (drag a step onto another to move it; **Loop the song** goes round,
+  otherwise it stops at the end). **Add sequence N** puts the current
+  one at the end; **Merge into this…** lays another sequence's notes and
+  automation over the current one. In pattern mode, a sequence picked
+  while playing takes over **at the end of the playing sequence**, **at
+  the next bar**, **at the next beat** or **at once** — exactly there; the
+  Sequence panel shows what comes next and when.
+
 ## Projects
 
-A project is a folder. Imported files are copied into its `samples/`
-folder (a name already taken gets a number), so a project carries its
-audio. Saving the project file itself is milestone 7.
+A project is a folder, `Name.pads`: `project.fire` (a
+[fire:session](/guides/sessions/) file whose app chunks hold the pads,
+samples, sequences, song, mixer, MIDI map and settings) and `samples/`
+(every imported, recorded, edited, chopped or resampled file is copied
+there), so a project moves as one folder.
+
+- **File > New** (Cmd+N), **Open…** (Cmd+O, a folder), **Open Recent**
+  (the last 8, kept in the user's preferences folder), **Save** (Cmd+S),
+  **Save As…** (Cmd+Shift+S: a folder; the samples are copied there).
+- Changes are saved on their own every minute, and on quitting. The
+  window's title shows the project, with a dot while it has unsaved
+  changes. Opening a project starts a new undo history.
+- A new project lives in the temporary folder until **Save As** gives it a
+  place.
+
+## Export
+
+**File > Export Audio…** (Cmd+E): the current sequence (once) or the song;
+a mixdown, or stems — a file per pad with a sound, or per bus (and main,
+for the pads that go straight there); 16-bit (dithered), 24-bit or 32-bit
+float WAV; 44.1, 48 or 96 kHz (resampled from the engine's rate with
+`dsp.Resampler` at High quality); and a tail for reverb and echoes. It
+renders offline through the same engine (the device closes meanwhile),
+a slice each frame, with a progress bar. **File > Resample Sequence to
+Pad** renders the current sequence once into a new sample on the next
+empty pad (one undo step).
 
 ## How it is built
 
@@ -132,6 +166,17 @@ audio. Saving the project file itself is milestone 7.
   node and wires its chain again; changing a setting is a parameter
   change. Slots and buses are plain values in the project, so every edit
   undoes.
+- What plays is a plan (model/song.odin): segments of sequences on a
+  timeline that runs on (it never loops), built into one clip and placed
+  where it started — a sequence looping; one sequence until the switch
+  point, then the next looping; the whole song. So switching is exact to
+  the frame, and export plays the same plan once.
+- Saving writes each field of the model explicitly (project_file.odin),
+  versioned, so later versions can read older projects. Loading builds a
+  new model and engine from the file.
+- Export (export.odin) mutes all but a stem's pads in the mixer while it
+  renders that stem, writes through `fire:audiofile`, and gives the
+  device back when it ends.
 - The router (model/router.odin) is the pipeline every note takes: UI hits
   and MIDI notes (by the MIDI map) are live notes; live notes go through
   the arpeggiator or note repeat (`fire:perform`) when one is on; then
@@ -146,7 +191,7 @@ loaded, the sequencer playing and the mixer showing (p99 1.1 ms); the
 engine, with 8 pads in a busy sequence, automation, the arpeggiator, an
 insert on every pad and reverb and a compressor on main, 19× real time
 (5% of one core); on 30 s of audio, import 3 ms, chop at transients 76 ms, normalize
-8 ms, stretch 87 ms.
+8 ms, stretch 87 ms; saving a project 1 ms, opening it 12 ms.
 
 ## Scripts and tests
 
@@ -181,6 +226,12 @@ fx_param ID VALUE                            one of its settings
 route PAD BUS / busvol BUS DB / mute pad N | bus B / solo ... / perf N on|off
 expect level main | bus B | pad N above|below DB   (the meter as shown)
 expect fx KIND                               what the edited slot holds
+save / save_as DIR / open DIR / new          projects
+export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
+resample / export_dialog [off]               resample to a pad; the Export dialog
+song add SLOT [REPEATS] | mode on|off | loop on|off | clear
+switch end|bar|beat|now                      when a sequence picked while playing takes over
+expect file PATH / expect song K / expect dirty 0|1 / expect pads_loaded K
 ```
 
 A failed `expect` makes Pads exit 1. `tests/app_ui/drive/pads.txt` drives
@@ -190,7 +241,9 @@ drag, shortcuts, the palette — and checks the model after each;
 `pads_sequence.txt` covers the sequencer (by command, then by clicks,
 Space and Cmd+R with the pad keys); `pads_perform.txt` the play modes,
 repeat, the arpeggiator, MIDI in and learn, automation and MIDI import;
-`pads_mixer.txt` the buses, inserts, mute, meters and performance effects.
+`pads_mixer.txt` the buses, inserts, mute, meters and performance effects;
+`pads_project.txt` switching on the grid, the song, save, new, open,
+export and resample (into `.build/app/drive_project`).
 
 ```bash
 task app:test          # tests/app_* and tests/pads_*, the UI cases, then every pads*.txt script

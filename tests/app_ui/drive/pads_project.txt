@@ -1,0 +1,61 @@
+# Pads' projects, song and export: switching sequences on the grid, a
+# song, saving, a new project, opening it again, exporting a mixdown and
+# stems, resampling onto a pad. Screenshots of the Song panel and the
+# Export dialog. (The project goes to .build/app/drive_project.)
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+note 0 0 0.25 1
+note 0 2 0.25 1
+slot 2
+note 1 0 0.25 0.8
+note 1 1 0.25 0.8
+note 1 2 0.25 0.8
+note 1 3 0.25 0.8
+slot 1
+# Picked while playing: sequence 2 takes over at the end of sequence 1.
+switch end
+play
+wait 20
+slot 2
+expect slot 1
+wait 120
+expect slot 2
+stop
+# A song: 1 twice, then 2.
+song add 1 2
+song add 2
+expect song 2
+panel song
+wait 3
+screenshot project_song
+song mode on
+play
+wait 30
+screenshot project_song_playing
+stop
+song mode off
+# Saved, a new project, and back again.
+save_as .build/app/drive_project/Beat.pads
+expect dirty 0
+expect file .build/app/drive_project/Beat.pads/project.fire
+new
+expect pads_loaded 0
+expect song 0
+open .build/app/drive_project/Beat.pads
+expect pads_loaded 2
+expect song 2
+# Export: a mixdown of the song, stems of the pads, and a resample.
+export .build/app/drive_project/mix.wav song rate 44100 bits 16 tail 0.5
+expect file .build/app/drive_project/mix.wav
+export .build/app/drive_project/stems song stems pads
+expect file .build/app/drive_project/stems/A1 kick.wav
+expect file .build/app/drive_project/stems/A2 hat.wav
+resample
+wait 30
+expect pads_loaded 3
+export_dialog
+wait 3
+screenshot project_export
+export_dialog off

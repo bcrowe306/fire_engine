@@ -268,6 +268,11 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		// Mute and solo.
 		db: f32 = 0
 		if pad.mute || (mx.any_solo && !pad.solo) do db = -96
+		switch e.export_solo.kind {
+		case .All:
+		case .Pad: if i != e.export_solo.index do db = -96
+		case .Bus: if int(pad.bus) != e.export_solo.index do db = -96
+		}
 		if db != st.gain_db {
 			graph.set_param(g, st.gain, dsp.GAIN_PARAM_DB, f64(db))
 			st.gain_db = db

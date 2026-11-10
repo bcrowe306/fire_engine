@@ -383,12 +383,12 @@ copy_sequence :: proc(m: ^Model, from, to: int) {
 	set_sequence(m, to, .Notes, "Paste Sequence", m.project.sequences[from])
 }
 
-// Makes `slot` the current one (what plays and is edited). Not undoable:
-// a view, not an edit.
+// Makes `slot` the current one (what plays and is edited): at once when
+// stopped; while playing, when `switch_at` says. Not undoable: a view, not
+// an edit.
 select_slot :: proc(m: ^Model, slot: int) {
-	if slot < 0 || slot >= SLOTS || slot == m.project.slot do return
-	m.project.slot = slot
-	m.engine.seq_dirty = true
+	if slot < 0 || slot >= SLOTS do return
+	queue_slot(&m.engine, slot)
 }
 
 // Whether slot `slot` holds any notes.

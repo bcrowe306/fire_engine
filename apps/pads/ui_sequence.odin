@@ -180,6 +180,16 @@ draw_transport :: proc(a: ^App) {
 		}
 		im.EndCombo()
 	}
+	if next, in_beats, ok := pm.pending_switch(&m.engine); ok {
+		ui.flow(150)
+		im.AlignTextToFramePadding()
+		im.TextColored(transmute(im.Vec4)t.warn, "%s", fmt.ctprintf("→ %d in %.1f beats", next + 1, max(in_beats, 0)))
+	}
+	if m.project.song_mode {
+		ui.flow(80)
+		im.AlignTextToFramePadding()
+		im.TextDisabled("Song mode")
+	}
 	ui.flow(96)
 	im.SetNextItemWidth(96)
 	bars := i32(s.bars)

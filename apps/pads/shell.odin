@@ -2,6 +2,8 @@ package pads
 
 import "base:runtime"
 import "core:fmt"
+import "core:path/filepath"
+import "core:os"
 import "core:math"
 import "core:strconv"
 import "core:strings"
@@ -22,7 +24,22 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "redo", label = "Redo", icon = ui.ICON_REDO_2, chord = ui.MOD_CMD | ui.MOD_SHIFT | i32(im.Key.Z), user = a,
 		run = proc(u: rawptr) { app.redo(&(^App)(u).m.history) },
 		enabled = proc(u: rawptr) -> bool { return len((^App)(u).m.history.redo) > 0 }})
-	add(acts, {id = "import", label = "Import Sample…", icon = ui.ICON_FILE_AUDIO, chord = ui.MOD_CMD | i32(im.Key.O), user = a,
+	add(acts, {id = "new", label = "New Project", icon = ui.ICON_FILE_PLUS, chord = ui.MOD_CMD | i32(im.Key.N), user = a,
+		run = proc(u: rawptr) { new_project((^App)(u)) }})
+	add(acts, {id = "open", label = "Open Project…", icon = ui.ICON_FOLDER_OPEN, chord = ui.MOD_CMD | i32(im.Key.O), user = a,
+		run = proc(u: rawptr) { project_dialog((^App)(u), .Open) }})
+	add(acts, {id = "save", label = "Save", icon = ui.ICON_SAVE, chord = ui.MOD_CMD | i32(im.Key.S), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); if save_project(a) do ui.toast(&a.ws.toasts, .Success, "Saved") }})
+	add(acts, {id = "save_as", label = "Save As…", icon = ui.ICON_SAVE, chord = ui.MOD_CMD | ui.MOD_SHIFT | i32(im.Key.S), user = a,
+		run = proc(u: rawptr) { project_dialog((^App)(u), .Save_As) }})
+	add(acts, {id = "export", label = "Export Audio…", icon = ui.ICON_DOWNLOAD, chord = ui.MOD_CMD | i32(im.Key.E), user = a,
+		run = proc(u: rawptr) { (^App)(u).proj.export_open = true }})
+	add(acts, {id = "resample", label = "Resample Sequence to Pad", icon = ui.ICON_COPY_PLUS, user = a,
+		run = proc(u: rawptr) { start_resample((^App)(u)) }})
+	add(acts, {id = "song_mode", label = "Song Mode", icon = ui.ICON_LIST_MUSIC, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); a.m.project.song_mode = !a.m.project.song_mode; a.m.engine.seq_dirty = true },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).m.project.song_mode }})
+	add(acts, {id = "import", label = "Import Sample…", icon = ui.ICON_FILE_AUDIO, chord = ui.MOD_CMD | i32(im.Key.I), user = a,
 		run = proc(u: rawptr) { open_import_dialog((^App)(u)) }})
 	add(acts, {id = "import_midi", label = "Import MIDI File…", icon = ui.ICON_MUSIC, user = a,
 		run = proc(u: rawptr) { open_midi_dialog((^App)(u)) }})
@@ -75,8 +92,19 @@ set_dark :: proc(a: ^App, dark: bool) {
 draw_menu :: proc(user: rawptr) {
 	a := (^App)(user)
 	if im.BeginMenu("File") {
+		ui.menu_action(&a.actions, "new")
+		ui.menu_action(&a.actions, "open")
+		if im.BeginMenu("Open Recent", len(a.proj.recent) > 0) {
+			for r in a.proj.recent do if im.MenuItem(fmt.ctprintf("%s", filepath.base(r))) do open_project(a, r)
+			im.EndMenu()
+		}
+		ui.menu_action(&a.actions, "save")
+		ui.menu_action(&a.actions, "save_as")
+		im.Separator()
 		ui.menu_action(&a.actions, "import")
 		ui.menu_action(&a.actions, "import_midi")
+		ui.menu_action(&a.actions, "export")
+		ui.menu_action(&a.actions, "resample")
 		im.Separator()
 		ui.menu_action(&a.actions, "quit")
 		im.EndMenu()
@@ -94,6 +122,7 @@ draw_menu :: proc(user: rawptr) {
 		ui.menu_action(&a.actions, "play")
 		ui.menu_action(&a.actions, "record")
 		ui.menu_action(&a.actions, "metronome")
+		ui.menu_action(&a.actions, "song_mode")
 		im.Separator()
 		ui.menu_action(&a.actions, "quantize")
 		ui.menu_action(&a.actions, "double")
@@ -121,6 +150,7 @@ setup_workspace :: proc(a: ^App) {
 	ui.panel_add(w, {id = "effect", title = "Effect", icon = ui.ICON_WAND_SPARKLES, open = true, draw = draw_effect, user = a}, .Right)
 	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Right)
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Bottom)
+	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Bottom)
 	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Bottom)
 	ui.panel_add(w, {id = "sample", title = "Sample", icon = ui.ICON_AUDIO_WAVEFORM, open = true, draw = draw_sample, user = a}, .Bottom)
 	ui.panel_focus(w, "sequence")
@@ -211,6 +241,9 @@ subscribe_imports :: proc(a: ^App) {
 //	plugin BUS SLOT ID PATH / edit_fx pad P S|bus B S|perf N / fx_param ID VALUE (the edited slot)
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
+//	save / save_as DIR / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
+//	resample / song add SLOT [REPEATS] | mode on|off | loop on|off | clear / switch end|bar|beat|now / export_dialog [off]
+//	expect file PATH / expect song K / expect dirty 0|1 / expect pads_loaded K
 //	theme light|dark, action ID
 drive_command :: proc(user: rawptr, w: []string) -> bool {
 	a := (^App)(user)
@@ -442,6 +475,76 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if i < 0 || i >= pm.PERF_FX do return false
 		pm.hold_perf_fx(&a.m, i, len(w) < 3 || w[2] != "off")
 		return true
+	case "save":
+		return save_project(a)
+	case "save_as":
+		if len(w) < 2 do return false
+		if pm.model_save_as(&a.m, strings.join(w[1:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not save as")
+		return true
+	case "open":
+		if len(w) < 2 do return false
+		if !open_project(a, strings.join(w[1:], " ", context.temp_allocator)) do return drive_fail(a, "could not open")
+		return true
+	case "new":
+		new_project(a)
+		return true
+	case "export":
+		// export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
+		if len(w) < 2 do return false
+		st := pm.Export_Settings{rate = 48_000, encoding = .Int24}
+		for k := 2; k < len(w); k += 1 {
+			switch w[k] {
+			case "song":  st.source = .Song
+			case "stems": k += 1; st.stems = .Pads if k < len(w) && w[k] == "pads" else .Buses
+			case "rate":  k += 1; st.rate = f64(numf(w, k))
+			case "tail":  k += 1; st.tail = f64(numf(w, k))
+			case "bits":
+				k += 1
+				switch num(w, k) {
+				case 16: st.encoding = .Int16
+				case 32: st.encoding = .Float32
+				}
+			}
+		}
+		x: pm.Export
+		defer pm.export_destroy(&x)
+		if len(pm.export_all(&a.m, st, w[1], &x)) == 0 do return drive_fail(a, "nothing exported")
+		return true
+	case "resample":
+		start_resample(a)
+		return true
+	case "song":
+		// song add SLOT [REPEATS] / song mode on|off / song loop on|off / song clear
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "add":
+			reps := num(w, 3) if len(w) > 3 else 1
+			pm.song_add(&a.m, num(w, 2) - 1, repeats = reps)
+		case "mode":
+			a.m.project.song_mode = len(w) < 3 || w[2] != "off"
+			a.m.engine.seq_dirty = true
+		case "loop":
+			s := a.m.project.song
+			s.loop = len(w) < 3 || w[2] != "off"
+			pm.set_song(&a.m, "Loop Song", s)
+		case "clear":
+			pm.set_song(&a.m, "Clear Song", {})
+		case: return false
+		}
+		return true
+	case "switch":
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "end":  a.m.project.switch_at = .End
+		case "bar":  a.m.project.switch_at = .Bar
+		case "beat": a.m.project.switch_at = .Beat
+		case "now":  a.m.project.switch_at = .Now
+		case: return false
+		}
+		return true
+	case "export_dialog":
+		a.proj.export_open = len(w) < 2 || w[1] != "off"
+		return true
 	case "panel":
 		return len(w) > 1 && ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 	case "play":
@@ -544,6 +647,23 @@ drive_expect :: proc(a: ^App, w: []string) -> bool {
 		s, _ := pm.target_slot(&a.m, a.fx)
 		kind, ok := effect_kind(w[2])
 		if !ok || s.kind != kind do return drive_fail(a, fmt.tprintf("expected %s in the edited slot, got %s", w[2], pm.slot_name(s)))
+		return true
+	case "file":
+		path := strings.join(w[2:], " ", context.temp_allocator)
+		if !os.exists(path) do return drive_fail(a, fmt.tprintf("expected the file %s", path))
+		return true
+	case "song":
+		want, _ := strconv.parse_int(w[2])
+		if a.m.project.song.count != want do return drive_fail(a, fmt.tprintf("expected %d song steps, got %d", want, a.m.project.song.count))
+		return true
+	case "dirty":
+		if pm.model_dirty(&a.m) != (w[2] == "1") do return drive_fail(a, fmt.tprintf("expected dirty %s", w[2]))
+		return true
+	case "pads_loaded":
+		want, _ := strconv.parse_int(w[2])
+		got := 0
+		for pad in a.m.project.pads do if pad.sample != 0 do got += 1
+		if got != want do return drive_fail(a, fmt.tprintf("expected %d pads with sounds, got %d", want, got))
 		return true
 	case "points":
 		want, _ := strconv.parse_int(w[2])

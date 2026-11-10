@@ -8,7 +8,8 @@ choke group; chop, stretch and edit the audio.
 	task app:drive -- tests/app_ui/drive/pads.txt
 
 Options:
-	--project DIR  the project folder (default: a new one in the temporary folder)
+	--project DIR  the project folder: opens the project in it, or starts one there
+	               (default: a new one in the temporary folder)
 	--drive FILE   run the UI from a drive script (see app:ui's Driver)
 	--out DIR      where the script's screenshots go (default .build/app/shots)
 	--headless     no window on screen (for scripted runs without a display)
@@ -58,6 +59,7 @@ App :: struct {
 	mixer:    Mixer_State,
 	fx:       pm.Fx_Target, // the effect slot the Effect panel edits
 	plugin_choice: Plugin_Choice,
+	proj:     Project_State,
 	perf_hold: bool, // performance effects latch
 	perf_held, perf_latched: [pm.PERF_FX]bool,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
@@ -112,6 +114,14 @@ main :: proc() {
 	}
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
+	defer project_state_destroy(&a.proj)
+	// A project folder with a project in it opens; otherwise it is a new one.
+	if f, _ := filepath.join({project, pm.PROJECT_FILE}, context.temp_allocator); os.exists(f) {
+		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project)
+	}
+	recent_load(&a.proj)
+	a.proj.last_save = time.tick_now()
+	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
 	defer plugin_choice_clear(&a.plugin_choice)
 	a.seq.selected, a.seq.grid, a.capture.grid = -1, .Sixteenth, .Sixteenth
 	app.subscribe(&a.bus, app.Host_Engine_Changed, proc(user: rawptr, e: ^app.Host_Engine_Changed) {
@@ -119,6 +129,7 @@ main :: proc() {
 	}, a)
 	setup_actions(a)
 	subscribe_imports(a)
+	subscribe_project(a)
 	setup_workspace(a)
 	defer ui.workspace_destroy(&a.ws)
 	browser_init(&a.browser)
@@ -144,6 +155,8 @@ main :: proc() {
 		p.running, p.driver, p.fixed_dt = true, nil, 0
 		run_profile(a, profile)
 	}
+	// Leaving: what changed is kept (as an autosave would).
+	if pm.model_dirty(&a.m) && drive == "" do pm.model_save(&a.m)
 	if drive != "" {
 		for s in a.driver.shots do fmt.println("screenshot:", s)
 		if a.driver.failed do os.exit(1)
@@ -173,6 +186,8 @@ frame :: proc(a: ^App) {
 	play_keys(a)
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
+	draw_export(a)
+	project_frame(a)
 	pm.sync(&a.m.engine)
 	pm.capture_poll(&a.m, &a.capture)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))

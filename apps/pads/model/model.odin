@@ -86,6 +86,9 @@ Project :: struct {
 	buses:   [BUSES]Bus,
 	main:    Bus,
 	perf_fx: [PERF_FX]Effect_Slot, // the performance effects (on while held)
+	song:    Song,
+	song_mode: bool, // play the song, not the current sequence
+	switch_at: Switch_At, // when a sequence picked while playing takes over
 	dir:     string, // the project folder (samples/ inside it)
 	strings: strings.Intern, // sample names and paths
 }
@@ -97,6 +100,7 @@ default_pad :: proc() -> Pad {
 
 // Prepares an empty project in `dir`.
 project_init :: proc(p: ^Project, dir: string) {
+	p^ = {}
 	p.bpm = 120
 	for &pad in p.pads do pad = default_pad()
 	for &s in p.sequences do s = default_sequence()

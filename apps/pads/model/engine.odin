@@ -38,7 +38,15 @@ Engine :: struct {
 	metro_on:  bool, // what the metronome node has
 	resend:    bool, // send every pad's parameters again (automation moved them)
 	stopped:   bool, // stopped by `stop`: automation is off until `play`
+	plan:      Plan, // what the sequencer plays
+	pending:   struct {
+		active: bool,
+		slot:   int,
+		at:     f64, // timeline beat
+	},
 	mixer:     Mixer_Nodes,
+	export_solo: Export_Solo, // while exporting a stem: what is heard
+	export_once: bool,        // while exporting: what plays plays once
 	mix_dirty: bool, // a bus or performance effect changed
 	built_perform: Perform, // what the router's effects have
 	perform_sent:  bool,
@@ -220,26 +228,115 @@ sync_sequencer :: proc(e: ^Engine) {
 	if !e.perform_sent || e.built_perform != p.perform {
 		if rt.spsc_push(&e.router.settings, p.perform) do e.built_perform, e.perform_sent = p.perform, true
 	}
+	sequencer_tick(e)
 	if !e.seq_dirty do return
 	e.seq_dirty = false
-	s := p.sequences[p.slot]
-	c := build_clip(s)
-	if c == nil do return
-	clip.midi_player_set(e.player, c, {loop = true})
-	clip.midi_clip_release(c)
-	transport.set_loop(e.host.clock, e.timeline, 0, tb.Beats(seq_beats(s)))
-	if !e.stopped do sync_automation(e, s)
+	// What plays: the song, a sequence about to give way to another, or a
+	// sequence looping; placed where it started on the timeline.
+	at := e.plan.at
+	if p.song_mode && p.song.count > 0 {
+		e.plan = plan_song(p, at)
+	} else if e.pending.active {
+		e.plan = plan_switch(p, plan_pattern(p, e.plan.segs[0].slot if e.plan.count > 0 else p.slot, at), e.pending.slot, e.pending.at)
+	} else {
+		e.plan = plan_pattern(p, p.slot, at)
+	}
+	if e.export_once do e.plan.loop_start, e.plan.loop_end = 0, 0 // once, to its end
+	c := plan_clip(p, e.plan)
+	loops := e.plan.loop_end > e.plan.loop_start
+	placement := clip.Placement{at = tb.Beats(e.plan.at), loop = loops}
+	if !loops do placement.length = tb.Beats(plan_end(e.plan) - e.plan.at)
+	clip.midi_player_set(e.player, c, placement)
+	if c != nil do clip.midi_clip_release(c)
+	if !e.stopped do sync_automation(e)
 }
 
-// Each live pad's automation players get its lanes of sequence `s`.
+// Each frame: a queued switch takes over once the playhead passes it, a
+// song that doesn't loop stops at its end, and the slot shown follows the
+// song.
 @(private)
-sync_automation :: proc(e: ^Engine, s: Sequence) {
-	length := tb.Beats(seq_beats(s))
+sequencer_tick :: proc(e: ^Engine) {
+	p := e.project
+	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
+	beat := f64(pos)
+	if e.pending.active && playing && beat >= e.pending.at {
+		p.slot = e.pending.slot
+		e.plan = plan_pattern(p, p.slot, e.pending.at)
+		e.pending.active = false
+		e.seq_dirty = true
+	}
+	if !playing do return
+	if p.song_mode {
+		if end := plan_end(e.plan); end > 0 && beat >= end {
+			stop(e)
+			return
+		}
+		if _, slot, _, ok := plan_locate(e.plan, beat); ok do p.slot = slot // the editor shows what plays
+	}
+}
+
+// Picks sequence `slot`. Stopped, at once; playing, when the project's
+// `switch_at` says (a bar, a beat, the end of what plays), exactly there.
+queue_slot :: proc(e: ^Engine, slot: int) {
+	p := e.project
+	if slot < 0 || slot >= SLOTS do return
+	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
+	beat := f64(pos)
+	if !playing || p.song_mode {
+		p.slot = slot
+		e.pending.active = false
+		if !playing do e.plan.at = 0
+		e.seq_dirty = true
+		return
+	}
+	if slot == p.slot && !e.pending.active do return
+	b := beat
+	switch p.switch_at {
+	case .Now:  b = beat + 1e-6
+	case .Beat: b = math.floor(beat + 1e-9) + 1
+	case .Bar:  b = (math.floor(beat / BEATS_PER_BAR + 1e-9) + 1) * BEATS_PER_BAR
+	case .End:
+		l := seq_beats(p.sequences[e.plan.segs[0].slot]) if e.plan.count > 0 else BEATS_PER_BAR
+		b = e.plan.at + (math.floor((beat - e.plan.at) / l + 1e-9) + 1) * l
+	}
+	if p.switch_at == .Now {
+		p.slot = slot
+		e.pending.active = false
+		e.plan.at = b
+	} else {
+		e.pending = {active = true, slot = slot, at = b}
+	}
+	e.seq_dirty = true
+}
+
+// The sequence about to take over and when (in beats from now), if one is
+// queued.
+pending_switch :: proc(e: ^Engine) -> (slot: int, in_beats: f64, ok: bool) {
+	if !e.pending.active do return
+	pos, _, _ := transport.timeline_status(e.host.clock, e.timeline)
+	return e.pending.slot, e.pending.at - f64(pos), true
+}
+
+// The song step playing (song mode), or -1.
+song_step :: proc(e: ^Engine) -> int {
+	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
+	if !playing || !e.project.song_mode do return -1
+	seg, _, _, ok := plan_locate(e.plan, f64(pos))
+	if !ok do return -1
+	return e.plan.segs[seg].step
+}
+
+// Each live pad's automation players get its lanes of what plays.
+@(private)
+sync_automation :: proc(e: ^Engine) {
+	p := e.project
+	loops := e.plan.loop_end > e.plan.loop_start
+	placement := clip.Placement{at = tb.Beats(e.plan.at), loop = loops}
+	if !loops do placement.length = tb.Beats(plan_end(e.plan) - e.plan.at)
 	for &n, i in e.nodes {
 		if !n.live do continue
-		has := false
-		for p in s.points do if int(p.pad) == i do has = true
-		if !has {
+		vc, ec := plan_automation(p, e.plan, i)
+		if vc == nil && ec == nil {
 			if n.automated {
 				clip.automation_player_set(n.voice_player, nil, {})
 				clip.automation_player_set(n.eq_player, nil, {})
@@ -249,51 +346,12 @@ sync_automation :: proc(e: ^Engine, s: Sequence) {
 			}
 			continue
 		}
-		voice, eq: clip.Automation_Builder
-		clip.automation_builder_init(&voice, length, context.temp_allocator)
-		clip.automation_builder_init(&eq, length, context.temp_allocator)
-		for p in s.points do if int(p.pad) == i && tb.Beats(p.beat) <= length {
-			at := tb.Beats(p.beat)
-			v := f64(p.value)
-			switch p.param {
-			case .Volume:  clip.automation_add_point(&voice, sampler.SAMPLER_PARAM_GAIN_DB, at, v)
-			case .Pitch:   clip.automation_add_point(&voice, sampler.SAMPLER_PARAM_TRANSPOSE, at, math.round(v), .Step)
-			case .Eq_Low:  clip.automation_add_point(&eq, dsp.eq_band_param(0, .Gain_Db), at, v)
-			case .Eq_Mid:  clip.automation_add_point(&eq, dsp.eq_band_param(1, .Gain_Db), at, v)
-			case .Eq_High: clip.automation_add_point(&eq, dsp.eq_band_param(2, .Gain_Db), at, v)
-			}
-		}
-		for b in ([]^clip.Automation_Builder{&voice, &eq}) do clip.automation_set_loop(b, 0, length)
-		vc, _ := clip.automation_build(&voice)
-		ec, _ := clip.automation_build(&eq)
-		clip.automation_player_set(n.voice_player, vc, {loop = true})
-		clip.automation_player_set(n.eq_player, ec, {loop = true})
+		clip.automation_player_set(n.voice_player, vc, placement)
+		clip.automation_player_set(n.eq_player, ec, placement)
 		if vc != nil do clip.automation_clip_release(vc)
 		if ec != nil do clip.automation_clip_release(ec)
-		clip.automation_builder_destroy(&voice)
-		clip.automation_builder_destroy(&eq)
 		n.automated = true
 	}
-}
-
-// The clip that plays sequence `s`: its notes on the pads' keys, swung,
-// with their chance and pitch.
-build_clip :: proc(s: Sequence) -> ^clip.Midi_Clip {
-	length := seq_beats(s)
-	b: clip.Midi_Builder
-	clip.midi_builder_init(&b, tb.Beats(length))
-	defer clip.midi_builder_destroy(&b)
-	clip.set_loop(&b, 0, tb.Beats(length))
-	g := tb.Beats(grid_beats(s.swing_grid))
-	for n in s.notes {
-		if n.start >= length || int(n.pad) >= PADS do continue
-		start := clip.swing(tb.Beats(n.start), g, f64(s.swing))
-		end := clip.swing(tb.Beats(min(n.start + n.length, length)), g, f64(s.swing))
-		i := clip.add_note(&b, start, max(end - start, 1e-3), pad_key(int(n.pad)), n.velocity, channel = SEQ_CHANNEL, probability = n.probability)
-		if n.pitch != 0 do clip.add_expression(&b, i, 0, .Tuning, f64(n.pitch))
-	}
-	c, err := clip.midi_build(&b)
-	return c if err == .None else nil
 }
 
 // How many times pad `index` has sounded, from any source (to light it).
@@ -303,10 +361,12 @@ struck :: proc(e: ^Engine, index: int) -> u32 {
 
 // Starts the sequencer from the top of the sequence.
 play :: proc(e: ^Engine) {
-	if e.stopped {
-		e.stopped = false
-		sync_automation(e, e.project.sequences[e.project.slot])
-	}
+	e.stopped = false
+	e.pending.active = false
+	e.plan.at = 0
+	if e.project.song_mode && e.project.song.count > 0 do e.project.slot = int(e.project.song.steps[0].slot)
+	e.seq_dirty = true
+	sync_sequencer(e)
 	transport.locate(e.host.clock, e.timeline, 0)
 	transport.play(e.host.clock, e.timeline)
 }
@@ -326,12 +386,18 @@ stop :: proc(e: ^Engine) {
 		mark(e, i)
 	}
 	e.stopped = true
+	e.pending.active = false
+	e.plan.at = 0
+	e.seq_dirty = true
 }
 
-// Where the sequencer is, in beats into the sequence, and whether it plays.
+// Where the sequencer is, in beats into the sequence that plays, and
+// whether it plays.
 position :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 	pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
-	return f64(pos), on
+	if !on do return 0, false
+	_, _, rel, ok := plan_locate(e.plan, f64(pos))
+	return rel if ok else 0, true
 }
 
 // Whether the sample map must be rebuilt to go from `a` to `b`.
@@ -363,3 +429,46 @@ hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, 
 	return rt.spsc_push(&e.router.queue, Hit{u8(index), on, velocity, pitch, keyboard})
 }
 
+
+// Takes everything the engine put in the graph out again, and lets go of
+// its samples (before loading another project into the model).
+engine_clear :: proc(e: ^Engine) {
+	g := e.host.graph
+	for n in e.nodes do if n.live {
+		graph.remove_node(g, n.voice)
+		graph.remove_node(g, n.eq)
+		graph.remove_node(g, n.auto_voice)
+		graph.remove_node(g, n.auto_eq)
+	}
+	for st in e.mixer.strips do if st.built {
+		for f in st.inserts do if f.has do graph.remove_node(g, f.id)
+		graph.remove_node(g, st.gain)
+		graph.remove_node(g, st.meter_id)
+	}
+	for b in e.mixer.buses {
+		for f in b.slots do if f.has do graph.remove_node(g, f.id)
+		for f in b.perf do if f.has do graph.remove_node(g, f.id)
+		graph.remove_node(g, b.input)
+		graph.remove_node(g, b.fader)
+		graph.remove_node(g, b.pan)
+		graph.remove_node(g, b.meter_id)
+	}
+	graph.remove_node(g, e.router_id)
+	graph.remove_node(g, e.player_id)
+	graph.remove_node(g, e.metro_id)
+	graph.commit(g)
+	transport.remove_timeline(e.host.clock, e.timeline)
+	engine_destroy(e)
+	host := e.host
+	e^ = {}
+	e.host = host
+}
+
+// The samples' files moved (Save As): open them again from their new
+// paths.
+mark_all_sources_stale :: proc(e: ^Engine) {
+	for _, src in e.sources do stream.source_release(src)
+	clear(&e.sources)
+	for &n in e.nodes do n.built.sample = 0 // their zones again
+	mark_all(e)
+}
