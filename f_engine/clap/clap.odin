@@ -768,6 +768,8 @@ gather_events :: proc "contextless" (p: ^Plugin, ctx: ^core.Process_Context) {
 			if s := add(p); s != nil do s.note = {head(t, c.EVENT_NOTE_ON, c.Event_Note), i32(v.id), 0, i16(v.channel), i16(v.key), f64(v.velocity)}
 		case core.Note_Off:
 			if s := add(p); s != nil do s.note = {head(t, c.EVENT_NOTE_OFF, c.Event_Note), i32(v.id), 0, i16(v.channel), i16(v.key), f64(v.velocity)}
+		case core.Note_Choke:
+			if s := add(p); s != nil do s.note = {head(t, c.EVENT_NOTE_CHOKE, c.Event_Note), i32(v.id), 0, i16(v.channel), i16(v.key), 0}
 		case core.Note_Expression:
 			if s := add(p); s != nil do s.expr = {head(t, c.EVENT_NOTE_EXPRESSION, c.Event_Note_Expression), expression_id(v.kind), i32(v.id), 0, i16(v.channel), i16(v.key), v.value}
 		case core.Param_Value:

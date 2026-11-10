@@ -24,6 +24,7 @@ import sdl "deps:sdl3"
 //	scroll DX DY          turn the wheel (positive DY scrolls up)
 //	key CHORD             press and release a key: a, enter, space, ctrl+z, cmd+shift+s...
 //	text STRING           type text into the focused field
+//	drop X Y PATH         drop a file on the window at X, Y (as from the desktop)
 //	screenshot NAME       save this frame as NAME.png in the output directory
 //	quit                  stop the app
 //
@@ -169,6 +170,11 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 		e: sdl.Event
 		e.text = {type = .TEXT_INPUT, windowID = window, text = cs}
 		_ = sdl.PushEvent(&e)
+		return true
+	case "drop":
+		if len(w) < 4 do return fail(d, line)
+		path := strings.trim_space(line[strings.index(line, w[3]):])
+		append(&p.drops, Drop{strings.clone(path), {num(w, 1), num(w, 2)}})
 		return true
 	case "screenshot":
 		if len(w) < 2 do return fail(d, line)

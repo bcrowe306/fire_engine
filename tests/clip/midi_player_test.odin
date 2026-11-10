@@ -80,6 +80,7 @@ describe :: proc(g: Got) -> string {
 	switch e in g.payload {
 	case core.Note_On:         return fmt.tprintf("%d on %d", g.frame, e.key)
 	case core.Note_Off:        return fmt.tprintf("%d off %d", g.frame, e.key)
+	case core.Note_Choke:      return fmt.tprintf("%d choke %d", g.frame, e.key)
 	case core.Note_Expression: return fmt.tprintf("%d expr %d %v %v", g.frame, e.key, e.kind, e.value)
 	case core.Midi_Raw:        return fmt.tprintf("%d raw %v", g.frame, e.bytes)
 	case core.Param_Value:     return fmt.tprintf("%d param", g.frame)

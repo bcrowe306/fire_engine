@@ -168,8 +168,10 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		if m.label != "" {
 			lc := strings.clone_to_cstring(m.label, context.temp_allocator)
 			ls := im.CalcTextSize(lc)
-			im.DrawList_AddRectFilled(dl, {x, pos.y}, {x + ls.x + 8, pos.y + ls.y + 4}, col(c), 3)
-			im.DrawList_AddText(dl, {x + 4, pos.y + 2}, col(t.bg), lc)
+			// The tag hangs right of its line, or left of it at the right edge.
+			tx := x if x + ls.x + 8 <= pos.x + size.x else x - ls.x - 8
+			im.DrawList_AddRectFilled(dl, {tx, pos.y}, {tx + ls.x + 8, pos.y + ls.y + 4}, col(c), 3)
+			im.DrawList_AddText(dl, {tx + 4, pos.y + 2}, col(t.bg), lc)
 		}
 	}
 	im.DrawList_PopClipRect(dl)

@@ -308,7 +308,7 @@ draw_history :: proc(user: rawptr) {
 	}
 	#reverse for step, i in h.redo {
 		im.PushIDInt(i32(1000 + i))
-		im.TextDisabled("%s  %s", ui.ICON_CIRCLE, step.name)
+		im.TextDisabled("%s", fmt.ctprintf("%s  %s", ui.ICON_CIRCLE, step.name))
 		im.PopID()
 	}
 }

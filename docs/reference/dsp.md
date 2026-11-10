@@ -1427,6 +1427,24 @@ Filter Design", ch. 3). Exactly -3.01 dB at cutoff thanks to prewarping.
 | `state` | one per channel, allocated in prepare |
 | `sample_rate` |  |
 
+### Onset_Settings
+
+```odin
+Onset_Settings :: struct {
+	sensitivity: f64,
+	min_gap_ms: f64,
+	window: int,
+}
+```
+
+Settings for `detect_onsets`.
+
+| Field | Description |
+|-------|-------------|
+| `sensitivity` | 0..1: higher finds quieter hits; 0 = 0.5 |
+| `min_gap_ms` | closest two onsets may be; 0 = 60 ms |
+| `window` | FFT size in frames (a power of two); 0 = 1024 |
+
 ### Osc_Shape
 
 ```odin
@@ -2472,6 +2490,24 @@ one_pole_create :: proc(allocator: mem.Allocator = context.allocator) -> core.No
 Control thread. Allocates a `One_Pole_Lowpass` node with `allocator`. Free it
 with `core.node_destroy`. Each output channel filters the matching input
 channel (silence for extra outputs).
+
+### detect_onsets
+
+```odin
+detect_onsets :: proc(samples: []f32, sample_rate: f64, settings: Onset_Settings = Onset_Settings{}, allocator: mem.Allocator = context.allocator) -> (onsets: []i64, err: core.Error)
+```
+
+Control thread. Finds where new sounds start in `samples` (mono; mix
+stereo down first): the hits of a drum loop, the notes of a phrase, for
+slicing a sample at its transients. Returns frame positions, in order,
+allocated with `allocator`; the first is always 0 unless the sound is
+silent there.
+
+Spectral flux: the summed rise in log magnitude across the spectrum from
+one hop to the next, which a hit makes at once and a sustained sound does
+not. Peaks above a running median (how far above: the sensitivity) are
+onsets, each placed where its attack begins in the waveform (just before
+it), so a slice starts before its attack.
 
 ### osc_set_freq
 

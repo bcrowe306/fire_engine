@@ -28,11 +28,12 @@ ImGui statically:
 task deps                 # once per machine: fetch + build static SDL3 and ImGui (into vendor/, gitignored)
 task app:pads             # build .build/app/pads (collections: fire, app=app, deps=vendor)
 task app:test             # tests/app_* (headless) + apps/ui_tests (UI cases with a window, main thread)
+task app:pads-drive       # Pads driven by tests/app_ui/drive/pads*.txt (fake audio, headless; expect lines)
 .build/app/pads --headless --drive tests/app_ui/drive/smoke.txt --out .build/app/shots   # scripted run + screenshots
 ```
 
 Look at the screenshots after UI changes (layout, spacing, padding).
-See docs/guides/building.md and docs/guides/app-layer.md.
+See docs/guides/building.md, docs/guides/app-layer.md and docs/guides/pads.md.
 
 ### Linux test machine (DigitalOcean)
 

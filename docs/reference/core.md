@@ -115,6 +115,27 @@ Ends a note. Matches by `id`, or by channel and key when `id` is NOTE_ID_ANY.
 | `key` | 0..127 |
 | `velocity` | 0..1 |
 
+### Note_Choke
+
+```odin
+Note_Choke :: struct {
+	id: Note_Id,
+	channel: u8,
+	key: u8,
+}
+```
+
+Silences a note at once (a fade of a few milliseconds), even one that
+would play to its end whatever the note-off (a one-shot drum): for choke
+groups, where one sound cuts another (an open hi-hat cut by the closed
+one). Matches as `Note_Off` does.
+
+| Field | Description |
+|-------|-------------|
+| `id` | note instance, or NOTE_ID_ANY |
+| `channel` | 0..15 |
+| `key` | 0..127 |
+
 ### Note_Expression_Kind
 
 ```odin
@@ -231,6 +252,7 @@ Raw MIDI 1.0 passthrough (status + up to 2 data bytes).
 Event_Payload :: union {
 	Note_On,
 	Note_Off,
+	Note_Choke,
 	Note_Expression,
 	Param_Value,
 	Param_Ramp,

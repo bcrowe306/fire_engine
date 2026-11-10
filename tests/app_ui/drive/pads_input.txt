@@ -1,0 +1,48 @@
+# Pads driven by real input events only (mouse, keys, shortcuts, the palette):
+# what a user does, checked against the model. Coordinates are logical points
+# in a 1440×900 window.
+size 1440 900
+browse tests/app_ui/fixtures
+wait 4
+load 0 tests/app_ui/fixtures/kick.wav
+wait 2
+key 2                      # the A2 key plays (selects) pad 1
+wait 2
+expect selected 1
+key q                      # A5
+wait 2
+expect selected 4
+click 488 164              # pad A1 with the mouse
+wait 2
+expect selected 0
+drag 1115 384 1115 300 12  # the Volume knob, upwards
+wait 2
+expect undo Set Volume
+expect pad 0 volume 12
+key cmd+z
+wait 2
+expect pad 0 volume 0
+key cmd+shift+z
+wait 2
+expect undo Set Volume
+key delete                 # Clear Pad
+wait 2
+expect pad 0 sample none
+key cmd+z
+wait 2
+expect pad 0 sample kick
+key cmd+2                  # Bank B
+wait 2
+expect bank 1
+click 290 80               # the A segment
+wait 2
+expect bank 0
+key cmd+k                  # the command palette
+wait 2
+text light theme
+wait 2
+screenshot pads_palette
+key enter
+wait 3
+expect dark 0
+screenshot pads_input_light

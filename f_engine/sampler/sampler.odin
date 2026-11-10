@@ -50,6 +50,16 @@ Sample_Zone :: struct {
 	loop_start: i64,
 	loop_end:   i64, // 0 = `end`
 	one_shot:   bool, // plays to its end whatever the note-off (drums)
+	loop_mode:  Loop_Mode, // how a loop repeats
+	crossfade:  i64,  // forward loops: frames before the loop end blended into those before the start (0 = a plain jump)
+	reverse:    bool, // plays from the end back to the start (loop points mirrored with it)
+	pan:        f64,  // -1 (left) .. 1 (right)
+}
+
+// How a zone's loop repeats.
+Loop_Mode :: enum u8 {
+	Forward,   // jumps back to the loop start
+	Ping_Pong, // plays the loop forward, then backward, and so on
 }
 
 // An immutable set of zones: the instrument. From `sample_map_create`;
@@ -74,6 +84,7 @@ sample_map_create :: proc(zones: []Sample_Zone, allocator := context.allocator) 
 			le := z.loop_end if z.loop_end > 0 else end
 			if z.loop_start < z.start || le > end || le - z.loop_start < 2 do return nil, .Invalid_Argument
 		}
+		if z.crossfade < 0 || z.pan < -1 || z.pan > 1 do return nil, .Invalid_Argument
 	}
 	m = new(Sample_Map, allocator)
 	if m == nil do return nil, .Out_Of_Memory
@@ -91,6 +102,8 @@ sample_map_create :: proc(zones: []Sample_Zone, allocator := context.allocator) 
 		if zz.loop_end <= 0 do zz.loop_end = zz.end
 		if zz.key_lo == 0 && zz.key_hi == 0 do zz.key_hi = 127
 		if zz.vel_lo == 0 && zz.vel_hi == 0 do zz.vel_hi = 1
+		// A crossfade fits in the loop and in what comes before it.
+		zz.crossfade = min(zz.crossfade, zz.loop_end - zz.loop_start, zz.loop_start - zz.start)
 		stream.source_retain(z.source)
 		m.zones[i] = zz
 	}
@@ -318,6 +331,7 @@ sampler_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		#partial switch ev in e.payload {
 		case core.Note_On:  note_on(s, ev)
 		case core.Note_Off: for &v in s.voices do if v.on && v.held && same(&v, ev.id, ev.channel, ev.key) do note_off(&v)
+		case core.Note_Choke: for &v in s.voices do if v.on && same(&v, ev.id, ev.channel, ev.key) do choke(s, &v)
 		case core.Note_Expression:
 			for &v in s.voices do if v.on && same(&v, ev.id, ev.channel, ev.key) {
 				#partial switch ev.kind {
@@ -387,7 +401,7 @@ note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
 		v^ = {
 			on = true, map_ = m, zone = &z, id = ev.id, channel = ev.channel, key = ev.key, started = s.clock,
 			velocity = (1 - sens + sens * f64(ev.velocity)) * math.pow(10, z.gain_db / 20),
-			pos = z.start, phase = f64(z.start), mono = v.mono, stereo = v.stereo, volume = 1, pan = 0.5, held = true,
+			pos = z.start, phase = f64(z.start), mono = v.mono, stereo = v.stereo, volume = 1, pan = 0.5 + 0.5 * z.pan, held = true,
 		}
 		if s.settings.quality != .Cubic {
 			dsp.resampler_reset(&v.mono)
@@ -421,6 +435,17 @@ note_off :: proc "contextless" (v: ^Sampler_Voice) {
 	v.held = false
 	if !v.zone.one_shot do dsp.adsr_gate(&v.amp, false)
 }
+
+// [rt] Fades a voice out over CHOKE_SECONDS, one-shot or not.
+@(private)
+choke :: proc "contextless" (s: ^Sampler, v: ^Sampler_Voice) {
+	v.held = false
+	dsp.adsr_set(&v.amp, v.amp.attack_s, v.amp.decay_s, v.amp.sustain, CHOKE_SECONDS, s.sample_rate)
+	dsp.adsr_gate(&v.amp, false)
+}
+
+// How long a choked voice takes to fade out.
+CHOKE_SECONDS :: 0.003
 
 // [rt]
 @(private)
@@ -470,12 +495,47 @@ render_voice :: proc(s: ^Sampler, v: ^Sampler_Voice, n: int) {
 	}
 }
 
-// [rt] Frame `i` of the zone's sample as a voice plays it: the loop wraps
-// back, and outside the sample there is silence.
+// [rt] Frame `k` of the zone as a voice plays it. `k` counts frames played
+// from the zone's start and never wraps; the zone's loop (forward or
+// ping-pong), crossfade and direction map it onto the sample. Outside the
+// sample there is silence.
 @(private)
-frame_at :: #force_inline proc "contextless" (z: ^Sample_Zone, data: []f32, i: i64) -> f32 #no_bounds_check {
-	j := i
-	if z.loop && j >= z.loop_end do j -= z.loop_end - z.loop_start
+frame_at :: #force_inline proc "contextless" (z: ^Sample_Zone, data: []f32, k: i64) -> f32 #no_bounds_check {
+	if k < z.start do return 0
+	// Reversed, the zone is read mirrored, and so are its loop points.
+	ls, le := z.loop_start, z.loop_end
+	if z.reverse do ls, le = z.start + z.end - z.loop_end, z.start + z.end - z.loop_start
+	idx := k
+	if z.loop && k >= le {
+		span := le - ls
+		switch z.loop_mode {
+		case .Forward:
+			idx = ls + (k - ls) % span
+		case .Ping_Pong:
+			// Back from le-2 to ls, forward from ls+1 to le-1, and again: each
+			// end frame once per turn.
+			if span < 2 do break
+			turn := span - 1
+			q := (k - le) % (2 * turn)
+			idx = le - 2 - q if q < turn else ls + 1 + (q - turn)
+		}
+	} else if k >= z.end {
+		return 0
+	}
+	x := read_frame(z, data, idx)
+	// A crossfaded loop: on the way to the loop end, fade into the frames
+	// that lead into the loop start, so the jump back is seamless.
+	if z.loop && z.loop_mode == .Forward && z.crossfade > 0 && idx >= le - z.crossfade && idx < le {
+		w := f32(idx - (le - z.crossfade) + 1) / f32(z.crossfade + 1)
+		x = (1 - w) * x + w * read_frame(z, data, idx - (le - ls))
+	}
+	return x
+}
+
+// [rt] Frame `idx` of the zone (in the direction it plays).
+@(private)
+read_frame :: #force_inline proc "contextless" (z: ^Sample_Zone, data: []f32, idx: i64) -> f32 #no_bounds_check {
+	j := z.start + z.end - 1 - idx if z.reverse else idx
 	return data[j] if j >= z.start && j < z.end else 0
 }
 
@@ -501,8 +561,7 @@ render_cubic :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, n: int, sp
 		}
 		if !stereo do s.mixed[1][i] = s.mixed[0][i]
 		v.phase += speed
-		if z.loop && v.phase >= f64(z.loop_end) do v.phase -= f64(z.loop_end - z.loop_start) // a sustain loop: release too
-		if v.phase >= f64(z.end) + 2 do v.tail = 1 << 20 // past the end: done
+		if !z.loop && v.phase >= f64(z.end) + 2 do v.tail = 1 << 20 // past the end: done (a loop plays through the release too)
 	}
 }
 
@@ -515,10 +574,9 @@ render_sinc :: proc(s: ^Sampler, v: ^Sampler_Voice, frames: [][]f32, n: int, spe
 	r := &v.mono if channels == 1 else &v.stereo
 	need := min(dsp.resampler_input_needed(r, n, speed), len(s.scratch[0]))
 	for i in 0 ..< need {
-		for c in 0 ..< channels do s.scratch[c][i] = frame_at(z, frames[c], v.pos) if frames != nil && v.pos < z.end else 0
-		if frames == nil || v.pos >= z.end do v.tail += 1
-		v.pos += 1
-		if z.loop && v.pos >= z.loop_end do v.pos = z.loop_start // a sustain loop: release too
+		for c in 0 ..< channels do s.scratch[c][i] = frame_at(z, frames[c], v.pos) if frames != nil else 0
+		if frames == nil || (!z.loop && v.pos >= z.end) do v.tail += 1
+		v.pos += 1 // never wraps: frame_at maps loops (which play through the release too)
 	}
 	in_ := [2][]f32{s.scratch[0][:need], s.scratch[1][:need]}
 	out := [2][]f32{s.mixed[0][:n], s.mixed[1][:n]}

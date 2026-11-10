@@ -1,0 +1,34 @@
+# Pads, milestone 4: load samples (by command and by drop), play pads, chop,
+# set modes and choke groups, undo; screenshots of the layout in both themes.
+size 1440 900
+browse tests/app_ui/fixtures
+wait 4
+screenshot pads_empty
+load 0 tests/app_ui/fixtures/kick.wav
+expect pad 0 sample kick
+expect samples 1
+drop 700 300 tests/app_ui/fixtures/hat.wav     # onto whichever pad is under the mouse
+wait 2
+load 4 tests/app_ui/fixtures/loop.wav
+chop 4 transients 0.5
+expect undo Chop to Pads
+hit 0
+wait 3
+release 0
+set 1 choke 1
+set 0 choke 1
+expect pad 0 choke 1
+set 2 mode 3
+expect pad 2 mode 3
+select 4
+wait 4
+screenshot pads_loaded
+action undo
+expect undo Set
+theme light
+select 0
+wait 3
+screenshot pads_light
+size 1100 760
+wait 4
+screenshot pads_narrow

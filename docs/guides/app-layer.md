@@ -14,7 +14,7 @@ then:
 
 ```bash
 task app:run                       # build and run Pads
-task app:drive -- tests/app_ui/drive/smoke.txt   # run it from a script
+task app:drive -- tests/app_ui/drive/pads.txt   # run it from a script
 ```
 
 ## The platform
@@ -157,8 +157,10 @@ quits when it ends. Under a driver the platform advances time by a fixed
 .build/app/pads --drive script.txt --out shots/ [--headless]
 ```
 
-Apps add their own commands with `Driver.command` (Pads: `theme`,
-`demo`; the gallery: `theme`, `action ID`).
+Apps add their own commands with `Driver.command` (Pads: `load`, `hit`,
+`chop`, `expect`... see [Pads](/guides/pads/); the gallery: `theme`,
+`action ID`). `drop X Y PATH` drops a file on the window as the desktop
+would.
 
 Key presses release their modifiers with the key, as a keyboard does, so
 `key cmd+k` followed by `text tog` types into the field Cmd+K focused.

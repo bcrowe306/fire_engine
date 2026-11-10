@@ -21,7 +21,7 @@ register_types :: proc(reg: ^core.Node_Registry, streamer: ^stream.Streamer) -> 
 // Writes `m` as a SAMPLE_MAP_TAG chunk: each zone with its file's path (see
 // `core.write_path`). Nil writes an empty chunk.
 write_sample_map :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, m: ^Sample_Map) {
-	core.begin_chunk(w, SAMPLE_MAP_TAG, 1)
+	core.begin_chunk(w, SAMPLE_MAP_TAG, 2)
 	if m != nil {
 		core.write_int(w, len(m.zones))
 		for z in m.zones {
@@ -39,6 +39,14 @@ write_sample_map :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, m: ^Sam
 			core.write_i64(w, z.loop_start)
 			core.write_i64(w, z.loop_end)
 			core.write_bool(w, z.one_shot)
+		}
+		// Version 2: what each zone gained, after all of version 1's (so an
+		// older engine still reads the zones it knows).
+		for z in m.zones {
+			core.write_u8(w, u8(z.loop_mode))
+			core.write_i64(w, z.crossfade)
+			core.write_bool(w, z.reverse)
+			core.write_f64(w, z.pan)
 		}
 	}
 	core.end_chunk(w)
@@ -73,6 +81,17 @@ read_sample_map :: proc(r: ^core.State_Reader, ctx: ^core.Load_Context, streamer
 		if serr != .None do return nil, .Device_Error
 		z.source = src
 		opened += 1
+	}
+	if ch.version >= 2 {
+		for &z in zones {
+			mode := core.read_u8(&cr)
+			if int(mode) > int(max(Loop_Mode)) do return nil, .Invalid_Data
+			z.loop_mode = Loop_Mode(mode)
+			z.crossfade = core.read_i64(&cr)
+			z.reverse = core.read_bool(&cr)
+			z.pan = core.read_f64(&cr)
+		}
+		if cr.err != .None do return nil, .Invalid_Data
 	}
 	return sample_map_create(zones, allocator)
 }

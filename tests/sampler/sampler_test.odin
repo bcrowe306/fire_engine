@@ -190,3 +190,124 @@ sampler_is_block_invariant :: proc(t: ^testing.T) {
 		kit.expect_block_invariant(t, factory, kit.buffer_length_only(30_000, SR), cfg, patterns[:], 0, "sampler")
 	}
 }
+
+// A rising ramp, 0 to 1 over `n` frames at 48 kHz (32-bit float, exact).
+ramp_source :: proc(l: ^Lab, n: int) -> ^stream.Source {
+	path, _ := filepath.join({l.dir, "ramp.wav"}, context.temp_allocator)
+	x := make([]f32, n, context.temp_allocator)
+	for &v, i in x do v = f32(i) / f32(n)
+	s := audiofile.default_writer_settings(SR, 1)
+	s.encoding = .Float32
+	w, _ := audiofile.writer_create(path, s)
+	audiofile.writer_write(w, {x}, n)
+	audiofile.writer_close(w)
+	src, _ := stream.source_open(l.streamer, path)
+	for stream.source_state(src) == .Loading do time.sleep(time.Millisecond)
+	return src
+}
+
+// Reversed, a zone plays from its end to its start.
+@(test)
+reverse_plays_backwards :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	src := ramp_source(l, 1000)
+	defer stream.source_release(src)
+	out := play(t, {{source = src, root_key = 60, reverse = true, one_shot = true}}, 2000, {on(0, 60)})
+	x := out.channels[0]
+	falling := true
+	for i in 200 ..< 900 do falling &&= x[i] < x[i - 1]
+	testing.expect(t, falling, "the ramp plays falling")
+	testing.expect(t, x[1100] == 0, "and stops at the start")
+}
+
+// A ping-pong loop goes back and forth between its loop points.
+@(test)
+ping_pong_loops_bounce :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	src := ramp_source(l, 1000)
+	defer stream.source_release(src)
+	out := play(t, {{source = src, root_key = 60, loop = true, loop_start = 200, loop_end = 400, loop_mode = .Ping_Pong}}, 3000, {on(0, 60)})
+	x := out.channels[0]
+	turns := 0
+	lo, hi := f32(1), f32(0)
+	for i in 600 ..< 2900 {
+		if (x[i] - x[i - 1]) * (x[i + 1] - x[i]) < 0 do turns += 1
+		lo, hi = min(lo, x[i]), max(hi, x[i])
+	}
+	testing.expectf(t, turns >= 10, "it turns at both ends (%d turns)", turns)
+	ratio := hi / lo
+	testing.expectf(t, abs(ratio - 399.0 / 200) < 0.05, "between the loop points (%v .. %v)", lo, hi)
+}
+
+// A crossfaded loop of a sine that does not fit the loop exactly has no
+// jump where it wraps; without the crossfade it does.
+@(test)
+crossfaded_loops_are_seamless :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	// 480 Hz at 48 kHz: 100 frames a cycle; the loop is 9.25 cycles, so it
+	// would jump from the peak back to zero.
+	zone := sampler.Sample_Zone{source = l.short, root_key = 60, loop = true, loop_start = 1000, loop_end = 1925}
+	plain := play(t, {zone}, 6000, {on(0, 60)})
+	zone.crossfade = 400
+	faded := play(t, {zone}, 6000, {on(0, 60)})
+	jump_plain, _ := kit.max_step(plain.channels[0][2000:5000])
+	jump_faded, _ := kit.max_step(faded.channels[0][2000:5000])
+	smooth := 0.5 * math.TAU * 480 / SR // a 0.5 sine's largest step
+	testing.expectf(t, jump_plain > 5 * smooth, "without a crossfade the loop jumps (%v)", jump_plain)
+	testing.expectf(t, jump_faded < 1.5 * smooth, "with one it is smooth (%v; a sine steps %v)", jump_faded, smooth)
+}
+
+// A zone's pan places it in the stereo field; full left leaves the right
+// channel silent.
+@(test)
+zones_pan :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	out := play(t, {{source = l.short, root_key = 60, pan = -1, one_shot = true}}, 4000, {on(0, 60)})
+	testing.expect(t, kit.peak(out.channels[0]) > 0.3, "left plays")
+	testing.expect_value(t, kit.peak(out.channels[1]), 0)
+	_, err := sampler.sample_map_create({{source = l.short, pan = 2}})
+	testing.expect_value(t, err, core.Error.Invalid_Argument)
+}
+
+// The new modes give the same result at any block size.
+@(test)
+loop_modes_are_block_invariant :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	cfg := kit.default_render_config()
+	cfg.events = {on(0, 60), on(3_000, 64), off(20_000, 60)}
+	patterns := kit.standard_block_patterns(cfg.max_block)
+	for quality in ([]sampler.Sampler_Quality{.Cubic, .Sinc_Medium}) {
+		args := Factory_Args{l, quality}
+		factory := kit.Node_Factory{create = proc(user: rawptr) -> core.Node {
+			a := (^Factory_Args)(user)
+			node, s := sampler.sampler_create({voices = 4, quality = a.quality})
+			m, _ := sampler.sample_map_create({
+				{source = a.lab.short, root_key = 60, key_hi = 62, loop = true, loop_start = 1000, loop_end = 1950, crossfade = 300, pan = -0.4},
+				{source = a.lab.short, root_key = 64, key_lo = 63, loop = true, loop_start = 500, loop_end = 2500, loop_mode = .Ping_Pong, reverse = true, pan = 0.7},
+			})
+			sampler.sampler_set_map(s, m)
+			sampler.sample_map_release(m)
+			return node
+		}, user = &args}
+		kit.expect_block_invariant(t, factory, kit.buffer_length_only(30_000, SR), cfg, patterns[:], 0, "loop modes")
+	}
+}
+
+// A choke silences a one-shot at once (which a note-off does not).
+@(test)
+choke_cuts_a_one_shot :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	zone := sampler.Sample_Zone{source = l.short, root_key = 60, one_shot = true}
+	offed := play(t, {zone}, 4000, {on(0, 60), off(1000, 60)})
+	choked := play(t, {zone}, 4000, {on(0, 60), {1000, core.Note_Choke{id = core.NOTE_ID_ANY, key = 60}}})
+	testing.expect(t, kit.peak(offed.channels[0][2000:]) > 0.2, "a note-off lets a one-shot ring on")
+	testing.expectf(t, kit.peak(choked.channels[0][1000 + int(0.004 * SR):]) < 0.001, "a choke brings it 60 dB down within 4 ms (peak %v)", kit.peak(choked.channels[0][1000 + int(0.004 * SR):]))
+	jump, _ := kit.max_step(choked.channels[0][900:1300])
+	testing.expectf(t, jump < 0.1, "with a fade, not a click (step %v)", jump)
+}

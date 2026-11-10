@@ -48,6 +48,16 @@ Note_Off :: struct {
 	velocity: f32,     // release velocity, 0..1
 }
 
+// Silences a note at once (a fade of a few milliseconds), even one that
+// would play to its end whatever the note-off (a one-shot drum): for choke
+// groups, where one sound cuts another (an open hi-hat cut by the closed
+// one). Matches as `Note_Off` does.
+Note_Choke :: struct {
+	id:      Note_Id, // note instance, or NOTE_ID_ANY
+	channel: u8,      // 0..15
+	key:     u8,      // 0..127
+}
+
 // Which per-note property a `Note_Expression` changes.
 Note_Expression_Kind :: enum u8 {
 	Volume,     // linear gain, 0..4
@@ -113,6 +123,7 @@ Midi_Raw :: struct {
 Event_Payload :: union {
 	Note_On,
 	Note_Off,
+	Note_Choke,
 	Note_Expression,
 	Param_Value,
 	Param_Ramp,

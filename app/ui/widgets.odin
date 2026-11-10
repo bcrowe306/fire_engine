@@ -88,7 +88,7 @@ drag_value :: proc(value: ^f32, min_v, max_v, default: f32, range_px: f32, verti
 	io := im.GetIO()
 	span := max_v - min_v
 	if im.IsItemActivated() do e.started = true
-	if im.IsItemActive() {
+	if im.IsItemActive() && !e.started { // the press frame's delta is how the mouse got there
 		e.active = true
 		d := -io.MouseDelta.y if vertical else io.MouseDelta.x
 		if d != 0 {
@@ -351,3 +351,21 @@ xy_pad :: proc(id: cstring, x, y: ^f32, size := im.Vec2{160, 160}) -> (e: Edit) 
 mix :: proc "contextless" (a, b: Color, f: f32) -> Color {
 	return {a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, a.a + (b.a - a.a) * f}
 }
+
+// Keeps the next item, `width` wide, on the current line when it fits
+// (after `spacing`, or the style's item spacing), or starts a new line:
+// a toolbar that wraps when its panel is narrow. Call it between items.
+flow :: proc(width: f32, spacing: f32 = -1) {
+	gap := spacing if spacing >= 0 else im.GetStyle().ItemSpacing.x
+	last := im.GetItemRectMax().x
+	right := im.GetCursorScreenPos().x + im.GetContentRegionAvail().x // the next line starts at the left edge
+	if last + gap + width <= right do im.SameLine(0, gap)
+}
+
+// The width of a button labelled `label` (for flow).
+button_width :: proc(label: cstring) -> f32 {
+	return im.CalcTextSize(label).x + im.GetStyle().FramePadding.x * 2
+}
+
+// The theme in use (the last one given to set_theme).
+theme :: proc() -> Theme { return current }

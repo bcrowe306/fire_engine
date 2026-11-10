@@ -23,6 +23,11 @@ Host_Settings :: struct {
 	inputs:        int,    // input channels (0 = none)
 	max_block:     int,    // largest block the graph processes; 0 = 1024
 	fake:          bool,   // the simulated driver (tests, headless runs)
+	ram_bytes:     int,    // audio files up to this decoded size are held in memory (samplers need it); 0 = the streamer's default
+	// At a new sample rate, start from an empty graph and clock instead of
+	// carrying the old ones over (for apps that rebuild the engine from
+	// their own model on `Host_Engine_Changed`).
+	rebuild_on_rate_change: bool,
 }
 
 // The engine an app plays through: a driver and device, the clock, the
@@ -85,7 +90,9 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 	}
 	if h.driver == nil do return .Device_Error
 	backend.device_init(&h.device, h.driver)
-	h.streamer = stream.create(stream.default_settings()) or_return
+	ss := stream.default_settings()
+	if settings.ram_bytes > 0 do ss.ram_bytes = settings.ram_bytes
+	h.streamer = stream.create(ss) or_return
 	h.disk = record.disk_writer_create({manual = settings.fake}) or_return
 	h.env = {players = {streamer = h.streamer, stretcher = &stretch.signalsmith}, disk = h.disk}
 	fc.registry_init(&h.registry)
@@ -233,7 +240,7 @@ ensure_engine :: proc(h: ^Host, rate: f64) -> fc.Error {
 		graph.destroy(g)
 		return cerr
 	}
-	if h.graph != nil {
+	if h.graph != nil && !h.settings.rebuild_on_rate_change {
 		// Carry everything over: save the old session, load it at the new rate.
 		data, serr := session.save_bytes({h.clock, h.graph}, allocator = context.temp_allocator)
 		if serr == .None {
@@ -246,6 +253,8 @@ ensure_engine :: proc(h: ^Host, rate: f64) -> fc.Error {
 			transport.destroy(c)
 			return serr
 		}
+	}
+	if h.graph != nil {
 		graph.destroy(h.graph)
 		transport.destroy(h.clock)
 	}

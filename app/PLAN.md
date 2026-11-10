@@ -121,6 +121,7 @@ four platforms), verify, profile, document, commit.
    library, panels, shortcuts. A widget gallery to review the style.
 4. **Pads: samples.** Project model, pads and banks, import and record,
    pad editing, the pad voice engine work, chop, stretch, wave editor.
+   *Done:* see docs/guides/pads.md.
 5. **Pads: sequencer and performance.** Slots, recording, grid and piano
    roll, probability, automation, keyboard and note repeat and arpeggiator,
    MIDI in and out and import.

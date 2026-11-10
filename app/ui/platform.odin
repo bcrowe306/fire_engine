@@ -56,6 +56,13 @@ Platform :: struct {
 	clear:        [4]f32, // background colour
 	fonts:        Fonts,
 	ini_cstr:     cstring,
+	drops:        [dynamic]Drop, // files dropped on the window this frame
+}
+
+// A file dropped on the window, at a position in logical points.
+Drop :: struct {
+	path: string, // valid until the next `frame_begin`
+	pos:  im.Vec2,
 }
 
 // Target format of the offscreen frame (and of ImGui's pipeline).
@@ -137,6 +144,8 @@ platform_destroy :: proc(p: ^Platform) {
 	if p.device != nil do sdl.DestroyGPUDevice(p.device)
 	if p.window != nil do sdl.DestroyWindow(p.window)
 	delete(p.ini_cstr)
+	for d in p.drops do delete(d.path)
+	delete(p.drops)
 	sdl.Quit()
 	p^ = {}
 }
@@ -154,11 +163,15 @@ frame_begin :: proc(p: ^Platform) -> bool {
 			else do _ = sdl.StopTextInput(p.window)
 		}
 	}
+	for d in p.drops do delete(d.path)
+	clear(&p.drops)
 	if p.driver != nil do driver_step(p.driver, p)
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
 		imsdl.ProcessEvent(&e)
 		#partial switch e.type {
+		case .DROP_FILE:
+			if e.drop.data != nil do append(&p.drops, Drop{strings.clone(string(e.drop.data)), {e.drop.x, e.drop.y}})
 		case .QUIT:
 			p.running = false
 		case .WINDOW_CLOSE_REQUESTED:

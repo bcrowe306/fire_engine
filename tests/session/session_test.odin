@@ -151,7 +151,7 @@ build_session :: proc(t: ^testing.T, r: ^Rig, dir: string) -> (b: Built) {
 
 	// A sampler on the fast timeline.
 	src, _ := stream.source_open(r.streamer, sine)
-	zones := []sampler.Sample_Zone{{source = src, root_key = 69, loop = true, loop_start = 1000, loop_end = 20_000, gain_db = -2}}
+	zones := []sampler.Sample_Zone{{source = src, root_key = 69, loop = true, loop_start = 1000, loop_end = 20_000, gain_db = -2, crossfade = 300, pan = 0.25}}
 	smap, _ := sampler.sample_map_create(zones)
 	stream.source_release(src)
 	sm_node, sm := sampler.sampler_create({voices = 4, quality = .Sinc_Low})

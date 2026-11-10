@@ -101,6 +101,14 @@ MAX_SPEED :: 4.0
 
 The fastest a voice plays its sample (two octaves up at equal rates).
 
+### CHOKE_SECONDS
+
+```odin
+CHOKE_SECONDS :: 0.003
+```
+
+How long a choked voice takes to fade out.
+
 ### SAMPLER_TYPE_ID
 
 ```odin
@@ -137,6 +145,10 @@ Sample_Zone :: struct {
 	loop_start: i64,
 	loop_end: i64,
 	one_shot: bool,
+	loop_mode: Loop_Mode,
+	crossfade: i64,
+	reverse: bool,
+	pan: f64,
 }
 ```
 
@@ -158,6 +170,26 @@ One sample of an instrument and when it plays.
 | `loop_start` |  |
 | `loop_end` | 0 = `end` |
 | `one_shot` | plays to its end whatever the note-off (drums) |
+| `loop_mode` | how a loop repeats |
+| `crossfade` | forward loops: frames before the loop end blended into those before the start (0 = a plain jump) |
+| `reverse` | plays from the end back to the start (loop points mirrored with it) |
+| `pan` | -1 (left) .. 1 (right) |
+
+### Loop_Mode
+
+```odin
+Loop_Mode :: enum u8 {
+	Forward,
+	Ping_Pong,
+}
+```
+
+How a zone's loop repeats.
+
+| Value | Description |
+|-------|-------------|
+| `Forward` | jumps back to the loop start |
+| `Ping_Pong` | plays the loop forward, then backward, and so on |
 
 ### Sample_Map
 

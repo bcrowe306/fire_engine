@@ -5,7 +5,7 @@
 #   task app:pads             build .build/app/pads (optimized)
 #   task app:run              build and run Pads
 #   task app:drive -- FILE    run Pads with a drive script (input events and screenshots)
-#   task app:test             test app:core and app:ui headless
+#   task app:test             test app:core, app:ui and Pads headless
 #   task app:gallery          the widget gallery (to review the look)
 version: '3'
 
@@ -42,16 +42,28 @@ tasks:
       - '{{.OUT}}/pads{{.EXE}} {{.CLI_ARGS}}'
 
   drive:
-    desc: 'Run Pads with a drive script: task app:drive -- tests/app/drive/smoke.txt (see docs/guides/app-layer.md).'
+    desc: 'Run Pads with a drive script: task app:drive -- tests/app_ui/drive/pads.txt (see docs/guides/app-layer.md).'
     deps: [pads]
     cmds:
       - '{{.OUT}}/pads{{.EXE}} --drive {{.CLI_ARGS}}'
 
   test:
-    desc: 'Test the application layer: the headless packages (tests/app_*), then the UI cases that need a window (apps/ui_tests).'
+    desc: 'Test the application layer: the headless packages (tests/app_*, tests/pads_*), the UI cases that need a window (apps/ui_tests), then Pads driven by its scripts.'
     cmds:
-      - bash ./scripts/test.sh $(cd tests && ls -d app_* | tr '\n' ' ')
+      - bash ./scripts/test.sh $(cd tests && ls -d app_* pads_* | tr '\n' ' ')
       - task: ui-tests
+      - task: pads-drive
+
+  pads-drive:
+    desc: 'Run Pads headless on the simulated audio driver through tests/app_ui/drive/pads*.txt; fails if an expect line fails. Screenshots go to .build/app/pads_shots.'
+    cmds:
+      - task: pads
+        vars: {OPT: none}
+      - for: { var: SCRIPTS }
+        cmd: '{{.OUT}}/pads{{.EXE}} --fake --headless --drive "{{toSlash .ITEM}}" --out {{.OUT}}/pads_shots'
+    vars:
+      SCRIPTS:
+        sh: ls tests/app_ui/drive/pads*.txt
 
   ui-tests:
     desc: 'Run the UI cases that need a window and a GPU, headless (or some: task app:ui-tests -- driven_input_reaches_widgets).'

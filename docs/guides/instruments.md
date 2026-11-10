@@ -67,7 +67,18 @@ sampler.sample_map_release(kit) // the sampler keeps its own reference
 - **Loops** are sustain loops: the sample plays from `start`, loops
   between `loop_start` and `loop_end` for as long as the note sounds
   (through its release too), and stops at `end` otherwise. A `one_shot`
-  zone plays to its end whatever the note-off: drums.
+  zone plays to its end whatever the note-off: drums. `loop_mode` is
+  `Forward` or `Ping_Pong` (back and forth, the turning points played
+  once), and `crossfade` (in frames, forward loops) blends the end of the
+  loop into the audio before its start, so a loop with no zero crossing to
+  cut at doesn't click.
+- **Reverse and pan.** A `reverse` zone plays its region backwards (from
+  `end` to `start`, loops mirrored); `pan` places it (−1..1, equal power),
+  until a pan expression for the note replaces it.
+- **Choke groups.** A `core.Note_Choke` event silences the notes on its
+  channel (and key, unless `key < 0`) within `sampler.CHOKE_SECONDS`
+  (3 ms), with no release: an open hi-hat cut by the closed one. The
+  synth and CLAP plug-ins (`CLAP_EVENT_NOTE_CHOKE`) take it too.
 - **Samples are held in memory.** The streamer decodes files up to its
   `ram_bytes` (16 MB by default) into memory when they're opened; wait
   for `stream.source_state` to be `Ready`. Larger files play silent.
@@ -76,6 +87,20 @@ sampler.sample_map_release(kit) // the sampler keeps its own reference
   once they have.
 - **Expression and parameters:** per-note tuning, volume and pan; an amp
   ADSR, velocity sensitivity, transpose and gain (`SAMPLER_PARAM_*`).
+
+**Finding the hits.** `dsp.detect_onsets` returns where new sounds start
+in a sample (spectral flux against a running median, each onset moved back
+to where its attack begins), for chopping a loop into slices:
+
+```odin
+hits, _ := dsp.detect_onsets(mono, 48_000, {sensitivity = 0.6})
+defer delete(hits)
+```
+
+It runs on the control thread: about 75 ms for 30 seconds of audio.
+
+Sample maps save as version 2 (the zone fields above); version 1 maps load
+with their defaults.
 
 **Quality.** `Sampler_Settings.quality` picks how a voice reads between
 frames when it plays a sample at another pitch:
