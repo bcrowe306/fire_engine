@@ -375,6 +375,7 @@ Note :: struct {
 	channel: u8,
 	velocity: f32,
 	release: f32,
+	probability: f32,
 	expression: [2]int,
 }
 ```
@@ -389,6 +390,7 @@ One note of a clip.
 | `channel` | 0..15 |
 | `velocity` | 0..1 |
 | `release` | release velocity, 0..1 |
+| `probability` | chance it plays each time it comes round, 0..1 (1 = always; `add_note`'s default) |
 | `expression` | range [first, first + count) in `Midi_Clip.expression` |
 
 ### Expression_Point
@@ -499,6 +501,7 @@ Midi_Player_Settings :: struct {
 	timeline: core.Timeline_Id,
 	max_notes: int,
 	max_events: int,
+	seed: u64,
 }
 ```
 
@@ -509,6 +512,7 @@ Settings for `midi_player_create`.
 | `timeline` | the timeline it follows |
 | `max_notes` | notes sounding at once; 0 = 256 (more are dropped and counted) |
 | `max_events` | events per process call; 0 = 1024 (more are dropped and counted) |
+| `seed` | for notes' `probability`: the same seed, the same choices (0 = a fixed default) |
 
 ### Midi_Player
 
@@ -872,7 +876,7 @@ Frees the builder (not the clips built from it).
 ### add_note
 
 ```odin
-add_note :: proc(b: ^Midi_Builder, start: timebase.Beats, length: timebase.Beats, key: u8, velocity: f32, channel: u8 = 0, release: f32 = 0.5) -> int
+add_note :: proc(b: ^Midi_Builder, start: timebase.Beats, length: timebase.Beats, key: u8, velocity: f32, channel: u8 = 0, release: f32 = 0.5, probability: f32 = 1) -> int
 ```
 
 Adds a note; returns its index for `add_expression`. Notes may be added in
@@ -936,6 +940,19 @@ midi_clip_release :: proc(c: ^Midi_Clip)
 ```
 
 Control thread. Drops a reference; the clip is freed with the last one.
+
+### swing
+
+```odin
+swing :: proc "contextless"(at: timebase.Beats, grid: timebase.Beats, amount: f64) -> timebase.Beats
+```
+
+Swing: where a note at `at` beats plays when every second `grid` step
+(the off-beats: 1/16 notes for `grid` = 0.25) is pushed late by `amount`
+(0 = straight, the off-beat halfway through its pair; 1 = three quarters
+of the way; 2/3 = a triplet feel, 66.7%). Positions between grid
+steps move in proportion, so the order of notes never changes. Apply it
+while building a clip from an editable, straight model.
 
 ### midi_player_create
 

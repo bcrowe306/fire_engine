@@ -47,8 +47,12 @@ App :: struct {
 	wave:     Wave_State,
 	browser:  Browser,
 	tools:    Tool_State,
+	seq:      Seq_State,
+	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
 	frame:    int,
+	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
+	fake_due: f64, // frames the simulated device owes (it runs as the frames go by)
 }
 
 main :: proc() {
@@ -98,6 +102,8 @@ main :: proc() {
 		os.exit(1)
 	}
 	defer pm.model_destroy(&a.m)
+	defer pm.capture_destroy(&a.capture)
+	a.seq.selected, a.seq.grid, a.capture.grid = -1, .Sixteenth, .Sixteenth
 	app.subscribe(&a.bus, app.Host_Engine_Changed, proc(user: rawptr, e: ^app.Host_Engine_Changed) {
 		pm.engine_rebuild(&(^App)(user).m.engine)
 	}, a)
@@ -150,15 +156,37 @@ open_engine :: proc(a: ^App, fake: bool) -> bool {
 frame :: proc(a: ^App) {
 	app.dispatch(&a.bus)
 	app.host_update(&a.host)
+	run_fake(a)
 	handle_drops(a)
 	ui.handle_shortcuts(&a.actions)
 	play_keys(a)
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	pm.sync(&a.m.engine)
+	pm.capture_poll(&a.m, &a.capture)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))
 	dt := im.GetIO().DeltaTime
 	for &l in a.lit do l = max(l - dt, 0)
+	for i in 0 ..< pm.PADS {
+		n := pm.struck(&a.m.engine, i)
+		if n != a.seen[i] do a.lit[i] = 0.12
+		a.seen[i] = n
+	}
 	a.frame += 1
+}
+
+// The simulated device runs on the UI thread (manual mode): give it the
+// callbacks this frame's time is worth, so --fake plays in real time, and
+// a drive script (fixed 1/60 s frames) the same way every run.
+run_fake :: proc(a: ^App) {
+	if app.host_fake(&a.host) == nil || !a.host.running do return
+	f := a.host.format
+	if f.buffer_frames <= 0 do return
+	a.fake_due += f64(im.GetIO().DeltaTime) * f.sample_rate
+	n := int(a.fake_due) / f.buffer_frames
+	if n > 0 {
+		app.host_fake_run(&a.host, n)
+		a.fake_due -= f64(n * f.buffer_frames)
+	}
 }
 
 // Plays pad `index` (from the mouse, a key or a script).
@@ -183,7 +211,7 @@ PAD_KEYS := [16]im.Key{._1, ._2, ._3, ._4, .Q, .W, .E, .R, .A, .S, .D, .F, .Z, .
 
 play_keys :: proc(a: ^App) {
 	io := im.GetIO()
-	if io.WantTextInput || io.KeyCtrl || io.KeySuper do return
+	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt do return
 	for k, i in PAD_KEYS {
 		index := a.bank * pm.PADS_PER_BANK + i
 		if im.IsKeyPressed(k, false) do press(a, index, 0.85)

@@ -44,7 +44,7 @@ register_types :: proc(reg: ^core.Node_Registry, env: ^Player_Env = nil) -> core
 
 // Writes `c` as a MIDI_CLIP_TAG chunk (nil: an empty chunk, read back as nil).
 write_midi_clip :: proc(w: ^core.State_Writer, c: ^Midi_Clip) {
-	core.begin_chunk(w, MIDI_CLIP_TAG, 1)
+	core.begin_chunk(w, MIDI_CLIP_TAG, 2)
 	if c != nil {
 		core.write_f64(w, f64(c.length))
 		core.write_f64(w, f64(c.loop_start))
@@ -57,6 +57,7 @@ write_midi_clip :: proc(w: ^core.State_Writer, c: ^Midi_Clip) {
 			core.write_u8(w, n.channel)
 			core.write_f32(w, n.velocity)
 			core.write_f32(w, n.release)
+			core.write_f32(w, n.probability) // version 2
 			points := c.expression[n.expression[0]:][:n.expression[1]]
 			core.write_int(w, len(points))
 			for x in points {
@@ -93,7 +94,9 @@ read_midi_clip :: proc(r: ^core.State_Reader, allocator := context.allocator) ->
 		start, length := tb.Beats(core.read_f64(&cr)), tb.Beats(core.read_f64(&cr))
 		key, channel := core.read_u8(&cr), core.read_u8(&cr)
 		velocity, release := core.read_f32(&cr), core.read_f32(&cr)
-		i := add_note(&b, start, length, key, velocity, channel, release)
+		probability: f32 = 1
+		if ch.version >= 2 do probability = core.read_f32(&cr)
+		i := add_note(&b, start, length, key, velocity, channel, release, probability)
 		points := core.read_int(&cr)
 		if points < 0 || points > len(ch.data) / 17 do return nil, .Invalid_Data
 		for _ in 0 ..< points {

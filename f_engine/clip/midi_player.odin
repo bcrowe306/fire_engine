@@ -27,6 +27,7 @@ Midi_Player_Settings :: struct {
 	timeline:   core.Timeline_Id, // the timeline it follows
 	max_notes:  int, // notes sounding at once; 0 = 256 (more are dropped and counted)
 	max_events: int, // events per process call; 0 = 1024 (more are dropped and counted)
+	seed:       u64, // for notes' `probability`: the same seed, the same choices (0 = a fixed default)
 }
 
 // Plays a `Midi_Clip` on a timeline as note and controller events. It is a
@@ -54,6 +55,7 @@ Midi_Player :: struct {
 	scratch:    []core.Event,
 	events:     int,
 	next_id:    core.Note_Id,
+	rng:        u64, // probability rolls (xorshift64*), from `settings.seed` at each reset
 	window_end: tb.Beats, // last timeline position handled (inclusive)
 	continuous: bool,     // the previous call played and nothing has jumped since
 	dropped:    u64,      // atomic: notes or events that did not fit
@@ -88,6 +90,8 @@ midi_player_create :: proc(settings: Midi_Player_Settings, allocator := context.
 	if p.settings.max_notes <= 0 do p.settings.max_notes = 256
 	if p.settings.max_events <= 0 do p.settings.max_events = 1024
 	p.next_id = 1
+	if p.settings.seed == 0 do p.settings.seed = 0x9E3779B97F4A7C15
+	p.rng = p.settings.seed
 	p.live = make([dynamic]^Player_Config, allocator)
 	return core.node_make(&midi_player_vtable, p, allocator), p
 }
@@ -148,6 +152,7 @@ midi_player_vtable := core.Node_VTable {
 	reset = proc(self: rawptr) {
 		p := (^Midi_Player)(self)
 		p.count, p.continuous = 0, false
+		p.rng = p.settings.seed
 	},
 	process = midi_player_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) {
@@ -328,6 +333,7 @@ note_on :: proc "contextless" (p: ^Midi_Player, w: ^Window, c: ^Midi_Clip, index
 		return
 	}
 	n := &c.notes[index]
+	if n.probability < 1 && roll(p) >= n.probability do return // not this time round
 	id := p.next_id
 	p.next_id = p.next_id + 1 if p.next_id < max(core.Note_Id) else 1
 	offset := offset_of(w, at)
@@ -348,6 +354,17 @@ note_on :: proc "contextless" (p: ^Midi_Player, w: ^Window, c: ^Midi_Clip, index
 	}
 	p.sounding[p.count] = s
 	p.count += 1
+}
+
+// A uniform number in [0, 1).
+@(private)
+roll :: proc "contextless" (p: ^Midi_Player) -> f32 {
+	x := p.rng
+	x ~= x >> 12
+	x ~= x << 25
+	x ~= x >> 27
+	p.rng = x
+	return f32((x * 0x2545F4914F6CDD1D) >> 40) / f32(1 << 24)
 }
 
 // Note-offs for sounding notes that end in this window.

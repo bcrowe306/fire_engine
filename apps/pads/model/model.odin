@@ -76,6 +76,8 @@ Project :: struct {
 	bpm:     f64,
 	pads:    [PADS]Pad,
 	samples: app.Store(Sample),
+	sequences: [SLOTS]Sequence,
+	slot:    int, // the current sequence: what plays and is edited
 	dir:     string, // the project folder (samples/ inside it)
 	strings: strings.Intern, // sample names and paths
 }
@@ -89,6 +91,7 @@ default_pad :: proc() -> Pad {
 project_init :: proc(p: ^Project, dir: string) {
 	p.bpm = 120
 	for &pad in p.pads do pad = default_pad()
+	for &s in p.sequences do s = default_sequence()
 	app.store_init(&p.samples)
 	strings.intern_init(&p.strings)
 	p.dir = intern(p, dir)
@@ -96,6 +99,7 @@ project_init :: proc(p: ^Project, dir: string) {
 
 // Frees the project.
 project_destroy :: proc(p: ^Project) {
+	for &s in p.sequences do delete_sequence(&s)
 	app.store_destroy(&p.samples)
 	strings.intern_destroy(&p.strings)
 }

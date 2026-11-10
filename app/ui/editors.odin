@@ -244,6 +244,7 @@ Roll_Note :: struct {
 	key:      int, // 0..127
 	velocity: f32,
 	selected: bool,
+	color:    Color, // {} = the accent
 }
 
 // What the user did to the notes this frame. The caller makes commands
@@ -262,6 +263,20 @@ Roll_Edit :: struct {
 	select:   int,  // a note clicked to select, or -1
 }
 
+// How wide a piano roll's row labels are for `rows` (to line things up
+// with its grid).
+roll_rows_width :: proc(rows: []Roll_Row) -> f32 {
+	w: f32 = 0
+	for r in rows do w = max(w, im.CalcTextSize(strings.clone_to_cstring(r.name, context.temp_allocator)).x)
+	return w + 2 * current.pad.x + 6
+}
+
+// A named row of a piano roll used as a drum editor.
+Roll_Row :: struct {
+	name:  string,
+	color: Color, // {} = the accent
+}
+
 // The visible part of a piano roll.
 Roll_View :: struct {
 	beat0, beats: f64, // first beat shown, beats across
@@ -271,7 +286,9 @@ Roll_View :: struct {
 // A piano roll: keys up the left, beats across, `notes` as bars. Click
 // empty space to add, drag a note to move it, drag its right end to resize,
 // right-click to delete. Positions snap to `snap` beats (0 = free).
-piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64, size: im.Vec2, playhead: f64 = -1) -> (e: Roll_Edit) {
+// `rows` names the rows instead of a keyboard (a drum editor: `rows[k]` is
+// key k, counted from the bottom), with a colour each.
+piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64, size: im.Vec2, playhead: f64 = -1, rows: []Roll_Row = nil) -> (e: Roll_Edit) {
 	im.PushID(id)
 	defer im.PopID()
 	e.delete, e.moving, e.resizing, e.select = -1, -1, -1, -1
@@ -279,7 +296,7 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
 	io := im.GetIO()
-	keys_w: f32 = 40
+	keys_w: f32 = 40 if len(rows) == 0 else roll_rows_width(rows)
 	grid := im.Vec2{pos.x + keys_w, pos.y}
 	gw := size.x - keys_w
 	row_h := size.y / f32(max(view.keys, 1))
@@ -349,7 +366,21 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 	}
 
 	// Keys and rows.
-	for k in 0 ..< view.keys {
+	if len(rows) > 0 do for k in 0 ..< view.keys {
+		y := grid.y + size.y - f32(k + 1) * row_h
+		im.DrawList_AddRectFilled(dl, {grid.x, y}, {grid.x + gw, y + row_h}, col(t.raised if k % 2 == 0 else mix(t.raised, t.bg, 0.3)))
+		if row := view.key0 + k; row >= 0 && row < len(rows) {
+			r := rows[row]
+			c := r.color if r.color != {} else t.accent
+			im.DrawList_AddRectFilled(dl, {pos.x, y + 1}, {pos.x + 4, y + row_h - 1}, col(c), 2)
+			nc := strings.clone_to_cstring(r.name, context.temp_allocator)
+			// Smaller text when the rows are short (down to 10 points).
+			fs := min(im.GetFontSize(), row_h * 0.78)
+			if fs >= 10 {
+				im.DrawList_AddTextFontPtr(dl, im.GetFont(), fs, {pos.x + 4 + t.pad.x, y + (row_h - fs * 1.2) / 2 + 1}, col(t.text_dim), nc)
+			}
+		}
+	} else do for k in 0 ..< view.keys {
 		key := view.key0 + k
 		y := grid.y + size.y - f32(k + 1) * row_h
 		black := (key % 12) in bit_set[0 ..< 12]{1, 3, 6, 8, 10}
@@ -360,7 +391,13 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 			im.DrawList_AddText(dl, {pos.x + 3, y + (row_h - im.GetTextLineHeight()) / 2}, col(t.bg), label)
 		}
 	}
-	// Beat lines: bars stronger.
+	// Snap lines when there is room, then beat lines, bars stronger.
+	if snap > 0 && f32(snap) * beat_w >= 10 {
+		for b := math.floor(view.beat0 / snap) * snap; b <= view.beat0 + view.beats; b += snap {
+			x := grid.x + f32(b - view.beat0) * beat_w
+			im.DrawList_AddLine(dl, {x, grid.y}, {x, grid.y + size.y}, col(with_alpha(t.text, 0.035)), 1)
+		}
+	}
 	for b := math.floor(view.beat0); b <= view.beat0 + view.beats; b += 1 {
 		x := grid.x + f32(b - view.beat0) * beat_w
 		strong := int(b) % 4 == 0
@@ -371,9 +408,10 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 		start, key, length := n.start, n.key, n.length
 		if (e.moving == i || e.resizing == i) && !e.released do start, key, length = e.to_start, e.to_key, e.to_length
 		x0 := grid.x + f32(start - view.beat0) * beat_w
-		x1 := x0 + f32(length) * beat_w
+		x1 := max(x0 + f32(length) * beat_w, x0 + 6) // the shortest stays visible
 		y0 := grid.y + size.y - f32(key - view.key0 + 1) * row_h
-		c := mix(t.accent, t.text, 0.15) if n.selected || i == hit else t.accent
+		base := n.color if n.color != {} else t.accent
+		c := mix(base, t.text, 0.15) if n.selected || i == hit else base
 		c = with_alpha(c, 0.45 + 0.55 * n.velocity)
 		im.DrawList_AddRectFilled(dl, {x0 + 1, y0 + 1}, {x1 - 1, y0 + row_h - 1}, col(c), 3)
 		if n.selected do im.DrawList_AddRect(dl, {x0 + 1, y0 + 1}, {x1 - 1, y0 + row_h - 1}, col(t.text), 3, 1.5)
@@ -472,6 +510,73 @@ automation_lane :: proc(id: cstring, points: []Lane_Point, beat0, beats: f64, sn
 		if i == e.moving do pp = e.to
 		s := to_screen(pp, pos, size, beat0, bw)
 		im.DrawList_AddCircleFilled(dl, s, 5 if i == hit else 4, col(t.text if i == hit else color), 16)
+	}
+	return
+}
+
+// --- value lane ----------------------------------------------------------------------------
+
+// One bar of a value lane: a note's velocity or chance, at its beat.
+Lane_Bar :: struct {
+	beat:     f64,
+	value:    f32, // 0..1
+	color:    Color, // {} = the accent
+	selected: bool,
+}
+
+// What the user did to a value lane this frame.
+Lane_Bar_Edit :: struct {
+	index:   int,  // the bar being set, or -1
+	value:   f32,  // its new value
+	changed: bool,
+	ended:   bool, // the drag ended: seal the undo step
+}
+
+// Bars standing at their beats, `beat0`..`beat0 + beats` across (lined up
+// with a piano roll above it: give the same `left` as its row labels'
+// width). Drag up and down on one to set it; the bar nearest the press is
+// the one that moves.
+value_lane :: proc(id: cstring, bars: []Lane_Bar, beat0, beats: f64, size: im.Vec2, left: f32 = 0) -> (e: Lane_Bar_Edit) {
+	im.PushID(id)
+	defer im.PopID()
+	e.index = -1
+	t := current
+	dl := im.GetWindowDrawList()
+	pos := im.GetCursorScreenPos()
+	im.InvisibleButton("##lane", size)
+	gx := pos.x + left
+	gw := size.x - left
+	beat_w := gw / f32(max(beats, 1e-6))
+	x_of :: proc(b, beat0: f64, gx, beat_w: f32) -> f32 { return gx + f32(b - beat0) * beat_w }
+	@(static) dragging := -1
+	io := im.GetIO()
+	if im.IsItemActivated() {
+		dragging = -1
+		best: f32 = 12
+		for b, i in bars {
+			d := abs(x_of(b.beat, beat0, gx, beat_w) - io.MousePos.x)
+			if d < best do best, dragging = d, i
+		}
+	}
+	if (im.IsItemActive() || im.IsItemDeactivated()) && dragging >= 0 && dragging < len(bars) {
+		v := clamp(1 - (io.MousePos.y - pos.y) / size.y, 0, 1)
+		e.index, e.value = dragging, v
+		e.changed = v != bars[dragging].value
+	}
+	if im.IsItemDeactivated() {
+		e.ended = dragging >= 0
+		dragging = -1
+	}
+	im.DrawList_AddRectFilled(dl, {gx, pos.y}, {gx + gw, pos.y + size.y}, col(t.raised), t.radius)
+	for b, i in bars {
+		x := x_of(b.beat, beat0, gx, beat_w)
+		if x < gx - 1 || x > gx + gw do continue
+		v := e.value if i == e.index else b.value
+		h := v * (size.y - 4)
+		c := b.color if b.color != {} else t.accent
+		if b.selected || i == e.index do c = mix(c, t.text, 0.25)
+		im.DrawList_AddRectFilled(dl, {x, pos.y + size.y - 2 - h}, {x + 4, pos.y + size.y - 2}, col(c), 1)
+		im.DrawList_AddCircleFilled(dl, {x + 2, pos.y + size.y - 2 - h}, 3, col(c))
 	}
 	return
 }

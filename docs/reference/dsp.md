@@ -367,6 +367,22 @@ LIMITER_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(3)
 
 Parameter id of the `Limiter`'s release, in ms (1..2000, default 100).
 
+### METRONOME_PARAM_LEVEL_DB
+
+```odin
+METRONOME_PARAM_LEVEL_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Metronome`'s level, in dB (-60..6, default -6).
+
+### METRONOME_PARAM_ON
+
+```odin
+METRONOME_PARAM_ON : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Metronome`'s switch: 1 clicks, 0 is silent (default 1).
+
 ### MOD_PARAM_RATE_HZ
 
 ```odin
@@ -1393,6 +1409,55 @@ a DAC or a sample-rate conversion, inter-sample peaks can be up to about
 | `lookahead_ms` |  |
 | `sample_rate` |  |
 | `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
+
+### Metronome_Settings
+
+```odin
+Metronome_Settings :: struct {
+	timeline: core.Timeline_Id,
+	hz: f64,
+	decay_ms: f64,
+}
+```
+
+Settings for `metronome_create`.
+
+| Field | Description |
+|-------|-------------|
+| `timeline` | the timeline whose beats it clicks while it plays |
+| `hz` | the click's pitch; 0 = 1000 Hz (the bar's first beat: 1.5 times higher) |
+| `decay_ms` | how long a click rings; 0 = 25 ms |
+
+### Metronome
+
+```odin
+Metronome :: struct {
+	settings: Metronome_Settings,
+	rate: f64,
+	phase: f64,
+	step: f64,
+	env: f64,
+	fall: f64,
+	level: f64,
+	on: bool,
+}
+```
+
+A click on every beat of a timeline while it plays, higher on the first
+beat of each bar (bars from the clock's meter, counted from the
+timeline's beat 0). Mono into every output channel; no inputs. Clicks
+land on their exact frame at any block size.
+
+| Field | Description |
+|-------|-------------|
+| `settings` |  |
+| `rate` |  |
+| `phase` | radians |
+| `step` | radians per frame of the click sounding |
+| `env` | current amplitude |
+| `fall` | per-frame decay factor |
+| `level` | linear |
+| `on` |  |
 
 ### Modulation
 
@@ -2451,6 +2516,14 @@ limiter_gain_reduction_db :: proc "contextless"(l: ^Limiter) -> f64
 
 **Realtime-safe** (callable on the audio thread). The limiter's gain reduction in dB at the end of its last block. Any thread.
 
+### metronome_create
+
+```odin
+metronome_create :: proc(settings: Metronome_Settings, allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A metronome node (0 inputs; give it 1 or 2 outputs).
+
 ### chorus_create
 
 ```odin
@@ -3239,6 +3312,14 @@ limiter_params: [3]core.Param_Info
 ```
 
 Parameter table of the `Limiter` node, as returned by `node_params`. Read-only.
+
+### metronome_params
+
+```odin
+metronome_params: [2]core.Param_Info
+```
+
+Parameter table of the `Metronome` node. Read-only.
 
 ### chorus_params
 

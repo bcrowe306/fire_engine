@@ -1,0 +1,62 @@
+# Pads' sequencer: notes by command, playback, the metronome, slots, length,
+# and recording by playing the pad keys. Screenshots of the Sequence panel.
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+load 2 tests/app_ui/fixtures/loop.wav
+note 0 0 0.25 1
+note 1 0.5 0.25 0.6
+note 0 1 0.25 0.9
+note 1 1.5 0.25 0.6
+note 0 2 0.25 1
+note 1 2.5 0.25 0.6
+note 0 3 0.25 0.9
+note 1 3.5 0.25 0.6
+expect notes 8
+bars 2
+wait 3
+screenshot seq_pattern
+play
+wait 30
+expect playing 1
+screenshot seq_playing
+stop
+expect playing 0
+slot 2
+expect slot 2
+expect notes 0
+slot 1
+expect notes 8
+# By input events: a click in the editor adds a note (pad A4, beat 4).
+click 712 701
+wait 2
+expect notes 9
+expect undo Add Note
+key cmd+z
+wait 2
+expect notes 8
+key cmd+shift+z
+wait 2
+key space                 # play
+wait 6
+expect playing 1
+key space                 # stop
+wait 4
+expect playing 0
+# Record: Cmd+R arms and plays; the 1 key plays (and records) pad A1.
+key cmd+r
+wait 20
+key 1
+wait 10
+key cmd+r
+wait 4
+expect notes 10
+expect undo Record
+expect playing 1
+screenshot seq_recorded
+key space
+wait 2
+theme light
+wait 3
+screenshot seq_light

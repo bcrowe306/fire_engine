@@ -362,3 +362,92 @@ awkward_loops_are_block_size_invariant :: proc(t: ^testing.T) {
 		testing.expectf(t, same, "blocks %v: %d events, with 512-frame blocks %d", blocks, len(got), len(ref))
 	}
 }
+
+// A one-beat clip with a note on each 16th, all with chance `p`.
+@(private)
+chancy :: proc(p: f32) -> ^clip.Midi_Clip {
+	b: clip.Midi_Builder
+	clip.midi_builder_init(&b, length = 1)
+	defer clip.midi_builder_destroy(&b)
+	for k in 0 ..< 4 do clip.add_note(&b, tb.Beats(k) * 0.25, 0.1, u8(60 + k), 0.8, probability = p)
+	c, _ := clip.midi_build(&b)
+	return c
+}
+
+@(private)
+count_ons :: proc(got: []Got) -> (n: int) {
+	for g in got do if _, ok := g.payload.(core.Note_On); ok do n += 1
+	return
+}
+
+@(test)
+probability_plays_notes_by_chance_repeatably :: proc(t: ^testing.T) {
+	run :: proc(p: f32, blocks: []int, seed: u64 = 0) -> [dynamic]Got {
+		r := rig_make(settings = {seed = seed})
+		c := chancy(p)
+		clip.midi_player_set(r.player, c, {loop = true})
+		clip.midi_clip_release(c)
+		transport.play(r.clock, r.tl)
+		rig_run(r, int(SR / 2) * 100, blocks) // 100 loops of 4 notes
+		got := r.got
+		r.got = nil
+		rig_destroy(r)
+		return got
+	}
+	always := run(1, {512})
+	never := run(0, {512})
+	half := run(0.5, {512})
+	defer delete(always)
+	defer delete(never)
+	defer delete(half)
+	testing.expect_value(t, count_ons(always[:]), 400)
+	testing.expect_value(t, count_ons(never[:]), 0)
+	n := count_ons(half[:])
+	testing.expectf(t, n > 160 && n < 240, "half the notes play (%d of 400)", n)
+	expect_balanced(t, half[:])
+	// The same seed makes the same choices, whatever the block sizes.
+	again := run(0.5, {1, 37, 256, 4096})
+	defer delete(again)
+	testing.expect_value(t, len(again), len(half))
+	same := len(again) == len(half)
+	for g, i in half do if same && (g.frame != again[i].frame || describe(g) != describe(again[i])) do same = false
+	testing.expect(t, same, "identical events")
+	// Another seed, other choices.
+	other := run(0.5, {512}, seed = 12345)
+	defer delete(other)
+	differ := len(other) != len(half)
+	for g, i in half do if !differ && describe(g) != describe(other[i]) do differ = true
+	testing.expect(t, differ, "a different seed chooses differently")
+}
+
+@(test)
+probability_survives_save_and_load :: proc(t: ^testing.T) {
+	c := chancy(0.25)
+	defer clip.midi_clip_release(c)
+	w: core.State_Writer
+	core.state_writer_init(&w, context.temp_allocator)
+	clip.write_midi_clip(&w, c)
+	data, _ := core.state_writer_bytes(&w)
+	r := core.state_reader(data)
+	back, err := clip.read_midi_clip(&r)
+	testing.expect_value(t, err, core.Error.None)
+	defer clip.midi_clip_release(back)
+	for n in back.notes do testing.expect_value(t, n.probability, 0.25)
+}
+
+@(test)
+swing_delays_off_beats :: proc(t: ^testing.T) {
+	g := tb.Beats(0.25)
+	testing.expect_value(t, clip.swing(0, g, 0.5), 0)
+	testing.expect_value(t, clip.swing(0.5, g, 0.5), 0.5)       // on-beats stay
+	testing.expect_value(t, clip.swing(0.25, g, 0.5), 0.3125)   // 62.5 % through the pair
+	testing.expect_value(t, clip.swing(0.25, g, 1), 0.375)      // 75 %
+	testing.expect_value(t, clip.swing(0.25, g, 0), 0.25)       // straight
+	testing.expect_value(t, clip.swing(1.25, g, 1), 1.375)      // every pair
+	prev := tb.Beats(-1)
+	for i in 0 ..< 200 {
+		s := clip.swing(tb.Beats(i) * 0.01, g, 0.7)
+		testing.expectf(t, s > prev, "keeps order at %v", tb.Beats(i) * 0.01)
+		prev = s
+	}
+}

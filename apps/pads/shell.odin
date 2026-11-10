@@ -38,6 +38,20 @@ setup_actions :: proc(a: ^App) {
 		add(acts, {id = ids[b], label = labels[b], icon = ui.ICON_LAYOUT_GRID, chord = ui.MOD_CMD | (i32(im.Key._1) + i32(b)), user = a,
 			run = bank_actions[b]})
 	}
+	add(acts, {id = "play", label = "Play / Stop", icon = ui.ICON_PLAY, chord = i32(im.Key.Space), user = a,
+		run = proc(u: rawptr) { toggle_play((^App)(u)) }})
+	add(acts, {id = "record", label = "Record", icon = ui.ICON_CIRCLE_DOT, chord = ui.MOD_CMD | i32(im.Key.R), user = a,
+		run = proc(u: rawptr) { toggle_record((^App)(u)) },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).capture.armed }})
+	add(acts, {id = "metronome", label = "Metronome", icon = ui.ICON_METRONOME, user = a,
+		run = proc(u: rawptr) { e := &(^App)(u).m.engine; e.metronome = !e.metronome },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).m.engine.metronome }})
+	add(acts, {id = "quantize", label = "Quantize Sequence", icon = ui.ICON_MAGNET, chord = ui.MOD_CMD | i32(im.Key.U), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); pm.quantize_sequence(&a.m, a.m.project.slot, a.seq.grid) }})
+	add(acts, {id = "double", label = "Double Sequence", icon = ui.ICON_COPY_PLUS, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); pm.double_sequence(&a.m, a.m.project.slot) }})
+	add(acts, {id = "clear_sequence", label = "Clear Sequence", icon = ui.ICON_TRASH_2, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,
 		run = proc(u: rawptr) { ui.quit(&(^App)(u).platform) }})
 }
@@ -71,6 +85,16 @@ draw_menu :: proc(user: rawptr) {
 		ui.menu_action(&a.actions, "palette")
 		im.EndMenu()
 	}
+	if im.BeginMenu("Sequence") {
+		ui.menu_action(&a.actions, "play")
+		ui.menu_action(&a.actions, "record")
+		ui.menu_action(&a.actions, "metronome")
+		im.Separator()
+		ui.menu_action(&a.actions, "quantize")
+		ui.menu_action(&a.actions, "double")
+		ui.menu_action(&a.actions, "clear_sequence")
+		im.EndMenu()
+	}
 	if im.BeginMenu("View") {
 		for id in ([]string{"bank_a", "bank_b", "bank_c", "bank_d"}) do ui.menu_action(&a.actions, id)
 		im.Separator()
@@ -85,11 +109,13 @@ setup_workspace :: proc(a: ^App) {
 	ui.workspace_init(w)
 	w.sizes[.Left] = 0.18
 	w.sizes[.Right] = 0.25
-	w.sizes[.Bottom] = 0.34
+	w.sizes[.Bottom] = 0.42
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
 	ui.panel_add(w, {id = "pads", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_pads, user = a, flags = {.NoScrollbar}}, .Center)
 	ui.panel_add(w, {id = "inspector", title = "Pad", icon = ui.ICON_SLIDERS_HORIZONTAL, open = true, draw = draw_inspector, user = a}, .Right)
+	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Bottom)
 	ui.panel_add(w, {id = "sample", title = "Sample", icon = ui.ICON_AUDIO_WAVEFORM, open = true, draw = draw_sample, user = a}, .Bottom)
+	ui.panel_focus(w, "sequence")
 }
 
 // An "Import Sample" dialog (the system's), onto the selected pad. The
@@ -133,6 +159,11 @@ subscribe_imports :: proc(a: ^App) {
 //	expect samples K      fail unless the project holds K samples
 //	expect selected N / expect bank N / expect dark 0|1
 //	expect undo NAME      fail unless the next undo step is NAME
+//	panel ID              bring a panel to the front: browser, pads, inspector, sequence, sample
+//	play / stop / rec on|off / metronome on|off   the sequencer
+//	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
+//	note PAD BEAT LENGTH [VELOCITY]   add a note to the current sequence
+//	expect notes K / expect playing 0|1 / expect slot N
 //	theme light|dark, action ID
 drive_command :: proc(user: rawptr, w: []string) -> bool {
 	a := (^App)(user)
@@ -206,6 +237,47 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "theme":
 		set_dark(a, len(w) < 2 || w[1] != "light")
 		return true
+	case "panel":
+		return len(w) > 1 && ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
+	case "play":
+		pm.play(&a.m.engine)
+		return true
+	case "stop":
+		pm.stop(&a.m.engine)
+		pm.capture_arm(&a.m, &a.capture, false)
+		return true
+	case "rec":
+		pm.capture_arm(&a.m, &a.capture, len(w) < 2 || w[1] != "off")
+		return true
+	case "metronome":
+		a.m.engine.metronome = len(w) < 2 || w[1] != "off"
+		return true
+	case "slot":
+		if k := num(w, 1); k >= 1 && k <= pm.SLOTS {
+			pm.select_slot(&a.m, k - 1)
+			return true
+		}
+	case "bars":
+		if k := num(w, 1); k >= 1 {
+			pm.set_bars(&a.m, a.m.project.slot, k)
+			app.seal(&a.m.history)
+			return true
+		}
+	case "note":
+		if len(w) < 4 do return false
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		vel := numf(w, 4) if len(w) > 4 else 0.8
+		pm.add_note(&a.m, a.m.project.slot, {start = f64(numf(w, 2)), length = f64(numf(w, 3)), pad = u8(i), velocity = vel, probability = 1})
+		return true
+	case "swing":
+		pm.set_swing(&a.m, a.m.project.slot, numf(w, 1), .Sixteenth)
+		app.seal(&a.m.history)
+		return true
+	case "tempo":
+		pm.set_bpm(&a.m, f64(numf(w, 1)))
+		app.seal(&a.m.history)
+		return true
 	case "action":
 		return len(w) > 1 && ui.run_action(&a.actions, w[1])
 	case "expect":
@@ -225,6 +297,19 @@ drive_fail :: proc(a: ^App, what: string) -> bool {
 drive_expect :: proc(a: ^App, w: []string) -> bool {
 	if len(w) < 3 do return false
 	switch w[1] {
+	case "notes":
+		want, _ := strconv.parse_int(w[2])
+		got := len(pm.current_sequence(&a.m).notes)
+		if got != want do return drive_fail(a, fmt.tprintf("expected %d notes, got %d", want, got))
+		return true
+	case "playing":
+		_, on := pm.position(&a.m.engine)
+		if on != (w[2] == "1") do return drive_fail(a, fmt.tprintf("expected playing %s, got %v", w[2], on))
+		return true
+	case "slot":
+		want, _ := strconv.parse_int(w[2])
+		if a.m.project.slot + 1 != want do return drive_fail(a, fmt.tprintf("expected slot %d, got %d", want, a.m.project.slot + 1))
+		return true
 	case "selected", "bank":
 		want, _ := strconv.parse_int(w[2])
 		got := a.selected if w[1] == "selected" else a.bank

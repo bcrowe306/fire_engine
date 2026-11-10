@@ -27,6 +27,7 @@ clips in arrangements and launchers.
 */
 package clip
 
+import "core:math"
 import "core:mem"
 import "core:slice"
 
@@ -41,6 +42,7 @@ Note :: struct {
 	channel:    u8,       // 0..15
 	velocity:   f32,      // 0..1
 	release:    f32,      // release velocity, 0..1
+	probability: f32,     // chance it plays each time it comes round, 0..1 (1 = always; `add_note`'s default)
 	expression: [2]int,   // range [first, first + count) in `Midi_Clip.expression`
 }
 
@@ -106,8 +108,8 @@ midi_builder_destroy :: proc(b: ^Midi_Builder) {
 
 // Adds a note; returns its index for `add_expression`. Notes may be added in
 // any order.
-add_note :: proc(b: ^Midi_Builder, start, length: tb.Beats, key: u8, velocity: f32, channel: u8 = 0, release: f32 = 0.5) -> int {
-	append(&b.notes, Note{start = start, length = max(length, 1e-6), key = min(key, 127), channel = channel & 15, velocity = clamp(velocity, 0, 1), release = clamp(release, 0, 1)})
+add_note :: proc(b: ^Midi_Builder, start, length: tb.Beats, key: u8, velocity: f32, channel: u8 = 0, release: f32 = 0.5, probability: f32 = 1) -> int {
+	append(&b.notes, Note{start = start, length = max(length, 1e-6), key = min(key, 127), channel = channel & 15, velocity = clamp(velocity, 0, 1), release = clamp(release, 0, 1), probability = clamp(probability, 0, 1)})
 	return len(b.notes) - 1
 }
 
@@ -126,7 +128,7 @@ add_controller :: proc(b: ^Midi_Builder, at: tb.Beats, bytes: [3]u8) {
 // it (overdub), or join clips. The builder's length and loop are unchanged.
 add_clip :: proc(b: ^Midi_Builder, c: ^Midi_Clip, offset: tb.Beats = 0) {
 	for n in c.notes {
-		i := add_note(b, n.start + offset, n.length, n.key, n.velocity, n.channel, n.release)
+		i := add_note(b, n.start + offset, n.length, n.key, n.velocity, n.channel, n.release, n.probability)
 		for x in c.expression[n.expression[0]:][:n.expression[1]] do add_expression(b, i, x.at, x.kind, x.value)
 	}
 	for k in c.controllers do add_controller(b, k.at + offset, k.bytes)
@@ -211,4 +213,21 @@ midi_clip_release :: proc(c: ^Midi_Clip) {
 build_failed :: proc(c: ^Midi_Clip) -> (^Midi_Clip, core.Error) {
 	midi_clip_release(c)
 	return nil, .Out_Of_Memory
+}
+
+// Swing: where a note at `at` beats plays when every second `grid` step
+// (the off-beats: 1/16 notes for `grid` = 0.25) is pushed late by `amount`
+// (0 = straight, the off-beat halfway through its pair; 1 = three quarters
+// of the way; 2/3 = a triplet feel, 66.7%). Positions between grid
+// steps move in proportion, so the order of notes never changes. Apply it
+// while building a clip from an editable, straight model.
+swing :: proc "contextless" (at: tb.Beats, grid: tb.Beats, amount: f64) -> tb.Beats {
+	if grid <= 0 || amount <= 0 do return at
+	pair := 2 * f64(grid)
+	base := math.floor(f64(at) / pair) * pair
+	x := f64(at) - base
+	g := f64(grid)
+	mid := g * (1 + clamp(amount, 0, 1) / 2) // where the off-beat moves to
+	y := x * mid / g if x < g else mid + (x - g) * (pair - mid) / g
+	return tb.Beats(base + y)
 }

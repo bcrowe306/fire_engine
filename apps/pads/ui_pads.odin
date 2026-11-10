@@ -3,6 +3,7 @@ package pads
 import "core:fmt"
 import "core:strings"
 
+import app "app:core"
 import "app:ui"
 import pm "model"
 import im "deps:imgui"
@@ -28,7 +29,8 @@ draw_pads :: proc(user: rawptr) {
 	im.SetCursorPosX(im.GetWindowWidth() - right - im.GetStyle().WindowPadding.x)
 	im.SetNextItemWidth(right)
 	bpm := f32(p.bpm)
-	if im.DragFloat("##bpm", &bpm, 0.1, 40, 300, "%.1f BPM") do p.bpm = f64(bpm)
+	if im.DragFloat("##bpm", &bpm, 0.1, 40, 300, "%.1f BPM") do pm.set_bpm(&a.m, f64(bpm))
+	if im.IsItemDeactivatedAfterEdit() do app.seal(&a.m.history)
 	im.Spacing()
 
 	avail := im.GetContentRegionAvail()

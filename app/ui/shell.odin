@@ -290,6 +290,7 @@ Panel :: struct {
 	draw:  proc(user: rawptr),
 	user:  rawptr,
 	flags: im.WindowFlags,
+	focus: int, // frames left to bring it to the front (its tab, when docked): docking settles over the first frames
 }
 
 // Where a panel goes in the default layout.
@@ -348,6 +349,15 @@ panel_find :: proc(w: ^Workspace, id: cstring) -> ^Panel {
 	return nil
 }
 
+// Opens panel `id` and brings it to the front (its tab, if docked with
+// others). False if there is no such panel.
+panel_focus :: proc(w: ^Workspace, id: cstring) -> bool {
+	p := panel_find(w, id)
+	if p == nil do return false
+	p.open, p.focus = true, 3
+	return true
+}
+
 // Draws the workspace: `menu` (may be nil) in the main menu bar, the
 // dockspace, every open panel, the palette and the toasts.
 workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr) = nil, menu_user: rawptr = nil) {
@@ -362,6 +372,10 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 	}
 	for &p in w.panels {
 		if !p.open do continue
+		if p.focus > 0 {
+			im.SetNextWindowFocus()
+			p.focus -= 1
+		}
 		if im.Begin(w.titles[p.id], &p.open, p.flags) do p.draw(p.user)
 		im.End()
 	}

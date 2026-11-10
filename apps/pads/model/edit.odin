@@ -163,3 +163,12 @@ unique_path :: proc(dir, name: string) -> string {
 		if !os.exists(p) do return p
 	}
 }
+
+// Sets the project's tempo, undoably (drags merge).
+set_bpm :: proc(m: ^Model, bpm: f64) {
+	new := clamp(bpm, 40, 300)
+	if new == m.project.bpm do return
+	app.set_value(&m.history, "Set Tempo", {0, 1}, m.project.bpm, new, proc(ctx: rawptr, key: app.Key, value: f64) {
+		(^Model)(ctx).project.bpm = value
+	})
+}
