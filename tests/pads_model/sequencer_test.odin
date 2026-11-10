@@ -160,3 +160,62 @@ the_metronome_clicks_while_playing :: proc(t: ^testing.T) {
 	quiet := render(r, 48_000)
 	testing.expect_value(t, kit.peak(quiet[0][:]), 0)
 }
+
+@(test)
+notes_of_a_pad_and_pitch_never_overlap :: proc(t: ^testing.T) {
+	r := rig_make(t, "seq_overlap")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.add_note(m, 0, {start = 0, length = 2, pad = 0, velocity = 1})
+	pm.add_note(m, 0, {start = 1, length = 1, pad = 0, velocity = 0.5}) // the older one is cut short
+	pm.add_note(m, 0, {start = 0.5, length = 2, pad = 1, velocity = 1}) // another pad: left alone
+	pm.add_note(m, 0, {start = 0.5, length = 2, pad = 0, pitch = 3, velocity = 1}) // another pitch: left alone
+	s := pm.current_sequence(m)
+	testing.expect_value(t, len(s.notes), 4)
+	testing.expect_value(t, s.notes[0].length, 1) // 0..1, then 1..2
+	// A note at the same start replaces the old one.
+	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 0, velocity = 0.9})
+	s = pm.current_sequence(m)
+	n := 0
+	for x in s.notes do if x.pad == 0 && x.pitch == 0 {
+		n += 1
+		if x.start == 1 do testing.expect_value(t, x.velocity, 0.9)
+	}
+	testing.expect_value(t, n, 2)
+	// Lengthening a note over a later one: the moved note wins, the later
+	// note keeps the part that outlasts it.
+	pm.add_note(m, 0, {start = 2, length = 1, pad = 2, velocity = 1})
+	pm.add_note(m, 0, {start = 0, length = 1, pad = 2, velocity = 1})
+	s = pm.current_sequence(m)
+	first := -1
+	for x, i in s.notes do if x.pad == 2 && x.start == 0 do first = i
+	grown := s.notes[first]
+	grown.length = 2.5
+	pm.set_note(m, 0, first, grown, .Notes, "Resize Note")
+	s = pm.current_sequence(m)
+	got: [dynamic]pm.Seq_Note
+	got.allocator = context.temp_allocator
+	for x in s.notes do if x.pad == 2 do append(&got, x)
+	testing.expect_value(t, len(got), 2)
+	if len(got) == 2 {
+		testing.expect(t, got[0].start == 0 && got[0].length == 2.5, "the resized note")
+		testing.expect(t, got[1].start == 2.5 && got[1].length == 0.5, "the later note's tail")
+	}
+	// Dragged onto another wholly: that one is gone. One undo puts it back.
+	pm.add_note(m, 0, {start = 3, length = 0.5, pad = 3, velocity = 1})
+	pm.add_note(m, 0, {start = 0, length = 0.5, pad = 3, velocity = 1})
+	s = pm.current_sequence(m)
+	for x, i in s.notes do if x.pad == 3 && x.start == 0 {
+		moved := x
+		moved.start = 3
+		pm.set_note(m, 0, i, moved, .Notes, "Move Note")
+		break
+	}
+	count :: proc(m: ^pm.Model, pad: u8) -> (n: int) {
+		for x in pm.current_sequence(m).notes do if x.pad == pad do n += 1
+		return
+	}
+	testing.expect_value(t, count(m, 3), 1)
+	app.undo(&m.history)
+	testing.expect_value(t, count(m, 3), 2)
+}

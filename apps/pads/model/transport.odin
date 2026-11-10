@@ -46,7 +46,11 @@ position_of :: proc(p: ^Project, beat: f64) -> (bar, beat_in_bar, sixteenth: int
 Tap_Tempo :: struct {
 	taps:  [8]f64, // seconds
 	count: int,
+	start_at: f64, // when the fourth tap asked playback to start (where a fifth would land); 0: not asked
 }
+
+// Taps that set the tempo and start playback.
+TAP_START :: 4
 
 // A pause between taps longer than this (seconds) starts a new tempo.
 TAP_RESET :: 2.0
@@ -59,8 +63,18 @@ tap :: proc(t: ^Tap_Tempo, now: f64) -> f64 {
 	t.taps[t.count % len(t.taps)] = now
 	t.count += 1
 	n := min(t.count, len(t.taps))
+	t.start_at = 0
 	if n < 2 do return 0
 	span := now - t.taps[(t.count - n) % len(t.taps)]
 	if span <= 0 do return 0
-	return clamp(60 * f64(n - 1) / span, 40, 300)
+	bpm := clamp(60 * f64(n - 1) / span, 40, 300)
+	if t.count == TAP_START do t.start_at = now + 60 / bpm // a beat on: where the next tap would land
+	return bpm
+}
+
+// Whether the taps asked playback to start by `now` (once: it forgets).
+tap_start_due :: proc(t: ^Tap_Tempo, now: f64) -> bool {
+	if t.start_at <= 0 || now < t.start_at do return false
+	t.start_at = 0
+	return true
 }

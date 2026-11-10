@@ -210,6 +210,9 @@ set_sequence :: proc(m: ^Model, slot: int, field: Seq_Field, name: string, new: 
 	if slot < 0 || slot >= SLOTS do return
 	old := m.project.sequences[slot]
 	n := clone_sequence(new)
+	kept := resolve_overlaps(n.notes)
+	delete(n.notes)
+	n.notes = kept
 	sort_notes(n.notes)
 	slice.sort_by(n.points, proc(x, y: Auto_Point) -> bool {
 		if x.pad != y.pad do return x.pad < y.pad
@@ -270,6 +273,42 @@ sequences_equal :: proc(a, b: Sequence) -> bool {
 	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
 }
 
+// Notes of one pad and pitch never overlap: taken in order (later ones are
+// newer and win), a note cuts an older one that starts before it short (to
+// end where it starts), removes one that starts at the same time or inside
+// it, and pushes the start of one that runs on past its end (that part
+// stays). Returns what is kept, as a new slice.
+resolve_overlaps :: proc(notes: []Seq_Note, allocator := context.allocator) -> []Seq_Note {
+	EPS :: 1e-9
+	kept := make([dynamic]Seq_Note, 0, len(notes), allocator)
+	for x in notes {
+		x_end := x.start + x.length
+		for k := 0; k < len(kept); {
+			o := &kept[k]
+			if o.pad != x.pad || o.pitch != x.pitch {
+				k += 1
+				continue
+			}
+			o_end := o.start + o.length
+			if o_end <= x.start + EPS || o.start >= x_end - EPS { // apart
+				k += 1
+				continue
+			}
+			if o.start < x.start - EPS {
+				o.length = x.start - o.start // the older one ends where this starts
+				k += 1
+			} else if o.start > x.start + EPS && o_end > x_end + EPS {
+				o.length, o.start = o_end - x_end, x_end // its tail outlasts this one
+				k += 1
+			} else {
+				ordered_remove(&kept, k) // covered: gone
+			}
+		}
+		append(&kept, x)
+	}
+	return kept[:]
+}
+
 @(private)
 sort_notes :: proc(notes: []Seq_Note) {
 	slice.sort_by(notes, proc(x, y: Seq_Note) -> bool {
@@ -310,9 +349,11 @@ remove_notes :: proc(m: ^Model, slot: int, indices: []int, name := "Delete Note"
 set_note :: proc(m: ^Model, slot, index: int, n: Seq_Note, field: Seq_Field, name: string) {
 	s := m.project.sequences[slot]
 	if index < 0 || index >= len(s.notes) do return
-	notes := slice.clone(s.notes, context.temp_allocator)
-	notes[index] = n
-	s.notes = notes
+	// The edited note last: it is the newest, so it wins where it overlaps.
+	notes := make([dynamic]Seq_Note, 0, len(s.notes), context.temp_allocator)
+	for x, i in s.notes do if i != index do append(&notes, x)
+	append(&notes, n)
+	s.notes = notes[:]
 	set_sequence(m, slot, field, name, s)
 }
 

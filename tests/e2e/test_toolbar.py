@@ -60,6 +60,20 @@ def test_tap_tempo(app):
         app.click("Tap")  # a click and its wait take 25 frames: 5/12 s at 60 frames a second, 144 BPM
     bpm = app.state()["bpm"]
     assert 135 <= bpm <= 155, bpm
+    # The fourth tap starts playback a beat later, where a fifth would land.
+    app.until(lambda s: s["playing"], frames=60, what="playback after the fourth tap")
+    app.key("space")
+
+
+def test_tapping_while_playing_only_changes_the_tempo(app):
+    app.click("Play (Space)")
+    for _ in range(4):
+        app.click("Tap")
+    s = app.state()
+    assert s["playing"] and 135 <= s["bpm"] <= 155, s["bpm"]
+    app.wait(60)
+    assert app.state()["playing"]
+    app.key("space")
 
 
 def test_time_signature_and_the_sequence(app, fixtures):

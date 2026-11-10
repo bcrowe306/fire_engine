@@ -145,3 +145,17 @@ tap_tempo_averages_and_resets :: proc(t: ^testing.T) {
 	b = pm.tap(&tt, 5.6)
 	testing.expectf(t, abs(b - 100) < 0.01, "100 (%v)", b)
 }
+
+@(test)
+the_fourth_tap_starts_a_beat_later :: proc(t: ^testing.T) {
+	tt: pm.Tap_Tempo
+	for k in 0 ..< 3 do pm.tap(&tt, f64(k) * 0.5)
+	testing.expect(t, !pm.tap_start_due(&tt, 10), "not after three")
+	b := pm.tap(&tt, 1.5) // the fourth: 120 BPM
+	testing.expectf(t, abs(b - 120) < 0.01, "120 (%v)", b)
+	testing.expect(t, !pm.tap_start_due(&tt, 1.9), "not yet")
+	testing.expect(t, pm.tap_start_due(&tt, 2.0), "a beat after the fourth: where a fifth would be")
+	testing.expect(t, !pm.tap_start_due(&tt, 2.1), "once")
+	pm.tap(&tt, 2.0) // a fifth: no new start
+	testing.expect(t, !pm.tap_start_due(&tt, 9), "only the fourth starts it")
+}

@@ -125,7 +125,10 @@ for other toggles.
   1 at the bottom, as on the grid) as
   rows: click to add a note, drag to move, drag its end to resize,
   right-click to delete; the wheel scrolls the rows when they don't all
-  fit. Under the rows, a lane: each note's velocity, its chance (the
+  fit. Notes of one pad (and pitch) never overlap: a note cuts short the
+  one before it, replaces one that starts with it, and takes over one it
+  covers (a note it reaches into keeps the part after it), however it got
+  there (drawn, moved, pasted, recorded, imported). Under the rows, a lane: each note's velocity, its chance (the
   probability it plays each time round), or the selected pad's
   automation (volume, pitch or an EQ band; click to add a point, drag,
   right-click to delete). Recording overdubs: hit pads (mouse, keys or
@@ -232,8 +235,10 @@ icons whose colour shows their state.
 - The **sequence**: pick one of the 32 (those with notes are marked), or
   step with the arrows.
 - **Tempo**: drag it (right or up) to change it by 1 BPM, with **Shift**
-  by 0.1; scroll it; double-click to type it. **Tap** in time to set it (a
-  pause of 2 s starts again). The **time signature** (4/4, 3/4, 6/8... or
+  by 0.1; scroll it; double-click to type it. **Tap** in time to set it: it
+  flashes with each tap, and the fourth starts playback a beat later,
+  where a fifth tap would land, flashing on the beats until then (playing,
+  taps only change the tempo; a pause of 2 s starts again). The **time signature** (4/4, 3/4, 6/8... or
   any beats and unit) sets a bar's length: sequences' bars, the grid's
   bars, the metronome's accent, exports.
 - The **metronome**: on/off, and (the arrow) its level, **Only while

@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:math"
 
 import app "app:core"
 import "app:ui"
@@ -12,6 +13,7 @@ import im "deps:imgui"
 Transport_State :: struct {
 	taps:  pm.Tap_Tempo,
 	clock: f64, // seconds of frames (what taps are timed by: frames, so a script's are steady)
+	tapped: f64, // when Tap was last pressed (for its flash)
 	width: f32,
 }
 
@@ -113,13 +115,34 @@ draw_toolbar :: proc(user: rawptr) {
 	if te.changed do pm.set_bpm(m, bpm)
 	if te.ended do app.seal(&m.history)
 	im.SameLine(0, 4)
-	if im.Button("Tap") {
+	// Tap: it flashes with each tap (and while a start is coming, on each
+	// beat of the new tempo); the fourth tap starts playback where a fifth
+	// would land.
+	if pm.tap_start_due(&st.taps, st.clock) && !playing do pm.play(e)
+	since := st.clock - st.tapped
+	lit := since < 0.12
+	if st.taps.start_at > 0 {
+		beat_s := 60 / p.bpm
+		lit = lit || math.mod(st.clock - (st.taps.start_at - beat_s), beat_s) < 0.12
+	}
+	glow := f32(clamp(1 - since / 0.35, 0, 1))
+	if lit || glow > 0 {
+		c := ui.mix(t.raised, t.accent, glow if !lit else 1)
+		im.PushStyleColorVec4(.Button, transmute(im.Vec4)c)
+		im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)ui.lighten(c, 0.08))
+		im.PushStyleColorVec4(.Text, transmute(im.Vec4)(t.bg if lit else t.text))
+	}
+	pressed := im.Button("Tap")
+	if lit || glow > 0 do im.PopStyleColor(3)
+	if pressed {
+		st.tapped = st.clock
 		if b := pm.tap(&st.taps, st.clock); b > 0 {
 			pm.set_bpm(m, f64(int(b * 10 + 0.5)) / 10)
 			app.seal(&m.history)
 		}
+		if playing do st.taps.start_at = 0 // playing: only the tempo
 	}
-	if im.IsItemHovered() do im.SetTooltip("Tap tempo: tap in time (a pause of 2 s starts again)")
+	if im.IsItemHovered() do im.SetTooltip("Tap tempo: tap in time; the fourth tap starts playback a beat later (a pause of 2 s starts again)")
 	im.SameLine(0, 8)
 	ts := tr.time_sig
 	im.SetNextItemWidth(64)
