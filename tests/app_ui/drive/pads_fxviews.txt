@@ -1,0 +1,68 @@
+# Every effect's picture, with a loop playing through it.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+set 0 mode 2
+note 0 0 4 1
+play
+insert 0 0 lowpass
+edit_fx pad 0 0
+wait 20
+screenshot fx_lowpass
+insert 0 0 compressor
+edit_fx pad 0 0
+wait 20
+screenshot fx_compressor
+insert 0 0 gate
+edit_fx pad 0 0
+wait 20
+screenshot fx_gate
+insert 0 0 limiter
+edit_fx pad 0 0
+wait 20
+screenshot fx_limiter
+insert 0 0 saturation
+edit_fx pad 0 0
+wait 20
+screenshot fx_saturation
+insert 0 0 bitcrush
+edit_fx pad 0 0
+wait 20
+screenshot fx_bitcrush
+insert 0 0 delay
+edit_fx pad 0 0
+wait 20
+screenshot fx_delay
+insert 0 0 reverb
+edit_fx pad 0 0
+wait 20
+screenshot fx_reverb
+insert 0 0 comb
+edit_fx pad 0 0
+wait 20
+screenshot fx_comb
+insert 0 0 chorus
+edit_fx pad 0 0
+wait 20
+screenshot fx_chorus
+insert 0 0 phaser
+edit_fx pad 0 0
+wait 20
+screenshot fx_phaser
+insert 0 0 ringmod
+edit_fx pad 0 0
+wait 20
+screenshot fx_ringmod
+insert 0 0 pitch
+edit_fx pad 0 0
+wait 20
+screenshot fx_pitch
+insert 0 0 cutter
+edit_fx pad 0 0
+wait 20
+screenshot fx_cutter
+insert 0 0 stutter
+edit_fx pad 0 0
+wait 20
+screenshot fx_stutter
+stop

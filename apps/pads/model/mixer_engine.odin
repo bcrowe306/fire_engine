@@ -24,6 +24,8 @@ key_of :: proc(s: Effect_Slot) -> Slot_Key {
 // One effect slot in the graph.
 Fx_Node :: struct {
 	mix:     f32, // the wet mix it was given (performance effects' intensity)
+	inner:   rawptr, // a compressor's, gate's or limiter's own state (for its gain reduction)
+	kind:    Effect_Kind,
 	has:     bool,
 	id:      graph.Node_Id,
 	key:     Slot_Key,
@@ -172,6 +174,10 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 		return true
 	}
 	f.has, f.id, f.plugin = true, id, plugin
+	// Dynamics say how much they turn down (read by `slot_reduction`).
+	#partial switch s.kind {
+	case .Compressor, .Gate, .Limiter: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind
+	}
 	apply_slot(g, f, s, true)
 	return true
 }
@@ -480,4 +486,17 @@ perf_effective :: proc(p: ^Project, k: int, live: f32) -> (s: Effect_Slot, mix: 
 		mix = x
 	}
 	return
+}
+
+// How much the effect in slot `t` turns its input down now, in dB (a
+// compressor, gate or limiter), for a meter; false for others.
+slot_reduction :: proc(e: ^Engine, t: Fx_Target) -> (db: f64, ok: bool) {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil do return 0, false
+	#partial switch f.kind {
+	case .Compressor: return dsp.compressor_gain_reduction_db((^dsp.Compressor)(f.inner)), true
+	case .Gate:       return dsp.gate_reduction_db((^dsp.Gate)(f.inner)), true
+	case .Limiter:    return dsp.limiter_gain_reduction_db((^dsp.Limiter)(f.inner)), true
+	}
+	return 0, false
 }

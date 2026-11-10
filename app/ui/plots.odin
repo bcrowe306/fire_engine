@@ -278,3 +278,51 @@ trace_plot :: proc(id: cstring, history: []f32, head: int, shape: []f32, size: i
 	im.DrawList_AddCircleFilled(dl, last, 8, col(Color{color.r, color.g, color.b, 0.3}), 16)
 	im.DrawList_AddCircleFilled(dl, last, 4.5, col(lighten(color, 0.5)), 16)
 }
+
+// One line of a `line_plot`: values from left to right (any count ≥ 2),
+// in the plot's range.
+Line_Curve :: struct {
+	ys:    []f32,
+	color: Color,
+	fill:  bool, // shade down to the bottom
+	width: f32,  // 0: 2
+}
+
+// Curves on black, `size` big, values from `lo` to `hi` bottom to top:
+// grid lines at `x_marks` (0..1 across) and `y_marks` (values), and a dot
+// at `dot` (x 0..1, y a value) unless its x is negative.
+line_plot :: proc(id: cstring, curves: []Line_Curve, size: im.Vec2, lo, hi: f32, x_marks: []f32 = nil, y_marks: []f32 = nil, dot: [2]f32 = {-1, 0}, dot_color: Color = {}) {
+	im.PushID(id)
+	defer im.PopID()
+	t := current
+	dl := im.GetWindowDrawList()
+	pos := im.GetCursorScreenPos()
+	im.Dummy(size)
+	name(string(id))
+	pad: f32 = 8
+	x0, x1 := pos.x + pad, pos.x + size.x - pad
+	top, bottom := pos.y + pad, pos.y + size.y - pad
+	yv :: proc(v, lo, hi, top, bottom: f32) -> f32 { return bottom - (clamp(v, lo, hi) - lo) / max(hi - lo, 1e-9) * (bottom - top) }
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(PLOT_BG), t.radius)
+	grid := mix(PLOT_BG, t.text, 0.1)
+	for x in x_marks do im.DrawList_AddLine(dl, {x0 + (x1 - x0) * x, top}, {x0 + (x1 - x0) * x, bottom}, col(grid), 1)
+	for v in y_marks do im.DrawList_AddLine(dl, {x0, yv(v, lo, hi, top, bottom)}, {x1, yv(v, lo, hi, top, bottom)}, col(grid), 1)
+	for c in curves {
+		n := len(c.ys)
+		if n < 2 do continue
+		pts := make([]im.Vec2, n, context.temp_allocator)
+		for v, k in c.ys do pts[k] = {x0 + (x1 - x0) * f32(k) / f32(n - 1), yv(v, lo, hi, top, bottom)}
+		if c.fill {
+			f := c.color
+			f.a = 0.2
+			for k in 1 ..< n do im.DrawList_AddQuadFilled(dl, {pts[k - 1].x, bottom}, pts[k - 1], pts[k], {pts[k].x, bottom}, col(f))
+		}
+		im.DrawList_AddPolyline(dl, &pts[0], i32(n), col(c.color), c.width if c.width > 0 else 2)
+	}
+	if dot[0] >= 0 {
+		p := im.Vec2{x0 + (x1 - x0) * clamp(dot[0], 0, 1), yv(dot[1], lo, hi, top, bottom)}
+		dc := dot_color if dot_color != {} else t.accent
+		im.DrawList_AddCircleFilled(dl, p, 8, col(Color{dc.r, dc.g, dc.b, 0.3}), 16)
+		im.DrawList_AddCircleFilled(dl, p, 4.5, col(lighten(dc, 0.4)), 16)
+	}
+}

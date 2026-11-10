@@ -90,8 +90,7 @@ draw_effect :: proc(user: rawptr) {
 		return
 	}
 	im.Spacing()
-	im.Separator()
-	im.Spacing()
+	draw_effect_view(a, t, s)
 
 	// Its settings: a knob each, in rows that wrap.
 	params := pm.target_params(&m.engine, t)

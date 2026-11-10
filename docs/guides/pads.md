@@ -127,7 +127,17 @@ for other toggles.
     resonance) with an amount each — routes the engine keeps in a table
     that will grow into a full modulation matrix.
   - **EQ** (a device of the chain): the pad's three bands. Each effect
-    is a device after it (its settings, on/off, remove).
+    is a device after it (its settings, on/off, remove), with a picture
+    of what it does over its knobs: a filter's response (drag it: the
+    cutoff sideways, resonance up; a held performance filter's curve
+    follows the press), a compressor's, gate's or limiter's curve with
+    a meter of how far it turns down now, saturation's curve, a
+    bit-crusher's steps over a clean sine, a delay's echoes after a hit
+    (ping-pong in two colours, on the beat grid), a reverb's decay (its
+    highs dimmer), a comb's teeth, a chorus's, flanger's or phaser's sweep
+    with where it is now, a ring mod's carrier, a pitch shift's
+    semitones, a cutter's or stutter's slices over a bar with the
+    playhead.
   - **Global**: sampler or audio track, name and colour (click it for the
     swatches and picker), choke group (a pad cuts the others in its
     group), volume, pan, transpose, fine tune, how many notes it plays at
@@ -530,6 +540,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
+| `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
 | `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |

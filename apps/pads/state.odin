@@ -48,6 +48,7 @@ State :: struct {
 	perf_now:   [pm.PERF_FX]f32,  // how hard each plays while held (-1: its own)
 	perf_intensity: [pm.PERF_FX]f32, // each one's own
 	queued:     int, // the sequence about to take over (1-based; 0: none)
+	fx_params:  [dynamic][2]f32, // the effect being edited: its settings, (id, value) each
 	pads:       [dynamic]State_Pad, // the ones with a sound
 	buses:      [pm.BUSES + 1]State_Bus, // A..D, then main
 	browser:    State_Browser,
@@ -156,6 +157,8 @@ state_json :: proc(a: ^App) -> string {
 		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes)})
 	}
 	s.marked = a.seq.range.on
+	s.fx_params = make([dynamic][2]f32, context.temp_allocator)
+	if fx, ok := pm.target_slot(m, a.fx); ok do for prm in fx.params[:fx.count] do append(&s.fx_params, [2]f32{f32(prm.id), prm.value})
 	for fx, k in p.perf_fx do s.perf_on[k] = fx.on
 	s.perf_now, s.perf_intensity = m.engine.perf_live, p.perf_intensity
 	if q, _, ok := pm.pending_switch(&m.engine); ok do s.queued = q + 1
