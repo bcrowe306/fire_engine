@@ -32,6 +32,19 @@ draw_inspector :: proc(user: rawptr) {
 	s := pm.pad_sample(m, i)
 	im.TextDisabled("%s", fmt.ctprintf("%s · %.2f s · %.0f Hz · %s", s.name, f64(s.frames) / s.rate, s.rate, "stereo" if s.channels > 1 else "mono"))
 
+	// Wide (the bottom panel): three columns, as a device would lay out;
+	// narrow: one after another.
+	wide := im.GetContentRegionAvail().x >= 720
+	if wide && !im.BeginTable("##inspector", 3, {.BordersInnerV}) do wide = false
+	defer if wide do im.EndTable()
+	if wide {
+		im.TableSetupColumn("a", {.WidthStretch}, 1)
+		im.TableSetupColumn("b", {.WidthFixed}, 5 * (ui.KNOB_SIZE + 14) + 20)
+		im.TableSetupColumn("c", {.WidthFixed}, 3 * (ui.KNOB_SIZE + 14) + 20)
+		im.TableNextColumn()
+		section(a, "Pad", false)
+	}
+
 	// Name and colour.
 	@(static) name_buf: [32]u8
 	@(static) name_for := -1
@@ -59,7 +72,7 @@ draw_inspector :: proc(user: rawptr) {
 		im.PopID()
 	}
 
-	section(a, "Playback")
+	section(a, "Playback", !wide)
 	mode := int(pad.mode)
 	if ui.segmented("mode", {"One-shot", "Gate", "Loop", "Hold"}, &mode) {
 		p := pad
@@ -67,7 +80,6 @@ draw_inspector :: proc(user: rawptr) {
 		pm.set_pad(m, i, .Mode, "Set Mode", p)
 		app.seal(&m.history)
 	}
-	im.SameLine(0, 16)
 	rev := pad.reverse
 	if ui.toggle("Reverse", &rev) {
 		p := pad
@@ -75,6 +87,17 @@ draw_inspector :: proc(user: rawptr) {
 		pm.set_pad(m, i, .Reverse, "Reverse", p)
 		app.seal(&m.history)
 	}
+	choke := i32(pad.choke)
+	groups := [pm.CHOKE_GROUPS + 1]cstring{"No choke group", "Choke group 1", "Choke group 2", "Choke group 3", "Choke group 4", "Choke group 5", "Choke group 6"}
+	im.SameLine(0, 16)
+	im.SetNextItemWidth(min(180, im.GetContentRegionAvail().x))
+	if im.ComboChar("##choke", &choke, &groups[0], len(groups)) {
+		p := pad
+		p.choke = u8(choke)
+		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
+		app.seal(&m.history)
+	}
+
 	if pad.mode == .Loop || pad.mode == .Hold {
 		lm := int(pad.loop_mode)
 		if ui.segmented("loop_mode", {"Forward", "Ping-pong"}, &lm) {
@@ -93,17 +116,8 @@ draw_inspector :: proc(user: rawptr) {
 		}
 		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
 	}
-	choke := i32(pad.choke)
-	groups := [pm.CHOKE_GROUPS + 1]cstring{"No choke group", "Choke group 1", "Choke group 2", "Choke group 3", "Choke group 4", "Choke group 5", "Choke group 6"}
-	im.SetNextItemWidth(180)
-	if im.ComboChar("##choke", &choke, &groups[0], len(groups)) {
-		p := pad
-		p.choke = u8(choke)
-		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
-		app.seal(&m.history)
-	}
-
-	section(a, "Sound")
+	if wide do im.TableNextColumn()
+	section(a, "Sound", !wide)
 	knob_f32(a, "Volume", &pad.volume, -48, 12, 0, "%.1f dB", .Volume, "Set Volume")
 	im.SameLine(0, 14)
 	knob_f32(a, "Pan", &pad.pan, -1, 1, 0, "%+.2f", .Pan, "Set Pan")
@@ -114,7 +128,8 @@ draw_inspector :: proc(user: rawptr) {
 	im.SameLine(0, 14)
 	knob_f32(a, "Release", &pad.release, 0.005, 5, 0.05, "%.2f s", .Release, "Set Release")
 
-	section(a, "EQ")
+	if wide do im.TableNextColumn()
+	section(a, "EQ", !wide)
 	knob_f32(a, "Low", &pad.eq[0], -15, 15, 0, "%+.1f dB", .Eq_Low, "Set EQ Low")
 	im.SameLine(0, 14)
 	knob_f32(a, "Mid", &pad.eq[1], -15, 15, 0, "%+.1f dB", .Eq_Mid, "Set EQ Mid")
@@ -154,12 +169,18 @@ set_field :: proc(p: ^pm.Pad, field: pm.Pad_Field, v: f32) {
 	}
 }
 
-// A small heading.
-section :: proc(a: ^App, title: cstring) {
-	im.Spacing()
-	im.Spacing()
+// A small heading (`gap`: space above it, when it follows another).
+section :: proc(a: ^App, title: cstring, gap := true) {
+	if gap {
+		im.Spacing()
+		im.Spacing()
+	}
+	// Drawn rather than laid out as text: in a table's row, text would sit
+	// on the row's baseline (lower, beside framed controls).
 	im.PushFontFloat(a.platform.fonts.semibold, 13)
-	im.TextDisabled("%s", title)
+	pos := im.GetCursorScreenPos()
+	im.DrawList_AddText(im.GetWindowDrawList(), pos, ui.col(ui.theme().text_dim), title)
+	im.Dummy({1, im.GetTextLineHeight()})
 	im.PopFont()
 	im.Separator()
 	im.Spacing()

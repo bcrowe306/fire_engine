@@ -57,9 +57,10 @@ App :: struct {
 	grid_held: [pm.PADS_PER_BANK]Grid_Held,
 	perf:     Perf_State,
 	mixer:    Mixer_State,
-	fx:       pm.Fx_Target, // the effect slot the Effect panel edits
+	fx:       pm.Fx_Target, // the effect slot the Effects tab edits
 	plugin_choice: Plugin_Choice,
 	proj:     Project_State,
+	detail:   Detail_State,
 	perf_hold: bool, // performance effects latch
 	perf_held, perf_latched: [pm.PERF_FX]bool,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)

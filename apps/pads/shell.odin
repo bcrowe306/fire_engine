@@ -142,19 +142,13 @@ setup_workspace :: proc(a: ^App) {
 	w := &a.ws
 	ui.workspace_init(w)
 	w.sizes[.Left] = 0.18
-	w.sizes[.Right] = 0.25
-	w.sizes[.Bottom] = 0.42
+		w.sizes[.Bottom] = 0.44
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
-	ui.panel_add(w, {id = "pads", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_pads, user = a, flags = {.NoScrollbar}}, .Center)
-	ui.panel_add(w, {id = "inspector", title = "Pad", icon = ui.ICON_SLIDERS_HORIZONTAL, open = true, draw = draw_inspector, user = a}, .Right)
-	ui.panel_add(w, {id = "effect", title = "Effect", icon = ui.ICON_WAND_SPARKLES, open = true, draw = draw_effect, user = a}, .Right)
-	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Right)
-	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Bottom)
-	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Bottom)
-	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Bottom)
-	ui.panel_add(w, {id = "sample", title = "Sample", icon = ui.ICON_AUDIO_WAVEFORM, open = true, draw = draw_sample, user = a}, .Bottom)
+	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Center)
+	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Center)
+	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Center)
+	ui.panel_add(w, {id = "detail", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_detail, user = a, flags = {.NoScrollbar, .NoScrollWithMouse}}, .Bottom)
 	ui.panel_focus(w, "sequence")
-	ui.panel_focus(w, "inspector")
 }
 
 // An "Import Sample" dialog (the system's), onto the selected pad. The
@@ -227,7 +221,7 @@ subscribe_imports :: proc(a: ^App) {
 //	expect samples K      fail unless the project holds K samples
 //	expect selected N / expect bank N / expect dark 0|1
 //	expect undo NAME      fail unless the next undo step is NAME
-//	panel ID              bring a panel to the front: browser, pads, inspector, sequence, sample
+//	panel ID              bring a panel (browser, sequence, song, mixer, pads) or a pad tab (sample, pad, effects, perform) to the front
 //	play / stop / rec on|off / metronome on|off   the sequencer
 //	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
 //	note PAD BEAT LENGTH [VELOCITY]   add a note to the current sequence
@@ -435,7 +429,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "perf": a.fx = {.Perf, num(w, 2), 0}
 		case: return false
 		}
-		return ui.panel_focus(&a.ws, "effect")
+		show_detail(a, .Effects)
+		return true
 	case "route":
 		if i := num(w, 1); pad_ok(i) {
 			pm.set_pad_bus(&a.m, i, num(w, 2))
@@ -546,7 +541,16 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		a.proj.export_open = len(w) < 2 || w[1] != "off"
 		return true
 	case "panel":
-		return len(w) > 1 && ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "sample":            show_detail(a, .Sample)
+		case "pad", "inspector":  show_detail(a, .Pad)
+		case "effect", "effects": show_detail(a, .Effects)
+		case "perform":           show_detail(a, .Perform)
+		case "pads":              ui.panel_focus(&a.ws, "detail")
+		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
+		}
+		return true
 	case "play":
 		pm.play(&a.m.engine)
 		return true

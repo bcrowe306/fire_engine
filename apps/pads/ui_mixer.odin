@@ -157,7 +157,7 @@ slot_button :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bo
 	}
 	if im.Button(label, {STRIP_W, 0}) {
 		a.fx = target
-		ui.panel_focus(&a.ws, "effect")
+		show_detail(a, .Effects)
 	}
 	if colors > 0 do im.PopStyleColor(i32(colors))
 	if s.kind != .None && im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s%s", pm.slot_name(s), "" if s.on else " (off)"))

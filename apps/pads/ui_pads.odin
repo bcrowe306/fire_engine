@@ -23,13 +23,9 @@ draw_pads :: proc(user: rawptr) {
 
 	bank := a.bank
 	if ui.segmented("banks", {"A", "B", "C", "D"}, &bank) do a.bank = bank
-	im.SameLine(0, 18)
-	im.AlignTextToFramePadding()
-	letters := "ABCD"
-	im.TextDisabled("%s", fmt.ctprintf("Bank %s", letters[a.bank:][:1]))
+	right: f32 = 110
 	im.SameLine()
-	right: f32 = 150
-	im.SetCursorPosX(im.GetWindowWidth() - right - im.GetStyle().WindowPadding.x)
+	im.SetCursorPosX(max(im.GetCursorPosX(), im.GetWindowWidth() - right))
 	im.SetNextItemWidth(right)
 	bpm := f32(p.bpm)
 	if im.DragFloat("##bpm", &bpm, 0.1, 40, 300, "%.1f BPM") do pm.set_bpm(&a.m, f64(bpm))

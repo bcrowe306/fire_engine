@@ -8,7 +8,7 @@ import pm "model"
 import im "deps:imgui"
 import pf "fire:perform"
 
-// The Perform panel's state.
+// The Perform tab's state.
 Perf_State :: struct {
 	learning:   bool, // the next MIDI note learns the selected pad
 	learn_seen: int,  // capture.midi_count when learning began
@@ -37,7 +37,18 @@ draw_perform :: proc(user: rawptr) {
 	changed := false
 	w: f32 = -1
 
-	section(a, "Play the pads as")
+	// Wide (the bottom panel): a column for each part.
+	wide := im.GetContentRegionAvail().x >= 720
+	if wide && !im.BeginTable("##perform", 3, {.BordersInnerV}) do wide = false
+	defer if wide do im.EndTable()
+	if wide {
+		im.TableSetupColumn("a", {.WidthStretch}, 1)
+		im.TableSetupColumn("b", {.WidthStretch}, 1)
+		im.TableSetupColumn("c", {.WidthStretch}, 1.7)
+		im.TableNextColumn()
+	}
+
+	section(a, "Play the pads as", !wide)
 	mode := int(a.play_mode)
 	if ui.segmented("play_mode", {"Pads", "Keyboard", "Velocity"}, &mode) {
 		for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
@@ -86,7 +97,8 @@ draw_perform :: proc(user: rawptr) {
 		changed = true
 	}
 
-	section(a, "Arpeggiator")
+	if wide do im.TableNextColumn()
+	section(a, "Arpeggiator", !wide)
 	if ui.toggle("Arpeggiate", &p.arp_on) {
 		if p.arp_on do p.repeat_on = false
 		changed = true
@@ -121,7 +133,8 @@ draw_perform :: proc(user: rawptr) {
 
 	// The performance effects: hold a pad to apply its effect to main; with
 	// HOLD, a press turns it on until the next. Right-click to edit one.
-	section(a, "Performance effects")
+	if wide do im.TableNextColumn()
+	section(a, "Performance effects", !wide)
 	ui.toggle("Hold", &a.perf_hold)
 	if !a.perf_hold {
 		for i in 0 ..< pm.PERF_FX do if a.perf_latched[i] {
@@ -153,7 +166,7 @@ draw_perform :: proc(user: rawptr) {
 		}
 		if hit.selected {
 			a.fx = {.Perf, i, 0}
-			ui.panel_focus(&a.ws, "effect")
+			show_detail(a, .Effects)
 		}
 	}
 

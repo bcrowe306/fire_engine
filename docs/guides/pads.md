@@ -32,18 +32,32 @@ port.
 
 ## The window
 
+The layout follows Ableton Live's: the **Browser** down the left; the
+**Sequence**, **Song** and **Mixer** as tabs in the middle; and along the
+bottom, the **Pads** panel — the pad grid on the left and, on the right,
+the selected pad in four tabs: **Sample**, **Pad**, **Effects** and
+**Perform**. Drag the divider between the grid and the tabs to give
+either more room (double-click it to go back to a square grid). Panels
+are tabs that can be dragged elsewhere; **View > Reset Layout** puts
+them back.
+
+Buttons that are only an icon (play, record, the sample edits) have no
+frame: the icon is dimmed at rest, brightens under the mouse, and takes
+a colour when on — green while playing, red while recording, the accent
+for other toggles.
+
 - **Browser** (left): folders and audio files. Double-click a file to put
   it on the selected pad, or drag it onto a pad.
-- **Pads** (centre): 4 banks (A–D) of 16. Click a pad, or press its key —
+- **Pads** (bottom left): 4 banks (A–D) of 16, and the tempo. Click a pad, or press its key —
   `1 2 3 4 / Q W E R / A S D F / Z X C V`, the top row first — to play it
   and select it. Files dropped on the window from the desktop land on the
   pad under the mouse.
-- **Pad** (right): the selected pad's name and colour; its mode
+- **Pad** (bottom tab): the selected pad's name and colour; its mode
   (**One-shot** plays to the end, **Gate** while held, **Loop** loops
   while held, **Hold** loops until hit again); reverse; loop direction and
   crossfade; choke group (a pad cuts the others in its group); volume,
   pan, pitch, attack and release; a three-band EQ.
-- **Sample** (bottom): the waveform. Drag **S** and **E** to set the region
+- **Sample** (bottom tab): the waveform. Drag **S** and **E** to set the region
   the pad plays, **L** for the loop; drag across the wave to select. The
   toolbar (it wraps when narrow):
   - edits — crop, delete, silence, fade in and out, normalize, reverse,
@@ -55,7 +69,7 @@ port.
     project tempo, pitch unchanged;
   - record (the circle) — record the audio input onto the pad.
 
-- **Sequence** (bottom, beside Sample): the sequencer. Play/stop (Space),
+- **Sequence** (middle tab): the sequencer. Play/stop (Space),
   record (Cmd+R) and the metronome; the slot (32 of them, those with notes
   marked); length (1–64 bars, ×2 doubles with the notes); the grid (1/4
   to 1/64, triplets), Quantize (Cmd+U) and Live (quantize while
@@ -68,7 +82,7 @@ port.
   right-click to delete). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
   the sequencer plays them.
-- **Perform** (right, beside Pad): how the pads play — **Pads**, each its
+- **Perform** (bottom tab): how the pads play — **Pads**, each its
   own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
   triads, sevenths, power chords) on the selected pad, from any root and
   octave, the bottom-left pad the root; **Velocity**, the selected pad at
@@ -77,21 +91,21 @@ port.
   played; 1–4 octaves; gate; latch). MIDI: activity lights, **Learn**
   (the next note you play plays the selected pad), and **MIDI out** (the
   pad's hits also go out as a note on a channel).
-- **Mixer** (bottom, beside Sequence): a strip for each pad of the bank —
+- **Mixer** (middle tab): a strip for each pad of the bank —
   its two insert effects, where it goes (main or bus A–D), pan, mute and
   solo, its fader (the pad's volume) and meter — then buses A–D and main,
   each with five effect slots, a fader and a meter (buses also pan, mute
   and solo). A strip shows the slots in use and a **+** for the next.
-  Click a slot to edit it in the **Effect** panel (right): what it holds
+  Click a slot to edit it in the **Effects** tab: what it holds
   (filters, dynamics, saturation, bit-crusher, delay, reverb, chorus,
   flanger, phaser, ring mod, comb, pitch shift, cutter, stutter, or a CLAP
   plug-in), on or off (a 15 ms fade), and a knob for each setting. A
   plug-in that can't be found plays nothing and says so.
-- **Performance effects** (in the Perform panel): 16 effects on main, each
+- **Performance effects** (in the Perform tab): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
   distortion. **Hold** latches them. Right-click one to change what it is
-  in the Effect panel.
+  in the Effects tab.
 - **File > Import MIDI File…** reads a `.mid` into the current sequence:
   drum keys onto the pads by the MIDI map (key 36 is A1).
 
@@ -99,7 +113,7 @@ Every change is undoable (Cmd+Z / Cmd+Shift+Z; Ctrl elsewhere). A knob
 drag is one step. Cmd+K opens the command palette; Cmd+1..4 switch banks;
 Delete clears the pad; View > Light Theme switches theme.
 
-- **Song** (bottom): **Pattern** plays the current sequence; **Song**
+- **Song** (middle tab): **Pattern** plays the current sequence; **Song**
   plays the chain of steps below, each a sequence played 1–16 times
   (drag a step onto another to move it; **Loop the song** goes round,
   otherwise it stops at the end). **Add sequence N** puts the current
@@ -207,7 +221,7 @@ chop N equal K       (or: chop N transients SENSITIVITY)
 theme light|dark     action ID (an action from the palette: undo, bank_b...)
 expect pad N FIELD VALUE   sample, name, volume, pan, pitch, mode, start, end, choke
 expect samples K / expect undo NAME / expect selected N / expect bank N / expect dark 0|1
-panel ID             bring a panel to the front: browser, pads, inspector, perform, sequence, sample
+panel ID             bring a panel (browser, sequence, song, mixer, pads) or a pad tab (sample, pad, effects, perform) to the front
 play / stop / rec on|off / metronome on|off
 slot N / bars N / tempo BPM / swing AMOUNT   (slot 1..32; swing 0..1 on 1/16)
 note PAD BEAT LENGTH [VELOCITY]              a note in the current sequence
@@ -221,7 +235,7 @@ expect notes K / expect points K / expect playing 0|1 / expect slot N
 expect midi_key PAD KEY / expect struck PAD MIN   (it has sounded MIN or more times)
 insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
 plugin BUS SLOT ID PATH                      a CLAP plug-in in a bus slot
-edit_fx pad P S | bus B S | perf N           the slot the Effect panel edits
+edit_fx pad P S | bus B S | perf N           the slot the Effects tab edits
 fx_param ID VALUE                            one of its settings
 route PAD BUS / busvol BUS DB / mute pad N | bus B / solo ... / perf N on|off
 expect level main | bus B | pad N above|below DB   (the meter as shown)

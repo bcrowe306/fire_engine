@@ -29,7 +29,7 @@ expect notes 0
 slot 1
 expect notes 8
 # By input events: a click in the editor adds a note (pad A4, beat 4).
-click 712 701
+click 774 177
 wait 2
 expect notes 9
 expect undo Add Note

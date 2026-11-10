@@ -129,7 +129,80 @@ four platforms), verify, profile, document, commit.
    plug-ins in slots. *Done:* see docs/guides/pads.md.
 7. **Pads: song, export, save.** Slot chain, mixdown and stems and
    resample, project folders, autosave. *Done:* see docs/guides/pads.md.
-8. **Later.** The timeline arranger, stem splitting, more export formats.
+8. **Pads: interface rework.**
+   - *Icon buttons* become bare icons: no frame, the glyph centred in a
+     square hit area, with its colour showing the state. Idle is dimmed
+     text, hover is full text, on is the accent. Some icons have their own
+     colour: play is green while playing, record red while armed. Disabled
+     icons are faint. Tooltips stay. Every `ui.icon_button` caller moves to
+     the new widget, and the gallery gets a case for it.
+   - *Layout, as in Ableton:*
+     - The browser is in the left sidebar.
+     - The centre holds Sequence, Song and Mixer as tabs.
+     - The bottom panel holds the pad grid and bank switch on the left, at
+       a fixed width with a divider. The selected pad is on the right, in
+       tabs: Sample, Pad, Effects and Perform.
+     - There is no right sidebar.
+     - The layout gets a version number, so an older saved `imgui.ini`
+       falls back to the new default.
+   - The drive scripts' `panel` command and the screenshots follow the new
+     layout. *Done:* see docs/guides/pads.md.
+9. **Pads: Logic-style mixer and sends.**
+   - *Sends:* each pad gets a send to each of the 4 buses, set in dB and
+     switchable between pre-fader and post-fader. The pad keeps its single
+     output.
+   - *Engine and project file:* the sends tap the pad's chain after its
+     inserts, before or after the fader, into the bus inputs, and they are
+     undoable. The project file goes to PPRJ v2; v1 files load with the
+     sends off.
+   - *Tests:* send levels, pre and post, mute and solo, block-size
+     invariance and zero rt allocations.
+   - *Strip, from top to bottom:*
+     - an EQ thumbnail (the pad EQ's curve; a click opens it)
+     - the insert slots
+     - the send slots (bus name and a small knob)
+     - the output picker
+     - the pan knob
+     - the fader and peak readouts in dB (a click on the peak resets it)
+     - the fader beside a scaled meter
+     - Mute and Solo
+     - the name on the pad's colour
+   - *Which strips:* every pad with a sound, in all banks, scrolling
+     sideways. The buses and Main are pinned on the right, and the selected
+     pad's strip is highlighted.
+10. **Pads: the browser.**
+    - *Model:* the browser's model moves into `apps/pads/model`, so its
+      tests run headless. It covers the tree, history, favourites and
+      search. The bug behind today's broken navigation is found and gets a
+      test.
+    - *Favourites:* each favourite is a tab. A new install has Documents
+      (the default) and the open project's samples folder. You can add a
+      folder from the browser (star button, or right-click > Add to
+      favourites), and rename, reorder or remove tabs. The tabs are saved
+      with the user's preferences, not in the project.
+    - *Navigation:*
+      - a tree whose folders expand in place
+      - back, forward and up buttons
+      - a path whose parts you can click
+      - Up and Down select (and preview); Right and Left expand and
+        collapse; Enter loads the file onto the selected pad
+      - dragging a file onto a pad still works
+    - *Search:* a box that filters by file name through every folder under
+      the tab. A background job scans the folders, with a cap, and is
+      cancelled when the tab changes. Results are a flat list with
+      relative paths.
+    - *Preview:*
+      - It has its own voice in the engine, which goes straight to the
+        output, skipping the master effects.
+      - Files are decoded on a background job, so the UI never waits.
+      - Auto-play is on by default, with an icon that toggles it. A
+        play/stop icon shows stop while a preview plays.
+      - It has its own volume.
+      - A tempo-sync toggle stretches a loop to the project tempo while
+        the transport plays. The loop's length in beats is estimated from
+        the file's length, and one-shots play raw.
+      - The selected file's waveform shows in the preview strip.
+11. **Later.** The timeline arranger, stem splitting, more export formats.
 
 ## Testing approach
 

@@ -93,7 +93,7 @@ if e.ended do app.seal(&history)   // the next drag is its own undo step
 | `pad` | A sampler pad: name, detail, colour, lit while playing, outlined when selected; reports velocity from where it was hit |
 | `toggle` | An on/off switch |
 | `segmented` | Mutually exclusive options in a row |
-| `icon_button` | A square button with an icon and a tooltip; `on` fills it with the accent |
+| `icon_button` | An icon with no frame, centred in a square, with a tooltip: dimmed at rest, full text under the mouse, `color` (or the accent) when `on`, faint when `disabled` |
 | `xy_pad` | Two values, 0..1 |
 
 ### Editors

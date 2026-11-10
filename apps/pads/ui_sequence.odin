@@ -164,7 +164,7 @@ draw_transport :: proc(a: ^App) {
 	_, playing := pm.position(&m.engine)
 	t := ui.theme()
 
-	if ui.icon_button(ui.ICON_SQUARE if playing else ui.ICON_PLAY, "Stop (Space)" if playing else "Play (Space)", on = playing) do toggle_play(a)
+	if ui.icon_button(ui.ICON_SQUARE if playing else ui.ICON_PLAY, "Stop (Space)" if playing else "Play (Space)", on = playing, color = ui.theme().ok) do toggle_play(a)
 	im.SameLine()
 	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record into the sequence (Cmd+R)", on = a.capture.armed, color = ui.rgb(0xf0555a)) do toggle_record(a)
 	im.SameLine()

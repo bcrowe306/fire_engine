@@ -313,23 +313,40 @@ segmented :: proc(id: cstring, options: []string, choice: ^int) -> bool {
 	return changed
 }
 
-// A square button showing one icon (an ICON_ constant), with a tooltip.
-// `on` draws it in the accent colour (a toggled tool, recording).
-icon_button :: proc(icon: string, tooltip: cstring, on := false, size: f32 = 0, color: Color = {}) -> bool {
-	t := current
+// A button that is only an icon (an ICON_ constant): no frame, the glyph
+// centred in a square of `size` (default: the frame height), with a
+// tooltip. Its colour shows its state: dimmed at rest, full text under the
+// mouse, `color` (default: the accent) when `on`; faint and inert when
+// `disabled`. Pressing dims it a little.
+icon_button :: proc(icon: string, tooltip: cstring, on := false, size: f32 = 0, color: Color = {}, disabled := false) -> bool {
 	s := size if size > 0 else im.GetFrameHeight()
 	ic := strings.clone_to_cstring(icon, context.temp_allocator)
 	im.PushID(tooltip)
+	im.PushID(ic)
 	defer im.PopID()
-	if on {
-		im.PushStyleColorVec4(.Button, transmute(im.Vec4)(color if color != {} else t.accent))
-		im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)lighten(color if color != {} else t.accent, 0.1))
-		im.PushStyleColorVec4(.Text, transmute(im.Vec4)t.accent_text)
-	}
-	clicked := im.Button(ic, {s, s})
-	if on do im.PopStyleColor(3)
-	if tooltip != "" && im.IsItemHovered({.DelayNormal}) do im.SetTooltip("%s", tooltip)
+	defer im.PopID()
+	pos := im.GetCursorScreenPos()
+	clicked := im.InvisibleButton("##icon", {s, s}) && !disabled
+	hovered := im.IsItemHovered() && !disabled
+	held := im.IsItemActive() && !disabled
+	c := icon_color(on, hovered, held, color, disabled)
+	ts := im.CalcTextSize(ic)
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddText(dl, {math.round(pos.x + (s - ts.x) / 2), math.round(pos.y + (s - ts.y) / 2)}, col(c), ic)
+	if tooltip != "" && im.IsItemHovered({.DelayNormal, .AllowWhenDisabled}) do im.SetTooltip("%s", tooltip)
 	return clicked
+}
+
+// The colour an icon button draws its glyph in, for its state.
+icon_color :: proc(on, hovered, held: bool, color: Color = {}, disabled := false) -> Color {
+	t := current
+	if disabled do return with_alpha(t.text_dim, 0.4)
+	c := t.text_dim
+	if on do c = color if color != {} else t.accent
+	else if hovered || held do c = t.text
+	if on && hovered do c = lighten(c, 0.15)
+	if held do c = with_alpha(c, 0.7)
+	return c
 }
 
 // A two-dimensional control: both values 0..1, x to the right and y up.

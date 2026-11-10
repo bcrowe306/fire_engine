@@ -12,10 +12,12 @@ expect selected 1
 key q                      # A5
 wait 2
 expect selected 4
-click 488 164              # pad A1 with the mouse
+click 320 619              # pad A1 with the mouse (the bottom panel)
 wait 2
 expect selected 0
-drag 1115 384 1115 300 12  # the Volume knob, upwards
+panel pad                  # the Pad tab, beside the pads
+wait 3
+drag 916 692 916 608 12    # the Volume knob, upwards
 wait 2
 expect undo Set Volume
 expect pad 0 volume 12
@@ -34,7 +36,7 @@ expect pad 0 sample kick
 key cmd+2                  # Bank B
 wait 2
 expect bank 1
-click 290 80               # the A segment
+click 289 556              # the A segment
 wait 2
 expect bank 0
 key cmd+k                  # the command palette
