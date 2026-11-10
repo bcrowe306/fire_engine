@@ -40,10 +40,17 @@ panel or tab is in front (see [The transport](#the-transport)). Below it
 the layout follows Ableton Live's: the **Browser** down the left; the
 **Sequence**, **Song**, **Mixer** and **Perform** as tabs in the middle;
 and along the bottom, the **Pads** panel — the pad grid on the left and,
-on the right, the selected pad's device in tabs: **Sample**, **Env**,
-**Filter**, **Pitch**, **LFO**, **Effects** and **Global** — and at the far right, the selected pad's channel strip (the
-mixer's, without its EQ, inserts and sends: output, pan, fader, meter,
-mute and solo). Drag the divider between the grid and the tabs to give
+on the right, the devices of a track, a tab each — as Ableton's device
+view — and at the far right, that track's channel strip (a pad's is the
+mixer's without its EQ, inserts and sends: output, pan, fader, meter,
+mute and solo). A pad's chain is its **Sampler** (with its own tabs:
+**Sample**, **Env**, **Filter**, **Pitch**, **LFO**, **Global**; an audio
+pad's is **Audio**), its **EQ**, then each insert with an effect, and
+**+** to put an effect in the next empty insert. Click an effect slot
+anywhere (a strip's insert, a bus's slot, a performance effect's Edit) and
+the panel shows that track's chain with that effect in front: a bus shows
+its slots, a performance effect itself. Click a pad to show its chain
+again. Right-click an effect's tab for its commands. Drag the divider between the grid and the tabs to give
 either more room (double-click it to go back to a square grid). Panels
 are tabs that can be dragged elsewhere; **View > Reset Layout** puts
 them back.
@@ -119,8 +126,8 @@ for other toggles.
     Each sends to up to three destinations (volume, pan, pitch, cutoff,
     resonance) with an amount each — routes the engine keeps in a table
     that will grow into a full modulation matrix.
-  - **Effects**: the pad's three-band EQ, then the effect slot being
-    edited.
+  - **EQ** (a device of the chain): the pad's three bands. Each effect
+    is a device after it (its settings, on/off, remove).
   - **Global**: sampler or audio track, name and colour (click it for the
     swatches and picker), choke group (a pad cuts the others in its
     group), volume, pan, transpose, fine tune, how many notes it plays at
@@ -522,6 +529,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, dragging files and search results onto pads |
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
+| `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
 | `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |

@@ -74,6 +74,7 @@ draw_pads :: proc(user: rawptr) {
 		}
 		hit := ui.pad("pad", face, {side, side})
 		if hit.pressed do press(a, index, hit.velocity)
+		if (hit.pressed || hit.selected) && a.play_mode == .Pads do show_pad_chain(a, index)
 		if hit.released do release(a, index)
 		if hit.selected && a.play_mode == .Pads do a.selected = index
 		if hit.menu && a.play_mode == .Pads do im.OpenPopup("##padmenu")

@@ -30,7 +30,7 @@ def test_performance_effects_while_held(app, fixtures):
     app.wait(4)
     app.click("fx 11", window="perform", right=True)  # its menu
     app.click("Edit Effect")
-    assert app.state()["detail_tab"] == "Effects"
+    assert app.state()["detail_tab"] == "Effect" and app.state()["track"] == "perf 11"
 
 
 def test_the_song(app, fixtures):

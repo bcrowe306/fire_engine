@@ -258,10 +258,7 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 		text_in(im.GetWindowDrawList(), lo, hi, "+", t.text_dim)
 		im.PopFont()
 	}
-	if clicked {
-		a.fx = target
-		show_detail(a, .Effects)
-	}
+	if clicked do show_device(a, target)
 	item_menu(a, {kind = .Slot, fx = target}, "##slotmenu")
 	if s.kind != .None && im.IsItemHovered({.DelayShort}) do im.SetTooltip("%s", fmt.ctprintf("%s%s", pm.slot_name(s), "" if s.on else " (off)"))
 }
@@ -606,7 +603,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		eq := pad.eq
 		if eq_thumb(&eq, color) {
 			a.selected = i
-			show_detail(a, .Effects)
+			show_eq(a)
 		}
 		gap()
 		for s, k in pad.inserts {

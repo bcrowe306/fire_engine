@@ -2,6 +2,7 @@ package pads
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:strings"
 
 import app "app:core"
 import "app:ui"
@@ -14,7 +15,8 @@ State :: struct {
 	selected:   int,
 	bank:       int,
 	play_mode:  string,
-	detail_tab: string,
+	detail_tab: string, // the sampler's tab in front, or "EQ", or "Effect"
+	track:      string, // what the bottom panel shows: "pad 1", "bus 1" (5: main), "perf 1"
 	dark:       bool,
 	playing:    bool,
 	beat:       f64,
@@ -122,7 +124,12 @@ state_json :: proc(a: ^App) -> string {
 	s: State
 	s.selected, s.bank = a.selected, a.bank
 	s.play_mode = enum_name(a.play_mode)
-	s.detail_tab = enum_name(a.detail.tab)
+	switch a.detail.device.kind {
+	case .Instrument: s.detail_tab = enum_name(a.detail.tab)
+	case .Eq:         s.detail_tab = "EQ"
+	case .Slot:       s.detail_tab = "Effect"
+	}
+	s.track = fmt.tprintf("%s %d", strings.to_lower(enum_name(a.detail.track.kind), context.temp_allocator), a.detail.track.index + 1)
 	s.dark = a.dark
 	s.beat, s.playing = pm.position(&m.engine)
 	s.slot, s.bpm, s.metronome = p.slot + 1, p.bpm, m.engine.metronome

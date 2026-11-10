@@ -252,8 +252,7 @@ draw_perform :: proc(user: rawptr) {
 			if !a.perf_hold do pm.hold_perf_fx(m, i, false)
 		}
 		if hit.selected && !hit.menu { // Shift- or Cmd-click: edit it
-			a.fx = {.Perf, i, 0}
-			show_detail(a, .Effects)
+			show_device(a, {.Perf, i, 0})
 		}
 		if hit.menu {
 			a.perf.menu_fx = i

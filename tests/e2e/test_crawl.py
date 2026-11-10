@@ -24,7 +24,7 @@ PLACES = [
     ("detail", "Pitch"),
     ("detail", "LFO"),
     ("detail", "Global"),
-    ("detail", "Effects"),
+    ("detail", "EQ"),
     ("perform", "Perform"),
     ("browser", None),
     ("##toolbar", None),
@@ -48,6 +48,8 @@ def test_clicking_everything_does_not_crash(app, fixtures, window, tab):
     if window in ("song", "mixer", "perform"):
         app.panel(tab)
     elif tab:
+        if tab in ("Sample", "Env", "Filter", "Pitch", "LFO", "Global"):
+            app.click("Sampler", window="detail")  # the pad's sampler device, its own tabs inside
         app.click(tab, window="detail")
     labels = []
     for it in app.items(window=window):
@@ -80,6 +82,7 @@ def test_dragging_a_file_anywhere_does_not_crash(app, fixtures, target, window, 
     if tab == "Mixer":
         app.panel("Mixer")
     elif tab:
+        app.click("Sampler", window="detail")
         app.click(tab, window="detail")
     app.drag("Closed Hat.wav", target, from_window="browser", to_window=window)
     app.wait(4)

@@ -519,7 +519,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "perf": a.fx = {.Perf, num(w, 2), 0}
 		case: return false
 		}
-		show_detail(a, .Effects)
+		show_device(a, a.fx)
 		return true
 	case "send":
 		// send PAD BUS DB [pre|post]
@@ -647,7 +647,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "filter":            show_detail(a, .Filter)
 		case "pitch":             show_detail(a, .Pitch)
 		case "lfo":               show_detail(a, .Lfo)
-		case "effect", "effects": show_detail(a, .Effects)
+		case "effect", "effects": show_device(a, a.fx)
+		case "eq":                show_eq(a)
 		case "pads":              ui.panel_focus(&a.ws, "detail")
 		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 		}

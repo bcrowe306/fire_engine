@@ -51,13 +51,12 @@ def test_outputs_and_inserts(app, fixtures):
     app.click("A1 output", window="mixer")
     app.click("Bus C")
     assert app.pad(0)["bus"] == 3
-    app.click("A1 slot 1", window="mixer")
-    assert app.state()["detail_tab"] == "Effects"
-    app.click("##kind", window="detail")
-    app.click("Low-pass")
+    app.click("A1 slot 1", window="mixer")  # empty: the chain's + tab, to fill it
+    app.click("add Low-pass", window="detail")
     assert app.pad(0)["inserts"][0] == "Low-pass"
+    assert app.state()["detail_tab"] == "Effect"  # its device, in front
     app.click("A1 eq", window="mixer")
-    assert app.state()["detail_tab"] == "Effects"  # the EQ is there
+    assert app.state()["detail_tab"] == "EQ"
 
 
 def test_the_peak_readout_resets(app, fixtures):

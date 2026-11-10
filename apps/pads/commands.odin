@@ -203,7 +203,7 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "step.remove", label = "Remove from Song", icon = ui.ICON_X, kinds = {.Song_Step}, group = 2, run = proc(a: ^App, t: Target) { pm.song_remove(&a.m, t.index) }})
 
 	// Effect slots (inserts, bus slots, performance effects).
-	add(c, {id = "slot.edit", label = "Edit Effect", icon = ui.ICON_SLIDERS_HORIZONTAL, kinds = {.Slot}, group = 0, run = proc(a: ^App, t: Target) { a.fx = t.fx; show_detail(a, .Effects) }})
+	add(c, {id = "slot.edit", label = "Edit Effect", icon = ui.ICON_SLIDERS_HORIZONTAL, kinds = {.Slot}, group = 0, run = proc(a: ^App, t: Target) { show_device(a, t.fx) }})
 	add(c, {id = "slot.bypass", label = "On", icon = ui.ICON_POWER, kinds = {.Slot}, group = 0,
 		run = proc(a: ^App, t: Target) { s, _ := pm.target_slot(&a.m, t.fx); s.on = !s.on; pm.set_target_slot(&a.m, t.fx, s, "Effect On" if s.on else "Effect Off") },
 		enabled = slot_full, checked = proc(a: ^App, t: Target) -> bool { s, _ := pm.target_slot(&a.m, t.fx); return s.on }})

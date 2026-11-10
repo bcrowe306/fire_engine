@@ -88,6 +88,6 @@ def test_global_and_an_audio_pads_tabs(app, fixtures):
     app.click("##voices", window="detail")
     app.click("Audio", window="detail")
     app.expect_no_item("Filter", window="detail")  # an audio pad has no voice
-    app.expect_item("Effects", window="detail")
+    app.expect_item("EQ", window="detail")
     app.key("cmd+z")
     app.expect_item("Filter", window="detail")
