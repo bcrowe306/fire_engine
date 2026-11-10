@@ -16,7 +16,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 4 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings
+PROJECT_VERSION :: 5 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -174,6 +174,8 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_f32(w, s.level)
 			fc.write_bool(w, s.pre)
 		}
+		fc.write_i64(w, pad.fade_in)
+		fc.write_i64(w, pad.fade_out)
 	}
 	// Sequences.
 	for s in p.sequences {
@@ -326,6 +328,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		if version >= 2 do for &s in pad.sends {
 			s.level = clamp(fc.read_f32(r), 0, SEND_MAX)
 			s.pre = fc.read_bool(r)
+		}
+		if version >= 5 {
+			pad.fade_in = max(fc.read_i64(r), 0)
+			pad.fade_out = max(fc.read_i64(r), 0)
 		}
 	}
 	for &s in p.sequences {

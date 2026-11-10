@@ -21,6 +21,7 @@ def test_play_modes_repeat_and_arp(app, fixtures):
 def test_performance_effects_while_held(app, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'loop.wav')}")
     app.click("Perform", window="detail")
+    app.reveal("fx 11", "detail", over="Pads")
     app.hover("fx 11", window="detail")  # ring mod
     app.wait(2)
     app.cmd("down")

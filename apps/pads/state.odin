@@ -61,6 +61,9 @@ State_Pad :: struct {
 	inserts: [pm.PAD_INSERTS]string,
 	slices:  int,
 	level:   f32, // the meter's peak now
+	start, end: i64, // its region (end resolved)
+	fade_in, fade_out: i64,
+	playhead: i64, // the frame it plays now (-1: silent)
 }
 
 State_Bus :: struct {
@@ -125,6 +128,10 @@ state_json :: proc(a: ^App) -> string {
 		for x, k in pad.inserts do sp.inserts[k] = pm.slot_name(x)
 		v := a.mixer.pads[i]
 		sp.level = max(v[0].peak, v[1].peak)
+		sp.start, sp.end = pm.pad_region(m, i)
+		sp.fade_in, sp.fade_out = pad.fade_in, pad.fade_out
+		f, ok := pm.pad_playhead(&m.engine, i)
+		sp.playhead = f if ok else -1
 		append(&s.pads, sp)
 	}
 	for b in 0 ..= pm.BUSES {

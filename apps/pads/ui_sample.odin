@@ -55,6 +55,10 @@ draw_sample :: proc(user: rawptr) {
 	markers := make([dynamic]ui.Marker, context.temp_allocator)
 	t := ui.theme()
 	append(&markers, ui.Marker{frame = start, color = t.ok, label = "S", drag = true}, ui.Marker{frame = end, color = t.danger, label = "E", drag = true})
+	// The fades: a handle each, dragged in from the region's ends.
+	fade_c := ui.rgb(0xd0d4dc)
+	append(&markers, ui.Marker{frame = start + pad.fade_in, color = fade_c, drag = true, fade = true, from = start})
+	append(&markers, ui.Marker{frame = end - pad.fade_out, color = fade_c, drag = true, fade = true, from = end})
 	looping := pad.mode == .Loop || pad.mode == .Hold
 	if looping {
 		ls := pad.loop_start if pad.loop_end > 0 else start
@@ -62,17 +66,23 @@ draw_sample :: proc(user: rawptr) {
 		append(&markers, ui.Marker{frame = ls, color = t.warn, label = "L", drag = true}, ui.Marker{frame = le, color = t.warn, label = "L", drag = true})
 	}
 	avail := im.GetContentRegionAvail()
-	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color))
+	head, playing := pm.pad_playhead(&m.engine, i)
+	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head if playing else -1)
 	if e.moved {
 		p := pad
+		field := pm.Pad_Field.Region
+		name := "Move Marker"
 		switch e.marker {
 		case 0: p.start = min(e.marker_to, end - 1)
 		case 1: p.end = max(e.marker_to, start + 1)
-		case 2: p.loop_start, p.loop_end = min(e.marker_to, end - 2), max(pad.loop_end if pad.loop_end > 0 else end, e.marker_to + 2)
-		case 3: p.loop_end, p.loop_start = max(e.marker_to, start + 2), pad.loop_start if pad.loop_end > 0 else start
+		case 2: p.fade_in = clamp(e.marker_to - start, 0, end - start)
+		case 3: p.fade_out = clamp(end - e.marker_to, 0, end - start)
+		case 4: p.loop_start, p.loop_end = min(e.marker_to, end - 2), max(pad.loop_end if pad.loop_end > 0 else end, e.marker_to + 2)
+		case 5: p.loop_end, p.loop_start = max(e.marker_to, start + 2), pad.loop_start if pad.loop_end > 0 else start
 		}
-		field := pm.Pad_Field.Region if e.marker < 2 else .Loop
-		pm.set_pad(m, i, field, "Move Marker" if e.marker < 2 else "Move Loop", p)
+		if e.marker == 2 || e.marker == 3 do field, name = .Fades, "Fade In" if e.marker == 2 else "Fade Out"
+		if e.marker >= 4 do field, name = .Loop, "Move Loop"
+		pm.set_pad(m, i, field, name, p)
 	}
 	if e.released do app.seal(&m.history)
 	if e.clicked do w.selection = {}

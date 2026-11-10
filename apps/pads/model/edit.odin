@@ -48,6 +48,7 @@ Pad_Field :: enum {
 	Send_2,
 	Send_3,
 	Send_Pre,
+	Fades,
 }
 
 // Prepares the model for a project in `dir` on `host`.

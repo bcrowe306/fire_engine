@@ -150,6 +150,8 @@ Sample_Zone :: struct {
 	crossfade: i64,
 	reverse: bool,
 	pan: f64,
+	fade_in: i64,
+	fade_out: i64,
 }
 ```
 
@@ -176,6 +178,8 @@ One sample of an instrument and when it plays.
 | `crossfade` | forward loops: frames before the loop end blended into those before the start (0 = a plain jump) |
 | `reverse` | plays from the end back to the start (loop points mirrored with it) |
 | `pan` | -1 (left) .. 1 (right) |
+| `fade_in` | frames from where it starts playing, faded in from silence (0 = none) |
+| `fade_out` | frames before where it stops (a zone that doesn't loop), faded out to silence (0 = none) |
 
 ### Loop_Mode
 
@@ -306,6 +310,15 @@ sampler_set_map :: proc(s: ^Sampler, m: ^Sample_Map) -> core.Error
 Control thread. Plays `m` from the next block (nil: silence). Notes
 already sounding finish on the old map, which is released once they
 have. The sampler takes its own reference.
+
+### sampler_playhead
+
+```odin
+sampler_playhead :: proc "contextless"(s: ^Sampler) -> (frame: i64, playing: bool)
+```
+
+Any thread. The sample frame the newest voice still sounding is reading
+(for a playhead over its waveform), or false when none sounds.
 
 ### register_types
 

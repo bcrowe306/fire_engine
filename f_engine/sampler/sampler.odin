@@ -55,6 +55,8 @@ Sample_Zone :: struct {
 	crossfade:  i64,  // forward loops: frames before the loop end blended into those before the start (0 = a plain jump)
 	reverse:    bool, // plays from the end back to the start (loop points mirrored with it)
 	pan:        f64,  // -1 (left) .. 1 (right)
+	fade_in:    i64,  // frames from where it starts playing, faded in from silence (0 = none)
+	fade_out:   i64,  // frames before where it stops (a zone that doesn't loop), faded out to silence (0 = none)
 }
 
 // How a zone's loop repeats.
@@ -102,6 +104,8 @@ sample_map_create :: proc(zones: []Sample_Zone, allocator := context.allocator) 
 		if zz.end <= 0 do zz.end = frames
 		if zz.loop_end <= 0 do zz.loop_end = zz.end
 		if zz.key_lo == 0 && zz.key_hi == 0 && !zz.exact_keys do zz.key_hi = 127
+		zz.fade_in = clamp(zz.fade_in, 0, zz.end - zz.start)
+		zz.fade_out = clamp(zz.fade_out, 0, zz.end - zz.start)
 		if zz.vel_lo == 0 && zz.vel_hi == 0 do zz.vel_hi = 1
 		// A crossfade fits in the loop and in what comes before it.
 		zz.crossfade = min(zz.crossfade, zz.loop_end - zz.loop_start, zz.loop_start - zz.start)
@@ -189,6 +193,7 @@ Sampler :: struct {
 	max_block:   int,
 	clock:       u64,
 	allocator:   mem.Allocator,
+	playhead:    i64, // atomic: the sample frame the newest sounding voice reads (-1: none)
 }
 
 @(private)
@@ -234,6 +239,7 @@ sampler_vtable := core.Node_VTable {
 sampler_create :: proc(settings: Sampler_Settings, allocator := context.allocator) -> (node: core.Node, s: ^Sampler) {
 	s = new(Sampler, allocator)
 	s.settings, s.allocator = settings, allocator
+	s.playhead = -1
 	if s.settings.voices <= 0 do s.settings.voices = 32
 	for p in sampler_params do s.params[p.id - 1] = p.default
 	rt.spsc_init(&s.pending, 8, allocator)
@@ -473,6 +479,45 @@ sampler_render :: proc(s: ^Sampler, ctx: ^core.Process_Context, from, to: int) {
 		if v.amp.stage == .Idle || v.tail > 512 do v.on = false
 	}
 	if !has_voices(s) do for _ in 0 ..< n do dsp.smoothed_next(&s.gain)
+	// The playhead: where the newest voice still sounding reads.
+	head: i64 = -1
+	newest: u64 = 0
+	for &v in s.voices do if v.on && v.started >= newest {
+		newest = v.started
+		k := i64(v.phase) if s.settings.quality == .Cubic else v.pos
+		head = playing_frame(v.zone, k)
+	}
+	intrinsics.atomic_store(&s.playhead, head)
+}
+
+// [rt] The sample frame a voice that has played `k` frames reads (its loop
+// and direction mapped), or -1 past the end.
+@(private)
+playing_frame :: proc "contextless" (z: ^Sample_Zone, k: i64) -> i64 {
+	if k < z.start do return z.start
+	ls, le := z.loop_start, z.loop_end
+	if z.reverse do ls, le = z.start + z.end - z.loop_end, z.start + z.end - z.loop_start
+	idx := k
+	if z.loop && k >= le && le - ls > 0 {
+		span := le - ls
+		if z.loop_mode == .Ping_Pong && span >= 2 {
+			turn := span - 1
+			q := (k - le) % (2 * turn)
+			idx = le - 2 - q if q < turn else ls + 1 + (q - turn)
+		} else {
+			idx = ls + (k - ls) % span
+		}
+	} else if k >= z.end {
+		return -1
+	}
+	return z.start + z.end - 1 - idx if z.reverse else idx
+}
+
+// Any thread. The sample frame the newest voice still sounding is reading
+// (for a playhead over its waveform), or false when none sounds.
+sampler_playhead :: proc "contextless" (s: ^Sampler) -> (frame: i64, playing: bool) {
+	f := intrinsics.atomic_load(&s.playhead)
+	return f, f >= 0
 }
 
 @(private)
@@ -530,6 +575,10 @@ frame_at :: #force_inline proc "contextless" (z: ^Sample_Zone, data: []f32, k: i
 		w := f32(idx - (le - z.crossfade) + 1) / f32(z.crossfade + 1)
 		x = (1 - w) * x + w * read_frame(z, data, idx - (le - ls))
 	}
+	// The zone's fades: in from where it starts playing, out before where it
+	// stops (counted in the order it plays, reversed or not).
+	if z.fade_in > 0 && k < z.start + z.fade_in do x *= f32(k - z.start) / f32(z.fade_in)
+	if z.fade_out > 0 && !z.loop && k >= z.end - z.fade_out do x *= f32(max(z.end - k, 0)) / f32(z.fade_out)
 	return x
 }
 

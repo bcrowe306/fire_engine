@@ -35,8 +35,12 @@ peaks_of :: proc(samples: []f32, columns: int, allocator := context.allocator) -
 Marker :: struct {
 	frame: i64,
 	color: Color,
-	label: string, // drawn at the top; "" = none
+	label: string, // drawn at the top (a tag, which drags as the line does); "" = none
 	drag:  bool,   // the user may drag it
+	// A fade's handle: a square at the top at `frame`, with a ramp drawn
+	// from `from` (the region's edge it fades from) to it.
+	fade:  bool,
+	from:  i64,
 }
 
 // The visible part of a waveform, in frames.
@@ -63,7 +67,29 @@ Wave_Edit :: struct {
 // The waveform editor's background: black, whatever the theme.
 WAVE_BG :: Color{0, 0, 0, 1}
 
-waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, markers: []Marker, selection: ^[2]i64, size: im.Vec2, tint: Color = {}) -> (e: Wave_Edit) {
+// How far below the top fade handles sit (under the tags).
+@(private) FADE_ROW :: 24
+
+// Where marker `m` (its line at `x`) shows its grab handle: its tag, or a
+// fade's square (empty: neither).
+@(private)
+marker_handle :: proc(m: Marker, x: f32, pos, size: im.Vec2) -> (lo, hi: im.Vec2) {
+	if m.fade {
+		// On a row below the tags (a fade of 0 sits on its S or E line).
+		hs: f32 = 10
+		y := pos.y + FADE_ROW
+		return {x - hs / 2, y}, {x + hs / 2, y + hs}
+	}
+	if m.label == "" do return
+	lc := strings.clone_to_cstring(m.label, context.temp_allocator)
+	ls := im.CalcTextSize(lc)
+	// The tag hangs right of its line, or left of it at the right edge.
+	tx := x if x + ls.x + 8 <= pos.x + size.x else x - ls.x - 8
+	return {tx, pos.y}, {tx + ls.x + 8, pos.y + ls.y + 4}
+}
+
+// `playhead`: the frame being played (a line across it), or -1.
+waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, markers: []Marker, selection: ^[2]i64, size: im.Vec2, tint: Color = {}, playhead: i64 = -1) -> (e: Wave_Edit) {
 	im.PushID(id)
 	defer im.PopID()
 	e.marker = -1
@@ -90,7 +116,16 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 	// Markers take the mouse first, when it is near one.
 	near := -1
 	if hovered || im.IsItemActive() {
-		for m, i in markers do if m.drag && abs(to_x(f64(m.frame), view^, pos, size) - io.MousePos.x) < 5 {
+		// Its handle (a tag, a fade's square) first, then near its line.
+		mp := io.MousePos
+		for m, i in markers do if m.drag {
+			lo, hi := marker_handle(m, to_x(f64(m.frame), view^, pos, size), pos, size)
+			if hi.x > lo.x && mp.x >= lo.x && mp.x < hi.x && mp.y >= lo.y && mp.y < hi.y {
+				near = i
+				break
+			}
+		}
+		if near < 0 do for m, i in markers do if m.drag && !m.fade && abs(to_x(f64(m.frame), view^, pos, size) - mp.x) < 5 {
 			near = i
 			break
 		}
@@ -169,15 +204,28 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 	for m, i in markers {
 		x := to_x(f64(m.frame), view^, pos, size)
 		c := m.color if m.color != {} else t.text
-		im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(c), 2 if i == near || i == dragging_marker else 1.5)
+		hot := i == near || i == dragging_marker
+		lo, hi := marker_handle(m, x, pos, size)
+		if m.fade {
+			// The ramp: from silence at the region's edge to full at the handle.
+			fx := to_x(f64(m.from), view^, pos, size)
+			bottom, top := pos.y + size.y - 1, pos.y + FADE_ROW + 5
+			im.DrawList_AddTriangleFilled(dl, {fx, top}, {fx, bottom}, {x, top}, col(with_alpha(WAVE_BG, 0.55)))
+			im.DrawList_AddLine(dl, {fx, bottom}, {x, top}, col(c), 2 if hot else 1.5)
+			im.DrawList_AddRectFilled(dl, lo, hi, col(lighten(c, 0.2) if hot else c), 2)
+			continue
+		}
+		im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(c), 2 if hot else 1.5)
 		if m.label != "" {
 			lc := strings.clone_to_cstring(m.label, context.temp_allocator)
-			ls := im.CalcTextSize(lc)
-			// The tag hangs right of its line, or left of it at the right edge.
-			tx := x if x + ls.x + 8 <= pos.x + size.x else x - ls.x - 8
-			im.DrawList_AddRectFilled(dl, {tx, pos.y}, {tx + ls.x + 8, pos.y + ls.y + 4}, col(c), 3)
-			im.DrawList_AddText(dl, {tx + 4, pos.y + 2}, col(t.bg), lc)
+			im.DrawList_AddRectFilled(dl, lo, hi, col(lighten(c, 0.15) if hot else c), 3)
+			im.DrawList_AddText(dl, {lo.x + 4, pos.y + 2}, col(t.bg), lc)
 		}
+	}
+	// The playhead.
+	if playhead >= 0 {
+		x := to_x(f64(playhead), view^, pos, size)
+		if x >= pos.x && x <= pos.x + size.x do im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(rgb(0xffffff)), 1.5)
 	}
 	im.DrawList_PopClipRect(dl)
 	return

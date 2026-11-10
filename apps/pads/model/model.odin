@@ -46,6 +46,8 @@ Pad :: struct {
 	loop_start, loop_end: i64, // 0 and 0 = the region
 	loop_mode:  sampler.Loop_Mode,
 	crossfade:  i64,
+	fade_in:    i64, // frames of the region faded in from its start (0 = none)
+	fade_out:   i64, // frames faded out before its end (0 = none; not while it loops)
 	reverse:    bool,
 	attack:     f32, // seconds
 	release:    f32, // seconds

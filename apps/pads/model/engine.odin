@@ -439,6 +439,14 @@ stop :: proc(e: ^Engine) {
 	e.seq_dirty = true
 }
 
+// The sample frame pad `index` is playing (its newest voice), or false
+// when it is silent: for a playhead over its waveform.
+pad_playhead :: proc(e: ^Engine, index: int) -> (frame: i64, playing: bool) {
+	n := &e.nodes[index]
+	if !n.live || n.handle == nil do return -1, false
+	return sampler.sampler_playhead(n.handle)
+}
+
 // Where the playhead is on the timeline (negative while counting in), and
 // whether it plays.
 timeline_beat :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
@@ -460,7 +468,8 @@ position :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 zone_changed :: proc(a, b: Pad) -> bool {
 	return a.sample != b.sample || a.start != b.start || a.end != b.end || a.mode != b.mode ||
 		a.loop_start != b.loop_start || a.loop_end != b.loop_end || a.loop_mode != b.loop_mode ||
-		a.crossfade != b.crossfade || a.reverse != b.reverse || a.pan != b.pan
+		a.crossfade != b.crossfade || a.reverse != b.reverse || a.pan != b.pan ||
+		a.fade_in != b.fade_in || a.fade_out != b.fade_out
 }
 
 // The sampler zone that plays `pad`.
@@ -474,6 +483,7 @@ zone_of :: proc(pad: Pad, index: int, src: ^stream.Source) -> sampler.Sample_Zon
 		loop_mode = pad.loop_mode, crossfade = pad.crossfade,
 		one_shot = pad.mode == .One_Shot || pad.mode == .Hold,
 		reverse = pad.reverse, pan = f64(pad.pan),
+		fade_in = pad.fade_in, fade_out = pad.fade_out,
 	}
 }
 

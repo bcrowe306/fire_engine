@@ -23,6 +23,7 @@ busy_project :: proc(r: ^Rig) {
 	pad := m.project.pads[1]
 	pad.volume, pad.pan, pad.mode, pad.choke, pad.bus = -6, 0.25, .Gate, 2, 1
 	pad.sends[2] = {level = 0.5, pre = true}
+	pad.fade_in, pad.fade_out = 120, 240 // (project file v5)
 	pm.set_pad(m, 1, .Whole, "Edit", pad)
 	// A pad past the first 64 (banks E–H, project file v3), with its own colour.
 	pm.load_onto_pad(m, 100, tone(r, "high.wav", 1320, 0.08, decay = true))

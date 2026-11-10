@@ -33,8 +33,9 @@ show_detail :: proc(a: ^App, tab: Detail_Tab) {
 }
 
 // The bottom panel, as Ableton's detail view: the pad grid on the left,
-// the selected pad on the right in tabs (its sample, its settings, its
-// effects, how it plays). The divider between them drags.
+// the selected pad in tabs (its sample, its settings, its effects, how it
+// plays), and its channel strip at the far right. The divider between the
+// grid and the tabs drags.
 draw_detail :: proc(user: rawptr) {
 	a := (^App)(user)
 	st := &a.detail
@@ -63,8 +64,10 @@ draw_detail :: proc(user: rawptr) {
 
 	// The selected pad's tabs.
 	im.SameLine(0, 0)
+	// At the far right, the selected pad's channel strip (the mixer's).
+	strip_room: f32 = STRIP_W + 12
 	im.PushStyleVarVec2(.WindowPadding, {im.GetStyle().WindowPadding.x, 0})
-	if im.BeginChild("##detail", {0, avail.y}, {.AlwaysUseWindowPadding}) {
+	if im.BeginChild("##detail", {max(im.GetContentRegionAvail().x - strip_room, 100), avail.y}, {.AlwaysUseWindowPadding}) {
 		if im.BeginTabBar("##detail_tabs") {
 			for tab in Detail_Tab {
 				flags: im.TabItemFlags
@@ -89,5 +92,12 @@ draw_detail :: proc(user: rawptr) {
 	}
 	im.EndChild()
 	im.PopStyleVar()
+	im.SameLine(0, 6)
+	if im.BeginChild("##strip", {STRIP_W + 4, avail.y}, {}, {.NoScrollbar, .NoScrollWithMouse}) {
+		im.PushStyleVarVec2(.ItemSpacing, {STRIP_GAP, 0}) // as the mixer lays strips out
+		pad_strip(a, a.selected, avail.y, compact = true)
+		im.PopStyleVar()
+	}
+	im.EndChild()
 	if st.show > 0 do st.show -= 1
 }

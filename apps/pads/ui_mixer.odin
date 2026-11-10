@@ -566,41 +566,46 @@ name_plate :: proc(name: string, color: ui.Color) -> bool {
 	return clicked
 }
 
-// The height a strip's fader gets: what is left of `h` after the rest.
+// The height a strip's fader gets: what is left of `h` after the rest (a
+// compact strip has no EQ display, inserts or sends).
 @(private)
-fader_h :: proc(h: f32) -> f32 {
-	fixed: f32 = 2 * STRIP_PAD + EQ_H + 4 + SLOT_ROWS * (ROW_H + 2) + 4 + (ROW_H + 2) + 4 + PAN_H + 4 + 21 + 4 + ROW_H + 4 + 21
-	return max(h - fixed, 90)
+fader_h :: proc(h: f32, compact := false) -> f32 {
+	fixed: f32 = 2 * STRIP_PAD + (ROW_H + 2) + 4 + PAN_H + 4 + 21 + 4 + ROW_H + 4 + 21
+	if !compact do fixed += EQ_H + 4 + SLOT_ROWS * (ROW_H + 2) + 4
+	return max(h - fixed, 60)
 }
 
 // --- strips --------------------------------------------------------------------------------
 
-// Pad `i`'s strip, `h` tall.
+// Pad `i`'s strip, `h` tall; `compact` (the bottom panel's): its output,
+// pan, readouts, fader, mute and solo, and name.
 @(private)
-pad_strip :: proc(a: ^App, i: int, h: f32) {
+pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	m := &a.m
 	pad := m.project.pads[i]
 	im.PushIDInt(i32(i))
 	defer im.PopID()
 	strip_name = pm.pad_label(i)
 	top := im.GetCursorScreenPos()
-	strip_begin(h, a.selected == i)
+	strip_begin(h, a.selected == i && !compact)
 	defer strip_end(top, h)
 	t := ui.theme()
 	color := ui.rgb(pad.color)
 
-	eq := pad.eq
-	if eq_thumb(&eq, color) {
-		a.selected = i
-		show_detail(a, .Pad)
+	if !compact {
+		eq := pad.eq
+		if eq_thumb(&eq, color) {
+			a.selected = i
+			show_detail(a, .Pad)
+		}
+		gap()
+		for s, k in pad.inserts {
+			failed := pm.slot_failed(&m.engine, i, -1, k)
+			slot_row(a, {.Pad, i, k}, s, failed)
+		}
+		for b in 1 ..= pm.BUSES do send_row(a, i, b)
+		gap()
 	}
-	gap()
-	for s, k in pad.inserts {
-		failed := pm.slot_failed(&m.engine, i, -1, k)
-		slot_row(a, {.Pad, i, k}, s, failed)
-	}
-	for b in 1 ..= pm.BUSES do send_row(a, i, b)
-	gap()
 	output_row(a, i)
 	gap()
 	pan := pad.pan
@@ -614,7 +619,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32) {
 	gap()
 	vol := pad.volume
 	readouts(a, vol, &a.mixer.pads[i])
-	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h))
+	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h, compact))
 	if fe.changed {
 		p := pad
 		p.volume = vol

@@ -63,6 +63,7 @@ def test_the_pad_tab_edits_and_undoes(app, fixtures):
     assert app.pad(0)["volume"] < -3
     app.key("cmd+z")
     assert abs(app.pad(0)["volume"]) < 0.01  # the whole drag was one step
+    app.reveal("Clear Pad", "detail", over="Volume")
     app.click("Clear Pad", window="detail")
     assert app.state()["pads"] == []
     app.key("cmd+z")

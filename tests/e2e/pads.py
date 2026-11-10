@@ -173,6 +173,18 @@ class Pads:
         self.cmd(f"drag_item {self._target(src, from_window)} to {self._target(dst, to_window)} {steps}")
         self.wait(3)
 
+    def drag_at(self, label, frm, to, window=None, steps=12):
+        """Drags inside item `label` from point `frm` to point `to`, each a
+        fraction (x, y) of its size: a marker on a waveform."""
+        items = [i for i in self.items(label, window) if i["label"] == label]
+        if not items:
+            raise PadsError(f"no item {label!r}")
+        x0, y0, x1, y1 = items[0]["rect"]
+        p = lambda f: (x0 + (x1 - x0) * f[0], y0 + (y1 - y0) * f[1])
+        a, b = p(frm), p(to)
+        self.cmd(f"drag {a[0]} {a[1]} {b[0]} {b[1]} {steps}")
+        self.wait(3)
+
     def drag_by(self, label, dx, dy, window=None, steps=12):
         """Drags from the item's centre by (dx, dy) points: a knob, a fader."""
         self.cmd(f"drag_by {self._target(label, window)} {dx} {dy} {steps}")
@@ -196,6 +208,17 @@ class Pads:
 
     def expect_item(self, label, window=None):
         self.cmd(f"expect_item {self._target(label, window)}")
+
+    def reveal(self, label, window, over, tries=12):
+        """Scrolls the panel under item `over` (with the wheel, as a person
+        would) until item `label` shows."""
+        self.hover(over, window)
+        for _ in range(tries):
+            if any(i["label"] == label for i in self.items(label, window)):
+                return
+            self.cmd("scroll 0 -3")
+            self.wait(3)
+        self.expect_item(label, window)
 
     def expect_no_item(self, label, window=None):
         self.cmd(f"expect_no_item {self._target(label, window)}")

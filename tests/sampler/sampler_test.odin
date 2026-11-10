@@ -325,3 +325,63 @@ choke_cuts_a_one_shot :: proc(t: ^testing.T) {
 	jump, _ := kit.max_step(choked.channels[0][900:1300])
 	testing.expectf(t, jump < 0.1, "with a fade, not a click (step %v)", jump)
 }
+
+// Fades: in from silence where a zone starts playing, out to silence where
+// it stops; the same at any block size.
+@(test)
+zone_fades_in_and_out :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	// The 0.1 s 480 Hz tone, one-shot at its own pitch (48 kHz in and out),
+	// fading in over its first 1200 frames and out over its last 1200.
+	zones := []sampler.Sample_Zone{{source = l.short, root_key = 60, one_shot = true, fade_in = 1200, fade_out = 1200}}
+	out := play(t, zones, 6_000, {on(0, 60)})
+	x := out.channels[0]
+	head := kit.peak(x[0:100])
+	mid := kit.peak(x[2400:2500])
+	tail := kit.peak(x[4700:4800])
+	testing.expectf(t, head < mid * 0.15, "starts from silence (%v against %v)", head, mid)
+	testing.expectf(t, tail < mid * 0.15, "ends at silence (%v against %v)", tail, mid)
+	testing.expectf(t, kit.peak(x[1300:1400]) > mid * 0.9, "full past the fade-in")
+	// Without fades the same tone starts at full level.
+	plain := play(t, {{source = l.short, root_key = 60, one_shot = true}}, 6_000, {on(0, 60)})
+	testing.expect(t, kit.peak(plain.channels[0][0:100]) > mid * 0.8, "no fade: straight in")
+	cfg := kit.default_render_config()
+	cfg.events = {on(0, 60), on(2_000, 60)}
+	args := Factory_Args{l, .Cubic}
+	factory := kit.Node_Factory{create = proc(user: rawptr) -> core.Node {
+		a := (^Factory_Args)(user)
+		node, s := sampler.sampler_create({voices = 4, quality = a.quality})
+		m, _ := sampler.sample_map_create({{source = a.lab.short, root_key = 60, one_shot = true, fade_in = 700, fade_out = 900}})
+		sampler.sampler_set_map(s, m)
+		sampler.sample_map_release(m)
+		return node
+	}, user = &args}
+	patterns := kit.standard_block_patterns(cfg.max_block)
+	kit.expect_block_invariant(t, factory, kit.buffer_length_only(10_000, SR), cfg, patterns[:], 0, "fades")
+}
+
+// The playhead: where the newest voice reads, then none once it ends.
+@(test)
+the_playhead_follows_the_newest_voice :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	node, s := sampler.sampler_create({quality = .Cubic})
+	defer core.node_destroy(&node)
+	m, _ := sampler.sample_map_create({{source = l.short, root_key = 60, one_shot = true, start = 1000}})
+	sampler.sampler_set_map(s, m)
+	sampler.sample_map_release(m)
+	_, playing := sampler.sampler_playhead(s)
+	testing.expect(t, !playing, "nothing yet")
+	cfg := kit.default_render_config()
+	cfg.events = {on(0, 60)}
+	cfg.max_block = 512
+	cfg.blocks = kit.Fixed_Blocks{512}
+	kit.render(&node, kit.buffer_length_only(1_024, SR), cfg, context.temp_allocator)
+	f, ok := sampler.sampler_playhead(s)
+	testing.expectf(t, ok && f >= 1000 + 1000 && f <= 1000 + 1100, "a block in: about frame 2024 (%v)", f)
+	cfg.events = nil
+	kit.render(&node, kit.buffer_length_only(9_600, SR), cfg, context.temp_allocator)
+	_, ok = sampler.sampler_playhead(s)
+	testing.expect(t, !ok, "past the end: none")
+}

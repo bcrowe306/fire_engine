@@ -48,8 +48,12 @@ write_sample_map :: proc(w: ^core.State_Writer, ctx: ^core.Save_Context, m: ^Sam
 			core.write_bool(w, z.reverse)
 			core.write_f64(w, z.pan)
 		}
-		// Version 3: whether each zone's keys are exact.
-		for z in m.zones do core.write_bool(w, z.exact_keys)
+		// Version 3: whether each zone's keys are exact, and its fades.
+		for z in m.zones {
+			core.write_bool(w, z.exact_keys)
+			core.write_i64(w, z.fade_in)
+			core.write_i64(w, z.fade_out)
+		}
 	}
 	core.end_chunk(w)
 }
@@ -96,7 +100,10 @@ read_sample_map :: proc(r: ^core.State_Reader, ctx: ^core.Load_Context, streamer
 		if cr.err != .None do return nil, .Invalid_Data
 	}
 	if ch.version >= 3 {
-		for &z in zones do z.exact_keys = core.read_bool(&cr)
+		for &z in zones {
+			z.exact_keys = core.read_bool(&cr)
+			z.fade_in, z.fade_out = core.read_i64(&cr), core.read_i64(&cr)
+		}
 		if cr.err != .None do return nil, .Invalid_Data
 	}
 	return sample_map_create(zones, allocator)

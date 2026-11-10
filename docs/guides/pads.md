@@ -41,7 +41,9 @@ the layout follows Ableton Live's: the **Browser** down the left; the
 **Sequence**, **Song** and **Mixer** as tabs in the middle; and along the
 bottom, the **Pads** panel — the pad grid on the left and, on the right,
 the selected pad in four tabs: **Sample**, **Pad**, **Effects** and
-**Perform**. Drag the divider between the grid and the tabs to give
+**Perform** — and at the far right, the selected pad's channel strip (the
+mixer's, without its EQ, inserts and sends: output, pan, fader, meter,
+mute and solo). Drag the divider between the grid and the tabs to give
 either more room (double-click it to go back to a square grid). Panels
 are tabs that can be dragged elsewhere; **View > Reset Layout** puts
 them back.
@@ -100,8 +102,12 @@ for other toggles.
   while held, **Hold** loops until hit again); reverse; loop direction and
   crossfade; choke group (a pad cuts the others in its group); volume,
   pan, pitch, attack and release; a three-band EQ.
-- **Sample** (bottom tab): the waveform. Drag **S** and **E** to set the region
-  the pad plays, **L** for the loop; drag across the wave to select. The
+- **Sample** (bottom tab): the waveform, on black. Drag **S** and **E** (by
+  their tags or their lines) to set the region the pad plays, **L** for the
+  loop; drag the squares under the tags in from the region's ends to fade
+  it in and out (a ramp shows each fade; the fades are the pad's, so the
+  file is left alone); drag across the wave to select. While the pad
+  plays, a white playhead runs through the wave. The
   toolbar (it wraps when narrow):
   - edits — crop, delete, silence, fade in and out, normalize, reverse,
     trim silence, and put the selection on the next empty pad. Edits write
@@ -397,6 +403,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 |---|---|
 | `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, dragging files and search results onto pads |
 | `test_pads.py` | pads by mouse and keys, banks, the Pad tab (modes, Reverse, knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
+| `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
 | `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song chain and its switches |
