@@ -21,7 +21,7 @@ preview stop
 wait 4
 expect previewing 0
 # By input events: click a file (it plays), then the arrow keys walk the list.
-click 115 248             # Kick 808.wav
+click_item "Kick 808.wav" in browser
 wait 2
 expect selected_file Kick 808.wav
 key down

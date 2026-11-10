@@ -23,4 +23,8 @@ foreign imguilib {
 	DockBuilderFinish :: proc(node_id: ID) ---
 	@(link_name = "ImGui_DockBuilderGetNode")
 	DockBuilderGetNode :: proc(node_id: ID) -> rawptr ---
+	// A bar along one side of `viewport` (the menu bar is one): the space
+	// docked windows get shrinks by it. End it with End().
+	@(link_name = "ImGui_BeginViewportSideBar")
+	BeginViewportSideBar :: proc(name: cstring, viewport: ^Viewport, dir: Dir, size: f32, window_flags: WindowFlags) -> bool ---
 }

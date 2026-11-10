@@ -27,9 +27,9 @@ def test_the_command_palette_switches_the_theme(app):
 
 def test_panels_close_and_reset(app):
     app.panel("Song")
-    app.expect_item("Loop the song", window="song")
+    app.expect_item("Pattern", window="song")
     app.panel("Sequence")
-    app.expect_item("Play (Space)", window="sequence")
+    app.expect_item("Quantize", window="sequence")
     app.click("View")
     app.click("Reset Layout")
     app.expect_item("pad A1", window="detail")

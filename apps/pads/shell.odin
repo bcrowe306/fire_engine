@@ -155,6 +155,7 @@ setup_workspace :: proc(a: ^App) {
 	ui.workspace_init(w)
 	w.sizes[.Left] = 0.18
 		w.sizes[.Bottom] = 0.44
+	w.toolbar, w.toolbar_user, w.toolbar_h = draw_toolbar, a, TOOLBAR_H
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Center)
 	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Center)
@@ -599,10 +600,10 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "mode":
 			a.m.project.song_mode = len(w) < 3 || w[2] != "off"
 			a.m.engine.seq_dirty = true
-		case "loop":
-			s := a.m.project.song
-			s.loop = len(w) < 3 || w[2] != "off"
-			pm.set_song(&a.m, "Loop Song", s)
+		case "loop": // the transport's loop (the song's, a sequence's)
+			tr := a.m.project.transport
+			tr.loop = len(w) < 3 || w[2] != "off"
+			pm.set_transport(&a.m, .Loop, "Loop", tr)
 		case "clear":
 			pm.set_song(&a.m, "Clear Song", {})
 		case: return false

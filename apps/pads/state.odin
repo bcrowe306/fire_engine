@@ -21,6 +21,14 @@ State :: struct {
 	slot:       int,
 	bpm:        f64,
 	metronome:  bool,
+	loop:       bool,
+	count_in:   int,
+	time_sig:   string, // "3/4"
+	metro_db:   f32,
+	metro_rec_only: bool,
+	quantize:   struct { on: bool, grid: string, strength, swing: f32 },
+	timeline:   f64, // the playhead on the timeline (negative counting in)
+	position:   string, // as the toolbar shows it: bar.beat.sixteenth
 	recording:  bool,
 	song_mode:  bool,
 	song_steps: int,
@@ -93,6 +101,14 @@ state_json :: proc(a: ^App) -> string {
 	s.beat, s.playing = pm.position(&m.engine)
 	s.slot, s.bpm, s.metronome = p.slot + 1, p.bpm, m.engine.metronome
 	s.recording = a.capture.armed
+	tr := p.transport
+	s.loop, s.count_in, s.metro_db, s.metro_rec_only = tr.loop, tr.count_in, tr.metro_db, tr.metro_rec_only
+	s.time_sig = fmt.tprintf("%d/%d", tr.time_sig.num, tr.time_sig.den)
+	s.quantize = {tr.quantize.on, string(pm.GRID_NAMES[tr.quantize.grid]), tr.quantize.strength, tr.quantize.swing}
+	tl, _ := pm.timeline_beat(&m.engine)
+	s.timeline = tl
+	bar, bt, six := pm.position_of(p, tl if tl < 0 else s.beat)
+	s.position = fmt.tprintf("%d.%d.%d", bar, bt, six)
 	s.song_mode, s.song_steps = p.song_mode, p.song.count
 	seq := pm.current_sequence(m)
 	s.notes, s.points, s.bars = len(seq.notes), len(seq.points), seq.bars

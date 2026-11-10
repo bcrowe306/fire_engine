@@ -325,6 +325,11 @@ Workspace :: struct {
 	// the user's layout and the default one is not built.
 	has_saved_layout: bool,
 	titles:  map[cstring]cstring, // "Title###id"
+	// A bar under the menus, above the panels, the whole window wide (a
+	// transport): drawn by `toolbar(toolbar_user)`, `toolbar_h` tall.
+	toolbar:      proc(user: rawptr),
+	toolbar_user: rawptr,
+	toolbar_h:    f32,
 }
 
 // Prepares a workspace.
@@ -373,6 +378,11 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 	if menu != nil && im.BeginMainMenuBar() {
 		menu(menu_user)
 		im.EndMainMenuBar()
+	}
+	if w.toolbar != nil {
+		flags := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking}
+		if im.BeginViewportSideBar("##toolbar", im.GetMainViewport(), .Up, w.toolbar_h, flags) do w.toolbar(w.toolbar_user)
+		im.End()
 	}
 	w.dock_id = im.DockSpaceOverViewport(0, im.GetMainViewport(), {.PassthruCentralNode})
 	if !w.built {

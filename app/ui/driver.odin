@@ -24,6 +24,7 @@ import sdl "deps:sdl3"
 //	scroll DX DY          turn the wheel (positive DY scrolls up)
 //	key CHORD             press and release a key: a, enter, space, ctrl+z, cmd+shift+s...
 //	text STRING           type text into the focused field
+//	hold MOD / let MOD    press / release a modifier and keep it (shift, ctrl, alt, cmd): a Shift-drag
 //	drop X Y PATH         drop a file on the window at X, Y (as from the desktop)
 //	screenshot NAME       save this frame as NAME.png in the output directory
 //	quit                  stop the app
@@ -280,6 +281,27 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 		up := down
 		up.key.type, up.key.down, up.key.mod = .KEY_UP, false, {}
 		append(&d.pending, up)
+		return true
+	case "hold", "let":
+		if len(w) < 2 do return fail(d, line)
+		key: sdl.Keycode
+		mod: sdl.Keymod
+		switch w[1] {
+		case "shift": key, mod = sdl.K_LSHIFT, {.LSHIFT}
+		case "ctrl":  key, mod = sdl.K_LCTRL, {.LCTRL}
+		case "alt":   key, mod = sdl.K_LALT, {.LALT}
+		case "cmd":
+			when ODIN_OS == .Darwin {
+				key, mod = sdl.K_LGUI, {.LGUI}
+			} else {
+				key, mod = sdl.K_LCTRL, {.LCTRL}
+			}
+		case: return fail(d, line)
+		}
+		down := w[0] == "hold"
+		e: sdl.Event
+		e.key = {type = .KEY_DOWN if down else .KEY_UP, windowID = window, scancode = sdl.GetScancodeFromKey(key, nil), key = key, mod = mod if down else {}, down = down}
+		_ = sdl.PushEvent(&e)
 		return true
 	case "text":
 		s := strings.trim_space(line[len("text"):])

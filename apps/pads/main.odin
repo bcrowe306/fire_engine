@@ -69,6 +69,7 @@ App :: struct {
 	plugin_choice: Plugin_Choice,
 	proj:     Project_State,
 	detail:   Detail_State,
+	transport: Transport_State, // the toolbar's
 	perf_hold: bool, // performance effects latch
 	perf_held, perf_latched: [pm.PERF_FX]bool,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
@@ -143,7 +144,7 @@ main :: proc() {
 	a.proj.last_save = time.tick_now()
 	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
 	defer plugin_choice_clear(&a.plugin_choice)
-	a.seq.selected, a.seq.grid, a.capture.grid = -1, .Sixteenth, .Sixteenth
+	a.seq.selected, a.seq.grid = -1, .Sixteenth
 	app.subscribe(&a.bus, app.Host_Engine_Changed, proc(user: rawptr, e: ^app.Host_Engine_Changed) {
 		pm.engine_rebuild(&(^App)(user).m.engine)
 	}, a)

@@ -35,7 +35,9 @@ port.
 
 ## The window
 
-The layout follows Ableton Live's: the **Browser** down the left; the
+The **transport toolbar** runs across the top, under the menus, whatever
+panel or tab is in front (see [The transport](#the-transport)). Below it
+the layout follows Ableton Live's: the **Browser** down the left; the
 **Sequence**, **Song** and **Mixer** as tabs in the middle; and along the
 bottom, the **Pads** panel — the pad grid on the left and, on the right,
 the selected pad in four tabs: **Sample**, **Pad**, **Effects** and
@@ -75,7 +77,7 @@ for other toggles.
     the output, past the mixer and main's effects, and never into an
     export.
 - **Pads** (bottom left): 128 pads in 8 banks (A–H) of 16, numbered from
-  the bottom left (pad 1) up, as on an MPC, and the tempo. Click a pad, or
+  the bottom left (pad 1) up, as on an MPC. Click a pad, or
   press its key, to play it and select it. The keys sit as the pads do:
   `Z X C V` is the bottom row (pads 1–4), then `A S D F`, `Q W E R`, and
   `1 2 3 4` the top (pads 13–16). Each pad shows:
@@ -110,11 +112,10 @@ for other toggles.
     project tempo, pitch unchanged;
   - record (the circle) — record the audio input onto the pad.
 
-- **Sequence** (middle tab): the sequencer. Play/stop (Space),
-  record (Cmd+R) and the metronome; the slot (32 of them, those with notes
-  marked); length (1–64 bars, ×2 doubles with the notes); the grid (1/4
-  to 1/64, triplets), Quantize (Cmd+U) and Live (quantize while
-  recording); swing (on 1/8 or 1/16). Below, the current bank's pads (pad
+- **Sequence** (middle tab): the sequencer, editing the sequence the
+  toolbar picks. Its length (1–64 bars, ×2 doubles with the notes); the
+  grid (1/4 to 1/64, triplets) and Quantize (Cmd+U, the notes there);
+  swing (on 1/8 or 1/16). Below, the current bank's pads (pad
   1 at the bottom, as on the grid) as
   rows: click to add a note, drag to move, drag its end to resize,
   right-click to delete; the wheel scrolls the rows when they don't all
@@ -173,13 +174,42 @@ Delete clears the pad; View > Light Theme switches theme.
 
 - **Song** (middle tab): **Pattern** plays the current sequence; **Song**
   plays the chain of steps below, each a sequence played 1–16 times
-  (drag a step onto another to move it; **Loop the song** goes round,
-  otherwise it stops at the end). **Add sequence N** puts the current
+  (drag a step onto another to move it; with the toolbar's **Loop** on it
+  goes round, otherwise it stops at the end). **Add sequence N** puts the current
   one at the end; **Merge into this…** lays another sequence's notes and
   automation over the current one. In pattern mode, a sequence picked
   while playing takes over **at the end of the playing sequence**, **at
   the next bar**, **at the next beat** or **at once** — exactly there; the
   Sequence panel shows what comes next and when.
+
+## The transport
+
+The toolbar under the menus, centred, always showing. Its buttons are
+icons whose colour shows their state.
+
+- **Play** (green while playing) and **Stop**, or Space for both.
+  **Record** (red; Cmd+R) arms recording: from a stop it plays, after the
+  count-in.
+- **Loop**: on, a sequence (or the song) goes round; off, it plays once
+  and stops. **Count-in** (the timer; click for off, 1 bar, 2 bars):
+  bars of click before recording starts, with nothing played or recorded
+  until the top (the position shows them as bar 0, in yellow).
+- The **position**: bar . beat . sixteenth of the sequence playing.
+- The **sequence**: pick one of the 32 (those with notes are marked), or
+  step with the arrows.
+- **Tempo**: drag it (right or up) to change it by 1 BPM, with **Shift**
+  by 0.1; scroll it; double-click to type it. **Tap** in time to set it (a
+  pause of 2 s starts again). The **time signature** (4/4, 3/4, 6/8... or
+  any beats and unit) sets a bar's length: sequences' bars, the grid's
+  bars, the metronome's accent, exports.
+- The **metronome**: on/off, and (the arrow) its level, **Only while
+  recording** (and counting in), and the count-in.
+- **Input quantize** (the magnet): on, recorded notes move toward the
+  grid shown beside it; the arrow sets the grid (1/4–1/64, triplets), the
+  **strength** (100%: onto the grid; 50%: half way) and **swing** (the
+  grid's off-beats pushed later).
+
+These settings are saved with the project.
 
 ## Projects
 
@@ -291,7 +321,7 @@ theme light|dark     action ID (an action from the palette: undo, bank_b...)
 expect pad N FIELD VALUE   sample, name, volume, pan, pitch, mode, start, end, choke
 expect samples K / expect undo NAME / expect selected N / expect bank N / expect dark 0|1
 panel ID             bring a panel (browser, sequence, song, mixer, pads) or a pad tab (sample, pad, effects, perform) to the front
-play / stop / rec on|off / metronome on|off
+play / stop / rec on|off / metronome on|off   (rec only arms; the toolbar's Record also plays, counting in)
 slot N / bars N / tempo BPM / swing AMOUNT   (slot 1..32; swing 0..1 on 1/16)
 note PAD BEAT LENGTH [VELOCITY]              a note in the current sequence
 point PAD volume|pitch|low|mid|high BEAT VALUE   an automation point

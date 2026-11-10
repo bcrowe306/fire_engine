@@ -29,6 +29,9 @@ a_song_plays_its_steps_then_stops :: proc(t: ^testing.T) {
 	testing.expect_value(t, m.project.song.count, 2)
 	testing.expect_value(t, pm.song_beats(&m.project), 12)
 	m.project.song_mode = true
+	tr := m.project.transport
+	tr.loop = false // it plays once and stops
+	pm.set_transport(m, .Loop, "Loop", tr)
 	pm.play(&m.engine)
 	out := render(r, 48_000 * 8) // 16 beats: the song is 12
 	got := onsets(out[0][:])
@@ -43,9 +46,8 @@ a_song_plays_its_steps_then_stops :: proc(t: ^testing.T) {
 	_, playing := pm.position(&m.engine)
 	testing.expect(t, !playing, "stopped at the end")
 	// Looping, it goes round.
-	s := m.project.song
-	s.loop = true
-	pm.set_song(m, "Loop", s)
+	tr.loop = true
+	pm.set_transport(m, .Loop, "Loop", tr)
 	pm.play(&m.engine)
 	out = render(r, 48_000 * 8)
 	testing.expectf(t, len(onsets(out[0][:])) == 4, "round again (%v)", onsets(out[0][:]))

@@ -16,7 +16,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 3 // 2: pads' sends; 3: 128 pads (the count is written)
+PROJECT_VERSION :: 4 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -212,12 +212,23 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	for b in p.buses do write_bus(w, b)
 	write_bus(w, p.main)
 	for s in p.perf_fx do write_slot(w, s)
-	fc.write_bool(w, p.song.loop)
+	fc.write_bool(w, p.transport.loop) // (before v4: the song's own loop)
 	fc.write_int(w, p.song.count)
 	for st in p.song.steps[:p.song.count] {
 		fc.write_u8(w, st.slot)
 		fc.write_u8(w, st.repeats)
 	}
+	// The transport (v4).
+	tr := p.transport
+	fc.write_int(w, tr.count_in)
+	fc.write_f32(w, tr.metro_db)
+	fc.write_bool(w, tr.metro_rec_only)
+	fc.write_int(w, tr.time_sig.num)
+	fc.write_int(w, tr.time_sig.den)
+	fc.write_bool(w, tr.quantize.on)
+	fc.write_u8(w, u8(tr.quantize.grid))
+	fc.write_f32(w, tr.quantize.strength)
+	fc.write_f32(w, tr.quantize.swing)
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -356,11 +367,25 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		s = read_slot(r, p)
 		s.on = false // held, not saved on
 	}
-	p.song.loop = fc.read_bool(r)
+	loop := fc.read_bool(r) // the song's before v4 (patterns always looped)
+	p.transport.loop = loop if version >= 4 || p.song_mode else true
 	p.song.count = clamp(fc.read_int(r), 0, SONG_STEPS)
 	for &st in p.song.steps[:p.song.count] {
 		st.slot = min(fc.read_u8(r), SLOTS - 1)
 		st.repeats = clamp(fc.read_u8(r), 1, 16)
+	}
+	if version >= 4 {
+		tr := &p.transport
+		tr.count_in = clamp(fc.read_int(r), 0, 2)
+		tr.metro_db = clamp(fc.read_f32(r), -60, 6)
+		tr.metro_rec_only = fc.read_bool(r)
+		tr.time_sig.num = clamp(fc.read_int(r), 1, 16)
+		tr.time_sig.den = fc.read_int(r)
+		if tr.time_sig.den != 2 && tr.time_sig.den != 4 && tr.time_sig.den != 8 && tr.time_sig.den != 16 do tr.time_sig.den = 4
+		tr.quantize.on = fc.read_bool(r)
+		tr.quantize.grid = Grid(min(fc.read_u8(r), u8(max(Grid))))
+		tr.quantize.strength = clamp(fc.read_f32(r), 0, 1)
+		tr.quantize.swing = clamp(fc.read_f32(r), 0, 1)
 	}
 }
 

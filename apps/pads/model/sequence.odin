@@ -161,9 +161,18 @@ default_sequence :: proc() -> Sequence {
 	return {bars = 1, swing_grid = .Sixteenth}
 }
 
-// The sequence's length in beats.
-seq_beats :: proc "contextless" (s: Sequence) -> f64 {
-	return f64(s.bars * BEATS_PER_BAR)
+// The sequence's length in beats (its bars at the project's time
+// signature).
+seq_beats :: proc "contextless" (p: ^Project, s: Sequence) -> f64 {
+	return f64(s.bars) * bar_beats(p)
+}
+
+// A bar's length in beats (quarter notes) at the project's time signature:
+// 4 in 4/4, 3 in 3/4, 3 in 6/8.
+bar_beats :: proc "contextless" (p: ^Project) -> f64 {
+	ts := p.transport.time_sig
+	if ts.num <= 0 || ts.den <= 0 do return BEATS_PER_BAR
+	return f64(ts.num) * 4 / f64(ts.den)
 }
 
 // A copy of `s` with its own notes.
@@ -326,7 +335,7 @@ set_bars :: proc(m: ^Model, slot, bars: int) {
 double_sequence :: proc(m: ^Model, slot: int) {
 	s := m.project.sequences[slot]
 	if s.bars * 2 > MAX_BARS do return
-	length := seq_beats(s)
+	length := seq_beats(&m.project, s)
 	notes := make([dynamic]Seq_Note, 0, len(s.notes) * 2, context.temp_allocator)
 	for n in s.notes do if n.start < length do append(&notes, n)
 	count := len(notes)
@@ -362,7 +371,7 @@ quantize_sequence :: proc(m: ^Model, slot: int, grid: Grid, strength: f64 = 1) {
 	s := m.project.sequences[slot]
 	notes := slice.clone(s.notes, context.temp_allocator)
 	g := grid_beats(grid)
-	length := seq_beats(s)
+	length := seq_beats(&m.project, s)
 	for &n in notes {
 		q := quantize_beat(n.start, g)
 		if q >= length do q -= g
@@ -438,7 +447,7 @@ import_midi :: proc(m: ^Model, path: string, slot: int, how := Midi_Import.Drums
 		}
 	}
 	s := m.project.sequences[slot]
-	s.bars = clamp(int(math.ceil(length / BEATS_PER_BAR - 1e-9)), 1, MAX_BARS)
+	s.bars = clamp(int(math.ceil(length / bar_beats(&m.project) - 1e-9)), 1, MAX_BARS)
 	s.notes = notes[:]
 	set_sequence(m, slot, .Notes, "Import MIDI", s)
 	return len(notes)

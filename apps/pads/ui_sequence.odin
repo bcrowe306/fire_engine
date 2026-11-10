@@ -58,7 +58,7 @@ draw_sequence :: proc(user: rawptr) {
 			color = ui.rgb(m.project.pads[n.pad].color)})
 		append(&which, i)
 	}
-	length := pm.seq_beats(s)
+	length := pm.seq_beats(&m.project, s)
 	beat, playing := pm.position(&m.engine)
 	avail := im.GetContentRegionAvail()
 	lane_h: f32 = 56
@@ -162,25 +162,11 @@ draw_transport :: proc(a: ^App) {
 	st := &a.seq
 	slot := m.project.slot
 	s := pm.current_sequence(m)
-	_, playing := pm.position(&m.engine)
 	t := ui.theme()
-
-	if ui.icon_button(ui.ICON_SQUARE if playing else ui.ICON_PLAY, "Stop (Space)" if playing else "Play (Space)", on = playing, color = ui.theme().ok) do toggle_play(a)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record into the sequence (Cmd+R)", on = a.capture.armed, color = ui.rgb(0xf0555a)) do toggle_record(a)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_METRONOME, "Metronome", on = m.engine.metronome) do m.engine.metronome = !m.engine.metronome
-
-	// The slot, with the slots that hold notes marked.
-	ui.flow(120, 20)
-	im.SetNextItemWidth(120)
-	if ui.combo("##slot", fmt.ctprintf("Sequence %d", slot + 1)) {
-		for k in 0 ..< pm.SLOTS {
-			label := fmt.ctprintf("%s Sequence %d", ui.ICON_CIRCLE_DOT if pm.slot_used(m, k) else "   ", k + 1)
-			if im.Selectable(label, k == slot) do pm.select_slot(m, k)
-		}
-		im.EndCombo()
-	}
+	// (Play, record, the metronome and the sequence picked are on the
+	// transport toolbar.)
+	im.AlignTextToFramePadding()
+	im.Text("%s", fmt.ctprintf("Sequence %d", slot + 1))
 	if next, in_beats, ok := pm.pending_switch(&m.engine); ok {
 		ui.flow(150)
 		im.AlignTextToFramePadding()
@@ -206,7 +192,6 @@ draw_transport :: proc(a: ^App) {
 	if ui.combo("##grid", pm.GRID_NAMES[st.grid]) {
 		for g in pm.Grid do if im.Selectable(pm.GRID_NAMES[g], g == st.grid) {
 			st.grid = g
-			a.capture.grid = g
 		}
 		im.EndCombo()
 	}
@@ -214,10 +199,6 @@ draw_transport :: proc(a: ^App) {
 	q :: ui.ICON_MAGNET + "  Quantize"
 	ui.flow(ui.button_width(q))
 	if im.Button(q) do pm.quantize_sequence(m, slot, st.grid)
-	ui.flow(ui.button_width("Live"))
-	lq := a.capture.live_quantize
-	if ui.toggle("Live", &lq) do a.capture.live_quantize = lq
-	if im.IsItemHovered() do im.SetTooltip("Quantize while recording")
 	ui.flow(120, 20)
 	im.SetNextItemWidth(120)
 	sw := s.swing * 100
@@ -256,11 +237,13 @@ toggle_play :: proc(a: ^App) {
 	}
 }
 
-// Arms or disarms recording; arming while stopped starts playing.
+// Arms or disarms recording; arming while stopped starts playing (after
+// the count-in).
 toggle_record :: proc(a: ^App) {
 	on := !a.capture.armed
 	pm.capture_arm(&a.m, &a.capture, on)
-	if _, playing := pm.position(&a.m.engine); on && !playing do pm.play(&a.m.engine)
+	// From a stop: the count-in first (if the transport has one).
+	if _, playing := pm.position(&a.m.engine); on && !playing do pm.play(&a.m.engine, count_in = true)
 }
 
 _ :: slice.contains

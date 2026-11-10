@@ -82,7 +82,7 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 	e := &m.engine
 	x^ = {settings = settings, to_pad = -1}
 	if x.settings.rate <= 0 do x.settings.rate = e.host.graph.settings.sample_rate
-	beats := song_beats(p) if settings.source == .Song else seq_beats(p.sequences[p.slot])
+	beats := song_beats(p) if settings.source == .Song else seq_beats(p, p.sequences[p.slot])
 	if beats <= 0 do return false
 	rate := e.host.graph.settings.sample_rate
 	x.frames = int(math.ceil((beats * 60 / p.bpm + max(settings.tail, 0)) * rate))

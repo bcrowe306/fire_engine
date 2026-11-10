@@ -119,7 +119,7 @@ recording_puts_hits_where_they_were_played :: proc(t: ^testing.T) {
 	m := &r.m
 	c: pm.Capture
 	defer pm.capture_destroy(&c)
-	c.live_quantize, c.grid = true, .Sixteenth
+	m.project.transport.quantize = {on = true, grid = .Sixteenth, strength = 1}
 	pm.capture_arm(m, &c, true)
 	pm.play(&m.engine)
 	render(r, 24_000 + 1200) // about beat 1.05

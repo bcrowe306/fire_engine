@@ -21,13 +21,6 @@ draw_song :: proc(user: rawptr) {
 		m.engine.seq_dirty = true
 	}
 	im.SameLine(0, 16)
-	loop := p.song.loop
-	if ui.toggle("Loop the song", &loop) {
-		s := p.song
-		s.loop = loop
-		pm.set_song(m, "Loop Song", s)
-	}
-	im.SameLine(0, 16)
 	im.SetNextItemWidth(170)
 	if ui.combo("##switch", pm.SWITCH_NAMES[p.switch_at]) {
 		for sw in pm.Switch_At do if im.Selectable(pm.SWITCH_NAMES[sw], sw == p.switch_at) do p.switch_at = sw

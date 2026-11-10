@@ -265,6 +265,7 @@ four platforms), verify, profile, document, commit.
       - loop off: the plan runs once
       - time signature: the meter on the clock; bars and grid lengths from
         it
+    *Done:* see docs/guides/pads.md (The transport).
 13. **Pads: tracks, and audio recorded into slots.**
     - *Tracks:* each of the 128 pads is a track with a kind, a device and
       a mixer channel (its strip).

@@ -13,7 +13,7 @@ CHORD_SUFFIX := [pm.Chord]string{.Off = "", .Triad = "chord", .Seventh = "7th", 
 // Key shown on each pad of a bank, for the keyboard.
 PAD_KEY_LABELS := [16]string{"Z", "X", "C", "V", "A", "S", "D", "F", "Q", "W", "E", "R", "1", "2", "3", "4"}
 
-// The pad grid: bank tabs and tempo above, the bank's 16 pads in a 4×4
+// The pad grid: bank tabs above, the bank's 16 pads in a 4×4
 // grid that fills the panel.
 draw_pads :: proc(user: rawptr) {
 	a := (^App)(user)
@@ -22,13 +22,6 @@ draw_pads :: proc(user: rawptr) {
 
 	bank := a.bank
 	if ui.segmented("banks", {"A", "B", "C", "D", "E", "F", "G", "H"}, &bank) do a.bank = bank
-	right: f32 = 110
-	im.SameLine()
-	im.SetCursorPosX(max(im.GetCursorPosX(), im.GetWindowWidth() - right))
-	im.SetNextItemWidth(right)
-	bpm := f32(p.bpm)
-	if im.DragFloat("##bpm", &bpm, 0.1, 40, 300, "%.1f BPM") do pm.set_bpm(&a.m, f64(bpm))
-	if im.IsItemDeactivatedAfterEdit() do app.seal(&a.m.history)
 	im.Spacing()
 
 	avail := im.GetContentRegionAvail()

@@ -21,7 +21,7 @@ Song_Step :: struct {
 Song :: struct {
 	steps: [SONG_STEPS]Song_Step,
 	count: int,
-	loop:  bool, // back to the first step after the last (otherwise it stops)
+	// (Whether it goes round is the transport's loop.)
 }
 
 // When a sequence picked while playing takes over.
@@ -107,7 +107,7 @@ merge_sequences :: proc(m: ^Model, from, to: int) {
 // The song's length in beats.
 song_beats :: proc(p: ^Project) -> f64 {
 	total := 0.0
-	for st in p.song.steps[:p.song.count] do total += seq_beats(p.sequences[st.slot]) * f64(max(st.repeats, 1))
+	for st in p.song.steps[:p.song.count] do total += seq_beats(p, p.sequences[st.slot]) * f64(max(st.repeats, 1))
 	return total
 }
 
@@ -135,7 +135,7 @@ Plan :: struct {
 
 // Sequence `slot` looping from timeline beat `at`.
 plan_pattern :: proc(p: ^Project, slot: int, at: f64) -> (pl: Plan) {
-	l := seq_beats(p.sequences[slot])
+	l := seq_beats(p, p.sequences[slot])
 	pl.segs[0] = {slot, 0, l, l, -1}
 	pl.count, pl.loop_start, pl.loop_end, pl.at = 1, 0, l, at
 	return
@@ -146,7 +146,7 @@ plan_pattern :: proc(p: ^Project, slot: int, at: f64) -> (pl: Plan) {
 plan_switch :: proc(p: ^Project, cur: Plan, slot: int, b: f64) -> (pl: Plan) {
 	first := cur.segs[0]
 	span := max(b - cur.at, 0)
-	l := seq_beats(p.sequences[slot])
+	l := seq_beats(p, p.sequences[slot])
 	pl.segs[0] = {first.slot, 0, span, first.period, -1}
 	pl.segs[1] = {slot, span, l, l, -1}
 	pl.count, pl.loop_start, pl.loop_end, pl.at = 2, span, span + l, cur.at
@@ -157,13 +157,13 @@ plan_switch :: proc(p: ^Project, cur: Plan, slot: int, b: f64) -> (pl: Plan) {
 plan_song :: proc(p: ^Project, at: f64) -> (pl: Plan) {
 	start := 0.0
 	for st, i in p.song.steps[:p.song.count] {
-		l := seq_beats(p.sequences[st.slot])
+		l := seq_beats(p, p.sequences[st.slot])
 		span := l * f64(max(st.repeats, 1))
 		pl.segs[i] = {int(st.slot), start, span, l, i}
 		start += span
 	}
 	pl.count, pl.at = p.song.count, at
-	if p.song.loop do pl.loop_start, pl.loop_end = 0, start
+	if p.transport.loop do pl.loop_start, pl.loop_end = 0, start
 	return
 }
 
@@ -209,7 +209,7 @@ plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 	else do clip.set_loop(&b, 0, tb.Beats(length))
 	for sg in pl.segs[:pl.count] {
 		s := p.sequences[sg.slot]
-		l := seq_beats(s)
+		l := seq_beats(p, s)
 		g := tb.Beats(grid_beats(s.swing_grid))
 		for off := 0.0; off < sg.span - 1e-9; off += sg.period {
 			for n in s.notes {
@@ -243,7 +243,7 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 	any_voice, any_eq, any_fader := false, false, false
 	for sg in pl.segs[:pl.count] {
 		s := p.sequences[sg.slot]
-		l := seq_beats(s)
+		l := seq_beats(p, s)
 		for off := 0.0; off < sg.span - 1e-9; off += sg.period {
 			for pt in s.points {
 				if int(pt.pad) != pad || pt.beat > l || off + pt.beat > sg.span do continue

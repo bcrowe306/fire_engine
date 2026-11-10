@@ -145,6 +145,7 @@ drag 150 131 280 131 6     # press, move over 6 frames, release
 scroll 0 -2
 key cmd+z                  # cmd is Cmd on macOS, Ctrl elsewhere
 text hello pads            # type into the focused field
+hold shift                 # keep a modifier down (a Shift-drag), until: let shift
 screenshot after_input     # → <out>/after_input.png
 theme light                # an app's own command
 ```
@@ -180,6 +181,7 @@ click_item seq in sequence at 0.5 0.1         # a point inside it (fractions of 
 click_item "A1 send B" in mixer right         # right-click (or double)
 drag_item "Kick 808.wav" in browser to "pad A1"
 drag_by "A1 fader" in mixer 0 40              # drag a knob or fader by an offset
+drag_by tempo 20 0                            # ui.number_drag: 4 points a step (Shift: fine steps)
 expect_item "Stop (Space)" / expect_no_item "Stop (Space)"
 items fader                                   # list what shows (window, label, rect, raw label)
 ```

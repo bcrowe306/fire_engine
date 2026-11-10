@@ -88,10 +88,40 @@ Project :: struct {
 	main:    Bus,
 	perf_fx: [PERF_FX]Effect_Slot, // the performance effects (on while held)
 	song:    Song,
+	transport: Transport, // loop, count-in, the metronome, the time signature, input quantize
 	song_mode: bool, // play the song, not the current sequence
 	switch_at: Switch_At, // when a sequence picked while playing takes over
 	dir:     string, // the project folder (samples/ inside it)
 	strings: strings.Intern, // sample names and paths
+}
+
+// A time signature: `num` beats of 1/`den` notes a bar (4/4, 3/4, 6/8).
+Time_Sig :: struct {
+	num: int, // 1..16
+	den: int, // 2, 4, 8 or 16
+}
+
+// Recorded notes moved toward a grid as they are played.
+Input_Quantize :: struct {
+	on:       bool,
+	grid:     Grid,
+	strength: f32, // 0..1: how far a note moves toward the grid (1: onto it)
+	swing:    f32, // 0..1: the grid's off-beats pushed later (as a sequence's swing)
+}
+
+// The transport's settings, saved with the project.
+Transport :: struct {
+	loop:      bool, // a sequence (or the song) loops; off, it plays once and stops
+	count_in:  int,  // bars of click before recording starts (0..2)
+	metro_db:  f32,  // the metronome's level
+	metro_rec_only: bool, // it clicks only while recording (and counting in)
+	time_sig:  Time_Sig,
+	quantize:  Input_Quantize,
+}
+
+// The transport settings a project starts with.
+default_transport :: proc() -> Transport {
+	return {loop = true, count_in = 0, metro_db = -6, time_sig = {4, 4}, quantize = {grid = .Sixteenth, strength = 1}}
 }
 
 // The default pad: one-shot, full volume, centred.
@@ -103,6 +133,7 @@ default_pad :: proc() -> Pad {
 project_init :: proc(p: ^Project, dir: string) {
 	p^ = {}
 	p.bpm = 120
+	p.transport = default_transport()
 	for &pad in p.pads do pad = default_pad()
 	for &s in p.sequences do s = default_sequence()
 	p.perf_fx = default_perf_fx()

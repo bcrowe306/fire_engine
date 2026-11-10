@@ -12,15 +12,14 @@ def loaded(app, fixtures):
 
 def test_play_stop_and_the_metronome(app, fixtures):
     loaded(app, fixtures)
-    app.click("Play (Space)", window="sequence")
+    app.click("Play (Space)")  # on the transport toolbar
     assert app.state()["playing"]
-    app.expect_item("Stop (Space)", window="sequence")  # the icon turned to stop
-    app.click("Stop (Space)", window="sequence")
+    app.click("Stop (Space)")
     assert not app.state()["playing"]
     app.key("space")
     assert app.state()["playing"]
     app.key("space")
-    app.click("Metronome", window="sequence")
+    app.click("Metronome")
     assert app.state()["metronome"]
 
 
@@ -51,7 +50,7 @@ def test_length_double_and_clear(app, fixtures):
 
 def test_recording_by_playing_the_pads(app, fixtures):
     loaded(app, fixtures)
-    app.click("Record into the sequence (Cmd+R)", window="sequence")
+    app.click("Record (Cmd+R)")
     s = app.state()
     assert s["recording"] and s["playing"]
     for _ in range(3):

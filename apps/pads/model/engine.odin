@@ -36,6 +36,9 @@ Engine :: struct {
 	bpm:       f64,  // the tempo the clock has
 	metronome: bool, // the click is on (set it, then `sync`)
 	metro_on:  bool, // what the metronome node has
+	metro_db:  f32,  // its level, as sent
+	recording: bool, // the capture is armed (the metronome may click only then)
+	sig:       Time_Sig, // the meter the clock has
 	resend:    bool, // send every pad's parameters again (automation moved them)
 	stopped:   bool, // stopped by `stop`: automation is off until `play`
 	plan:      Plan, // what the sequencer plays
@@ -239,9 +242,24 @@ sync_sequencer :: proc(e: ^Engine) {
 		transport.set_tempo(e.host.clock, p.bpm)
 		e.bpm = p.bpm
 	}
-	if e.metro_on != e.metronome {
-		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_ON, 1 if e.metronome else 0)
-		e.metro_on = e.metronome
+	// The metronome: on, and (with "only while recording") while recording
+	// or counting in; at its level.
+	tr := p.transport
+	beat_now, playing_now, _ := transport.timeline_status(e.host.clock, e.timeline)
+	counting := playing_now && f64(beat_now) < 0
+	click := e.metronome && (!tr.metro_rec_only || e.recording || counting)
+	if e.metro_on != click {
+		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_ON, 1 if click else 0)
+		e.metro_on = click
+	}
+	if e.metro_db != tr.metro_db {
+		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_LEVEL_DB, f64(tr.metro_db))
+		e.metro_db = tr.metro_db
+	}
+	// The time signature: the clock's meter (the metronome's accents).
+	if e.sig != tr.time_sig && tr.time_sig.num > 0 && tr.time_sig.den > 0 {
+		transport.set_meter(e.host.clock, {i32(tr.time_sig.num), i32(tr.time_sig.den)}, transport.When(nil))
+		e.sig = tr.time_sig
 	}
 	e.router.midi_map = p.midi_map
 	if !e.perform_sent || e.built_perform != p.perform {
@@ -260,7 +278,8 @@ sync_sequencer :: proc(e: ^Engine) {
 	} else {
 		e.plan = plan_pattern(p, p.slot, at)
 	}
-	if e.export_once do e.plan.loop_start, e.plan.loop_end = 0, 0 // once, to its end
+	// Once, to its end: while exporting, or with the transport's loop off.
+	if e.export_once || !p.transport.loop do e.plan.loop_start, e.plan.loop_end = 0, 0
 	c := plan_clip(p, e.plan)
 	loops := e.plan.loop_end > e.plan.loop_start
 	placement := clip.Placement{at = tb.Beats(e.plan.at), loop = loops}
@@ -285,11 +304,13 @@ sequencer_tick :: proc(e: ^Engine) {
 		e.seq_dirty = true
 	}
 	if !playing do return
+	// What doesn't loop stops at its end (not while exporting: the export
+	// renders its tail).
+	if end := plan_end(e.plan); end > 0 && beat >= end && !e.export_once {
+		stop(e)
+		return
+	}
 	if p.song_mode {
-		if end := plan_end(e.plan); end > 0 && beat >= end {
-			stop(e)
-			return
-		}
 		if _, slot, _, ok := plan_locate(e.plan, beat); ok do p.slot = slot // the editor shows what plays
 	}
 }
@@ -313,9 +334,9 @@ queue_slot :: proc(e: ^Engine, slot: int) {
 	switch p.switch_at {
 	case .Now:  b = beat + 1e-6
 	case .Beat: b = math.floor(beat + 1e-9) + 1
-	case .Bar:  b = (math.floor(beat / BEATS_PER_BAR + 1e-9) + 1) * BEATS_PER_BAR
+	case .Bar:  b = (math.floor(beat / bar_beats(p) + 1e-9) + 1) * bar_beats(p)
 	case .End:
-		l := seq_beats(p.sequences[e.plan.segs[0].slot]) if e.plan.count > 0 else BEATS_PER_BAR
+		l := seq_beats(p, p.sequences[e.plan.segs[0].slot]) if e.plan.count > 0 else bar_beats(p)
 		b = e.plan.at + (math.floor((beat - e.plan.at) / l + 1e-9) + 1) * l
 	}
 	if p.switch_at == .Now {
@@ -381,15 +402,19 @@ struck :: proc(e: ^Engine, index: int) -> u32 {
 	return intrinsics.atomic_load(&e.router.struck[index])
 }
 
-// Starts the sequencer from the top of the sequence.
-play :: proc(e: ^Engine) {
+// Starts the sequencer from the top of the sequence; with `count_in`, the
+// transport's count-in bars of click first (the playhead starts that far
+// before the top, where nothing plays and nothing records).
+play :: proc(e: ^Engine, count_in := false) {
 	e.stopped = false
 	e.pending.active = false
 	e.plan.at = 0
 	if e.project.song_mode && e.project.song.count > 0 do e.project.slot = int(e.project.song.steps[0].slot)
 	e.seq_dirty = true
 	sync_sequencer(e)
-	transport.locate(e.host.clock, e.timeline, 0)
+	from := 0.0
+	if count_in do from = -f64(clamp(e.project.transport.count_in, 0, 2)) * bar_beats(e.project)
+	transport.locate(e.host.clock, e.timeline, tb.Beats(from))
 	transport.play(e.host.clock, e.timeline)
 }
 
@@ -412,6 +437,13 @@ stop :: proc(e: ^Engine) {
 	e.pending.active = false
 	e.plan.at = 0
 	e.seq_dirty = true
+}
+
+// Where the playhead is on the timeline (negative while counting in), and
+// whether it plays.
+timeline_beat :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
+	pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
+	return f64(pos), on
 }
 
 // Where the sequencer is, in beats into the sequence that plays, and

@@ -330,6 +330,75 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	return
 }
 
+// A number in a field `width` wide: drag up/right to raise it by `step`
+// every few points (Shift: by `fine`), scroll for a step, double-click to
+// type it. Shows `format` of it ("%.1f BPM"). The value is
+// kept on a `fine` grid.
+number_drag :: proc(id: cstring, value: ^f64, lo, hi, step, fine: f64, format: cstring, width: f32) -> (e: Edit) {
+	im.PushID(id)
+	defer im.PopID()
+	t := current
+	dl := im.GetWindowDrawList()
+	pos := im.GetCursorScreenPos()
+	h := im.GetFrameHeight()
+	@(static) typing: im.ID
+	@(static) typed: f64
+	@(static) acc: f32
+	wid := im.GetID("##num")
+	if typing == wid {
+		im.SetNextItemWidth(width)
+		if im.IsWindowAppearing() || !im.IsAnyItemActive() do im.SetKeyboardFocusHere()
+		if im.InputDouble("##type", &typed, 0, 0, "%.2f", {.EnterReturnsTrue, .AutoSelectAll}) {
+			value^ = clamp(math.round(typed / fine) * fine, lo, hi)
+			e.changed, e.ended = true, true
+			typing = 0
+		} else if im.IsItemDeactivated() {
+			typing = 0
+		}
+		return
+	}
+	im.InvisibleButton("##num", {width, h})
+	name(widget_name(id, "number"))
+	io := im.GetIO()
+	if im.IsItemActivated() {
+		e.started = true
+		acc = 0
+	}
+	if im.IsItemActive() && !e.started {
+		e.active = true
+		acc += io.MouseDelta.x - io.MouseDelta.y
+		px: f32 = 4 // points a step
+		steps := math.trunc(acc / px)
+		if steps != 0 {
+			acc -= steps * px
+			d := f64(steps) * (fine if io.KeyShift else step)
+			v := clamp(math.round((value^ + d) / fine) * fine, lo, hi)
+			if v != value^ {
+				value^ = v
+				e.changed = true
+			}
+		}
+	}
+	if im.IsItemDeactivated() do e.ended = true
+	if im.IsItemHovered() && io.MouseWheel != 0 && !im.IsItemActive() {
+		v := clamp(math.round((value^ + f64(io.MouseWheel) * (fine if io.KeyShift else step)) / fine) * fine, lo, hi)
+		if v != value^ {
+			value^ = v
+			e.changed, e.ended = true, true
+		}
+	}
+	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
+		typing, typed = wid, value^
+	}
+	hovered := im.IsItemHovered() || im.IsItemActive()
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + width, pos.y + h}, col(t.hover if hovered else t.raised), t.radius)
+	label := fmt.ctprintf(string(format), value^) // (Odin's fmt reads C-style verbs: "%.1f")
+	ts := im.CalcTextSize(label)
+	im.DrawList_AddText(dl, {math.round(pos.x + (width - ts.x) / 2), math.round(pos.y + (h - ts.y) / 2)}, col(t.text), label)
+	if hovered && !im.IsItemActive() do im.SetTooltip("Drag (Shift: finer), scroll, or double-click to type")
+	return
+}
+
 // An on/off switch with a label to its right. Returns true when toggled.
 toggle :: proc(label: cstring, on: ^bool) -> bool {
 	im.PushID(label)

@@ -1,6 +1,8 @@
 package pads_model
 
 import app "app:core"
+import "fire:clip"
+import tb "fire:timebase"
 import "fire:transport"
 import "fire:rt"
 
@@ -8,9 +10,7 @@ import "fire:rt"
 // pads you hit become notes where you hit them (overdubbed onto what is
 // there), each pass of the loop adding to the same undo step.
 Capture :: struct {
-	armed:         bool,
-	live_quantize: bool, // notes land on the grid
-	grid:          Grid,
+	armed:         bool, // (input quantize is the transport's: Transport.quantize)
 	held:          [PADS][dynamic]Held_Hit, // per pad: hits not yet released
 	midi_key:      int, // the last MIDI note that came in (-1: none yet), for MIDI learn
 	midi_count:    int, // MIDI notes that came in (to notice a new one)
@@ -32,11 +32,21 @@ capture_arm :: proc(m: ^Model, c: ^Capture, on: bool) {
 	if !on do capture_poll(m, c) // what was played before the stop
 	c.armed = on
 	m.engine.router.capture = on
+	m.engine.recording = on
 	if !on {
 		pos, _, _ := transport.timeline_status(m.engine.host.clock, m.engine.timeline)
 		for i in 0 ..< PADS do for len(c.held[i]) > 0 do finish_hit(m, c, i, f64(pos))
 		app.seal(&m.history)
 	}
+}
+
+// Where a note played at beat `beat` goes with input quantize `q`: toward
+// the nearest grid step (swung, if `q.swing`), as far as `q.strength`.
+input_quantize :: proc(q: Input_Quantize, beat: f64) -> f64 {
+	if !q.on || q.strength <= 0 do return beat
+	g := grid_beats(q.grid)
+	target := f64(clip.swing(tb.Beats(quantize_beat(beat, g)), tb.Beats(g), f64(q.swing)))
+	return beat + (target - beat) * f64(clamp(q.strength, 0, 1))
 }
 
 // Frees the capture's buffers.
@@ -57,9 +67,8 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 		_, slot, rel, ok := plan_locate(m.engine.plan, t.beat)
 		if !ok do continue
 		if t.on {
-			start := rel
-			if c.live_quantize do start = quantize_beat(start, grid_beats(c.grid))
-			length := seq_beats(m.project.sequences[slot])
+			start := input_quantize(m.project.transport.quantize, rel)
+			length := seq_beats(&m.project, m.project.sequences[slot])
 			if start >= length do start -= length
 			append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot})
 		} else if len(c.held[i]) > 0 {
@@ -81,11 +90,11 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 finish_hit :: proc(m: ^Model, c: ^Capture, i: int, beat: f64, k := 0) {
 	h := c.held[i][k]
 	ordered_remove(&c.held[i], k)
-	length := seq_beats(m.project.sequences[h.slot])
+	length := seq_beats(&m.project, m.project.sequences[h.slot])
 	d := beat - h.played
 	// A one-shot pad plays to its end however briefly it is hit: give the
 	// note a grid step, so it can be seen and edited.
-	if m.project.pads[i].mode == .One_Shot do d = max(d, grid_beats(c.grid))
+	if m.project.pads[i].mode == .One_Shot do d = max(d, grid_beats(m.project.transport.quantize.grid))
 	d = clamp(d, 1.0 / 64, length)
 	s := m.project.sequences[h.slot]
 	notes := make([dynamic]Seq_Note, 0, len(s.notes) + 1, context.temp_allocator)
