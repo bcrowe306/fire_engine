@@ -65,6 +65,8 @@ Sequence :: struct {
 	swing_grid: Grid, // which notes swing: 1/8 or 1/16
 	notes:      []Seq_Note, // sorted by start, then pad
 	points:     []Auto_Point, // automation, sorted by pad, parameter, beat
+	name:       [24]u8, // "" = "Sequence N"
+	bpm:        f64,    // its own tempo (it takes over when it plays); 0 = the project's
 }
 
 // What an automation lane moves.
@@ -205,6 +207,8 @@ Seq_Field :: enum {
 	Bars,
 	Swing,
 	Automation,
+	Name,
+	Tempo,
 }
 
 // Replaces slot `slot`'s sequence with `new` (copied), undoably, as an edit
@@ -274,7 +278,7 @@ put_sequence :: proc(m: ^Model, slot: int, s: Sequence) {
 
 @(private)
 sequences_equal :: proc(a, b: Sequence) -> bool {
-	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
+	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
 }
 
 // Notes of one pad and pitch never overlap: taken in order (later ones are
@@ -445,9 +449,13 @@ select_slot :: proc(m: ^Model, slot: int) {
 	queue_slot(&m.engine, slot)
 }
 
-// Whether slot `slot` holds any notes.
+// Whether slot `slot` holds anything: notes, automation, an audio take, a
+// name or a tempo of its own.
 slot_used :: proc(m: ^Model, slot: int) -> bool {
-	return len(m.project.sequences[slot].notes) > 0
+	s := &m.project.sequences[slot]
+	if len(s.notes) > 0 || len(s.points) > 0 || s.name[0] != 0 || s.bpm > 0 do return true
+	for c in m.project.clips[slot] do if c.sample != 0 do return true
+	return false
 }
 
 // The General MIDI drum key a drum file's kick is on (A1 when importing drums).

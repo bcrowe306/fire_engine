@@ -57,6 +57,7 @@ Engine :: struct {
 	preview:   Preview, // the browser's preview (straight to the output)
 	armed:     [PADS]bool, // audio pads armed to record
 	audio_dirty: bool,     // a clip changed: give the players theirs again
+	tempo_at, tempo_next: f64, // a tempo change sent ahead: where (timeline beat), and what
 }
 
 // What a pad has in the graph.
@@ -261,9 +262,24 @@ sync :: proc(e: ^Engine) {
 @(private)
 sync_sequencer :: proc(e: ^Engine) {
 	p := e.project
-	if e.bpm != p.bpm {
-		transport.set_tempo(e.host.clock, p.bpm)
-		e.bpm = p.bpm
+	// The tempo: what plays now sets it (a sequence may have its own), and
+	// the next sequence's goes in exactly where that one takes over.
+	{
+		pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
+		cur, next := audio_runs(e.plan, f64(pos))
+		want := sequence_tempo(p, cur.slot if on && cur.valid else p.slot)
+		if e.bpm != want {
+			transport.set_tempo(e.host.clock, want)
+			e.bpm = want
+		}
+		if on && next.valid && next.start > f64(pos) {
+			nb := sequence_tempo(p, next.slot)
+			if nb != want && (e.tempo_at != next.start || e.tempo_next != nb) {
+				grid := transport.status(e.host.clock).grid
+				transport.set_tempo(e.host.clock, nb, transport.At_Beat(f64(grid) + next.start - f64(pos)))
+				e.tempo_at, e.tempo_next = next.start, nb
+			}
+		}
 	}
 	// The metronome: on, and (with "only while recording") while recording
 	// or counting in; at its level.

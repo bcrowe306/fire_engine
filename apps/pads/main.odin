@@ -50,6 +50,7 @@ App :: struct {
 	rec:      pm.Recording,
 	wave:     Wave_State,
 	device:   Device_State, // the device tabs' LFO traces
+	seq_ops:  Seq_Ops, // renaming, copying bars, the copied part
 	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
 	browser:  pm.Browser,
 	bview:    Browser_View,
@@ -227,6 +228,7 @@ frame :: proc(a: ^App) {
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_export(a)
+	draw_seq_dialogs(a)
 	project_frame(a)
 	pm.sync(&a.m.engine)
 	pm.capture_poll(&a.m, &a.capture)

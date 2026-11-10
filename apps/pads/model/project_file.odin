@@ -17,7 +17,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 7 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices
+PROJECT_VERSION :: 8 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -246,6 +246,11 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u64(w, u64(c.sample))
 		fc.write_f64(w, c.bpm)
 	}
+	// Sequences' names and tempos (v8).
+	for &s in p.sequences {
+		fc.write_string(w, strings.truncate_to_byte(string(s.name[:]), 0))
+		fc.write_f64(w, s.bpm)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -422,6 +427,14 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			c := Clip{sample = app.Id(fc.read_u64(r)), bpm = fc.read_f64(r)}
 			if slot >= SLOTS || pad >= PADS || app.store_get(&p.samples, c.sample) == nil || !(c.bpm > 0) do continue
 			p.clips[slot][pad] = c
+		}
+	}
+	if version >= 8 {
+		for &s in p.sequences {
+			s.name = {}
+			copy(s.name[:len(s.name) - 1], fc.read_string(r))
+			b := fc.read_f64(r)
+			s.bpm = clamp(b, 40, 300) if b > 0 else 0
 		}
 	}
 }

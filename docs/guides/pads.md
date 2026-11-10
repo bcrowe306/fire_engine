@@ -145,7 +145,16 @@ for other toggles.
   - record (the circle) — record the audio input onto the pad.
 
 - **Sequence** (middle tab): the sequencer, editing the sequence the
-  toolbar picks. Its length (1–64 bars, ×2 doubles with the notes); the
+  toolbar picks. Its name (double-click it, press F2, or right-click it
+  or its entry in the toolbar's list to rename it); **Duplicate** (Cmd+D:
+  into the next empty sequence, named "… copy", with its audio takes);
+  **Own tempo** (it plays at its own tempo, which takes over exactly where
+  the sequence does, in the song or switching live); **Copy Bars to…**
+  (from its menu or the palette: bars, every pad or one or a bank, into
+  another sequence at a bar, replacing or laid over). Shift-drag in the
+  rows to mark a part (whole bars when long), Cmd+C to copy it, and Cmd+V
+  to paste it into any sequence, at its marked part or its first bar.
+  Its length (1–64 bars, ×2 doubles with the notes); the
   grid (1/4 to 1/64, triplets) and Quantize (Cmd+U, the notes there);
   swing (on 1/8 or 1/16). Below, the current bank's pads (pad
   1 at the bottom, as on the grid) as
@@ -465,6 +474,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
+| `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
 | `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song chain and its switches |

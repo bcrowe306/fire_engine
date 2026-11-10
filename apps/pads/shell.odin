@@ -75,6 +75,18 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { a := (^App)(u); pm.quantize_sequence(&a.m, a.m.project.slot, a.seq.grid) }})
 	add(acts, {id = "double", label = "Double Sequence", icon = ui.ICON_COPY_PLUS, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.double_sequence(&a.m, a.m.project.slot) }})
+	add(acts, {id = "duplicate_sequence", label = "Duplicate Sequence", icon = ui.ICON_COPY_PLUS, chord = ui.MOD_CMD | i32(im.Key.D), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); pm.duplicate_sequence(&a.m, a.m.project.slot) }})
+	add(acts, {id = "rename_sequence", label = "Rename Sequence…", icon = ui.ICON_PENCIL, chord = i32(im.Key.F2), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); begin_rename_sequence(a, a.m.project.slot) }})
+	add(acts, {id = "copy_bars", label = "Copy Bars to…", icon = ui.ICON_COPY, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); begin_copy_bars(a, a.m.project.slot) }})
+	add(acts, {id = "copy", label = "Copy Marked Notes", icon = ui.ICON_COPY, chord = ui.MOD_CMD | i32(im.Key.C), user = a,
+		run = proc(u: rawptr) { copy_marked((^App)(u)) },
+		enabled = proc(u: rawptr) -> bool { return (^App)(u).seq.range.on }})
+	add(acts, {id = "paste", label = "Paste Notes", icon = ui.ICON_CLIPBOARD_PASTE, chord = ui.MOD_CMD | i32(im.Key.V), user = a,
+		run = proc(u: rawptr) { paste_marked((^App)(u)) },
+		enabled = proc(u: rawptr) -> bool { return (^App)(u).seq_ops.has_part }})
 	add(acts, {id = "clear_sequence", label = "Clear Sequence", icon = ui.ICON_TRASH_2, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,

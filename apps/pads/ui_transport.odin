@@ -98,12 +98,20 @@ draw_toolbar :: proc(user: rawptr) {
 	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pm.select_slot(m, p.slot - 1)
 	im.SameLine(0, 0)
 	im.SetNextItemWidth(118)
-	if ui.combo("##slot", fmt.ctprintf("Sequence %d", p.slot + 1)) {
+	if ui.combo("##slot", fmt.ctprintf("%s", pm.sequence_name(p, p.slot))) {
 		for k in 0 ..< pm.SLOTS {
-			label := fmt.ctprintf("%s Sequence %d", ui.ICON_CIRCLE_DOT if pm.slot_used(m, k) else "   ", k + 1)
+			label := fmt.ctprintf("%s %s###s%d", ui.ICON_CIRCLE_DOT if pm.slot_used(m, k) else "   ", pm.sequence_name(p, k), k)
 			if im.Selectable(label, k == p.slot) do pm.select_slot(m, k)
+			if im.BeginPopupContextItem() {
+				sequence_menu_items(a, k)
+				im.EndPopup()
+			}
 		}
 		im.EndCombo()
+	}
+	if im.BeginPopupContextItem("##slotmenu") {
+		sequence_menu_items(a, p.slot)
+		im.EndPopup()
 	}
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = p.slot >= pm.SLOTS - 1) do pm.select_slot(m, p.slot + 1)

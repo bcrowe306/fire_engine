@@ -39,6 +39,8 @@ State :: struct {
 	dirty:      bool,
 	project:    string,
 	exporting:  bool,
+	sequences:  [dynamic]State_Sequence, // the ones in use
+	marked:     bool, // a part of the piano roll is marked
 	pads:       [dynamic]State_Pad, // the ones with a sound
 	buses:      [pm.BUSES + 1]State_Bus, // A..D, then main
 	browser:    State_Browser,
@@ -72,6 +74,14 @@ State_Pad :: struct {
 	attack, release: f32,
 	voice:   pm.Voice, // its envelopes, filter, pitch, LFOs and routes
 	cutoff_now: f64, // the filter's cutoff as it plays now (modulated, automated)
+}
+
+State_Sequence :: struct {
+	slot:  int, // 1-based
+	name:  string,
+	bpm:   f64, // its own (0: the project's)
+	bars:  int,
+	notes: int,
 }
 
 State_Bus :: struct {
@@ -127,6 +137,11 @@ state_json :: proc(a: ^App) -> string {
 	s.dirty = pm.model_dirty(m)
 	s.project = p.dir
 	s.exporting = a.proj.exporting
+	s.sequences = make([dynamic]State_Sequence, context.temp_allocator)
+	for sq, k in p.sequences do if pm.slot_used(m, k) || k == p.slot {
+		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes)})
+	}
+	s.marked = a.seq.range.on
 	s.pads = make([dynamic]State_Pad, context.temp_allocator)
 	for &pad, i in p.pads do if pm.pad_used(p, i) {
 		sp := State_Pad{index = i, label = pm.pad_label(i), name = pm.pad_name(&pad), mode = enum_name(pad.mode),

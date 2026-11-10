@@ -317,6 +317,14 @@ Roll_Edit :: struct {
 	select:   int,  // a note clicked to select, or -1
 }
 
+// A range of a piano roll marked with Shift-drag: beats `beat0` to `beat1`,
+// keys `key0` to `key1` (inclusive). Copy and paste work on it.
+Roll_Range :: struct {
+	on:           bool,
+	beat0, beat1: f64,
+	key0, key1:   int,
+}
+
 // How wide a piano roll's row labels are for `rows` (to line things up
 // with its grid).
 roll_rows_width :: proc(rows: []Roll_Row) -> f32 {
@@ -340,9 +348,11 @@ Roll_View :: struct {
 // A piano roll: keys up the left, beats across, `notes` as bars. Click
 // empty space to add, drag a note to move it, drag its right end to resize,
 // right-click to delete. Positions snap to `snap` beats (0 = free).
+// With `range`, Shift-drag marks a range of beats and keys (snapped to
+// bars when the drag is long, else to `snap`); a plain click clears it.
 // `rows` names the rows instead of a keyboard (a drum editor: `rows[k]` is
 // key k, counted from the bottom), with a colour each.
-piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64, size: im.Vec2, playhead: f64 = -1, rows: []Roll_Row = nil) -> (e: Roll_Edit) {
+piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64, size: im.Vec2, playhead: f64 = -1, rows: []Roll_Row = nil, range: ^Roll_Range = nil, bar: f64 = 4) -> (e: Roll_Edit) {
 	im.PushID(id)
 	defer im.PopID()
 	e.delete, e.moving, e.resizing, e.select = -1, -1, -1, -1
@@ -382,7 +392,13 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 	}
 	if hit >= 0 && edge do im.SetMouseCursor(.ResizeEW)
 	if hovered && im.IsMouseClicked(.Right) && hit >= 0 do e.delete = hit
-	if im.IsItemActivated() && im.IsMouseClicked(.Left) {
+	@(static) marking := false
+	@(static) mark_from: [2]f64
+	if range != nil && im.IsItemActivated() && im.IsMouseClicked(.Left) && io.KeyShift && m.x > grid.x {
+		marking = true
+		mark_from = {to_beat(m.x, grid, beat_w, view), f64(clamp(to_key(m.y, grid, row_h, size, view), 0, 127))}
+	} else if im.IsItemActivated() && im.IsMouseClicked(.Left) {
+		if range != nil do range.on = false
 		if hit >= 0 {
 			drag_note, drag_resize = hit, edge
 			grab = to_beat(m.x, grid, beat_w, view) - notes[hit].start
@@ -405,6 +421,16 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 			e.to_key = clamp(to_key(m.y, grid, row_h, size, view), 0, 127)
 			e.to_length = n.length
 		}
+	}
+	if marking && range != nil {
+		b := to_beat(m.x, grid, beat_w, view)
+		k := clamp(to_key(m.y, grid, row_h, size, view), 0, 127)
+		lo, hi := min(mark_from[0], b), max(mark_from[0], b)
+		step := bar if hi - lo >= bar * 0.5 else (snap if snap > 0 else 0.25)
+		lo, hi = math.floor(lo / step + 1e-9) * step, math.ceil(hi / step - 1e-9) * step
+		if hi <= lo do hi = lo + step
+		range^ = {on = true, beat0 = max(lo, 0), beat1 = hi, key0 = min(int(mark_from[1]), k), key1 = max(int(mark_from[1]), k)}
+		if !im.IsItemActive() do marking = false
 	}
 	if im.IsItemDeactivated() && drag_note >= 0 {
 		e.released = true
@@ -459,6 +485,14 @@ piano_roll :: proc(id: cstring, notes: []Roll_Note, view: ^Roll_View, snap: f64,
 		im.DrawList_AddLine(dl, {x, grid.y}, {x, grid.y + size.y}, col(with_alpha(t.text, 0.18 if strong else 0.07)), 1)
 	}
 	im.DrawList_PushClipRect(dl, grid, {grid.x + gw, grid.y + size.y}, true)
+	if range != nil && range.on {
+		x0 := grid.x + f32(range.beat0 - view.beat0) * beat_w
+		x1 := grid.x + f32(range.beat1 - view.beat0) * beat_w
+		y0 := grid.y + size.y - f32(range.key1 - view.key0 + 1) * row_h
+		y1 := grid.y + size.y - f32(range.key0 - view.key0) * row_h
+		im.DrawList_AddRectFilled(dl, {x0, y0}, {x1, y1}, col(with_alpha(t.accent, 0.16)), 3)
+		im.DrawList_AddRect(dl, {x0, y0}, {x1, y1}, col(with_alpha(t.accent, 0.8)), 3, 1.5)
+	}
 	for n, i in notes {
 		start, key, length := n.start, n.key, n.length
 		if (e.moving == i || e.resizing == i) && !e.released do start, key, length = e.to_start, e.to_key, e.to_length

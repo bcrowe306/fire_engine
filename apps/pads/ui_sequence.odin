@@ -20,6 +20,7 @@ Seq_State :: struct {
 	selected: int,     // a note of the current sequence, or -1
 	slot_was: int,
 	bars_was: int,
+	range:    ui.Roll_Range, // the part marked with Shift-drag (Cmd+C copies it)
 }
 
 // Transport and sequence settings above, the current bank's pads as rows of
@@ -75,7 +76,8 @@ draw_sequence :: proc(user: rawptr) {
 	roll_h = f32(keys) * (roll_h / f32(keys))
 	st.view.beat0, st.view.beats = 0, length
 	snap := pm.grid_beats(st.grid)
-	e := ui.piano_roll("seq", notes[:], &st.view, snap, {avail.x, roll_h}, beat if playing else -1, rows)
+	if st.slot_was != slot do st.range.on = false
+	e := ui.piano_roll("seq", notes[:], &st.view, snap, {avail.x, roll_h}, beat if playing else -1, rows, &st.range, pm.bar_beats(&m.project))
 	bank_pad :: proc(a: ^App, key: int) -> u8 { return u8(a.bank * pm.PADS_PER_BANK + key) }
 	if e.add && e.at_key >= 0 && e.at_key < pm.PADS_PER_BANK && e.at_beat < length {
 		pad := bank_pad(a, e.at_key)
@@ -166,12 +168,11 @@ draw_transport :: proc(a: ^App) {
 	t := ui.theme()
 	// (Play, record, the metronome and the sequence picked are on the
 	// transport toolbar.)
-	im.AlignTextToFramePadding()
-	im.Text("%s", fmt.ctprintf("Sequence %d", slot + 1))
+	sequence_head(a)
 	if next, in_beats, ok := pm.pending_switch(&m.engine); ok {
 		ui.flow(150)
 		im.AlignTextToFramePadding()
-		im.TextColored(transmute(im.Vec4)t.warn, "%s", fmt.ctprintf("→ %d in %.1f beats", next + 1, max(in_beats, 0)))
+		im.TextColored(transmute(im.Vec4)t.warn, "%s", fmt.ctprintf("→ %s in %.1f beats", pm.sequence_name(&m.project, next), max(in_beats, 0)))
 	}
 	if m.project.song_mode {
 		ui.flow(80)
