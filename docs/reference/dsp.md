@@ -367,6 +367,14 @@ LIMITER_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(3)
 
 Parameter id of the `Limiter`'s release, in ms (1..2000, default 100).
 
+### METER_CHANNELS
+
+```odin
+METER_CHANNELS :: 2
+```
+
+Channels a `Meter` measures (more pass through unmeasured).
+
 ### METRONOME_PARAM_LEVEL_DB
 
 ```odin
@@ -492,6 +500,142 @@ ONE_POLE_PARAM_CUTOFF_HZ : core.Param_Id : core.Param_Id(1)
 ```
 
 Parameter id of the `One_Pole_Lowpass` cutoff, in Hz (10..20000, default 1000).
+
+### PAN_PARAM_POSITION
+
+```odin
+PAN_PARAM_POSITION : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Pan` node's position: -1 (left) .. 1 (right), default 0.
+
+### BITCRUSH_PARAM_BITS
+
+```odin
+BITCRUSH_PARAM_BITS : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the bit-crusher's bits: 1..16: the sample's resolution
+
+### BITCRUSH_PARAM_DOWNSAMPLE
+
+```odin
+BITCRUSH_PARAM_DOWNSAMPLE : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the bit-crusher's downsample: 1..50: each sample held this many frames
+
+### BITCRUSH_PARAM_MIX
+
+```odin
+BITCRUSH_PARAM_MIX : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the bit-crusher's mix: 0..1
+
+### RING_PARAM_HZ
+
+```odin
+RING_PARAM_HZ : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the ring modulator's frequency, Hz: 1..5000: the carrier
+
+### RING_PARAM_MIX
+
+```odin
+RING_PARAM_MIX : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the ring modulator's mix: 0..1
+
+### COMB_PARAM_HZ
+
+```odin
+COMB_PARAM_HZ : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the comb filter's frequency, Hz: 20..5000: the pitch it rings at (its delay is 1/Hz)
+
+### COMB_PARAM_FEEDBACK
+
+```odin
+COMB_PARAM_FEEDBACK : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the comb filter's feedback: -0.98..0.98
+
+### COMB_PARAM_MIX
+
+```odin
+COMB_PARAM_MIX : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the comb filter's mix: 0..1
+
+### PITCH_PARAM_SEMITONES
+
+```odin
+PITCH_PARAM_SEMITONES : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the pitch shifter's semitones: -24..24
+
+### PITCH_PARAM_WINDOW_MS
+
+```odin
+PITCH_PARAM_WINDOW_MS : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the pitch shifter's window, ms: 20..100: grain length (shorter: tighter, grainier)
+
+### PITCH_PARAM_MIX
+
+```odin
+PITCH_PARAM_MIX : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the pitch shifter's mix: 0..1
+
+### CUTTER_PARAM_BEATS
+
+```odin
+CUTTER_PARAM_BEATS : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the cutter's beats: 1/32..1: one gate cycle, in beats
+
+### CUTTER_PARAM_DUTY
+
+```odin
+CUTTER_PARAM_DUTY : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the cutter's duty: 0.05..0.95: how much of the cycle is open
+
+### CUTTER_PARAM_DEPTH
+
+```odin
+CUTTER_PARAM_DEPTH : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the cutter's depth: 0..1: how far it closes
+
+### STUTTER_PARAM_BEATS
+
+```odin
+STUTTER_PARAM_BEATS : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the stutter's beats: 1/32..1: the slice repeated, in beats
+
+### STUTTER_PARAM_ACTIVE
+
+```odin
+STUTTER_PARAM_ACTIVE : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the stutter's active: 1 repeats, 0 plays the input (stepped)
 
 ### REVERB_PARAM_SIZE
 
@@ -858,6 +1002,31 @@ SYNTH_MAX_VOICES :: 64
 ```
 
 Most voices a `Synth` may have.
+
+### WET_PARAM_MIX
+
+```odin
+WET_PARAM_MIX : core.Param_Id : core.Param_Id(0x7F00)
+```
+
+Parameter id of a `Wet` node's mix: 0 is the input untouched, 1 the
+effect alone (default 1). Chosen out of the way of the effect's own ids.
+
+### WET_FADE_MS
+
+```odin
+WET_FADE_MS :: 15.0
+```
+
+How long the mix takes to move, in milliseconds.
+
+### WET_MAX_CHANNELS
+
+```odin
+WET_MAX_CHANNELS :: 8
+```
+
+Most channels a `Wet` node runs its effect on.
 
 ## Types
 
@@ -1410,6 +1579,25 @@ a DAC or a sample-rate conversion, inter-sample peaks can be up to about
 | `sample_rate` |  |
 | `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
 
+### Meter
+
+```odin
+Meter :: struct {
+	peak: [2]u32,
+	sum: [2]u64,
+	count: u64,
+}
+```
+
+Passes audio through unchanged and measures it: each channel's peak and
+RMS since the last `meter_read`, for level meters. Read from any thread.
+
+| Field | Description |
+|-------|-------------|
+| `peak` | atomic: f32 bits, the largest \|sample\| since the last read |
+| `sum` | atomic: f64 bits, Σ x² since the last read |
+| `count` | atomic: frames since the last read |
+
 ### Metronome_Settings
 
 ```odin
@@ -1636,6 +1824,152 @@ and alias rejection; the first stage passes up to 0.45 of the base
 rate). Run `oversampler_up`, process what it returns at the high rate,
 then `oversampler_down`. The round trip delays by `oversampler_latency`
 frames exactly. Fields are internal.
+
+### Pan
+
+```odin
+Pan :: struct {
+	pos: Smoothed_Value,
+}
+```
+
+A stereo balance: equal-power, so the centre keeps the level of both
+sides (each at -3 dB from hard left or right, at unity in the middle:
+centred, it passes the input unchanged). Two channels in, two out.
+
+### Bitcrush
+
+```odin
+Bitcrush :: struct {
+	bits: f64,
+	downsample: f64,
+	mix: Smoothed_Value,
+	held: [2]f32,
+	count: f64,
+}
+```
+
+Fewer bits and a lower sample rate: lo-fi grit.
+
+### Ring_Mod
+
+```odin
+Ring_Mod :: struct {
+	hz: Smoothed_Value,
+	mix: Smoothed_Value,
+	phase: f64,
+	rate: f64,
+}
+```
+
+Multiplies the input by a sine: metallic, bell-like sidebands.
+
+### Comb
+
+```odin
+Comb :: struct {
+	hz: Smoothed_Value,
+	mix: Smoothed_Value,
+	feedback: f64,
+	lines: [2][]f32,
+	pos: int,
+	rate: f64,
+}
+```
+
+A feedback comb: a short delay fed back on itself rings at its pitch.
+
+### Pitch_Shift
+
+```odin
+Pitch_Shift :: struct {
+	semis: Smoothed_Value,
+	mix: Smoothed_Value,
+	window_ms: f64,
+	lines: [2][]f32,
+	pos: int,
+	phase: f64,
+	rate: f64,
+}
+```
+
+Shifts pitch without changing length: two read heads sweep a short
+delay line at the new speed, half a window apart, each faded in and out
+so their jumps back are never heard.
+
+| Field | Description |
+|-------|-------------|
+| `semis` |  |
+| `mix` |  |
+| `window_ms` |  |
+| `lines` |  |
+| `pos` |  |
+| `phase` | 0..1 through the window |
+| `rate` |  |
+
+### Cutter
+
+```odin
+Cutter :: struct {
+	beats: f64,
+	duty: f64,
+	depth: f64,
+	gain: f64,
+	coef: f64,
+	beat: f64,
+	rate: f64,
+}
+```
+
+A trance gate on the beat grid: open for the first `duty` of every cycle
+of `beats`, closed (by `depth`) for the rest, with edges of a couple of
+milliseconds so it never clicks.
+
+| Field | Description |
+|-------|-------------|
+| `beats` |  |
+| `duty` |  |
+| `depth` |  |
+| `gain` | smoothed gate gain |
+| `coef` | one-pole step for the edges |
+| `beat` | own clock without a transport |
+| `rate` |  |
+
+### Stutter
+
+```odin
+Stutter :: struct {
+	beats: f64,
+	active: bool,
+	ring: [2][]f32,
+	pos: int,
+	start: int,
+	length: int,
+	play: int,
+	mix: f64,
+	step: f64,
+	edge: int,
+	rate: f64,
+}
+```
+
+Beat repeat: it always listens to the last few seconds; switched on, it
+loops the slice of `beats` that just went by, until switched off. Each
+repeat is faded at its ends, and switching crossfades, so it never clicks.
+
+| Field | Description |
+|-------|-------------|
+| `beats` |  |
+| `active` |  |
+| `ring` |  |
+| `pos` | write position |
+| `start` | the slice: its first frame in the ring |
+| `length` | its frames |
+| `play` | frames into the slice |
+| `mix` | 0 = input, 1 = the slice (crossfaded) |
+| `step` |  |
+| `edge` | fade length at a repeat's ends |
+| `rate` |  |
 
 ### Resampler_Quality
 
@@ -2050,6 +2384,34 @@ that is releasing, or else the oldest note's.
 | `clock` | notes started, for "oldest" |
 | `sample_rate` |  |
 | `allocator` |  |
+
+### Wet
+
+```odin
+Wet :: struct {
+	inner: core.Node,
+	mix: Smoothed_Value,
+	params: []core.Param_Info,
+	scratch: [8][]f32,
+	forward: []core.Event,
+	idle: bool,
+}
+```
+
+Wraps an effect node with a dry/wet mix, so it can be switched in and out
+(or blended) without clicks: `WET_PARAM_MIX` fades between the input and
+the effect's output. Every other parameter event goes to the effect.
+While fully dry the effect is not run (it costs nothing), and it is reset
+when it is switched back in, so it starts clean (no old echoes).
+
+| Field | Description |
+|-------|-------------|
+| `inner` |  |
+| `mix` |  |
+| `params` | the effect's, then the mix |
+| `scratch` |  |
+| `forward` |  |
+| `idle` | fully dry: the effect is not running |
 
 ## Procedures
 
@@ -2516,6 +2878,25 @@ limiter_gain_reduction_db :: proc "contextless"(l: ^Limiter) -> f64
 
 **Realtime-safe** (callable on the audio thread). The limiter's gain reduction in dB at the end of its last block. Any thread.
 
+### meter_create
+
+```odin
+meter_create :: proc(allocator: mem.Allocator = context.allocator) -> (core.Node, ^Meter)
+```
+
+Control thread. A meter node (give it as many inputs as outputs) and its
+handle, valid until the graph destroys the node.
+
+### meter_read
+
+```odin
+meter_read :: proc "contextless"(m: ^Meter) -> (peak: [2]f32, rms: [2]f32)
+```
+
+Any thread. Each channel's peak and RMS (linear) since the last read,
+which starts the next measurement. Channels the meter has not seen
+read 0.
+
 ### metronome_create
 
 ```odin
@@ -2699,6 +3080,71 @@ oversampler_down :: proc "contextless"(o: ^Oversampler, input: []f32, output: []
 
 **Realtime-safe** (callable on the audio thread). Downsamples the high-rate `input` (factor × len(output) frames, as
 `oversampler_up` returned) into `output`.
+
+### pan_create
+
+```odin
+pan_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A stereo pan node.
+
+### pan_gains
+
+```odin
+pan_gains :: proc "contextless"(pos: f64) -> (left: f32, right: f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Balance gains for `pos`: unity at the centre, the far side at 0 and
+the near side at +3 dB at the ends.
+
+### bitcrush_create
+
+```odin
+bitcrush_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A bit-crusher node.
+
+### ring_mod_create
+
+```odin
+ring_mod_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A ring modulator node.
+
+### comb_create
+
+```odin
+comb_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A comb filter node.
+
+### pitch_shift_create
+
+```odin
+pitch_shift_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A pitch shifter node.
+
+### cutter_create
+
+```odin
+cutter_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A cutter node.
+
+### stutter_create
+
+```odin
+stutter_create :: proc(allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. A stutter node.
 
 ### resampler_init
 
@@ -3255,6 +3701,15 @@ synth_create :: proc(voices: int = 16, allocator: mem.Allocator = context.alloca
 Control thread. A `Synth` node with `voices` voices (1..SYNTH_MAX_VOICES)
 at its default sound. Free it with `core.node_destroy`.
 
+### wet_create
+
+```odin
+wet_create :: proc(inner: core.Node, mix: f64 = 1, allocator: mem.Allocator = context.allocator) -> core.Node
+```
+
+Control thread. Wraps `inner` (which the wrapper now owns) with a mix,
+starting at `mix` (0..1).
+
 ## Variables
 
 ### compressor_params
@@ -3352,6 +3807,62 @@ one_pole_params: [1]core.Param_Info
 ```
 
 Parameter table of the `One_Pole_Lowpass` node, as returned by `node_params`. Read-only.
+
+### pan_params
+
+```odin
+pan_params: [1]core.Param_Info
+```
+
+Pan parameters. Read-only.
+
+### bitcrush_params
+
+```odin
+bitcrush_params: [3]core.Param_Info
+```
+
+Bit-crusher parameters. Read-only.
+
+### ring_params
+
+```odin
+ring_params: [2]core.Param_Info
+```
+
+Ring modulator parameters. Read-only.
+
+### comb_params
+
+```odin
+comb_params: [3]core.Param_Info
+```
+
+Comb filter parameters. Read-only.
+
+### pitch_params
+
+```odin
+pitch_params: [3]core.Param_Info
+```
+
+Pitch shifter parameters. Read-only.
+
+### cutter_params
+
+```odin
+cutter_params: [3]core.Param_Info
+```
+
+Cutter parameters. Read-only.
+
+### stutter_params
+
+```odin
+stutter_params: [2]core.Param_Info
+```
+
+Stutter parameters. Read-only.
 
 ### reverb_params
 

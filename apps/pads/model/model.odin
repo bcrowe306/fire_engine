@@ -60,6 +60,8 @@ Pad :: struct {
 	slices:     [MAX_SLICES]i64,
 	slice_count: int,
 	midi_out:   Midi_Out, // its hits also go out as MIDI
+	inserts:    [PAD_INSERTS]Effect_Slot, // after its EQ
+	mute, solo: bool,
 }
 
 // A sample the project holds: a file in its folder.
@@ -81,6 +83,9 @@ Project :: struct {
 	slot:    int, // the current sequence: what plays and is edited
 	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key 36 is A1, up to D16
 	perform: Perform, // the arpeggiator and note repeat (`set_perform`)
+	buses:   [BUSES]Bus,
+	main:    Bus,
+	perf_fx: [PERF_FX]Effect_Slot, // the performance effects (on while held)
 	dir:     string, // the project folder (samples/ inside it)
 	strings: strings.Intern, // sample names and paths
 }
@@ -95,6 +100,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	p.bpm = 120
 	for &pad in p.pads do pad = default_pad()
 	for &s in p.sequences do s = default_sequence()
+	p.perf_fx = default_perf_fx()
 	p.perform = {arp = {rate = .Sixteenth, gate = 0.5, octaves = 1}, repeat = {rate = .Sixteenth, gate = 0.5}}
 	for &k, key in p.midi_map do k = i16(key - PAD_KEY_BASE) if key >= PAD_KEY_BASE && key < PAD_KEY_BASE + PADS else -1
 	app.store_init(&p.samples)

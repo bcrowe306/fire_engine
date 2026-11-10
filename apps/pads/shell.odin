@@ -2,6 +2,7 @@ package pads
 
 import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:strconv"
 import "core:strings"
 
@@ -10,6 +11,7 @@ import "app:ui"
 import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
+import fc "fire:core"
 
 setup_actions :: proc(a: ^App) {
 	acts := &a.actions
@@ -116,8 +118,10 @@ setup_workspace :: proc(a: ^App) {
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
 	ui.panel_add(w, {id = "pads", title = "Pads", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_pads, user = a, flags = {.NoScrollbar}}, .Center)
 	ui.panel_add(w, {id = "inspector", title = "Pad", icon = ui.ICON_SLIDERS_HORIZONTAL, open = true, draw = draw_inspector, user = a}, .Right)
+	ui.panel_add(w, {id = "effect", title = "Effect", icon = ui.ICON_WAND_SPARKLES, open = true, draw = draw_effect, user = a}, .Right)
 	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Right)
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Bottom)
+	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Bottom)
 	ui.panel_add(w, {id = "sample", title = "Sample", icon = ui.ICON_AUDIO_WAVEFORM, open = true, draw = draw_sample, user = a}, .Bottom)
 	ui.panel_focus(w, "sequence")
 	ui.panel_focus(w, "inspector")
@@ -164,6 +168,11 @@ subscribe_imports :: proc(a: ^App) {
 		defer delete(e.path)
 		if pm.load_onto_pad(&a.m, a.selected, e.path) != .None do ui.toast(&a.ws.toasts, .Error, "Could not load that file")
 	}, a)
+	app.subscribe(&a.bus, Plugin_Chosen, proc(user: rawptr, e: ^Plugin_Chosen) {
+		a := (^App)(user)
+		defer delete(e.path)
+		choose_plugin(a, e.path, a.plugin_choice.target)
+	}, a)
 	app.subscribe(&a.bus, Midi_Chosen, proc(user: rawptr, e: ^Midi_Chosen) {
 		a := (^App)(user)
 		defer delete(e.path)
@@ -198,6 +207,10 @@ subscribe_imports :: proc(a: ^App) {
 //	arp on|off / repeat on|off / midi KEY VELOCITY (0: off) / learn PAD KEY
 //	point PAD volume|pitch|low|mid|high BEAT VALUE / import_midi PATH
 //	lane velocity|chance|automation [PARAM]   what the sequence editor's lane shows
+//	insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
+//	plugin BUS SLOT ID PATH / edit_fx pad P S|bus B S|perf N / fx_param ID VALUE (the edited slot)
+//	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
+//	expect level main|bus B|pad N above|below DB / expect fx KIND
 //	theme light|dark, action ID
 drive_command :: proc(user: rawptr, w: []string) -> bool {
 	a := (^App)(user)
@@ -350,6 +363,85 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) < 2 do return false
 		if pm.import_midi(&a.m, strings.join(w[1:], " ", context.temp_allocator), a.m.project.slot) < 0 do return drive_fail(a, "could not read the MIDI file")
 		return true
+	case "insert", "busfx", "perf_fx":
+		// insert PAD SLOT KIND / busfx BUS SLOT KIND (BUS 0..3, 4 = main) / perf_fx N KIND
+		target := pm.Fx_Target{}
+		k := 3
+		switch w[0] {
+		case "insert":  target = {.Pad, num(w, 1), num(w, 2)}
+		case "busfx":   target = {.Bus, num(w, 1), num(w, 2)}
+		case "perf_fx": target, k = {.Perf, num(w, 1), 0}, 2
+		}
+		if len(w) <= k do return false
+		kind, ok := effect_kind(w[k])
+		if !ok do return false
+		s := pm.new_effect(kind)
+		if target.kind == .Perf do s.on = false
+		pm.set_target_slot(&a.m, target, s, "Set Effect")
+		a.fx = target
+		return true
+	case "plugin":
+		// plugin BUS SLOT ID PATH
+		if len(w) < 5 do return false
+		t := pm.Fx_Target{.Bus, num(w, 1), num(w, 2)}
+		pm.set_target_slot(&a.m, t, pm.new_plugin_effect(&a.m.project, strings.join(w[4:], " ", context.temp_allocator), w[3], w[3]), "Add Plug-in")
+		a.fx = t
+		return true
+	case "fx_param":
+		// fx_param ID VALUE: a setting of the slot being edited
+		if len(w) < 3 do return false
+		pm.set_target_param(&a.m, a.fx, fc.Param_Id(num(w, 1)), numf(w, 2))
+		app.seal(&a.m.history)
+		return true
+	case "edit_fx":
+		// edit_fx pad PAD SLOT / edit_fx bus BUS SLOT / edit_fx perf N
+		if len(w) < 3 do return false
+		switch w[1] {
+		case "pad":  a.fx = {.Pad, num(w, 2), num(w, 3)}
+		case "bus":  a.fx = {.Bus, num(w, 2), num(w, 3)}
+		case "perf": a.fx = {.Perf, num(w, 2), 0}
+		case: return false
+		}
+		return ui.panel_focus(&a.ws, "effect")
+	case "route":
+		if i := num(w, 1); pad_ok(i) {
+			pm.set_pad_bus(&a.m, i, num(w, 2))
+			return true
+		}
+	case "busvol":
+		b := num(w, 1)
+		if b < 0 || b > pm.BUSES do return false
+		bus := pm.bus_of(&a.m, b)^
+		bus.volume = numf(w, 2)
+		pm.set_bus(&a.m, b, 0, "Set Volume", bus)
+		app.seal(&a.m.history)
+		return true
+	case "mute", "solo":
+		// mute pad N / mute bus B (solo likewise); toggles
+		if len(w) < 3 do return false
+		i := num(w, 2)
+		if w[1] == "pad" && pad_ok(i) {
+			p := a.m.project.pads[i]
+			if w[0] == "mute" do p.mute = !p.mute
+			else do p.solo = !p.solo
+			pm.set_pad(&a.m, i, .Mute, "Mute", p)
+			app.seal(&a.m.history)
+			return true
+		}
+		if w[1] == "bus" && i >= 0 && i <= pm.BUSES {
+			bus := pm.bus_of(&a.m, i)^
+			if w[0] == "mute" do bus.mute = !bus.mute
+			else do bus.solo = !bus.solo
+			pm.set_bus(&a.m, i, 1, "Mute", bus)
+			app.seal(&a.m.history)
+			return true
+		}
+	case "perf":
+		// perf N on|off: hold (or let go of) performance effect N (0..15)
+		i := num(w, 1)
+		if i < 0 || i >= pm.PERF_FX do return false
+		pm.hold_perf_fx(&a.m, i, len(w) < 3 || w[2] != "off")
+		return true
 	case "panel":
 		return len(w) > 1 && ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 	case "play":
@@ -399,6 +491,17 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	return false
 }
 
+// An effect kind by its name in scripts: lowpass, reverb, ring, ...
+@(private)
+effect_kind :: proc(name: string) -> (pm.Effect_Kind, bool) {
+	for k in pm.Effect_Kind {
+		n, _ := strings.replace_all(strings.to_lower(string(pm.EFFECT_NAMES[k]), context.temp_allocator), "-", "", context.temp_allocator)
+		n, _ = strings.replace_all(n, " ", "", context.temp_allocator)
+		if n == strings.to_lower(name, context.temp_allocator) || strings.has_prefix(n, strings.to_lower(name, context.temp_allocator)) do return k, true
+	}
+	return .None, false
+}
+
 @(private)
 drive_fail :: proc(a: ^App, what: string) -> bool {
 	fmt.eprintln("pads: drive:", what)
@@ -410,6 +513,38 @@ drive_fail :: proc(a: ^App, what: string) -> bool {
 drive_expect :: proc(a: ^App, w: []string) -> bool {
 	if len(w) < 3 do return false
 	switch w[1] {
+	case "level":
+		// expect level main|bus B|pad N above|below DB (the meter's level as shown, dB)
+		i := 0
+		k := 3
+		view: [2]Meter_View
+		switch w[2] {
+		case "main": view = a.mixer.buses[pm.BUSES]
+		case "bus":
+			if len(w) < 6 do return false
+			i, _ = strconv.parse_int(w[3])
+			view = a.mixer.buses[clamp(i, 0, pm.BUSES)]
+			k = 4
+		case "pad":
+			if len(w) < 6 do return false
+			i, _ = strconv.parse_int(w[3])
+			view = a.mixer.pads[clamp(i, 0, pm.PADS - 1)]
+			k = 4
+		case: return false
+		}
+		peak := [2]f32{view[0].peak, view[1].peak}
+		if len(w) < k + 2 do return false
+		lim, _ := strconv.parse_f32(w[k + 1])
+		db := 20 * math.log10(max(max(peak[0], peak[1]), 1e-6))
+		above := w[k] == "above"
+		if above != (db > lim) do return drive_fail(a, fmt.tprintf("expected %s %s %.1f dB, got %.1f dB", w[2], w[k], lim, db))
+		return true
+	case "fx":
+		// expect fx KIND: the slot being edited holds KIND
+		s, _ := pm.target_slot(&a.m, a.fx)
+		kind, ok := effect_kind(w[2])
+		if !ok || s.kind != kind do return drive_fail(a, fmt.tprintf("expected %s in the edited slot, got %s", w[2], pm.slot_name(s)))
+		return true
 	case "points":
 		want, _ := strconv.parse_int(w[2])
 		got := len(pm.current_sequence(&a.m).points)

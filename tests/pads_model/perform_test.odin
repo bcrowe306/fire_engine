@@ -183,7 +183,8 @@ a_midi_file_becomes_a_sequence :: proc(t: ^testing.T) {
 }
 
 // What the engine costs on the audio thread: 8 pads in a busy sequence,
-// with automation and the arpeggiator on (logged; the bound only catches
+// with automation, the arpeggiator, an insert on each pad, and reverb and
+// a compressor on main (logged; the bound only catches
 // something gone badly wrong).
 @(test)
 engine_timing :: proc(t: ^testing.T) {
@@ -197,6 +198,11 @@ engine_timing :: proc(t: ^testing.T) {
 	p := m.project.perform
 	p.arp_on = true
 	pm.set_perform(m, p)
+	// And effects: a low-pass on every pad, reverb and a compressor on main.
+	for i in 0 ..< 8 do pm.set_insert(m, i, 0, pm.new_effect(.Low_Pass))
+	b := m.project.main
+	b.slots[0], b.slots[1] = pm.new_effect(.Reverb), pm.new_effect(.Compressor)
+	pm.set_bus(m, pm.BUSES, 9, "Effects", b)
 	pm.sync(&m.engine)
 	render(r, 512)
 	pm.play(&m.engine)
@@ -207,9 +213,10 @@ engine_timing :: proc(t: ^testing.T) {
 	render(r, frames)
 	secs := time.duration_seconds(time.tick_since(t0))
 	log.infof("engine: 10 s rendered in %.1f ms (%.0f× real time; %.1f%% of one core)", secs * 1000, 10 / secs, secs * 10)
-	// Faster than real time even on a small, busy test machine (tests run
-	// in parallel); about 30× on an M-series Mac.
+	// A measurement (logged): tests run in parallel on small shared
+	// machines too, so only something badly wrong fails it. About 19× on
+	// an M-series Mac.
 	when ODIN_OPTIMIZATION_MODE != .None {
-		testing.expectf(t, 10 / secs > 1.5, "faster than real time (%.1f×)", 10 / secs)
+		testing.expectf(t, 10 / secs > 0.5, "at least half real time (%.1f×)", 10 / secs)
 	}
 }

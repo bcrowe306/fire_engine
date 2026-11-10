@@ -1,0 +1,50 @@
+# Pads' mixer: buses, inserts, mute and solo, meters, the performance
+# effects, and a CLAP plug-in on main. Screenshots of the Mixer and Effect
+# panels.
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+load 2 tests/app_ui/fixtures/loop.wav
+set 2 mode 2              # the loop loops while held
+note 0 0 0.25 1
+note 1 0.5 0.25 0.7
+note 0 1 0.25 1
+note 1 1.5 0.25 0.7
+note 0 2 0.25 1
+note 1 2.5 0.25 0.7
+note 0 3 0.25 1
+note 1 3.5 0.25 0.7
+route 1 1                 # the hat to bus A
+insert 0 0 lowpass
+fx_param 2 600            # its cutoff
+expect fx lowpass
+busfx 0 0 reverb
+busfx 4 0 compressor
+panel mixer
+play
+wait 30
+expect level main above -30
+expect level bus 0 above -40
+expect level pad 0 above -30
+screenshot mixer_playing
+edit_fx bus 0 0
+wait 3
+screenshot mixer_effect
+# Mute the hat's bus: it stops reaching main.
+mute bus 0
+wait 120                  # meters fall 24 dB a second
+expect level bus 0 below -40
+mute bus 0
+# Hold the stutter (performance effect 5) and the ring mod (10).
+perf 5 on
+perf 10 on
+panel perform
+wait 20
+screenshot mixer_perf
+perf 5 off
+perf 10 off
+stop
+wait 4
+action undo
+expect undo Mute

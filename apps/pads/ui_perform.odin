@@ -119,6 +119,44 @@ draw_perform :: proc(user: rawptr) {
 	}
 	if changed do pm.set_perform(m, p)
 
+	// The performance effects: hold a pad to apply its effect to main; with
+	// HOLD, a press turns it on until the next. Right-click to edit one.
+	section(a, "Performance effects")
+	ui.toggle("Hold", &a.perf_hold)
+	if !a.perf_hold {
+		for i in 0 ..< pm.PERF_FX do if a.perf_latched[i] {
+			a.perf_latched[i] = false
+			if !a.perf_held[i] do pm.hold_perf_fx(m, i, false)
+		}
+	}
+	avail := im.GetContentRegionAvail().x
+	gap: f32 = 6
+	side := min((avail - 3 * gap) / 4, 76)
+	for i in 0 ..< pm.PERF_FX {
+		if i % 4 != 0 do im.SameLine(0, gap)
+		fx := m.project.perf_fx[i]
+		im.PushIDInt(i32(5000 + i))
+		hit := ui.pad("fx", pm.perf_label(fx), fmt.tprintf("FX %d", i + 1), ui.theme().accent, true, fx.on, a.fx == pm.Fx_Target{.Perf, i, 0}, {side, side * 0.62})
+		im.PopID()
+		if hit.pressed {
+			a.perf_held[i] = true
+			if a.perf_hold {
+				a.perf_latched[i] = !a.perf_latched[i]
+				pm.hold_perf_fx(m, i, a.perf_latched[i])
+			} else {
+				pm.hold_perf_fx(m, i, true)
+			}
+		}
+		if hit.released {
+			a.perf_held[i] = false
+			if !a.perf_hold do pm.hold_perf_fx(m, i, false)
+		}
+		if hit.selected {
+			a.fx = {.Perf, i, 0}
+			ui.panel_focus(&a.ws, "effect")
+		}
+	}
+
 	// MIDI: activity, learn, out.
 	section(a, "MIDI")
 	st := &a.perf

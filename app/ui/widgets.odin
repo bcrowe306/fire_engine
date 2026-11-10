@@ -26,6 +26,15 @@ FADER_SIZE :: im.Vec2{28, 140}
 // Default pad size.
 PAD_SIZE :: im.Vec2{88, 88}
 
+// A label as shown: up to "##" (what follows only makes the id unique,
+// as in ImGui).
+shown_label :: proc(label: cstring) -> cstring {
+	text := string(label)
+	i := strings.index(text, "##")
+	if i < 0 do return label
+	return strings.clone_to_cstring(text[:i], context.temp_allocator)
+}
+
 // A colour as ImGui packs it, for draw lists.
 col :: proc "contextless" (c: Color) -> u32 {
 	return im.GetColorU32Vec4(transmute(im.Vec4)c)
@@ -41,12 +50,13 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
 	label_h := im.GetTextLineHeight()
-	w := max(size, im.CalcTextSize(label).x)
+	shown := shown_label(label)
+	w := max(size, im.CalcTextSize(shown).x)
 	center := im.Vec2{pos.x + w / 2, pos.y + label_h + 4 + size / 2}
 
 	// Label.
-	ls := im.CalcTextSize(label)
-	im.DrawList_AddText(dl, {pos.x + (w - ls.x) / 2, pos.y}, col(t.text_dim), label)
+	ls := im.CalcTextSize(shown)
+	im.DrawList_AddText(dl, {pos.x + (w - ls.x) / 2, pos.y}, col(t.text_dim), shown)
 
 	im.SetCursorScreenPos({pos.x + (w - size) / 2, pos.y + label_h + 4})
 	im.InvisibleButton("##knob", {size, size})
@@ -145,10 +155,10 @@ fader :: proc(label: cstring, value: ^f32, min_v, max_v, default: f32, size := F
 	}
 	// The label under it, inside one box with the fader (so SameLine works).
 	label_h: f32 = 0
-	if label != "" {
-		ls := im.CalcTextSize(label)
+	if shown := shown_label(label); shown != "" {
+		ls := im.CalcTextSize(shown)
 		label_h = ls.y + 4
-		im.DrawList_AddText(dl, {pos.x + (size.x - ls.x) / 2, pos.y + size.y + 4}, col(t.text_dim), label)
+		im.DrawList_AddText(dl, {pos.x + (size.x - ls.x) / 2, pos.y + size.y + 4}, col(t.text_dim), shown)
 	}
 	im.SetCursorScreenPos(pos)
 	im.Dummy({size.x, size.y + label_h})

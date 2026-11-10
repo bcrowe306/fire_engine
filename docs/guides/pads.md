@@ -6,8 +6,8 @@ description: The Pads sampler built on the application layer — loading, playin
 Pads (`apps/pads`) is a sampler and sequencer built on Fire Engine and its
 [application layer](/guides/app-layer/). It is one binary: SDL3 and Dear
 ImGui are linked in. This page covers what it does so far (samples, the
-sequencer and playing live: milestones 4 and 5 of `app/PLAN.md`); the
-mixer and song mode come next.
+sequencer, playing live and the mixer: milestones 4 to 6 of
+`app/PLAN.md`); song mode, export and saving come next.
 
 ```bash
 task deps        # once per machine: the static SDL3 and ImGui libraries
@@ -76,6 +76,21 @@ port.
   played; 1–4 octaves; gate; latch). MIDI: activity lights, **Learn**
   (the next note you play plays the selected pad), and **MIDI out** (the
   pad's hits also go out as a note on a channel).
+- **Mixer** (bottom, beside Sequence): a strip for each pad of the bank —
+  its two insert effects, where it goes (main or bus A–D), pan, mute and
+  solo, its fader (the pad's volume) and meter — then buses A–D and main,
+  each with five effect slots, a fader and a meter (buses also pan, mute
+  and solo). A strip shows the slots in use and a **+** for the next.
+  Click a slot to edit it in the **Effect** panel (right): what it holds
+  (filters, dynamics, saturation, bit-crusher, delay, reverb, chorus,
+  flanger, phaser, ring mod, comb, pitch shift, cutter, stutter, or a CLAP
+  plug-in), on or off (a 15 ms fade), and a knob for each setting. A
+  plug-in that can't be found plays nothing and says so.
+- **Performance effects** (in the Perform panel): 16 effects on main, each
+  on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
+  cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
+  distortion. **Hold** latches them. Right-click one to change what it is
+  in the Effect panel.
 - **File > Import MIDI File…** reads a `.mid` into the current sequence:
   drum keys onto the pads by the MIDI map (key 36 is A1).
 
@@ -108,6 +123,15 @@ audio. Saving the project file itself is milestone 7.
   on MIDI channel 16, so they skip the live effects. Each pad also has two
   `clip.Automation_Player`s, into its sampler and its EQ; they let go of
   the pad when the sequencer stops.
+- The mixer (model/mixer.odin, mixer_engine.odin): each pad's EQ goes
+  through its inserts (each effect in a `dsp.Wet`, so on/off never
+  clicks), a gain for mute and solo, and a `dsp.Meter`, into its bus or
+  main; a bus is a summing gain, its five slots, a fader, a `dsp.Pan` and
+  a meter, into main; main is the same with the 16 performance effects
+  after its slots, then OUTPUT. Changing what a slot holds makes a new
+  node and wires its chain again; changing a setting is a parameter
+  change. Slots and buses are plain values in the project, so every edit
+  undoes.
 - The router (model/router.odin) is the pipeline every note takes: UI hits
   and MIDI notes (by the MIDI map) are live notes; live notes go through
   the arpeggiator or note repeat (`fire:perform`) when one is on; then
@@ -118,9 +142,10 @@ audio. Saving the project file itself is milestone 7.
   in `shell.odin`.
 
 Costs (Apple M-series, optimized): 0.35 ms of CPU per frame with a bank
-loaded and the sequencer playing (p99 0.85 ms); the engine, with 8 pads in
-a busy sequence, automation and the arpeggiator, 30× real time (3% of one
-core); on 30 s of audio, import 3 ms, chop at transients 76 ms, normalize
+loaded, the sequencer playing and the mixer showing (p99 1.1 ms); the
+engine, with 8 pads in a busy sequence, automation, the arpeggiator, an
+insert on every pad and reverb and a compressor on main, 19× real time
+(5% of one core); on 30 s of audio, import 3 ms, chop at transients 76 ms, normalize
 8 ms, stretch 87 ms.
 
 ## Scripts and tests
@@ -149,6 +174,13 @@ midi KEY VELOCITY    a MIDI note in, as from a port (velocity 0: note-off)
 learn PAD KEY / import_midi PATH
 expect notes K / expect points K / expect playing 0|1 / expect slot N
 expect midi_key PAD KEY / expect struck PAD MIN   (it has sounded MIN or more times)
+insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
+plugin BUS SLOT ID PATH                      a CLAP plug-in in a bus slot
+edit_fx pad P S | bus B S | perf N           the slot the Effect panel edits
+fx_param ID VALUE                            one of its settings
+route PAD BUS / busvol BUS DB / mute pad N | bus B / solo ... / perf N on|off
+expect level main | bus B | pad N above|below DB   (the meter as shown)
+expect fx KIND                               what the edited slot holds
 ```
 
 A failed `expect` makes Pads exit 1. `tests/app_ui/drive/pads.txt` drives
@@ -157,7 +189,8 @@ narrow); `pads_input.txt` uses only input events — keys, clicks, a knob
 drag, shortcuts, the palette — and checks the model after each;
 `pads_sequence.txt` covers the sequencer (by command, then by clicks,
 Space and Cmd+R with the pad keys); `pads_perform.txt` the play modes,
-repeat, the arpeggiator, MIDI in and learn, automation and MIDI import.
+repeat, the arpeggiator, MIDI in and learn, automation and MIDI import;
+`pads_mixer.txt` the buses, inserts, mute, meters and performance effects.
 
 ```bash
 task app:test          # tests/app_* and tests/pads_*, the UI cases, then every pads*.txt script

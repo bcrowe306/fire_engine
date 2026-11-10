@@ -55,6 +55,11 @@ App :: struct {
 	keys:     pm.Keys,
 	grid_held: [pm.PADS_PER_BANK]Grid_Held,
 	perf:     Perf_State,
+	mixer:    Mixer_State,
+	fx:       pm.Fx_Target, // the effect slot the Effect panel edits
+	plugin_choice: Plugin_Choice,
+	perf_hold: bool, // performance effects latch
+	perf_held, perf_latched: [pm.PERF_FX]bool,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
 	fake_due: f64, // frames the simulated device owes (it runs as the frames go by)
 }
@@ -107,6 +112,7 @@ main :: proc() {
 	}
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
+	defer plugin_choice_clear(&a.plugin_choice)
 	a.seq.selected, a.seq.grid, a.capture.grid = -1, .Sixteenth, .Sixteenth
 	app.subscribe(&a.bus, app.Host_Engine_Changed, proc(user: rawptr, e: ^app.Host_Engine_Changed) {
 		pm.engine_rebuild(&(^App)(user).m.engine)
@@ -162,9 +168,11 @@ frame :: proc(a: ^App) {
 	app.host_update(&a.host)
 	run_fake(a)
 	handle_drops(a)
+	update_meters(a)
 	ui.handle_shortcuts(&a.actions)
 	play_keys(a)
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
+	draw_plugin_choice(a)
 	pm.sync(&a.m.engine)
 	pm.capture_poll(&a.m, &a.capture)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))

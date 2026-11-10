@@ -38,6 +38,11 @@ Pad_Field :: enum {
 	Eq_Mid,
 	Eq_High,
 	Slices,
+	Inserts,
+	Insert_Param,
+	Bus,
+	Mute,
+	Solo,
 }
 
 // Prepares the model for a project in `dir` on `host`.

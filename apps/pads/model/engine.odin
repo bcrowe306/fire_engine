@@ -38,6 +38,8 @@ Engine :: struct {
 	metro_on:  bool, // what the metronome node has
 	resend:    bool, // send every pad's parameters again (automation moved them)
 	stopped:   bool, // stopped by `stop`: automation is off until `play`
+	mixer:     Mixer_Nodes,
+	mix_dirty: bool, // a bus or performance effect changed
 	built_perform: Perform, // what the router's effects have
 	perform_sent:  bool,
 }
@@ -88,6 +90,7 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	graph.connect_events(g, e.router_id, graph.OUTPUT) // pads' MIDI out
 	e.metro_id = graph.add_node(g, dsp.metronome_create({timeline = e.timeline}), 0, 2) or_return
 	for c in 0 ..< 2 do graph.connect(g, e.metro_id, c, graph.OUTPUT, c)
+	build_mixer(e) or_return
 	e.bpm, e.metro_on = 0, true // the node starts on: sync sets what the project wants
 	e.perform_sent = false
 	e.seq_dirty = true
@@ -170,10 +173,7 @@ sync :: proc(e: ^Engine) {
 			graph.connect_events(g, n.auto_voice, sid)
 			graph.connect_events(g, n.auto_eq, eid)
 			e.seq_dirty = true // its automation
-			for c in 0 ..< 2 {
-				graph.connect(g, sid, c, eid, c)
-				graph.connect(g, eid, c, graph.OUTPUT, c)
-			}
+			for c in 0 ..< 2 do graph.connect(g, sid, c, eid, c) // the EQ into the pad's strip (sync_mixer)
 			structural = true
 			n.built = {} // everything below is new
 			n.built.sample = 0
@@ -198,6 +198,7 @@ sync :: proc(e: ^Engine) {
 		for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
 		n.built = pad
 	}
+	if sync_mixer(e) do structural = true
 	if structural do graph.commit(g)
 	e.resend = false
 	sync_sequencer(e)

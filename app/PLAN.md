@@ -126,7 +126,7 @@ four platforms), verify, profile, document, commit.
    roll, probability, automation, keyboard and note repeat and arpeggiator,
    MIDI in and out and import. *Done:* see docs/guides/pads.md.
 6. **Pads: mixer and FX.** Inserts, buses, main, performance FX, CLAP
-   plug-ins in slots.
+   plug-ins in slots. *Done:* see docs/guides/pads.md.
 7. **Pads: song, export, save.** Slot chain, mixdown and stems and
    resample, project folders, autosave.
 8. **Later.** The timeline arranger, stem splitting, more export formats.

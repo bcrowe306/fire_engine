@@ -241,6 +241,43 @@ the high rate, you process it, and `oversampler_down` brings it back. Its
 round trip is a pure delay of `oversampler_latency` frames within 10⁻⁴
 below 10 kHz.
 
+## Effects for playing live
+
+Six effects made for a sampler's performance pads (stereo; the cutter and
+stutter follow the clock's grid, 120 BPM without one):
+
+| Node | What it does | Parameters |
+|------|--------------|------------|
+| `bitcrush_create` | fewer bits, a lower sample rate | bits, downsample, mix |
+| `ring_mod_create` | multiplies by a sine: metallic sidebands | frequency, mix |
+| `comb_create` | a short delay fed back: rings at its pitch | frequency, feedback, mix |
+| `pitch_shift_create` | pitch without changing length (two crossfaded read heads, a grainy texture) | semitones, window, mix |
+| `cutter_create` | a trance gate on the grid, with 2 ms edges | rate (beats), duty, depth |
+| `stutter_create` | always listening; switched on, loops the slice that just went by | length (beats), active |
+
+## Switching effects in and out
+
+`wet_create(inner)` wraps any effect node with a dry/wet mix,
+`WET_PARAM_MIX` (0 the input untouched, 1 the effect alone), faded over
+15 ms on its exact frame, so an effect switches in and out without a
+click. Every other parameter goes to the effect, and its parameter table
+is the effect's plus the mix. Fully dry, the effect isn't run at all; it is
+reset when switched back in, so it starts clean (no old echoes).
+
+```odin
+node := dsp.wet_create(dsp.reverb_create(), mix = 0) // in the graph, off
+graph.set_param(g, id, dsp.WET_PARAM_MIX, 1)         // on, smoothly
+graph.set_param(g, id, dsp.REVERB_PARAM_DECAY_S, 4)  // the reverb's own
+```
+
+## Metering and panning
+
+- `meter_create()` passes audio through and returns a handle: `meter_read`
+  gives each channel's peak and RMS since the last read, from any thread,
+  for level meters.
+- `pan_create()` is an equal-power stereo balance (`PAN_PARAM_POSITION`,
+  -1..1): unity in the centre, so a centred pan passes audio unchanged.
+
 ## See also
 
 - [`fire:dsp` reference](/reference/dsp/)
