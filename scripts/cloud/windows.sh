@@ -174,7 +174,7 @@ sync)
 	scp -q "${SSH_OPTS[@]}" "$tmp" "Administrator@$(ip "$(instance_id)"):C:/fire.tar"
 	rm -f "$tmp"
 	# Keep the static libraries `task deps` built (gitignored, so not in the tar).
-	remote 'if (Test-Path C:\fire\vendor\sdl3\lib) { New-Item -ItemType Directory -Force C:\fire_keep\imgui | Out-Null; Copy-Item -Recurse -Force C:\fire\vendor\sdl3\lib C:\fire_keep\sdllib; Copy-Item -Force C:\fire\vendor\imgui\*.lib C:\fire_keep\imgui\ }; if (Test-Path C:\fire) { Remove-Item -Recurse -Force C:\fire }; New-Item -ItemType Directory C:\fire | Out-Null; tar.exe -xf C:\fire.tar -C C:\fire; if (Test-Path C:\fire_keep\sdllib) { Copy-Item -Recurse -Force C:\fire_keep\sdllib C:\fire\vendor\sdl3\lib; Copy-Item -Force C:\fire_keep\imgui\*.lib C:\fire\vendor\imgui\; Remove-Item -Recurse -Force C:\fire_keep }'
+	remote 'if (Test-Path C:\fire\vendor\sdl3\lib) { New-Item -ItemType Directory -Force C:\fire_keep\imgui | Out-Null; Copy-Item -Recurse -Force C:\fire\vendor\sdl3\lib C:\fire_keep\sdllib; Copy-Item -Force C:\fire\vendor\imgui\*.lib C:\fire_keep\imgui\ }; if (Test-Path C:\fire\.deps) { if (Test-Path C:\fire_deps) { Remove-Item -Recurse -Force C:\fire_deps }; Move-Item C:\fire\.deps C:\fire_deps }; if (Test-Path C:\fire) { Remove-Item -Recurse -Force C:\fire }; New-Item -ItemType Directory C:\fire | Out-Null; tar.exe -xf C:\fire.tar -C C:\fire; if (Test-Path C:\fire_deps) { Move-Item C:\fire_deps C:\fire\.deps }; if (Test-Path C:\fire_keep\sdllib) { Copy-Item -Recurse -Force C:\fire_keep\sdllib C:\fire\vendor\sdl3\lib; Copy-Item -Force C:\fire_keep\imgui\*.lib C:\fire\vendor\imgui\; Remove-Item -Recurse -Force C:\fire_keep }'
 	;;
 test)
 	shift

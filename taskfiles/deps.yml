@@ -34,6 +34,7 @@ tasks:
     desc: Fetch SDL3 at the pinned tag and build it as a static library.
     status:
       - test -f {{.ROOT_DIR}}/vendor/sdl3/lib/{{.SDL_PLATFORM}}/{{.SDL_LIB}}
+      - test -d {{.DEPS}}/sdl3/include  # the ImGui build needs SDL's headers
     cmds:
       - task: clone
         vars: {URL: 'https://github.com/libsdl-org/SDL.git', REF: '{{.SDL_VERSION}}', DIR: '{{.DEPS}}/src/SDL'}
@@ -48,6 +49,7 @@ tasks:
     deps: [sdl3]
     status:
       - test -f {{.ROOT_DIR}}/vendor/imgui/{{.IMGUI_LIB}}
+      - test -f {{.DEPS}}/generated/dcimgui_internal.cpp  # libraries built before the internal API was added rebuild
     cmds:
       - task: clone
         vars: {URL: 'https://github.com/ocornut/imgui.git', REF: '{{.IMGUI_VERSION}}', DIR: '{{.DEPS}}/src/imgui'}
@@ -57,6 +59,7 @@ tasks:
       - '{{.PYTHON}} -m pip install --quiet -r {{.DEPS}}/src/dear_bindings/requirements.txt'
       - mkdir -p {{.DEPS}}/generated
       - '{{.PYTHON}} {{.DEPS}}/src/dear_bindings/dear_bindings.py --nogeneratedefaultargfunctions -o {{.DEPS}}/generated/dcimgui {{.DEPS}}/src/imgui/imgui.h'
+      - '{{.PYTHON}} {{.DEPS}}/src/dear_bindings/dear_bindings.py --nogeneratedefaultargfunctions -o {{.DEPS}}/generated/dcimgui_internal --include {{.DEPS}}/src/imgui/imgui.h {{.DEPS}}/src/imgui/imgui_internal.h'
       - >-
         cmake -S {{.ROOT_DIR}}/vendor/imgui -B {{.DEPS}}/build/imgui {{.CMAKE_FLAGS}}
         -DIMGUI_DIR={{.DEPS}}/src/imgui -DGENERATED_DIR={{.DEPS}}/generated

@@ -66,6 +66,70 @@ im.Text("Title")
 im.PopFont()
 ```
 
+Lucide's icons are merged into each weight, so labels mix icons and text:
+`ui.ICON_PLAY + "  Play"`. `app/ui/icons.odin` has a constant for each of
+Lucide's 2,342 icons.
+
+## Widgets
+
+Widgets draw with the current theme and **never change the model
+themselves**: they edit a copy and report what the user did as a
+`ui.Edit` (`changed`, `started`, `ended`, `active`), which the caller turns
+into a command. That keeps every change undoable (see
+[commands and undo](/guides/app-core/)):
+
+```odin
+v := model.volume
+e := ui.knob("Volume", &v, 0, 1, default = 0.8)
+if e.changed do app.set_value(&history, "Set Volume", {pad, F_VOLUME}, model.volume, v, set_f32)
+if e.ended do app.seal(&history)   // the next drag is its own undo step
+```
+
+| Widget | What it is |
+|--------|-----------|
+| `knob` | Rotary control: drag up and down (Shift: fine), scroll, double-click for the default |
+| `fader` | Vertical or horizontal, the same gestures |
+| `meter` | Peak and RMS on a dB scale, with a held peak; green, amber above -12 dB, red above -3 |
+| `pad` | A sampler pad: name, detail, colour, lit while playing, outlined when selected; reports velocity from where it was hit |
+| `toggle` | An on/off switch |
+| `segmented` | Mutually exclusive options in a row |
+| `icon_button` | A square button with an icon and a tooltip; `on` fills it with the accent |
+| `xy_pad` | Two values, 0..1 |
+
+### Editors
+
+| Editor | What the user does | What it reports |
+|--------|--------------------|-----------------|
+| `waveform` | zoom (wheel), pan (Shift+wheel), drag markers, drag a selection | `Wave_Edit`: marker moved/released, selection, click |
+| `step_grid` | click or drag to paint cells on or off | an `Edit`; the cells |
+| `piano_roll` | click to add, drag to move, drag the end to resize, right-click to delete | `Roll_Edit`: what to add, move or delete |
+| `automation_lane` | click to add a point, drag to move, right-click to delete | `Lane_Edit` |
+
+The piano roll and the automation lane never change the notes or points
+they are given: they say what the user asked for, and the app makes a
+command of it.
+
+## The shell
+
+- **Actions.** A `ui.Action` is something the user can do, with a label,
+  an icon, a shortcut (`ui.MOD_CMD | i32(im.Key.Z)`: Cmd on macOS, Ctrl
+  elsewhere), and optional `enabled` and `checked` callbacks. Menus show
+  them with `menu_action`, `handle_shortcuts` runs them from the keyboard,
+  and drive scripts by id (`run_action`).
+- **Command palette.** Cmd/Ctrl+K (bind `palette_open` to an action): type
+  to filter (letters in order: "svas" finds Save As), arrows to choose,
+  Enter to run.
+- **Toasts.** `ui.toast(&ws.toasts, .Success, "Saved")`: a notice in the
+  bottom right that fades.
+- **Workspace.** `workspace_draw` puts a dockspace over the whole window
+  and draws each open `Panel` in it. The first time (set
+  `has_saved_layout` when your ImGui ini file already exists), panels dock
+  where `panel_add` asked: the centre, left, right or bottom.
+  `workspace_reset_layout` puts them back.
+
+`apps/gallery` shows all of it, wired to a real `History` so everything
+undoes: `task app:gallery`.
+
 ## Driving the UI from a script
 
 A `ui.Driver` runs the UI from a script of input events and screenshots,
@@ -94,7 +158,10 @@ quits when it ends. Under a driver the platform advances time by a fixed
 ```
 
 Apps add their own commands with `Driver.command` (Pads: `theme`,
-`demo`).
+`demo`; the gallery: `theme`, `action ID`).
+
+Key presses release their modifiers with the key, as a keyboard does, so
+`key cmd+k` followed by `text tog` types into the field Cmd+K focused.
 
 ## Testing UI
 
@@ -112,6 +179,8 @@ task app:test
 
 ## Cost
 
-Building and submitting a frame of ImGui's demo window takes about
-0.07 ms of CPU (median; 0.8 ms at the 99th percentile) on an Apple
-M-series Mac, headless. `pads --profile N` measures it on any machine.
+On an Apple M-series Mac, headless, building and submitting a frame takes
+about 0.07 ms of CPU for ImGui's demo window and 0.35 ms (1.2 ms at the
+99th percentile) for the gallery's whole workspace: three docked panels
+with every widget and editor. `pads --profile N` and `gallery --profile N`
+measure it on any machine.

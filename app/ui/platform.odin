@@ -144,6 +144,16 @@ platform_destroy :: proc(p: ^Platform) {
 // Polls input (and the driver's, when one runs), and starts an ImGui
 // frame. Returns false once the app should quit.
 frame_begin :: proc(p: ^Platform) -> bool {
+	// SDL delivers typed text only while text input is on. ImGui's backend
+	// turns it on for a clicked field but not for one focused from code (a
+	// palette's search box): keep it in step with what ImGui wants.
+	if im.GetCurrentContext() != nil {
+		want := im.GetIO().WantTextInput
+		if want != sdl.TextInputActive(p.window) {
+			if want do _ = sdl.StartTextInput(p.window)
+			else do _ = sdl.StopTextInput(p.window)
+		}
+	}
 	if p.driver != nil do driver_step(p.driver, p)
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
@@ -217,6 +227,7 @@ frame_end :: proc(p: ^Platform) {
 set_theme :: proc(p: ^Platform, t: Theme) {
 	theme_apply(t, p.ui_scale)
 	p.clear = t.bg
+	current = t
 }
 
 // Asks the app to quit after this frame.

@@ -124,7 +124,9 @@ blackhole_loopback_is_bit_exact :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.gaps, 0)
 	testing.expect_value(t, r.time_order_bad, 0)
 	testing.expect_value(t, r.non_monotonic, 0)
-	testing.expectf(t, r.max_entry_skew < 5_000_000, "callback_ns is %d ns from host_time_ns at entry", r.max_entry_skew)
+	// A wrong clock domain is off by seconds; a busy machine (the suite runs
+	// packages in parallel) can preempt the callback for a few milliseconds.
+	testing.expectf(t, r.max_entry_skew < 50_000_000, "callback_ns is %d ns from host_time_ns at entry", r.max_entry_skew)
 	testing.expectf(t, stats.xruns == 0, "%d xruns (machine busy?)", stats.xruns)
 
 	// BlackHole has its own output and input volume controls (macOS may have

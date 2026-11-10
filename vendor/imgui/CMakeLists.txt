@@ -1,10 +1,10 @@
 # Builds Dear ImGui (docking) with its C API from dear_bindings and the SDL3
 # and SDL_GPU backends into one static library, named where imgui.odin and
 # the backend bindings look for it. Driven by `task deps:imgui`; see
-# Taskfile.deps.yml for the inputs.
+# taskfiles/deps.yml for the inputs.
 #
 #   IMGUI_DIR      ImGui sources (a checkout of the pinned tag)
-#   GENERATED_DIR  dcimgui.cpp/.h from dear_bindings
+#   GENERATED_DIR  dcimgui.cpp/.h and dcimgui_internal.cpp/.h from dear_bindings
 #   SDL3_INCLUDE   SDL3 headers (the static SDL3 build's install/include)
 #   OUTPUT_NAME    library file name, e.g. imgui_macosx_arm64
 cmake_minimum_required(VERSION 3.20)
@@ -21,6 +21,7 @@ add_library(imgui STATIC
 	${IMGUI_DIR}/imgui_tables.cpp
 	${IMGUI_DIR}/imgui_widgets.cpp
 	${GENERATED_DIR}/dcimgui.cpp
+	${GENERATED_DIR}/dcimgui_internal.cpp  # the internal API: dock_builder.odin binds a few of it
 	${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp
 	${IMGUI_DIR}/backends/imgui_impl_sdlgpu3.cpp
 )

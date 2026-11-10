@@ -147,6 +147,15 @@ unplug :: proc(f: ^Fake)
 The open device disappears: callbacks stop and Device_Lost and
 Devices_Changed are posted.
 
+### set_absent
+
+```odin
+set_absent :: proc(f: ^Fake, absent: bool)
+```
+
+While true, opening fails as though the device were still unplugged
+(until set false again). Lets tests keep a device away for a while.
+
 ### change_format
 
 ```odin

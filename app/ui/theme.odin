@@ -108,6 +108,7 @@ theme_apply :: proc(t: Theme, scale: f32 = 1) {
 	s.WindowMenuButtonPosition = .None
 	s.SeparatorTextBorderSize = 1
 	s.DockingSeparatorSize = 2
+	s.DockingNodeHasCloseButton = false // each tab has its own
 
 	c := s
 	set :: proc(s: ^im.Style, col: im.Col, v: Color) { s.Colors[int(col)] = transmute(im.Vec4)v }

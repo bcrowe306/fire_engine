@@ -156,8 +156,10 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 		down: sdl.Event
 		down.key = {type = .KEY_DOWN, windowID = window, scancode = code, key = key, mod = mod, down = true}
 		_ = sdl.PushEvent(&down)
+		// Released with the modifiers: ImGui reads modifier state from each
+		// key event, so an up event still carrying Cmd would leave it held.
 		up := down
-		up.key.type, up.key.down = .KEY_UP, false
+		up.key.type, up.key.down, up.key.mod = .KEY_UP, false, {}
 		append(&d.pending, up)
 		return true
 	case "text":

@@ -1,0 +1,13 @@
+# The gallery workspace in both themes, then some edits and undo.
+size 1440 900
+wait 5
+screenshot gallery_dark
+action toast
+key cmd+k
+wait 2
+text theme
+wait 2
+screenshot gallery_palette
+key enter
+wait 3
+screenshot gallery_light

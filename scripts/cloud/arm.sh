@@ -17,7 +17,7 @@
 #
 # Only files git would consider (tracked, or untracked and not ignored) are
 # copied, so ignored files (secrets.env, JUCE/, build output) never leave this machine.
-# The static libraries `task deps` built there are kept across syncs.
+# What `task deps` fetched and built there (.deps/, the static libraries) is kept across syncs.
 set -euo pipefail
 
 NAME="fire-engine-arm"
@@ -141,7 +141,7 @@ sync)
 	(cd "$ROOT" && git ls-files -z --cached --others --exclude-standard |
 		while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done |
 		COPYFILE_DISABLE=1 tar --null -T - -cf -) |
-		remote 'cd ~ && (cd fire_engine 2>/dev/null && tar -cf ~/.fire_keep.tar vendor/sdl3/lib vendor/imgui/libimgui_* 2>/dev/null); rm -rf ~/fire_engine && mkdir -p ~/fire_engine && tar -x -C ~/fire_engine 2>/dev/null; [ -f ~/.fire_keep.tar ] && tar -xf ~/.fire_keep.tar -C ~/fire_engine && rm -f ~/.fire_keep.tar; true'
+		remote 'cd ~ && (cd fire_engine 2>/dev/null && tar -cf ~/.fire_keep.tar vendor/sdl3/lib vendor/imgui/libimgui_* 2>/dev/null; [ -d .deps ] && rm -rf ~/.fire_deps && mv .deps ~/.fire_deps); rm -rf ~/fire_engine && mkdir -p ~/fire_engine && tar -x -C ~/fire_engine 2>/dev/null; [ -f ~/.fire_keep.tar ] && tar -xf ~/.fire_keep.tar -C ~/fire_engine && rm -f ~/.fire_keep.tar; [ -d ~/.fire_deps ] && mv ~/.fire_deps ~/fire_engine/.deps; true'
 	;;
 test)
 	shift

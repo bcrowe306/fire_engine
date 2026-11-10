@@ -6,6 +6,7 @@
 #   task app:run              build and run Pads
 #   task app:drive -- FILE    run Pads with a drive script (input events and screenshots)
 #   task app:test             test app:core and app:ui headless
+#   task app:gallery          the widget gallery (to review the look)
 version: '3'
 
 vars:
@@ -26,6 +27,13 @@ tasks:
     cmds:
       - mkdir -p {{.OUT}}
       - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} -o:{{.OPT}} -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}
+
+  gallery:
+    desc: 'Build and run the widget gallery (args go to it: task app:gallery -- --drive tests/app_ui/drive/gallery.txt --headless).'
+    cmds:
+      - mkdir -p {{.OUT}}
+      - odin build {{.ROOT_DIR}}/apps/gallery {{.COLLECTIONS}} -o:{{.OPT}} -vet -strict-style -out:{{.OUT}}/gallery{{.EXE}}
+      - '{{.OUT}}/gallery{{.EXE}} {{.CLI_ARGS}}'
 
   run:
     desc: Build and run Pads.
