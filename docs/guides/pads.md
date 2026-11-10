@@ -91,16 +91,30 @@ for other toggles.
   played; 1–4 octaves; gate; latch). MIDI: activity lights, **Learn**
   (the next note you play plays the selected pad), and **MIDI out** (the
   pad's hits also go out as a note on a channel).
-- **Mixer** (middle tab): a strip for each pad of the bank —
-  its two insert effects, where it goes (main or bus A–D), pan, mute and
-  solo, its fader (the pad's volume) and meter — then buses A–D and main,
-  each with five effect slots, a fader and a meter (buses also pan, mute
-  and solo). A strip shows the slots in use and a **+** for the next.
+- **Mixer** (middle tab): a channel strip, as in Logic, for every pad
+  with a sound (all banks; it scrolls sideways), then buses A–D and main
+  pinned on the right. From the top:
+  - the pad's **EQ** curve (click it for the Pad tab, where the EQ is);
+  - its two **inserts** (a bus and main have five slots);
+  - its four **sends**, one per bus: drag a send up and down for its
+    level (Shift for fine), double-click to turn it on at 0 dB or off,
+    right-click for **Pre-fader** (it then ignores the fader, and shows
+    `pre`, its knob in yellow). A muted pad sends nothing;
+  - its **output**: Main or a bus (click to choose);
+  - **pan** (drag; double-click centres);
+  - two readouts: the fader's level, and the loudest peak since you last
+    clicked it (red above 0 dB);
+  - the **fader** (Logic's taper: finer near 0 dB; double-click for 0 dB)
+    beside the stereo meter and its dB scale;
+  - **M**ute and **S**olo, and the name on the pad's colour (click to
+    select the pad).
+
   Click a slot to edit it in the **Effects** tab: what it holds
   (filters, dynamics, saturation, bit-crusher, delay, reverb, chorus,
   flanger, phaser, ring mod, comb, pitch shift, cutter, stutter, or a CLAP
   plug-in), on or off (a 15 ms fade), and a knob for each setting. A
-  plug-in that can't be found plays nothing and says so.
+  plug-in that can't be found plays nothing and says so. A pad's volume
+  is its fader, after its inserts; the volume lane of a sequence moves it.
 - **Performance effects** (in the Perform tab): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
@@ -237,6 +251,7 @@ insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIN
 plugin BUS SLOT ID PATH                      a CLAP plug-in in a bus slot
 edit_fx pad P S | bus B S | perf N           the slot the Effects tab edits
 fx_param ID VALUE                            one of its settings
+send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..4; -60 dB is off)
 route PAD BUS / busvol BUS DB / mute pad N | bus B / solo ... / perf N on|off
 expect level main | bus B | pad N above|below DB   (the meter as shown)
 expect fx KIND                               what the edited slot holds

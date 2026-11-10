@@ -16,6 +16,9 @@ note 1 2.5 0.25 0.7
 note 0 3 0.25 1
 note 1 3.5 0.25 0.7
 route 1 1                 # the hat to bus A
+send 0 1 -12              # the kick also into bus A (and its reverb), post-fader
+send 2 2 -6 pre           # the loop into bus B, pre-fader
+expect undo Pre-fader Send
 insert 0 0 lowpass
 fx_param 2 600            # its cutoff
 expect fx lowpass

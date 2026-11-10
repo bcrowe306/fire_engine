@@ -16,7 +16,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 1
+PROJECT_VERSION :: 2 // 2: pads' sends
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -169,6 +169,10 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		for s in pad.inserts do write_slot(w, s)
 		fc.write_bool(w, pad.mute)
 		fc.write_bool(w, pad.solo)
+		for s in pad.sends {
+			fc.write_f32(w, s.level)
+			fc.write_bool(w, s.pre)
+		}
 	}
 	// Sequences.
 	for s in p.sequences {
@@ -244,7 +248,7 @@ project_read :: proc(p: ^Project, l: session.Loaded) -> fc.Error {
 	if !ok do return .Invalid_Data
 	if c.version > PROJECT_VERSION do return .Unsupported
 	r := fc.chunk_reader({c.tag, c.version, c.data})
-	read_project(&r, p)
+	read_project(&r, p, c.version)
 	return .Invalid_Data if r.err != .None else .None
 }
 
@@ -271,7 +275,7 @@ read_bus :: proc(r: ^fc.State_Reader, p: ^Project) -> (b: Bus) {
 }
 
 @(private)
-read_project :: proc(r: ^fc.State_Reader, p: ^Project) {
+read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	p.bpm = clamp(fc.read_f64(r), 40, 300)
 	p.slot = clamp(fc.read_int(r), 0, SLOTS - 1)
 	p.song_mode = fc.read_bool(r)
@@ -304,6 +308,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project) {
 		for &s in pad.inserts do s = read_slot(r, p)
 		pad.mute = fc.read_bool(r)
 		pad.solo = fc.read_bool(r)
+		if version >= 2 do for &s in pad.sends {
+			s.level = clamp(fc.read_f32(r), 0, SEND_MAX)
+			s.pre = fc.read_bool(r)
+		}
 	}
 	for &s in p.sequences {
 		s.bars = clamp(fc.read_int(r), 1, MAX_BARS)

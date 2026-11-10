@@ -43,6 +43,11 @@ Pad_Field :: enum {
 	Bus,
 	Mute,
 	Solo,
+	Send_0, // a send's level (one field per bus, so drags of different sends don't merge)
+	Send_1,
+	Send_2,
+	Send_3,
+	Send_Pre,
 }
 
 // Prepares the model for a project in `dir` on `host`.

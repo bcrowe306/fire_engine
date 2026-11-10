@@ -233,6 +233,7 @@ subscribe_imports :: proc(a: ^App) {
 //	lane velocity|chance|automation [PARAM]   what the sequence editor's lane shows
 //	insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
 //	plugin BUS SLOT ID PATH / edit_fx pad P S|bus B S|perf N / fx_param ID VALUE (the edited slot)
+//	send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..4; DB -60 = off)
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
 //	save / save_as DIR / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
@@ -430,6 +431,14 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case: return false
 		}
 		show_detail(a, .Effects)
+		return true
+	case "send":
+		// send PAD BUS DB [pre|post]
+		i, b := num(w, 1), num(w, 2)
+		if !pad_ok(i) || b < 1 || b > pm.BUSES || len(w) < 4 do return false
+		pm.set_send_db(&a.m, i, b, numf(w, 3))
+		app.seal(&a.m.history)
+		if len(w) > 4 do pm.set_send_pre(&a.m, i, b, w[4] == "pre")
 		return true
 	case "route":
 		if i := num(w, 1); pad_ok(i) {

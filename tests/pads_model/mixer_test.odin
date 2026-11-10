@@ -194,3 +194,59 @@ log_skip :: proc(t: ^testing.T, why: string) {
 	log.infof("skipped: %s", why)
 	_ = t
 }
+
+@(test)
+sends_reach_buses_before_or_after_the_fader :: proc(t: ^testing.T) {
+	r := tone_rig(t, "mix_sends")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.hit(&m.engine, 0, true)
+	settle :: proc(r: ^Rig) -> f64 {
+		pm.sync(&r.m.engine)
+		render(r, 4800)
+		l, _ := level(r)
+		return l
+	}
+	direct := settle(r)
+	testing.expectf(t, abs(direct - 0.5) < 0.02, "no sends: main only (%v)", direct)
+	// A post-fader send to bus A at 0 dB: the same signal twice into main.
+	pm.set_send_db(m, 0, 1, 0)
+	app.seal(&m.history)
+	both := settle(r)
+	testing.expectf(t, abs(both / direct - 2) < 0.04, "send at 0 dB doubles it (%v)", both / direct)
+	// The fader at -6 dB moves both paths.
+	pad := m.project.pads[0]
+	pad.volume = -6.0206
+	pm.set_pad(m, 0, .Volume, "Set Volume", pad)
+	app.seal(&m.history)
+	post := settle(r)
+	testing.expectf(t, abs(post / direct - 1) < 0.03, "post-fader: both halved (%v)", post / direct)
+	// Pre-fader: the send ignores the fader (0.5 direct + 1 send).
+	pm.set_send_pre(m, 0, 1, true)
+	pre := settle(r)
+	testing.expectf(t, abs(pre / direct - 1.5) < 0.04, "pre-fader (%v)", pre / direct)
+	testing.expect_value(t, m.project.pads[0].sends[0].pre, true)
+	// A stem of bus A hears only the send.
+	m.engine.export_solo = {.Bus, 1}
+	stem := settle(r)
+	testing.expectf(t, abs(stem / direct - 1) < 0.03, "bus A's stem: the send (%v)", stem / direct)
+	m.engine.export_solo = {}
+	// Muted: the sends go quiet too.
+	pad = m.project.pads[0]
+	pad.mute = true
+	pm.set_pad(m, 0, .Mute, "Mute", pad)
+	app.seal(&m.history)
+	muted := settle(r)
+	testing.expectf(t, muted < 1e-4, "muted (%v)", muted)
+	// Undo: unmuted, post-fader, fader back, send off.
+	app.undo(&m.history)
+	app.undo(&m.history)
+	testing.expect_value(t, m.project.pads[0].sends[0].pre, false)
+	app.undo(&m.history)
+	app.undo(&m.history)
+	testing.expect_value(t, m.project.pads[0].sends[0].level, f32(0))
+	back := settle(r)
+	testing.expectf(t, abs(back - direct) < 0.01, "all undone (%v)", back)
+	// Its dB and level agree; the knob's bottom is off.
+	testing.expect(t, pm.send_level(pm.SEND_MIN_DB) == 0 && abs(pm.send_db({level = 0.5}) + 6.0206) < 0.01)
+}

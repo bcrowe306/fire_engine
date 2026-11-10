@@ -169,7 +169,7 @@ four platforms), verify, profile, document, commit.
      - the name on the pad's colour
    - *Which strips:* every pad with a sound, in all banks, scrolling
      sideways. The buses and Main are pinned on the right, and the selected
-     pad's strip is highlighted.
+     pad's strip is highlighted. *Done:* see docs/guides/pads.md.
 10. **Pads: the browser.**
     - *Model:* the browser's model moves into `apps/pads/model`, so its
       tests run headless. It covers the tree, history, favourites and

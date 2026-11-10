@@ -29,16 +29,45 @@ Fx_Node :: struct {
 	failed:  bool, // a plug-in that would not load
 }
 
-// A pad's chain after its EQ: its inserts, its mute and solo, its meter.
+// A pad's chain after its EQ, as a console's channel strip: its inserts,
+// its mute and solo, its fader (the pad's own node), its meter, and its
+// output; sends tap it before the fader (after the mute) or after the
+// meter.
+//
+//	eq → inserts → gain (mute, solo) → fader → meter → out (export) → bus or main
+//	                    └→ pre-fader sends       └→ post-fader sends → buses
 Strip :: struct {
 	built:   bool,
 	from:    graph.Node_Id, // the EQ it was wired from
+	fader:   graph.Node_Id, // and the fader
 	inserts: [PAD_INSERTS]Fx_Node,
 	gain:    graph.Node_Id,
 	gain_db: f32,
 	meter_id: graph.Node_Id,
 	meter:   ^dsp.Meter,
+	out:     graph.Node_Id,
+	out_db:  f32,
 	dest:    int, // the bus it goes to (0 = main)
+	sends:   [BUSES]Send_Node,
+}
+
+// A send of a strip in the graph (a gain into its bus), while it is on.
+Send_Node :: struct {
+	has: bool,
+	id:  graph.Node_Id,
+	pre: bool, // where it is wired from
+	db:  f32, // what it was set to
+}
+
+// [control] Takes strip `st`'s nodes out of the graph.
+@(private)
+remove_strip :: proc(g: ^graph.Graph, st: ^Strip) {
+	for f in st.inserts do if f.has do graph.remove_node(g, f.id)
+	for s in st.sends do if s.has do graph.remove_node(g, s.id)
+	graph.remove_node(g, st.gain)
+	graph.remove_node(g, st.meter_id)
+	graph.remove_node(g, st.out)
+	st^ = {}
 }
 
 // A bus (or main) in the graph: a summing point, its effects, its fader,
@@ -221,26 +250,26 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		pad := &p.pads[i]
 		if !n.live {
 			if st.built {
-				for f in st.inserts do if f.has do graph.remove_node(g, f.id)
-				graph.remove_node(g, st.gain)
-				graph.remove_node(g, st.meter_id)
-				st = {}
+				remove_strip(g, &st)
 				structural = true
 			}
 			continue
 		}
-		if !st.built || st.from != n.eq {
-			st = {}
+		if !st.built || st.from != n.eq || st.fader != n.fader {
+			if st.built do remove_strip(g, &st)
 			st.gain, _ = graph.add_node(g, dsp.gain_create(), 2, 2)
 			mn, meter := dsp.meter_create()
 			st.meter_id, _ = graph.add_node(g, mn, 2, 2)
 			st.meter = meter
-			st.from, st.built, st.dest = n.eq, true, -1
+			st.out, _ = graph.add_node(g, dsp.gain_create(), 2, 2)
+			st.from, st.fader, st.built, st.dest = n.eq, n.fader, true, -1
 			for c in 0 ..< 2 {
 				graph.disconnect(g, n.eq, c, graph.OUTPUT, c)
-				graph.connect(g, st.gain, c, st.meter_id, c)
+				graph.connect(g, st.gain, c, n.fader, c)
+				graph.connect(g, n.fader, c, st.meter_id, c)
+				graph.connect(g, st.meter_id, c, st.out, c)
 			}
-			st.gain_db = 1 // anything but what it will be
+			st.gain_db, st.out_db = 1, 1 // anything but what they will be
 			structural = true
 		}
 		// Inserts: new nodes when their kind changed, then the chain again.
@@ -260,22 +289,55 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		}
 		// Where it goes.
 		if int(pad.bus) != st.dest {
-			if st.dest >= 0 do for c in 0 ..< 2 do graph.disconnect(g, st.meter_id, c, dest_input(e, st.dest), c)
+			if st.dest >= 0 do for c in 0 ..< 2 do graph.disconnect(g, st.out, c, dest_input(e, st.dest), c)
 			st.dest = int(pad.bus)
-			for c in 0 ..< 2 do graph.connect(g, st.meter_id, c, dest_input(e, st.dest), c)
+			for c in 0 ..< 2 do graph.connect(g, st.out, c, dest_input(e, st.dest), c)
 			structural = true
 		}
-		// Mute and solo.
+		// Mute and solo (before the sends: a muted pad sends nothing), and a
+		// stem's export (it lets through only what goes to the stem's bus).
 		db: f32 = 0
 		if pad.mute || (mx.any_solo && !pad.solo) do db = -96
-		switch e.export_solo.kind {
-		case .All:
-		case .Pad: if i != e.export_solo.index do db = -96
-		case .Bus: if int(pad.bus) != e.export_solo.index do db = -96
-		}
+		if e.export_solo.kind == .Pad && i != e.export_solo.index do db = -96
 		if db != st.gain_db {
 			graph.set_param(g, st.gain, dsp.GAIN_PARAM_DB, f64(db))
 			st.gain_db = db
+		}
+		out_db: f32 = 0
+		if e.export_solo.kind == .Bus && int(pad.bus) != e.export_solo.index do out_db = -96
+		if out_db != st.out_db {
+			graph.set_param(g, st.out, dsp.GAIN_PARAM_DB, f64(out_db))
+			st.out_db = out_db
+		}
+		// Sends: a gain into the bus while on, wired from before the fader
+		// or after it.
+		for &sn, k in st.sends {
+			s := pad.sends[k]
+			on := s.level > 0
+			if e.export_solo.kind == .Bus && e.export_solo.index != k + 1 do on = false
+			if sn.has && (!on || sn.pre != s.pre) {
+				graph.remove_node(g, sn.id)
+				sn = {}
+				structural = true
+			}
+			if on && !sn.has {
+				id, err := graph.add_node(g, dsp.gain_create(), 2, 2)
+				if err != .None do continue
+				src := st.gain if s.pre else st.meter_id
+				for c in 0 ..< 2 {
+					graph.connect(g, src, c, id, c)
+					graph.connect(g, id, c, dest_input(e, k + 1), c)
+				}
+				sn = {has = true, id = id, pre = s.pre, db = 1}
+				structural = true
+			}
+			if sn.has {
+				sdb := send_db(s)
+				if sdb != sn.db {
+					graph.set_param(g, sn.id, dsp.GAIN_PARAM_DB, f64(sdb))
+					sn.db = sdb
+				}
+			}
 		}
 	}
 

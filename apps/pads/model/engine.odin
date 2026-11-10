@@ -59,10 +59,11 @@ Pad_Nodes :: struct {
 	eq:      graph.Node_Id,
 	handle:  ^sampler.Sampler,
 	built:   Pad, // the pad as the engine has it
-	// Automation of the current sequence: one player into the sampler, one
-	// into the EQ.
-	auto_voice, auto_eq: graph.Node_Id,
-	voice_player, eq_player: ^clip.Automation_Player,
+	fader:   graph.Node_Id, // its volume: after its inserts (the mixer wires it)
+	// Automation of the current sequence: a player into the sampler, one
+	// into the EQ, one into the fader.
+	auto_voice, auto_eq, auto_fader: graph.Node_Id,
+	voice_player, eq_player, fader_player: ^clip.Automation_Player,
 	automated: bool, // it has lanes now (its parameters are the sequence's while playing)
 }
 
@@ -156,6 +157,8 @@ sync :: proc(e: ^Engine) {
 				graph.remove_node(g, n.eq)
 				graph.remove_node(g, n.auto_voice)
 				graph.remove_node(g, n.auto_eq)
+				graph.remove_node(g, n.fader)
+				graph.remove_node(g, n.auto_fader)
 				n^ = {}
 				structural = true
 			}
@@ -171,15 +174,24 @@ sync :: proc(e: ^Engine) {
 				graph.remove_node(g, sid)
 				continue
 			}
-			n.voice, n.eq, n.live = sid, eid, true
+			fid, err3 := graph.add_node(g, dsp.gain_create(), 2, 2)
+			if err3 != .None {
+				graph.remove_node(g, sid)
+				graph.remove_node(g, eid)
+				continue
+			}
+			n.voice, n.eq, n.fader, n.live = sid, eid, fid, true
 			graph.connect_events(g, e.router_id, sid)
 			vnode, vp, _ := clip.automation_player_create({timeline = e.timeline})
 			enode, ep, _ := clip.automation_player_create({timeline = e.timeline})
-			n.voice_player, n.eq_player = vp, ep
+			fnode, fp, _ := clip.automation_player_create({timeline = e.timeline})
+			n.voice_player, n.eq_player, n.fader_player = vp, ep, fp
 			n.auto_voice, _ = graph.add_node(g, vnode, 0, 0)
 			n.auto_eq, _ = graph.add_node(g, enode, 0, 0)
+			n.auto_fader, _ = graph.add_node(g, fnode, 0, 0)
 			graph.connect_events(g, n.auto_voice, sid)
 			graph.connect_events(g, n.auto_eq, eid)
+			graph.connect_events(g, n.auto_fader, fid)
 			e.seq_dirty = true // its automation
 			for c in 0 ..< 2 do graph.connect(g, sid, c, eid, c) // the EQ into the pad's strip (sync_mixer)
 			structural = true
@@ -199,7 +211,7 @@ sync :: proc(e: ^Engine) {
 			if fresh || old != new do graph.set_param(g, id, p, f64(new))
 		}
 		fresh := n.built.sample == 0 || e.resend
-		set(g, n.voice, sampler.SAMPLER_PARAM_GAIN_DB, n.built.volume, pad.volume, fresh)
+		set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
 		set(g, n.voice, sampler.SAMPLER_PARAM_TRANSPOSE, n.built.pitch, pad.pitch, fresh)
 		set(g, n.voice, sampler.SAMPLER_PARAM_ATTACK, n.built.attack, pad.attack, fresh)
 		set(g, n.voice, sampler.SAMPLER_PARAM_RELEASE, n.built.release, pad.release, fresh)
@@ -335,11 +347,12 @@ sync_automation :: proc(e: ^Engine) {
 	if !loops do placement.length = tb.Beats(plan_end(e.plan) - e.plan.at)
 	for &n, i in e.nodes {
 		if !n.live do continue
-		vc, ec := plan_automation(p, e.plan, i)
-		if vc == nil && ec == nil {
+		vc, ec, fc_ := plan_automation(p, e.plan, i)
+		if vc == nil && ec == nil && fc_ == nil {
 			if n.automated {
 				clip.automation_player_set(n.voice_player, nil, {})
 				clip.automation_player_set(n.eq_player, nil, {})
+				clip.automation_player_set(n.fader_player, nil, {})
 				n.automated = false
 				e.resend = true // the pad's own values again
 				mark(e, i)
@@ -348,8 +361,10 @@ sync_automation :: proc(e: ^Engine) {
 		}
 		clip.automation_player_set(n.voice_player, vc, placement)
 		clip.automation_player_set(n.eq_player, ec, placement)
+		clip.automation_player_set(n.fader_player, fc_, placement)
 		if vc != nil do clip.automation_clip_release(vc)
 		if ec != nil do clip.automation_clip_release(ec)
+		if fc_ != nil do clip.automation_clip_release(fc_)
 		n.automated = true
 	}
 }
@@ -381,6 +396,7 @@ stop :: proc(e: ^Engine) {
 	for &n, i in e.nodes do if n.automated {
 		clip.automation_player_set(n.voice_player, nil, {})
 		clip.automation_player_set(n.eq_player, nil, {})
+		clip.automation_player_set(n.fader_player, nil, {})
 		n.automated = false
 		e.resend = true
 		mark(e, i)
@@ -439,12 +455,10 @@ engine_clear :: proc(e: ^Engine) {
 		graph.remove_node(g, n.eq)
 		graph.remove_node(g, n.auto_voice)
 		graph.remove_node(g, n.auto_eq)
+		graph.remove_node(g, n.fader)
+		graph.remove_node(g, n.auto_fader)
 	}
-	for st in e.mixer.strips do if st.built {
-		for f in st.inserts do if f.has do graph.remove_node(g, f.id)
-		graph.remove_node(g, st.gain)
-		graph.remove_node(g, st.meter_id)
-	}
+	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
 	for b in e.mixer.buses {
 		for f in b.slots do if f.has do graph.remove_node(g, f.id)
 		for f in b.perf do if f.has do graph.remove_node(g, f.id)

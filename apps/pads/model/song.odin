@@ -226,19 +226,21 @@ plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 	return c if err == .None else nil
 }
 
-// Pad `pad`'s automation clips for plan `pl` (into its sampler, into its
-// EQ), or nil for either with nothing to play.
-plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq: ^clip.Automation_Clip) {
+// Pad `pad`'s automation clips for plan `pl` (into its sampler, its EQ
+// and its fader), or nil for any with nothing to play.
+plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^clip.Automation_Clip) {
 	pl := pl
 	length := 0.0
 	for s in pl.segs[:pl.count] do length = max(length, s.start + s.span)
 	if length <= 0 do return
-	vb, eb: clip.Automation_Builder
+	vb, eb, fb: clip.Automation_Builder
 	clip.automation_builder_init(&vb, tb.Beats(length), context.temp_allocator)
 	clip.automation_builder_init(&eb, tb.Beats(length), context.temp_allocator)
+	clip.automation_builder_init(&fb, tb.Beats(length), context.temp_allocator)
 	defer clip.automation_builder_destroy(&vb)
 	defer clip.automation_builder_destroy(&eb)
-	any_voice, any_eq := false, false
+	defer clip.automation_builder_destroy(&fb)
+	any_voice, any_eq, any_fader := false, false, false
 	for sg in pl.segs[:pl.count] {
 		s := p.sequences[sg.slot]
 		l := seq_beats(s)
@@ -248,7 +250,7 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq: ^clip.Au
 				at := tb.Beats(sg.start + off + pt.beat)
 				v := f64(pt.value)
 				switch pt.param {
-				case .Volume:  clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_GAIN_DB, at, v); any_voice = true
+				case .Volume:  clip.automation_add_point(&fb, dsp.GAIN_PARAM_DB, at, v); any_fader = true
 				case .Pitch:   clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_TRANSPOSE, at, math.round(v), .Step); any_voice = true
 				case .Eq_Low:  clip.automation_add_point(&eb, dsp.eq_band_param(0, .Gain_Db), at, v); any_eq = true
 				case .Eq_Mid:  clip.automation_add_point(&eb, dsp.eq_band_param(1, .Gain_Db), at, v); any_eq = true
@@ -261,7 +263,9 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq: ^clip.Au
 	if pl.loop_end <= pl.loop_start do lo, hi = 0, tb.Beats(length)
 	clip.automation_set_loop(&vb, lo, hi)
 	clip.automation_set_loop(&eb, lo, hi)
+	clip.automation_set_loop(&fb, lo, hi)
 	if any_voice do voice, _ = clip.automation_build(&vb)
 	if any_eq do eq, _ = clip.automation_build(&eb)
+	if any_fader do fader, _ = clip.automation_build(&fb)
 	return
 }

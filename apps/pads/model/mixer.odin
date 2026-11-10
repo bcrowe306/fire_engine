@@ -1,5 +1,6 @@
 package pads_model
 
+import "core:math"
 import "core:strings"
 
 
@@ -236,6 +237,50 @@ hold_perf_fx :: proc(m: ^Model, i: int, on: bool) {
 	if i < 0 || i >= PERF_FX do return
 	m.project.perf_fx[i].on = on
 	m.engine.mix_dirty = true
+}
+
+// A pad's send to a bus: how much of its sound also goes there, from
+// before its fader (`pre`: the fader doesn't change it) or after.
+Send :: struct {
+	level: f32, // linear gain: 0 = off, 1 = 0 dB, up to SEND_MAX
+	pre:   bool,
+}
+
+// The most a send can be (+6 dB).
+SEND_MAX :: 2
+// A send's knob runs from this (where it is off) to +6 dB.
+SEND_MIN_DB :: -60
+
+// A send's level in dB (SEND_MIN_DB or less: off).
+send_db :: proc(s: Send) -> f32 {
+	if s.level <= 0 do return SEND_MIN_DB
+	return max(20 * math.log10(s.level), SEND_MIN_DB)
+}
+
+// A send's level for `db` (off at SEND_MIN_DB and below).
+send_level :: proc(db: f32) -> f32 {
+	if db <= SEND_MIN_DB do return 0
+	return min(math.pow(10, db / 20), SEND_MAX)
+}
+
+// Sets pad `pad`'s send to bus `bus` (1..BUSES) to `db` (drags merge into
+// one step; seal when the drag ends).
+set_send_db :: proc(m: ^Model, pad, bus: int, db: f32) {
+	if pad < 0 || pad >= PADS || bus < 1 || bus > BUSES do return
+	p := m.project.pads[pad]
+	p.sends[bus - 1].level = send_level(db)
+	set_pad(m, pad, Pad_Field(int(Pad_Field.Send_0) + bus - 1), "Set Send", p)
+}
+
+// Takes pad `pad`'s send to bus `bus` from before its fader (`pre`) or
+// after.
+set_send_pre :: proc(m: ^Model, pad, bus: int, pre: bool) {
+	if pad < 0 || pad >= PADS || bus < 1 || bus > BUSES do return
+	p := m.project.pads[pad]
+	if p.sends[bus - 1].pre == pre do return
+	p.sends[bus - 1].pre = pre
+	set_pad(m, pad, .Send_Pre, "Pre-fader Send" if pre else "Post-fader Send", p)
+	app.seal(&m.history)
 }
 
 // Sets insert `slot` of pad `pad` to `s`, undoably.

@@ -22,6 +22,7 @@ busy_project :: proc(r: ^Rig) {
 	pm.load_onto_pad(m, 1, tone(r, "hat.wav", 880, 0.08, decay = true))
 	pad := m.project.pads[1]
 	pad.volume, pad.pan, pad.mode, pad.choke, pad.bus = -6, 0.25, .Gate, 2, 1
+	pad.sends[2] = {level = 0.5, pre = true}
 	pm.set_pad(m, 1, .Whole, "Edit", pad)
 	pm.add_note(m, 0, {start = 0, length = 0.25, pad = 0, velocity = 0.9})
 	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 1, velocity = 0.5, pitch = 7, probability = 0.5})

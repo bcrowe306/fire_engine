@@ -62,6 +62,7 @@ Pad :: struct {
 	midi_out:   Midi_Out, // its hits also go out as MIDI
 	inserts:    [PAD_INSERTS]Effect_Slot, // after its EQ
 	mute, solo: bool,
+	sends:      [BUSES]Send, // to the buses, besides its output
 }
 
 // A sample the project holds: a file in its folder.
