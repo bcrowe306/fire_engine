@@ -121,7 +121,7 @@ exports_mixdown_stems_and_to_a_pad :: proc(t: ^testing.T) {
 	m := &r.m
 	busy_project(r)
 	m.project.bpm = 120
-	pm.sync(&m.engine)
+	render(r, 256) // syncs, and waits for the samples to load (a slow machine is still reading them)
 	dir := m.project.dir
 	// A mixdown of the sequence: 1 bar at 120 = 2 s, plus a 0.5 s tail, at 44.1 kHz, 24-bit.
 	mix, _ := filepath.join({dir, "mix.wav"}, context.temp_allocator)
