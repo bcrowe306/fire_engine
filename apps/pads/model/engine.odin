@@ -59,6 +59,12 @@ Engine :: struct {
 	audio_dirty: bool,     // a clip changed: give the players theirs again
 	tempo_at, tempo_next: f64, // a tempo change sent ahead: where (timeline beat), and what
 	perf_live: [PERF_FX]f32, // a held performance effect's intensity (where it is pressed; -1: its own)
+	// What an effect's device shows its spectrum of: a tap, fed by the
+	// slot being watched.
+	tap:        ^dsp.Tap,
+	tap_id:     graph.Node_Id,
+	watch:      Fx_Target,
+	watch_node: graph.Node_Id, // the node connected to the tap
 }
 
 // What a pad has in the graph.
@@ -120,6 +126,10 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	e.metro_id = graph.add_node(g, dsp.metronome_create({timeline = e.timeline}), 0, 2) or_return
 	for c in 0 ..< 2 do graph.connect(g, e.metro_id, c, graph.OUTPUT, c)
 	build_mixer(e) or_return
+	tnode, tap := dsp.tap_create()
+	e.tap = tap
+	e.tap_id = graph.add_node(g, tnode, 2, 0) or_return
+	e.watch_node = {}
 	keep := e.preview // the settings outlive the nodes
 	preview_cancel(&e.preview)
 	e.preview = {volume = keep.volume, auto_play = keep.auto_play, sync = keep.sync, path = keep.path}
@@ -255,6 +265,7 @@ sync :: proc(e: ^Engine) {
 		n.built = pad
 	}
 	if sync_mixer(e) do structural = true
+	if sync_watch(e) do structural = true
 	if structural do graph.commit(g)
 	e.resend = false
 	sync_sequencer(e)
@@ -561,6 +572,7 @@ engine_clear :: proc(e: ^Engine) {
 	graph.remove_node(g, e.metro_id)
 	graph.remove_node(g, e.preview.id)
 	graph.remove_node(g, e.preview.gain_id)
+	graph.remove_node(g, e.tap_id)
 	graph.commit(g)
 	transport.remove_timeline(e.host.clock, e.timeline)
 	engine_destroy(e)
@@ -633,4 +645,33 @@ pad_live :: proc(e: ^Engine, index: int) -> (sampler.Sampler_Live, bool) {
 	n := &e.nodes[index]
 	if !n.live || n.handle == nil do return {}, false
 	return sampler.sampler_live(n.handle), true
+}
+
+// Watches effect slot `t` (an `Fx_Target` with kind None: nothing): what it
+// puts out goes to the tap too, for a spectrum (`watch_read`).
+watch_slot :: proc(e: ^Engine, t: Fx_Target) {
+	e.watch = t
+}
+
+// The last `len(out)` frames the watched slot put out (oldest first), and
+// whether it has a node.
+watch_read :: proc(e: ^Engine, out: []f32) -> bool {
+	if e.tap == nil || e.watch_node == {} do return false
+	dsp.tap_read(e.tap, out)
+	return true
+}
+
+// The watched slot's node into the tap (and the last one out). True if
+// the graph changed.
+@(private)
+sync_watch :: proc(e: ^Engine) -> bool {
+	if e.tap == nil do return false
+	id: graph.Node_Id
+	if f := target_node(e, e.watch); f != nil && f.has do id = f.id
+	if id == e.watch_node do return false
+	g := e.host.graph
+	if e.watch_node != {} do for c in 0 ..< 2 do graph.disconnect(g, e.watch_node, c, e.tap_id, c) // (gone with its node, it fails: fine)
+	if id != {} do for c in 0 ..< 2 do graph.connect(g, id, c, e.tap_id, c)
+	e.watch_node = id
+	return true
 }

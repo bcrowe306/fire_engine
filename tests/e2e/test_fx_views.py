@@ -37,3 +37,21 @@ def test_dynamics_delay_and_reverb_pictures(app, fixtures):
         app.cmd(f"insert 0 0 {kind}")
         app.wait(2)
         app.expect_item(item, window="detail")
+
+
+def test_the_delay_syncs_to_note_values_and_shows_its_tone(app, fixtures):
+    chain(app, fixtures, "delay")
+    app.expect_item("Time", window="detail")
+    app.expect_no_item("Note", window="detail")
+    app.click("Sync", window="detail")
+    app.expect_item("Note", window="detail")  # note values, not milliseconds
+    app.expect_no_item("Time", window="detail")
+    beats = lambda: dict((int(i), v) for i, v in app.state()["fx_params"]).get(3)
+    app.drag_by("Note", 0, -30, window="detail")  # up: longer
+    b = beats()
+    notes = [0.0625, 1 / 12, 0.125, 1 / 6, 0.25, 1 / 3, 0.375, 0.5, 2 / 3, 0.75, 1, 4 / 3, 1.5, 2, 3, 4, 8]
+    assert b is not None and any(abs(b - n) < 1e-4 for n in notes) and b > 0.75, b
+    app.expect_item("delay tone", window="detail")  # its cuts, over what it puts out
+    app.drag_by("Low cut", 0, -200, window="detail")  # all the way up
+    low = dict((int(i), v) for i, v in app.state()["fx_params"]).get(7)
+    assert low is not None and low > 2000, low  # the wider range reaches past 2 kHz

@@ -250,3 +250,24 @@ sends_reach_buses_before_or_after_the_fader :: proc(t: ^testing.T) {
 	// Its dB and level agree; the knob's bottom is off.
 	testing.expect(t, pm.send_level(pm.SEND_MIN_DB) == 0 && abs(pm.send_db({level = 0.5}) + 6.0206) < 0.01)
 }
+
+@(test)
+a_watched_effect_feeds_the_tap :: proc(t: ^testing.T) {
+	r := rig_make(t, "watch_tap")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "a.wav", 440, 0.5))
+	fx := pm.Fx_Target{.Pad, 0, 0}
+	pm.set_target_slot(m, fx, pm.new_effect(.Delay), "Add Effect")
+	buf: [1024]f32
+	testing.expect(t, !pm.watch_read(&m.engine, buf[:]), "nothing watched yet")
+	pm.watch_slot(&m.engine, fx)
+	pm.hit(&m.engine, 0, true)
+	render(r, 9600)
+	testing.expect(t, pm.watch_read(&m.engine, buf[:]), "watched")
+	testing.expectf(t, kit.peak(buf[:]) > 0.05, "it hears the delay's output (%v)", kit.peak(buf[:]))
+	// Watching nothing lets go of it.
+	pm.watch_slot(&m.engine, {})
+	render(r, 256)
+	testing.expect(t, !pm.watch_read(&m.engine, buf[:]), "let go")
+}

@@ -229,6 +229,7 @@ device_content :: proc(a: ^App) {
 	m := &a.m
 	st := &a.detail
 	tr := st.track
+	pm.watch_slot(&m.engine, {}) // the effect in front is watched (below)
 	switch st.device.kind {
 	case .Instrument:
 		if tr.kind == .Pad do draw_sampler_tabs(a)
@@ -245,6 +246,7 @@ device_content :: proc(a: ^App) {
 		if !ok do return
 		if s.kind != .None || tr.kind == .Perf {
 			a.fx = fx
+			pm.watch_slot(&m.engine, fx)
 			draw_effect(a)
 			return
 		}

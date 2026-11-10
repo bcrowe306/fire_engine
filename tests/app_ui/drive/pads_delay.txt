@@ -1,0 +1,16 @@
+# The delay device synced, its cuts and what it puts out, a loop playing.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+set 0 mode 2
+note 0 0 4 1
+play
+insert 0 0 delay
+edit_fx pad 0 0
+fx_param 2 1
+fx_param 7 250
+fx_param 8 5000
+fx_param 4 60
+wait 60
+screenshot delay_synced
+stop

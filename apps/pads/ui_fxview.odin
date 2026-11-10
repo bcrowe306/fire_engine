@@ -59,6 +59,7 @@ draw_effect_view :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 		}
 		hz, q := f64(fxv(a, t, s, dsp.FILTER_PARAM_CUTOFF_HZ)), f64(fxv(a, t, s, dsp.FILTER_PARAM_Q))
 		curves := make([dynamic]ui.Plot_Curve, context.temp_allocator)
+		if spec := spectrum(a); spec != nil do append(&curves, ui.Plot_Curve{db = spec, color = ui.with_alpha(th.text, 0.28), width = 1.2})
 		if t.kind == .Perf && s.on {
 			append(&curves, ui.Plot_Curve{db = curve(mode, hz, q, sr), color = ui.mix(ui.PLOT_BG, color, 0.5), width = 1.5})
 			append(&curves, ui.Plot_Curve{db = curve(mode, f64(fxv(a, t, held, dsp.FILTER_PARAM_CUTOFF_HZ)), q, sr), color = color, fill = true, width = 2.5})
@@ -144,22 +145,26 @@ draw_time_view :: proc(a: ^App, t: pm.Fx_Target, s, held: pm.Effect_Slot, size: 
 	clock := a.transport.clock
 	#partial switch s.kind {
 	case .Delay:
-		// Two seconds after a hit: the hit (grey), then each echo a bar as
-		// loud as the mix and feedback make it (ping-pong: alternating
-		// sides, two colours), the playhead's beat marked.
+		// Left, two seconds after a hit: the hit (grey), then each echo a bar
+		// as loud as the mix and feedback make it (ping-pong: alternating
+		// sides, two colours), on the beat grid. Right, its tone: the cuts in
+		// its feedback (each echo through them once more, fainter), over the
+		// spectrum of what it puts out now.
 		secs := fxv(a, t, s, dsp.DELAY_PARAM_TIME_MS) / 1000
 		if fxv(a, t, s, dsp.DELAY_PARAM_SYNC) >= 0.5 do secs = fxv(a, t, s, dsp.DELAY_PARAM_BEATS) * f32(60 / bpm)
 		fb := clamp(fxv(a, t, s, dsp.DELAY_PARAM_FEEDBACK), 0, 0.99)
 		mix := clamp(fxv(a, t, s, dsp.DELAY_PARAM_MIX), 0, 1)
 		pp := fxv(a, t, s, dsp.DELAY_PARAM_PING_PONG) >= 0.5
+		echo_w := size.x * 0.52
 		pos := im.GetCursorScreenPos()
-		im.Dummy(size)
+		im.Dummy({echo_w, size.y})
 		ui.name("effect echoes")
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Echoes every %.0f ms, each %.0f%% of the last%s", secs * 1000, fb * 100, " (ping-pong: left, right)" if pp else ""))
 		dl := im.GetWindowDrawList()
-		im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, ui.col(ui.PLOT_BG), th.radius)
-		x0, x1 := pos.x + 12, pos.x + size.x - 12
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + echo_w, pos.y + size.y}, ui.col(ui.PLOT_BG), th.radius)
+		x0, x1 := pos.x + 12, pos.x + echo_w - 12
 		base, top := pos.y + size.y - 10, pos.y + 12
-		for b := f32(0); b * f32(60 / bpm) < 2; b += 1 { // the beats
+		for b := f32(0); b * f32(60 / bpm) < 2; b += 1 {
 			x := x0 + (x1 - x0) * b * f32(60 / bpm) / 2
 			im.DrawList_AddLine(dl, {x, top}, {x, base}, ui.col(ui.mix(ui.PLOT_BG, th.text, 0.1)), 1)
 		}
@@ -172,7 +177,24 @@ draw_time_view :: proc(a: ^App, t: pm.Fx_Target, s, held: pm.Effect_Slot, size: 
 			if lv < 0.01 do break
 			bar(dl, x0 + (x1 - x0) * f32(k) * secs / 2, base, top, lv, th.warn if pp && k % 2 == 0 else color)
 		}
-		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Echoes every %.0f ms, each %.0f%% of the last%s", secs * 1000, fb * 100, " (ping-pong: left, right)" if pp else ""))
+		im.SameLine(0, 8)
+		lo_cut, hi_cut := f64(fxv(a, t, s, dsp.DELAY_PARAM_LOW_CUT_HZ)), f64(fxv(a, t, s, dsp.DELAY_PARAM_HIGH_CUT_HZ))
+		sr := a.host.graph.settings.sample_rate if a.host.graph.settings.sample_rate > 0 else 48_000
+		hp, lp := dsp.svf_design(.Highpass, lo_cut, 0.707, 0, sr), dsp.svf_design(.Lowpass, hi_cut, 0.707, 0, sr)
+		curves := make([dynamic]ui.Plot_Curve, context.temp_allocator)
+		if spec := spectrum(a); spec != nil do append(&curves, ui.Plot_Curve{db = spec, color = ui.with_alpha(th.text, 0.28), width = 1.2})
+		for n := 4; n >= 1; n -= 1 { // echo n has been through the cuts n times
+			db := make([]f32, 160, context.temp_allocator)
+			for &v, k in db {
+				f := f64(ui.x_freq(f32(k) / 159))
+				g1, _ := dsp.svf_response(&hp, f, sr)
+				g2, _ := dsp.svf_response(&lp, f, sr)
+				v = f32(f64(n) * 20 * math.log10(max(g1 * g2, 1e-6)))
+			}
+			append(&curves, ui.Plot_Curve{db = db, color = ui.with_alpha(color, 1 if n == 1 else 0.6 / f32(n)), fill = n == 1, width = 2.5 if n == 1 else 1.2})
+		}
+		ui.response_plot("delay tone", curves[:], nil, {size.x - echo_w - 8, size.y})
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Its cuts: %.0f Hz to %.0f Hz (each echo through them again: the fainter lines); behind, what it puts out now", lo_cut, hi_cut))
 	case .Reverb:
 		decay := max(fxv(a, t, s, dsp.REVERB_PARAM_DECAY_S), 0.05)
 		pre := fxv(a, t, s, dsp.REVERB_PARAM_PREDELAY_MS) / 1000
@@ -202,7 +224,11 @@ draw_time_view :: proc(a: ^App, t: pm.Fx_Target, s, held: pm.Effect_Slot, size: 
 			re, im_ := 1 - fb * math.cos(wt), fb * math.sin(wt)
 			v = f32(-20 * math.log10(max(math.sqrt(re * re + im_ * im_), 1e-6)))
 		}
-		ui.response_plot("effect response", {{db = db, color = color, fill = true, width = 2}}, nil, size, -24, 24)
+		spec := spectrum(a)
+		curves := make([dynamic]ui.Plot_Curve, context.temp_allocator)
+		if spec != nil do append(&curves, ui.Plot_Curve{db = spec, color = ui.with_alpha(th.text, 0.28), width = 1.2})
+		append(&curves, ui.Plot_Curve{db = db, color = color, fill = true, width = 2})
+		ui.response_plot("effect response", curves[:], nil, size, -24, 24)
 	case .Chorus, .Flanger, .Phaser:
 		// The sweep over two seconds, and where it is now.
 		rate := max(fxv(a, t, s, dsp.MOD_PARAM_RATE_HZ), 0.01)
@@ -275,4 +301,49 @@ reduction_meter :: proc(a: ^App, db: f32, size: im.Vec2) {
 @(private)
 app_seal :: proc(a: ^App) {
 	app.seal(&a.m.history)
+}
+
+// Frames analysed for an effect's spectrum.
+@(private) SPECTRUM_SIZE :: 2048
+
+// The spectrum of what the watched effect puts out now, in dB at the
+// response plots' 160 log-spaced frequencies (shifted so -60 dBFS is the
+// plots' floor), falling slowly from peaks; nil before anything is heard.
+spectrum :: proc(a: ^App) -> []f32 {
+	st := &a.spectrum
+	if !st.ready {
+		if dsp.fft_init(&st.fft, SPECTRUM_SIZE) != .None do return nil
+		st.ready = true
+		for &v in st.smooth do v = -36
+	}
+	x: [SPECTRUM_SIZE]f32
+	if !pm.watch_read(&a.m.engine, x[:]) do return nil
+	sr := a.host.graph.settings.sample_rate if a.host.graph.settings.sample_rate > 0 else 48_000
+	buf := make([]complex64, SPECTRUM_SIZE, context.temp_allocator)
+	out := make([]complex64, SPECTRUM_SIZE, context.temp_allocator)
+	for v, i in x {
+		w := 0.5 - 0.5 * math.cos(math.TAU * f32(i) / f32(SPECTRUM_SIZE - 1)) // Hann
+		buf[i] = complex(v * w, 0)
+	}
+	dsp.fft_forward(&st.fft, buf, out)
+	res := make([]f32, len(st.smooth), context.temp_allocator)
+	n := len(st.smooth)
+	for k in 0 ..< n {
+		f0, f1 := ui.x_freq(f32(k) / f32(n - 1)), ui.x_freq(f32(k + 1) / f32(n - 1))
+		b0 := clamp(int(f64(f0) / sr * SPECTRUM_SIZE), 1, SPECTRUM_SIZE / 2 - 1)
+		b1 := clamp(int(f64(f1) / sr * SPECTRUM_SIZE), b0, SPECTRUM_SIZE / 2 - 1)
+		peak: f32 = 0
+		for b in b0 ..= b1 do peak = max(peak, abs(out[b]))
+		db := 20 * math.log10(max(peak * 4 / SPECTRUM_SIZE, 1e-7)) + 24 // dBFS (Hann's loss made up), -60 at the floor
+		st.smooth[k] = max(db, st.smooth[k] - 1.2) // falls 1.2 dB a frame
+		res[k] = st.smooth[k]
+	}
+	return res
+}
+
+// What the spectrum keeps between frames.
+Spectrum_State :: struct {
+	fft:    dsp.Fft,
+	ready:  bool,
+	smooth: [160]f32,
 }

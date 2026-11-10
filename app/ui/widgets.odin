@@ -43,8 +43,9 @@ col :: proc "contextless" (c: Color) -> u32 {
 // A rotary knob: drag up and down (Shift for fine), scroll, double-click
 // to reset to `default`. Shows `format` of the value under it, and the
 // label above. With `log_scale` (min_v > 0) it turns in ratios: times and
-// frequencies, where the small end needs room.
-knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false) -> (e: Edit) {
+// frequencies, where the small end needs room. `shown_value` shows instead
+// of the formatted value (a note value's name, say).
+knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false, shown_value: cstring = nil) -> (e: Edit) {
 	im.PushID(label)
 	defer im.PopID()
 	t := current
@@ -111,7 +112,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	// Value.
 	buf: [32]u8
 	text := fmt.bprintf(buf[:], string(format), value^)
-	ctext := strings.clone_to_cstring(text, context.temp_allocator)
+	ctext := shown_value if shown_value != nil else strings.clone_to_cstring(text, context.temp_allocator)
 	vs := im.CalcTextSize(ctext)
 	im.DrawList_AddText(dl, {pos.x + (w - vs.x) / 2, pos.y + label_h + 4 + size + 2}, col(t.text if hovered else t.text_dim), ctext)
 	im.SetCursorScreenPos(pos)

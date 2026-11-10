@@ -20,10 +20,10 @@ DELAY_PARAM_MIX :: core.Param_Id(5)
 // right (stereo only; default 0).
 DELAY_PARAM_PING_PONG :: core.Param_Id(6)
 // Parameter id of the `Delay`'s low cut in the feedback loop, in Hz
-// (20..2000, default 20): each echo thinner.
+// (20..10000, default 20): each echo thinner.
 DELAY_PARAM_LOW_CUT_HZ :: core.Param_Id(7)
 // Parameter id of the `Delay`'s high cut in the feedback loop, in Hz
-// (1000..20000, default 12000): each echo darker.
+// (100..20000, default 12000): each echo darker.
 DELAY_PARAM_HIGH_CUT_HZ :: core.Param_Id(8)
 
 // Parameter table of the `Delay` node, as returned by `node_params`. Read-only.
@@ -34,8 +34,8 @@ delay_params := [?]core.Param_Info {
 	{id = DELAY_PARAM_FEEDBACK, name = "Feedback", unit = .Percent, min = 0, max = 95, default = 40, smoothing = .Linear, smoothing_ms = 20, flags = {.Automatable}},
 	{id = DELAY_PARAM_MIX, name = "Mix", unit = .Percent, min = 0, max = 100, default = 35, smoothing = .Linear, smoothing_ms = 20, flags = {.Automatable}},
 	{id = DELAY_PARAM_PING_PONG, name = "Ping-pong", min = 0, max = 1, default = 0, flags = {.Automatable, .Stepped}},
-	{id = DELAY_PARAM_LOW_CUT_HZ, name = "Low cut", unit = .Hertz, min = 20, max = 2000, default = 20, flags = {.Automatable}},
-	{id = DELAY_PARAM_HIGH_CUT_HZ, name = "High cut", unit = .Hertz, min = 1000, max = 20000, default = 12000, flags = {.Automatable}},
+	{id = DELAY_PARAM_LOW_CUT_HZ, name = "Low cut", unit = .Hertz, min = 20, max = 10_000, default = 20, flags = {.Automatable}},
+	{id = DELAY_PARAM_HIGH_CUT_HZ, name = "High cut", unit = .Hertz, min = 100, max = 20000, default = 12000, flags = {.Automatable}},
 }
 
 // Longest delay, in seconds.
@@ -170,8 +170,8 @@ delay_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		case DELAY_PARAM_FEEDBACK:    smoothed_apply(&d.feedback, clamp(value, 0, 95), frames)
 		case DELAY_PARAM_MIX:         smoothed_apply(&d.mix, clamp(value, 0, 100), frames)
 		case DELAY_PARAM_PING_PONG:   d.ping_pong = value >= 0.5
-		case DELAY_PARAM_LOW_CUT_HZ:  d.low_cut = clamp(value, 20, 2000); delay_filters(d)
-		case DELAY_PARAM_HIGH_CUT_HZ: d.high_cut = clamp(value, 1000, 20000); delay_filters(d)
+		case DELAY_PARAM_LOW_CUT_HZ:  d.low_cut = clamp(value, 20, 10_000); delay_filters(d)
+		case DELAY_PARAM_HIGH_CUT_HZ: d.high_cut = clamp(value, 100, 20000); delay_filters(d)
 		}
 		retarget(d, ctx)
 	}

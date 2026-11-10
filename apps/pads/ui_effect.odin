@@ -11,6 +11,7 @@ import im "deps:imgui"
 import sdl "deps:sdl3"
 import fc "fire:core"
 import "fire:clap"
+import "fire:dsp"
 
 // A CLAP file chosen in its dialog.
 Plugin_Chosen :: struct {
@@ -94,20 +95,53 @@ draw_effect :: proc(user: rawptr) {
 
 	// Its settings: a knob each, in rows that wrap.
 	params := pm.target_params(&m.engine, t)
-	for p, k in params {
+	// Which to show: a delay synced shows a note value, not milliseconds.
+	shown := make([dynamic]fc.Param_Info, 0, len(params), context.temp_allocator)
+	synced := s.kind == .Delay && pm.slot_value(s, dsp.DELAY_PARAM_SYNC, 0) >= 0.5
+	for p in params {
+		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_TIME_MS && synced do continue
+		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_BEATS && !synced do continue
+		append(&shown, p)
+	}
+	// Spread evenly across the width: a cell each, as many to a row as fit.
+	avail := im.GetContentRegionAvail().x
+	x0 := im.GetCursorPosX()
+	cell := max(avail / f32(max(len(shown), 1)), ui.KNOB_SIZE + 34)
+	per_row := max(int(avail / cell), 1)
+	for p, k in shown {
+		col := k % per_row
+		if col > 0 do im.SameLine()
+		is_toggle := p.min == 0 && p.max == 1 && .Stepped in p.flags
+		w: f32 = 104 if is_toggle else ui.KNOB_SIZE + 24
+		im.SetCursorPosX(x0 + f32(col) * cell + max((cell - w) / 2, 0))
 		v := pm.slot_value(s, p.id, f32(p.default))
-		if p.min == 0 && p.max == 1 && .Stepped in p.flags {
-			if k > 0 do ui.flow(110, 14)
+		if is_toggle {
+			im.BeginGroup()
+			im.Dummy({1, im.GetTextLineHeight() + 4}) // level with the knobs' dials
 			on := v >= 0.5
 			if ui.toggle(fmt.ctprintf("%s##p%d", p.name, p.id), &on) {
 				pm.set_target_param(m, t, p.id, 1 if on else 0)
 				app.seal(&m.history)
 			}
+			im.EndGroup()
 			continue
 		}
-		if k > 0 do ui.flow(ui.KNOB_SIZE + 12, 14)
+		// A synced delay: note values (1/16, dotted, triplets), not beats.
+		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_BEATS {
+			// While dragged it keeps where it is between notes (each frame's
+			// small move would round back otherwise).
+			@(static) dragging: bool
+			@(static) between: f32
+			idx := between if dragging else f32(nearest_note(v))
+			e := ui.knob("Note##pnote", &idx, 0, f32(len(NOTE_VALUES) - 1), f32(nearest_note(0.75)), "%.0f", shown_value = NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].name)
+			dragging, between = e.active && !e.ended, idx
+			if e.changed do pm.set_target_param(m, t, p.id, f32(NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].beats))
+			if e.ended do app.seal(&m.history)
+			continue
+		}
 		format := param_format(p)
-		e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format)
+		log_scale := p.unit == .Hertz && p.min > 0 && p.max / p.min >= 50 // frequencies turn in ratios
+		e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale)
 		if e.changed {
 			if .Stepped in p.flags do v = f32(int(v + 0.5))
 			pm.set_target_param(m, t, p.id, v)
@@ -214,4 +248,21 @@ draw_plugin_choice :: proc(a: ^App) {
 		}
 		im.EndPopup()
 	}
+}
+
+// Note values a synced delay steps through, shortest first.
+NOTE_VALUES := [?]struct { name: cstring, beats: f64 }{
+	{"1/64", 0.0625}, {"1/32T", 1.0 / 12}, {"1/32", 0.125}, {"1/16T", 1.0 / 6}, {"1/16", 0.25}, {"1/8T", 1.0 / 3},
+	{"1/16D", 0.375}, {"1/8", 0.5}, {"1/4T", 2.0 / 3}, {"1/8D", 0.75}, {"1/4", 1}, {"1/2T", 4.0 / 3},
+	{"1/4D", 1.5}, {"1/2", 2}, {"1/2D", 3}, {"1 bar", 4}, {"2 bars", 8},
+}
+
+// The note value nearest `beats`.
+@(private)
+nearest_note :: proc(beats: f32) -> int {
+	best, d := 0, f64(1e9)
+	for nv, k in NOTE_VALUES do if abs(nv.beats - f64(beats)) < d {
+		best, d = k, abs(nv.beats - f64(beats))
+	}
+	return best
 }

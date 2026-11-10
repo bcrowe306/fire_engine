@@ -136,11 +136,16 @@ for other toggles.
     follows the press), a compressor's, gate's or limiter's curve with
     a meter of how far it turns down now, saturation's curve, a
     bit-crusher's steps over a clean sine, a delay's echoes after a hit
-    (ping-pong in two colours, on the beat grid), a reverb's decay (its
+    (ping-pong in two colours, on the beat grid) beside its tone — the
+    low and high cuts in its feedback (each echo through them again, the
+    fainter lines) over the live spectrum of what it puts out; synced,
+    its time is a note value (1/64 to 2 bars, dotted and triplets); a reverb's decay (its
     highs dimmer), a comb's teeth, a chorus's, flanger's or phaser's sweep
     with where it is now, a ring mod's carrier, a pitch shift's
     semitones, a cutter's or stutter's slices over a bar with the
-    playhead.
+    playhead. Filters and the comb show the live spectrum of what they
+    put out behind their curve too. A device's knobs spread evenly
+    across its width; frequency knobs turn in ratios.
   - **Global**: sampler or audio track, name and colour (click it for the
     swatches and picker), choke group (a pad cuts the others in its
     group), volume, pan, transpose, fine tune, how many notes it plays at

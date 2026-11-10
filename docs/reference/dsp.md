@@ -197,7 +197,7 @@ DELAY_PARAM_LOW_CUT_HZ : core.Param_Id : core.Param_Id(7)
 ```
 
 Parameter id of the `Delay`'s low cut in the feedback loop, in Hz
-(20..2000, default 20): each echo thinner.
+(20..10000, default 20): each echo thinner.
 
 ### DELAY_PARAM_HIGH_CUT_HZ
 
@@ -206,7 +206,7 @@ DELAY_PARAM_HIGH_CUT_HZ : core.Param_Id : core.Param_Id(8)
 ```
 
 Parameter id of the `Delay`'s high cut in the feedback loop, in Hz
-(1000..20000, default 12000): each echo darker.
+(100..20000, default 12000): each echo darker.
 
 ### DELAY_MAX_SECONDS
 
@@ -1002,6 +1002,14 @@ SYNTH_MAX_VOICES :: 64
 ```
 
 Most voices a `Synth` may have.
+
+### TAP_FRAMES
+
+```odin
+TAP_FRAMES :: 4096
+```
+
+Frames a `Tap` keeps (a power of two).
 
 ### WET_PARAM_MIX
 
@@ -2385,6 +2393,25 @@ that is releasing, or else the oldest note's.
 | `sample_rate` |  |
 | `allocator` |  |
 
+### Tap
+
+```odin
+Tap :: struct {
+	ring: [4096]f32,
+	write: u64,
+}
+```
+
+Listens to what it is given and keeps the last TAP_FRAMES frames (the
+channels averaged), for a picture of the sound: a spectrum, a scope. It
+has inputs and no outputs; connect anything to it, as many times as
+needed (connections sum). Read from any thread with `tap_read`.
+
+| Field | Description |
+|-------|-------------|
+| `ring` |  |
+| `write` | atomic: frames written so far |
+
 ### Wet
 
 ```odin
@@ -3700,6 +3727,26 @@ synth_create :: proc(voices: int = 16, allocator: mem.Allocator = context.alloca
 
 Control thread. A `Synth` node with `voices` voices (1..SYNTH_MAX_VOICES)
 at its default sound. Free it with `core.node_destroy`.
+
+### tap_create
+
+```odin
+tap_create :: proc(allocator: mem.Allocator = context.allocator) -> (core.Node, ^Tap)
+```
+
+Control thread. A tap node (add it with inputs and no outputs) and its
+handle, valid until the graph destroys the node.
+
+### tap_read
+
+```odin
+tap_read :: proc "contextless"(t: ^Tap, out: []f32) -> u64
+```
+
+Any thread. The last `len(out)` frames heard (at most TAP_FRAMES), oldest
+first; silence before anything arrives. A reader racing the audio thread
+may see a few frames of the next block among them: it is for drawing.
+Returns how many frames have been heard in all (to tell new from old).
 
 ### wet_create
 
