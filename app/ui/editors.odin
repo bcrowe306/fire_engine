@@ -1,5 +1,6 @@
 package ui
 
+import "core:fmt"
 import "core:math"
 import "core:strconv"
 import "core:strings"
@@ -58,6 +59,28 @@ Wave_Edit :: struct {
 	clicked:     bool, // clicked (not dragged) at `click_frame`
 	click_frame: i64,
 	zoomed:      bool,
+	add_at:      i64,  // double-clicked here (`Wave_Options.editable`): a marker to add; -1 = none
+	remove:      int,  // a marker right-clicked (`editable`): to take away; -1 = none
+	gain:        int,  // a level line being dragged (`Wave_Options.gains`), or -1
+	gain_db:     f32,  // ... to this
+	gain_released: bool, // a level drag ended
+}
+
+// What else a waveform shows and lets you do (see `waveform`).
+Wave_Options :: struct {
+	rate:          f64,  // the sound's sample rate: a time ruler along the bottom (0: none)
+	beat_frames:   f64,  // a beat, in frames: the ruler in bars and beats instead of seconds (0: seconds)
+	beats_per_bar: int,  // (0: 4)
+	scale:         bool, // a dB scale down the left, lines at -6 dB
+	overview:      bool, // a strip under it: the whole sound and the part shown (drag it to pan)
+	editable:      bool, // double-click adds a marker (`add_at`), right-click one takes it away (`remove`)
+	gains:         []Wave_Gain, // level lines (a slice's), dragged up and down
+}
+
+// A level line over part of a waveform: `db` (-24..+6) from `from` to `to`.
+Wave_Gain :: struct {
+	from, to: i64,
+	db:       f32,
 }
 
 // A waveform of `frames` frames shown through `view` (zoom with the wheel,
@@ -89,15 +112,27 @@ marker_handle :: proc(m: Marker, x: f32, pos, size: im.Vec2) -> (lo, hi: im.Vec2
 }
 
 // `playhead`: the frame being played (a line across it), or -1.
-waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, markers: []Marker, selection: ^[2]i64, size: im.Vec2, tint: Color = {}, playhead: i64 = -1) -> (e: Wave_Edit) {
+waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, markers: []Marker, selection: ^[2]i64, size: im.Vec2, tint: Color = {}, playhead: i64 = -1, opts := Wave_Options{}) -> (e: Wave_Edit) {
 	im.PushID(id)
 	defer im.PopID()
-	e.marker = -1
+	e.marker, e.add_at, e.remove, e.gain = -1, -1, -1, -1
 	t := current
 	color := tint if tint != {} else t.accent
 	dl := im.GetWindowDrawList()
-	pos := im.GetCursorScreenPos()
+	full_pos := im.GetCursorScreenPos()
 	io := im.GetIO()
+	// Room for what goes around it: the dB scale's labels at the left, the
+	// overview strip under it (the ruler sits inside, along the bottom).
+	SCALE_W :: 30
+	OVER_H :: 16
+	pos := full_pos
+	size := size
+	if opts.scale {
+		pos.x += SCALE_W
+		size.x -= SCALE_W
+	}
+	if opts.overview do size.y -= OVER_H + 4
+	size = {max(size.x, 40), max(size.y, 40)}
 	if view.end <= view.start do view^ = {0, f64(max(frames, 1))}
 	span := view.end - view.start
 	to_x :: proc(f: f64, view: Wave_View, pos: im.Vec2, size: im.Vec2) -> f32 {
@@ -107,11 +142,26 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		return view.start + f64((x - pos.x) / size.x) * (view.end - view.start)
 	}
 
-	im.InvisibleButton("##wave", size)
+	im.SetCursorScreenPos(pos)
+	im.InvisibleButton("##wave", size, {.MouseButtonLeft, .MouseButtonRight})
 	name(widget_name(id, "waveform"))
 	hovered := im.IsItemHovered()
 	@(static) dragging_marker := -1
+	@(static) dragging_gain := -1
 	@(static) select_from: i64
+	// Level lines: 0 dB four fifths up the wave, -24 dB at the bottom.
+	gain_y :: proc(db: f32, pos, size: im.Vec2) -> f32 { return pos.y + size.y * (1 - (clamp(db, -24, 6) + 24) / 30) }
+	near_gain := -1
+	if hovered || im.IsItemActive() {
+		mp := io.MousePos
+		for g, i in opts.gains {
+			cx := (to_x(f64(g.from), view^, pos, size) + to_x(f64(g.to), view^, pos, size)) / 2
+			if abs(mp.x - cx) < 8 && abs(mp.y - gain_y(g.db, pos, size)) < 8 {
+				near_gain = i
+				break
+			}
+		}
+	}
 
 	// Markers take the mouse first, when it is near one.
 	near := -1
@@ -130,13 +180,25 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 			break
 		}
 	}
-	if near >= 0 do im.SetMouseCursor(.ResizeEW)
-	if im.IsItemActivated() {
-		dragging_marker = near
+	if near_gain >= 0 && near < 0 do im.SetMouseCursor(.ResizeNS)
+	else if near >= 0 do im.SetMouseCursor(.ResizeEW)
+	right := im.IsMouseClicked(.Right) && hovered
+	if right && opts.editable && near >= 0 do e.remove = near
+	if hovered && opts.editable && im.IsMouseDoubleClicked(.Left) && near < 0 && near_gain < 0 {
+		e.add_at = i64(clamp(to_frame(io.MousePos.x, view^, pos, size), 0, f64(frames)))
+	}
+	if im.IsItemActivated() && !right {
+		dragging_marker, dragging_gain = near, -1
+		if near < 0 && near_gain >= 0 do dragging_gain = near_gain
 		f := i64(clamp(to_frame(io.MousePos.x, view^, pos, size), 0, f64(frames)))
 		if near < 0 do select_from = f
 	}
-	if im.IsItemActive() {
+	if im.IsItemActive() && dragging_gain >= 0 && dragging_gain < len(opts.gains) {
+		// A level: up and down (0.25 dB steps; Shift finer).
+		db := clamp(-24 + (1 - (io.MousePos.y - pos.y) / size.y) * 30, -24, 6)
+		db = math.round(db * (20 if io.KeyShift else 4)) / (20 if io.KeyShift else 4)
+		if db != opts.gains[dragging_gain].db do e.gain, e.gain_db = dragging_gain, db
+	} else if im.IsItemActive() && !im.IsMouseDown(.Right) {
 		f := i64(clamp(to_frame(io.MousePos.x, view^, pos, size), 0, f64(frames)))
 		if dragging_marker >= 0 && dragging_marker < len(markers) {
 			if f != markers[dragging_marker].frame {
@@ -151,12 +213,14 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		}
 	}
 	if im.IsItemDeactivated() {
-		if dragging_marker >= 0 {
+		if dragging_gain >= 0 {
+			e.gain_released = true
+		} else if dragging_marker >= 0 {
 			e.marker, e.released = dragging_marker, true
 		} else if io.MouseDragMaxDistanceSqr[0] <= 9 {
 			e.clicked, e.click_frame = true, i64(clamp(to_frame(io.MousePos.x, view^, pos, size), 0, f64(frames)))
 		}
-		dragging_marker = -1
+		dragging_marker, dragging_gain = -1, -1
 	}
 	// Wheel: zoom around the mouse; Shift+wheel: pan.
 	if hovered && io.MouseWheel != 0 {
@@ -181,6 +245,11 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 	im.DrawList_PushClipRect(dl, pos, {pos.x + size.x, pos.y + size.y}, true)
 	mid := pos.y + size.y / 2
 	im.DrawList_AddLine(dl, {pos.x, mid}, {pos.x + size.x, mid}, col(rgb(0x2a2c33)), 1) // the zero line
+	// The grid: -6 dB (half the height) above and below the zero line.
+	if opts.scale {
+		half := (size.y / 2 - 2) * 0.5
+		for y in ([2]f32{mid - half, mid + half}) do im.DrawList_AddLine(dl, {pos.x, y}, {pos.x + size.x, y}, col(with_alpha(rgb(0xffffff), 0.08)), 1)
+	}
 	if selection != nil && selection[1] > selection[0] {
 		x0 := to_x(f64(selection[0]), view^, pos, size)
 		x1 := to_x(f64(selection[1]), view^, pos, size)
@@ -222,12 +291,101 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 			im.DrawList_AddText(dl, {lo.x + 4, pos.y + 2}, col(t.bg), lc)
 		}
 	}
+	// Level lines: grey across their part, a handle in the middle (lit
+	// under the mouse), the level beside it while it moves.
+	for g, i in opts.gains {
+		x0, x1 := to_x(f64(g.from), view^, pos, size), to_x(f64(g.to), view^, pos, size)
+		y := gain_y(g.db, pos, size)
+		hot := i == near_gain || i == dragging_gain
+		lc := with_alpha(rgb(0xc8ccd4), 0.55 if hot else 0.32)
+		im.DrawList_AddLine(dl, {x0 + 3, y}, {x1 - 3, y}, col(lc), 1.5)
+		cx := (x0 + x1) / 2
+		im.DrawList_AddCircleFilled(dl, {cx, y}, 5 if hot else 4, col(with_alpha(rgb(0xe8e9ed), 0.9 if hot else 0.6)))
+		if hot {
+			lt := fmt.ctprintf("%+.1f dB", g.db)
+			im.DrawList_AddText(dl, {cx + 8, y - 16}, col(rgb(0xe8e9ed)), lt)
+		}
+	}
 	// The playhead.
 	if playhead >= 0 {
 		x := to_x(f64(playhead), view^, pos, size)
 		if x >= pos.x && x <= pos.x + size.x do im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(rgb(0xffffff)), 1.5)
 	}
+	// The ruler: time along the bottom, in bars and beats (at the sound's
+	// tempo) or seconds, its labels as many as fit.
+	if opts.rate > 0 {
+		RULER :: 16
+		y0 := pos.y + size.y - RULER
+		im.DrawList_AddRectFilled(dl, {pos.x, y0}, {pos.x + size.x, pos.y + size.y}, col(with_alpha(WAVE_BG, 0.75)))
+		unit := opts.beat_frames if opts.beat_frames > 0 else opts.rate // a beat, or a second
+		per_bar := f64(opts.beats_per_bar if opts.beats_per_bar > 0 else 4)
+		// A step that leaves room for labels: units, or halves/quarters of them, or many.
+		px_per := f64(size.x) / (span / unit)
+		step := 1.0
+		for step * px_per < 60 do step *= 2
+		for step * px_per > 160 && step > 1.0 / 16 do step /= 2
+		first := math.floor(view.start / unit / step) * step
+		for u := first; u * unit <= view.end; u += step {
+			x := to_x(u * unit, view^, pos, size)
+			if x < pos.x - 1 do continue
+			im.DrawList_AddLine(dl, {x, y0}, {x, y0 + 5}, col(with_alpha(rgb(0xffffff), 0.5)), 1)
+			lt: cstring
+			if opts.beat_frames > 0 {
+				bar := int(math.floor(u / per_bar + 1e-9)) + 1
+				beat := math.mod(u, per_bar) + 1
+				lt = fmt.ctprintf("%d", bar) if abs(beat - 1) < 1e-6 else fmt.ctprintf("%d.%g", bar, math.round(beat * 100) / 100)
+			} else {
+				lt = fmt.ctprintf("%.2fs", u) if step < 1 else fmt.ctprintf("%.0fs", u)
+			}
+			im.DrawList_AddText(dl, {x + 3, y0 + 1}, col(with_alpha(rgb(0xffffff), 0.6)), lt)
+		}
+	}
 	im.DrawList_PopClipRect(dl)
+	// The dB scale at the left: 0 at the top and bottom, -6 halfway, -inf at
+	// the zero line.
+	if opts.scale {
+		h := size.y / 2 - 2
+		labels := [?]struct { y: f32, text: cstring }{{mid - h, "0"}, {mid - h * 0.5, "-6"}, {mid, "-inf"}, {mid + h * 0.5, "-6"}, {mid + h, "0"}}
+		for l in labels {
+			ts := im.CalcTextSize(l.text)
+			im.DrawList_AddText(dl, {pos.x - ts.x - 4, l.y - ts.y / 2}, col(t.text_dim), l.text)
+		}
+	}
+	// The overview: the whole sound, the part shown as a window to drag.
+	if opts.overview && len(peaks) > 0 {
+		op := im.Vec2{pos.x, pos.y + size.y + 4}
+		osz := im.Vec2{size.x, OVER_H}
+		im.SetCursorScreenPos(op)
+		im.InvisibleButton("##overview", osz)
+		name(strings.concatenate({widget_name(id, "waveform"), " overview"}, context.temp_allocator))
+		im.DrawList_AddRectFilled(dl, op, {op.x + osz.x, op.y + osz.y}, col(WAVE_BG), 3)
+		om := op.y + osz.y / 2
+		cols := int(osz.x)
+		per := f64(len(peaks)) / f64(max(cols, 1))
+		for x in 0 ..< cols {
+			i0 := clamp(int(f64(x) * per), 0, len(peaks) - 1)
+			i1 := clamp(int(f64(x + 1) * per), i0, len(peaks) - 1)
+			lo, hi := peaks[i0].lo, peaks[i0].hi
+			for p in peaks[i0:i1 + 1] do lo, hi = min(lo, p.lo), max(hi, p.hi)
+			im.DrawList_AddLine(dl, {op.x + f32(x) + 0.5, om - hi * (osz.y / 2 - 1)}, {op.x + f32(x) + 0.5, om - lo * (osz.y / 2 - 1) + 1}, col(with_alpha(color, 0.6)), 1)
+		}
+		wx0 := op.x + f32(view.start / f64(frames)) * osz.x
+		wx1 := op.x + f32(view.end / f64(frames)) * osz.x
+		im.DrawList_AddRectFilled(dl, {wx0, op.y}, {wx1, op.y + osz.y}, col(with_alpha(rgb(0xffffff), 0.12)), 2)
+		im.DrawList_AddRect(dl, {wx0, op.y}, {wx1, op.y + osz.y}, col(with_alpha(rgb(0xffffff), 0.5)), 2, 1)
+		// Drag (or click) to move the part shown, centred where the mouse is.
+		if im.IsItemActive() {
+			c := f64((io.MousePos.x - op.x) / osz.x) * f64(frames)
+			start := clamp(c - span / 2, 0, f64(frames) - span)
+			if start != view.start {
+				view.start, view.end = start, start + span
+				e.zoomed = true
+			}
+		}
+		if im.IsItemHovered() do im.SetTooltip("Drag: the part shown (the wheel zooms the wave)")
+	}
+	im.SetCursorScreenPos(full_pos)
+	im.Dummy({size.x + (SCALE_W if opts.scale else 0), size.y + (OVER_H + 4 if opts.overview else 0)})
 	return
 }
 

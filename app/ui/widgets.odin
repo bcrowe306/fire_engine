@@ -235,6 +235,7 @@ Pad_Hit :: struct {
 	mute:     bool, // its Mute button was clicked
 	solo:     bool, // its Solo button was clicked
 	dropped:  string, // a drag-and-drop payload of `Pad_Face.drop_type` let go on it (temporary allocator)
+	drop_slicer: bool, // ... let go with Alt held, or on the Slicer half of a pad with drop zones
 }
 
 // What a pad shows: its name centred at the top (clipped to the pad), a
@@ -255,7 +256,13 @@ Pad_Face :: struct {
 	drop_type: cstring, // the drag-and-drop payload it takes (nil: none)
 	badge:     string,  // a small tag at the top right (its choke group: "C2"; "": none)
 	armed:     bool,    // a red dot at the bottom centre: it records what comes in
+	drop_zones: bool,   // while a payload is over it: two halves, Sampler (top) and Slicer (bottom)
 }
+
+// Where a pad's drop zones meet, down from its top: a little below the
+// middle, so a drop at its centre loads a sampler.
+@(private)
+DROP_SPLIT :: 0.55
 
 // A sampler pad (see Pad_Face): hit it to play it (higher is harder);
 // Shift- or Cmd-click, or right-click, to select it without playing.
@@ -268,13 +275,16 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	// AllowOverlap: its Mute and Solo buttons sit on it.
 	im.InvisibleButton("##pad", size, {.MouseButtonLeft, .MouseButtonRight, .AllowOverlap})
 	if face.label != "" do name(face.label)
+	io := im.GetIO()
+	drop_over, drop_lower := false, false
 	if face.drop_type != nil && im.BeginDragDropTarget() {
+		drop_over, drop_lower = true, io.MousePos.y >= pos.y + size.y * DROP_SPLIT
 		if payload := im.AcceptDragDropPayload(face.drop_type); payload != nil {
 			hit.dropped = strings.clone(strings.string_from_ptr((^u8)(payload.Data), int(payload.DataSize)), context.temp_allocator)
+			hit.drop_slicer = io.KeyAlt || (face.drop_zones && drop_lower)
 		}
 		im.EndDragDropTarget()
 	}
-	io := im.GetIO()
 	if im.IsItemActivated() {
 		if im.IsMouseClicked(.Right) || io.KeyShift || io.KeySuper || io.KeyCtrl {
 			hit.selected = true
@@ -349,6 +359,23 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.85) if face.lit || hit.held || face.has_sound else t.text_dim), mc)
 	}
 	im.DrawList_PopClipRect(dl)
+
+	// A payload over it: where it would go (with zones, a half each; with
+	// Alt, a slicer).
+	if drop_over && (face.drop_zones || io.KeyAlt) {
+		half := size.y * DROP_SPLIT
+		zones := [2]struct{ y0, y1: f32, label: cstring, on: bool }{
+			{pos.y, pos.y + half, "Sampler", !drop_lower && !io.KeyAlt},
+			{pos.y + half, max_.y, "Slicer", drop_lower || io.KeyAlt},
+		}
+		if !face.drop_zones do zones = {{pos.y, pos.y, "", false}, {pos.y, max_.y, "Slicer", true}}
+		for z in zones do if z.y1 > z.y0 {
+			im.DrawList_AddRectFilled(dl, {pos.x, z.y0}, {max_.x, z.y1}, col(with_alpha(t.accent, 0.45 if z.on else 0.12)), r)
+			ls := im.CalcTextSize(z.label)
+			im.DrawList_AddText(dl, {math.round(pos.x + (size.x - ls.x) / 2), math.round((z.y0 + z.y1 - ls.y) / 2)}, col(t.text if z.on else t.text_dim), z.label)
+		}
+		if face.drop_zones do im.DrawList_AddLine(dl, {pos.x + 4, pos.y + half}, {max_.x - 4, pos.y + half}, col(with_alpha(t.text, 0.3)), 1)
+	}
 
 	// Armed: a red dot between Mute and Solo.
 	if face.armed {

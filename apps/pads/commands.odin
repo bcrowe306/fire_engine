@@ -147,6 +147,17 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "pad.audio", label = "Audio Track", icon = ui.ICON_MIC, kinds = {.Pad}, group = 1,
 		run = proc(a: ^App, t: Target) { k := a.m.project.pads[t.index].kind; pm.set_pad_kind(&a.m, t.index, .Sampler if k == .Audio else .Audio) },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Audio }})
+	add(c, {id = "pad.slicer", label = "Slicer", icon = ui.ICON_SCISSORS, kinds = {.Pad}, group = 1,
+		run = proc(a: ^App, t: Target) {
+			switch {
+			case a.m.project.pads[t.index].kind == .Slicer: pm.make_sampler(&a.m, t.index)
+			case pm.pad_used(&a.m.project, t.index): pm.make_slicer(&a.m, t.index)
+			case: pm.empty_slicer(&a.m, t.index)
+			}
+			a.selected = t.index
+		},
+		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
+		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Slicer }})
 	add(c, {id = "pad.copy", label = "Copy Pad", icon = ui.ICON_COPY, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { a.pad_clip, a.has_pad_clip = a.m.project.pads[t.index], true }, enabled = pad_has})
 	add(c, {id = "pad.paste", label = "Paste Pad", icon = ui.ICON_CLIPBOARD_PASTE, kinds = {.Pad}, group = 2,
@@ -258,6 +269,10 @@ register_commands :: proc(a: ^App) {
 				return
 			}
 		}})
+	add(c, {id = "file.slice_empty", label = "Slice onto Next Empty Pad", icon = ui.ICON_SCISSORS, kinds = {.File}, group = 1, keys = "Shift+Enter",
+		run = proc(a: ^App, t: Target) { slice_onto_next(a, t.path) }})
+	add(c, {id = "file.slice", label = "Slice onto Selected Pad", icon = ui.ICON_SCISSORS, kinds = {.File}, group = 1, keys = "Cmd+Shift+Enter",
+		run = proc(a: ^App, t: Target) { load_into_slicer(a, a.selected, t.path) }})
 	add(c, {id = "file.preview", label = "Preview", icon = ui.ICON_PLAY, kinds = {.File}, group = 0,
 		run = proc(a: ^App, t: Target) { pm.preview_play(&a.m.engine, t.path) }})
 

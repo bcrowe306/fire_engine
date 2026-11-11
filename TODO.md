@@ -10,7 +10,7 @@ A pad is a track; its device is its source of sound. Each needs its own
 plan before it is built.
 
 - **Sampler** — done (the pad's default when a sample is loaded).
-- **Slicer** — in progress: one sample sliced in place, slices on notes
+- **Slicer** — done: one sample sliced in place, slices on notes
   from a base note; the sampler's voice (envelopes, filter, pitch, LFOs),
   warp; mono/poly, thru, gate; fades; per-slice volume; velocity
   sensitivity (Ableton Simpler's Slice mode is the reference for feel).

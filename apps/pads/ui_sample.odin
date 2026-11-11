@@ -36,6 +36,10 @@ draw_sample :: proc(user: rawptr) {
 		draw_take(a, i)
 		return
 	}
+	if pad.kind == .Slicer {
+		draw_slicer(a, i)
+		return
+	}
 	s := pm.pad_sample(m, i)
 	if s == nil {
 		im.TextDisabled("%s", fmt.ctprintf("No sample on %s", pm.pad_label(i)))

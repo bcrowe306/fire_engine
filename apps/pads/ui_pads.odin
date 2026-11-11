@@ -55,8 +55,11 @@ draw_pads :: proc(user: rawptr) {
 			drop_type = "PADS_FILE",
 			badge     = fmt.tprintf("C%d", pad.choke) if pad.choke > 0 && has else "",
 			armed     = pm.track_armed(&a.m, index),
+			drop_zones = !has,
 		}
 		if has && a.pad_waves && !audio do face.peaks = pad_peaks(a, index)
+		if pad.kind == .Slicer do face.middle = fmt.tprintf("%s %d slices", ui.ICON_SCISSORS, pad.slicer.count) if pad.sample != 0 else ui.ICON_SCISSORS + " slicer"
+
 		switch a.play_mode {
 		case .Pads:
 		case .Keyboard: // the notes of the scale, on the selected pad
@@ -68,6 +71,12 @@ draw_pads :: proc(user: rawptr) {
 			face.middle = fmt.tprintf("%+d st", ps[0])
 			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0, false, false, nil
 			if (ps[0] - a.keys.root) %% 12 == 0 do face.selected = true // the roots stand out
+			if target.kind == .Slicer { // its slices, a pad each
+				face.name = fmt.tprintf("Slice %d", k + 1)
+				face.middle = ui.note_name(int(target.slicer.base) + k)
+				face.has_sound = k < int(target.slicer.count)
+				face.selected = false
+			}
 		case .Velocity:
 			target := &p.pads[a.selected]
 			face.name = fmt.tprintf("%d", int(pm.velocity_of_pad(k) * 127 + 0.5))
@@ -92,8 +101,15 @@ draw_pads :: proc(user: rawptr) {
 			pm.set_pad(&a.m, index, .Mute if hit.mute else .Solo, "Mute" if hit.mute else "Solo", np)
 			app.seal(&a.m.history)
 		}
-		// A file from the browser dropped on it.
-		if hit.dropped != "" && pm.load_onto_pad(&a.m, index, hit.dropped) == .None do a.selected = index
+		// A file from the browser dropped on it: into a slicer (with Alt, on
+		// an empty pad's lower half, or onto a slicer), else a sampler.
+		if hit.dropped != "" {
+			if hit.drop_slicer || pad.kind == .Slicer {
+				load_into_slicer(a, index, hit.dropped)
+			} else if pm.load_onto_pad(&a.m, index, hit.dropped) == .None {
+				a.selected = index
+			}
+		}
 		if im.BeginPopup("##padmenu") {
 			if card(selected_pads(a)) > 1 {
 				pads_menu_items(a)

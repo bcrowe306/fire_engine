@@ -81,6 +81,17 @@ State :: struct {
 	errors:     int, // drive lines that failed so far
 }
 
+// A slicer pad's slices (each start, level, pitch) and how they play.
+State_Slicer :: struct {
+	starts:   []i64,
+	gains:    []f32, // dB
+	pitches:  []f32,
+	base:     int,
+	mono, gate, thru: bool,
+	by:       string,
+	selected: int, // the slice whose settings show
+}
+
 State_Pad :: struct {
 	index:   int,
 	label:   string,
@@ -103,7 +114,8 @@ State_Pad :: struct {
 	start, end: i64, // its region (end resolved)
 	fade_in, fade_out: i64,
 	playhead: i64, // the frame it plays now (-1: silent)
-	kind:    string, // "Sampler" or "Audio"
+	kind:    string, // "Sampler", "Slicer" or "Audio"
+	slicer:  State_Slicer, // a slicer's slices
 	input:   string,
 	monitor: bool,
 	armed:   bool,
@@ -265,6 +277,15 @@ state_json :: proc(a: ^App) -> string {
 		sp.playhead = f if ok else -1
 		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), audio_in_text(a, i), pad.monitor, pm.track_armed(m, i)
 		sp.midi_in = midi_in_text(a, i)
+		if pad.kind == .Slicer {
+			sl := pad.slicer
+			x := State_Slicer{base = int(sl.base), mono = sl.mono, gate = sl.gate, thru = sl.thru, by = enum_name(sl.by), selected = a.slicer_ui.selected}
+			x.starts = make([]i64, sl.count, context.temp_allocator)
+			x.gains = make([]f32, sl.count, context.temp_allocator)
+			x.pitches = make([]f32, sl.count, context.temp_allocator)
+			for s, k in sl.slices[:sl.count] do x.starts[k], x.gains[k], x.pitches[k] = s.start, s.gain_db, s.pitch
+			sp.slicer = x
+		}
 		sp.midi_in_notes, _ = pm.midi_activity(&m.engine, i)
 		sp.attack, sp.release, sp.voice = pad.attack, pad.release, pad.voice
 		if l, live := pm.pad_live(&m.engine, i); live do sp.cutoff_now = l.cutoff

@@ -119,7 +119,16 @@ draw_sequence :: proc(user: rawptr) {
 	// (4 octaves each way; folded, the ones it plays).
 	row_pad := make([dynamic]int, context.temp_allocator)
 	row_pitch := make([dynamic]int, context.temp_allocator) // the piano roll's (else 0)
-	if st.piano {
+	slicer := st.piano && m.project.pads[st.piano_pad].kind == .Slicer // (its rows: its slices)
+	if slicer {
+		pad := st.piano_pad
+		n := max(int(m.project.pads[pad].slicer.count), 1)
+		for x in s.notes do if int(x.pad) == pad && int(x.pitch) >= n do n = min(int(x.pitch) + 1, pm.MAX_SLICER_SLICES) // (notes past the last slice: their rows too)
+		for p in 0 ..< n {
+			append(&row_pad, pad)
+			append(&row_pitch, p)
+		}
+	} else if st.piano {
 		pad := st.piano_pad
 		used: [97]bool
 		for n in s.notes do if int(n.pad) == pad && int(n.pitch) >= -48 && int(n.pitch) <= 48 do used[int(n.pitch) + 48] = true
@@ -143,6 +152,12 @@ draw_sequence :: proc(user: rawptr) {
 	rows := make([]ui.Roll_Row, len(row_pad), context.temp_allocator)
 	for r, k in row_pad {
 		pad := &m.project.pads[r]
+		if slicer {
+			p := row_pitch[k]
+			there := p < int(pad.slicer.count) || (p == 0 && pad.slicer.count == 0)
+			rows[k] = {name = fmt.tprintf("Slice %d  %s", p + 1, ui.note_name(int(pad.slicer.base) + p)), color = ui.rgb(pad.color) if there else ui.mix(t.raised, t.text, 0.18)}
+			continue
+		}
 		if st.piano {
 			p := row_pitch[k]
 			key := 60 + p
@@ -182,7 +197,7 @@ draw_sequence :: proc(user: rawptr) {
 	if st.view.keys != keys || st.view.key0 < 0 {
 		st.view.keys = keys
 		st.view.key0 = 0
-		if st.piano && !st.fold do st.view.key0 = 48 - keys / 2 // the pad's own pitch in the middle
+		if st.piano && !st.fold && !slicer do st.view.key0 = 48 - keys / 2 // the pad's own pitch in the middle
 	}
 	st.view.key0 = clamp(st.view.key0, 0, max(n_rows - keys, 0))
 	roll_h = f32(keys) * (roll_h / f32(keys))

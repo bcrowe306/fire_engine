@@ -129,7 +129,8 @@ chop_to_pads :: proc(m: ^Model, index: int, how: Chop) -> int {
 	return placed
 }
 
-@(private)
+// The first pad after pad `after` with nothing on it (-1 for the first of
+// all), or -1 if every one is in use.
 next_empty :: proc(m: ^Model, after: int) -> int {
 	for i in after + 1 ..< PADS do if !pad_used(&m.project, i) do return i
 	return -1
@@ -314,6 +315,7 @@ record_poll :: proc(m: ^Model, rec: ^Recording) -> bool {
 	defer app.end(&m.history)
 	id := add_sample(m, take.path, {sample_rate = take.sample_rate, channels = take.channels, frames = take.frames})
 	assign_sample(m, rec.pad, id)
+	if m.project.pads[rec.pad].kind == .Slicer do slice_pad(m, rec.pad, .Transients) // (recorded into a slicer: sliced)
 	return true
 }
 

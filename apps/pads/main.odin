@@ -80,6 +80,7 @@ App :: struct {
 	settings: App_Settings, // File > Settings…
 	plugins:  Plugin_Scan,  // the CLAP plug-ins found
 	io:       Track_Io,     // arming, and the MIDI activity lights
+	slicer_ui: Slicer_State, // the slicer page's selected slice
 	seq:      Seq_State,
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
@@ -332,6 +333,10 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 	case .Keyboard:
 		pitches: [4]int
 		ps := pm.keyboard_pitches(a.keys, k, &pitches)
+		if a.m.project.pads[a.selected].kind == .Slicer { // a slicer: pad k plays slice k
+			pitches[0] = k
+			ps = pitches[:1]
+		}
 		g^ = {on = true, pad = a.selected, keyboard = true, count = len(ps)}
 		for p, i in ps {
 			g.pitches[i] = i8(clamp(p, -48, 48))

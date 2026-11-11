@@ -405,6 +405,67 @@ plays is a **take** per sequence:
 Audio is recorded in pattern mode (not while the song plays). A project
 from before audio pads opens with every pad a sampler.
 
+## Slicers
+
+A pad's **device** is what plays its notes: a **sampler** (the whole
+sample, pitched by the keyboard), an **audio track**, or a **slicer**: its
+sample cut into slices, each slice on its own key from the base note
+(C3 by default: slice 1 on C3, slice 2 on C#3...). It is much like a
+sampler in slice mode: the Env, Filter, Pitch, LFO and Global tabs, and
+warp, work on it as on a sampler.
+
+Ways to make one:
+
+- In the browser, **Shift+Enter** slices the selected file onto the
+  selected pad if it is empty, else the next empty one;
+  **Cmd+Shift+Enter** slices it onto the selected pad. The file's
+  right-click menu has both (**Slice onto Next Empty Pad**, **Slice onto
+  Selected Pad**).
+- Drag a file onto a pad with **Alt** held. Dragged over an empty pad, the
+  pad shows two halves: **Sampler** at the top, **Slicer** at the bottom.
+  Let go on the one you want. A file dropped on a slicer pad goes into
+  the slicer.
+- In a pad's right-click menu, **Slicer** makes a sampler a slicer (sliced
+  at its transients), makes a slicer a sampler again (its slices kept for
+  next time), or makes an empty pad an **empty slicer**. Drop a sample
+  into an empty slicer, or press its record button to record the input
+  into it; either way it is sliced when the sample arrives.
+
+A new slicer is cut at its **transients**. The **Slicer** tab (the pad's
+first tab):
+
+- **Mono | Poly**: in Mono a slice cuts off the one before; in Poly slices
+  ring together. **Thru** plays a slice on to the sample's end. **Gate**
+  stops a slice when its key is let go (otherwise it plays to its end).
+- **From** sets the base note. **Fade in** and **Fade out** (ms) shape
+  every slice's ends, so cuts don't click. **Velocity** sets the
+  sensitivity: 0% plays every hit equally loud, 50% follows how hard you
+  hit, and above 50% makes soft hits softer still.
+- **Transients | Beats | Equal | Manual** slices it again: at its hits
+  (with a sensitivity), on a grid of its tempo (bars, 1/4, 1/8, 1/16), or
+  into equal parts. Editing a marker by hand switches it to Manual.
+- The waveform has a marker for each slice. Drag a marker by its numbered
+  tag or its line, **double-click** between markers to add one, and
+  **right-click** a marker to remove it (slice 1 always stays). Each slice
+  has a gray **level line** with a handle: drag it up or down (-24 to
+  +6 dB). The waveform shows dB down the left side (a line at -6 dB), and
+  time or bars along the bottom. The wheel zooms around the mouse,
+  Shift+wheel pans, and the strip underneath shows the whole sample with
+  the visible part as a window you can drag. Markers are placed in the
+  sample, so they stay put when the sample is warped or stretched.
+- Under the waveform, the selected slice: **play** it, and set its own
+  **level**, **pitch**, **pan** and **Reverse**.
+- The buttons by the slice count: **Slices to a sequence** writes a new
+  sequence that plays each slice where it falls. **Slice to pad** copies
+  the selected slice onto the next empty pad, as a sampler of just that
+  part (with its level, pitch, pan and direction). **To sampler** turns
+  the slicer back into a sampler.
+
+In the piano roll a slicer has a row per slice ("Slice 3 D3"). In
+**Keyboard** play mode, the selected slicer's slices are laid out on the
+pads, slice 1 on the bottom-left pad. A sequencer note's pitch chooses its
+slice, and so does a MIDI note's key.
+
 ## The transport
 
 The toolbar under the menus, centred, always showing. Its buttons are
@@ -736,6 +797,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
+| `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |

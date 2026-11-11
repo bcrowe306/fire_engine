@@ -33,7 +33,8 @@ favorites_path :: proc(a: ^App) -> string {
 // and the preview. Click a file to select it (and, with auto-play, hear
 // it), double-click to load it onto the selected pad, or drag it onto a
 // pad. The arrow keys move through the list (Right opens a folder, Left
-// closes it), Enter loads or opens, Backspace goes up.
+// closes it), Enter loads or opens (Shift+Enter: into a slicer on the next
+// empty pad; Cmd+Shift+Enter: on the selected pad), Backspace goes up.
 draw_browser :: proc(user: rawptr) {
 	a := (^App)(user)
 	b := &a.browser
@@ -316,8 +317,13 @@ browser_keys :: proc(a: ^App, rows: []pm.Browser_Entry) {
 		if im.IsKeyPressed(.LeftArrow) do pm.browser_expand(b, strings.clone(current.path, context.temp_allocator), false)
 	}
 	if im.IsKeyPressed(.Enter) && has {
-		if current.is_dir do pm.browser_go(b, strings.clone(current.path, context.temp_allocator))
-		else do load_selected(a, current)
+		io := im.GetIO()
+		switch {
+		case current.is_dir: pm.browser_go(b, strings.clone(current.path, context.temp_allocator))
+		case io.KeyShift && (io.KeySuper || io.KeyCtrl): load_into_slicer(a, a.selected, current.path) // onto the selected pad
+		case io.KeyShift: slice_onto_next(a, current.path)
+		case: load_selected(a, current)
+		}
 	}
 	if im.IsKeyPressed(.Backspace) do pm.browser_up(b)
 }

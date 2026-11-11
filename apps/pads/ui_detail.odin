@@ -206,7 +206,7 @@ device_tabs :: proc(a: ^App) {
 		i := tr.index
 		pad := &m.project.pads[i]
 		name := pm.pad_name(pad) if pm.pad_used(&m.project, i) else ""
-		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, pm.pad_label(i), " " if name != "" else "", name, "Audio" if pad.kind == .Audio else "Sampler")
+		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, pm.pad_label(i), " " if name != "" else "", name, "Audio" if pad.kind == .Audio else ("Slicer" if pad.kind == .Slicer else "Sampler"))
 		tab(st, instr, {.Instrument, 0})
 		item_menu(a, pad_target(i), "##instmenu")
 		tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0})
@@ -278,7 +278,9 @@ draw_sampler_tabs :: proc(a: ^App) {
 		if !tab_shown(a, tab) do continue
 		flags: im.TabItemFlags
 		if st.show > 0 && st.tab == tab do flags += {.SetSelected}
-		label := fmt.ctprintf("%s  %s###%s", DETAIL_ICONS[tab], DETAIL_NAMES[tab], DETAIL_NAMES[tab])
+		name := DETAIL_NAMES[tab]
+		if tab == .Sample && a.m.project.pads[a.selected].kind == .Slicer do name = "Slicer" // (its id stays: ###Sample)
+		label := fmt.ctprintf("%s  %s###%s", DETAIL_ICONS[tab], name, DETAIL_NAMES[tab])
 		if im.BeginTabItem(label, nil, flags) {
 			if st.show == 0 do st.tab = tab
 			if im.BeginChild("##tab", {0, 0}) {

@@ -292,6 +292,7 @@ subscribe_imports :: proc(a: ^App) {
 //	addbus / delbus B / busdest B D (0 = main) / busname B NAME   buses: add, delete, route, rename
 //	warp PAD on|off [beats|tones|complex|repitch] [BPM]   a pad's warp (its sample's tempo: guessed if not given)
 //	plugin_folder PATH / scan_plugins   a folder for plug-ins, and a scan of every folder
+//	slicer PAD [FILE] / empty_slicer PAD / slice PAD transients|beats|equal / sampler PAD   slicers
 //	midi KEY VEL [PORT] / midi_in PAD all|none|PORT [CH] / arm PAD on|off   MIDI in (by port index), a track's MIDI input, arming
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
@@ -585,6 +586,40 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			pm.set_pad_bus(&a.m, i, num(w, 2))
 			return true
 		}
+	case "slicer": // slicer PAD [FILE]: the pad a slicer (its sample sliced), or FILE loaded into one
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		if len(w) > 2 do return load_into_slicer(a, i, strings.join(w[2:], " ", context.temp_allocator))
+		pm.make_slicer(&a.m, i)
+		return true
+	case "empty_slicer": // empty_slicer PAD
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		pm.empty_slicer(&a.m, i)
+		return true
+	case "slice": // slice PAD transients|beats|equal: slices it again
+		i := num(w, 1)
+		if !pad_ok(i) || len(w) < 3 do return false
+		by := pm.Slice_By.Transients
+		switch w[2] {
+		case "beats": by = .Beats
+		case "equal": by = .Equal
+		}
+		pm.slice_pad(&a.m, i, by)
+		return true
+	case "slices_seq": // slices_seq PAD: a sequence of its slices (the next empty slot)
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		return pm.slices_to_sequence(&a.m, i) >= 0
+	case "slice_out": // slice_out PAD K: slice K (1..) onto the next empty pad
+		i := num(w, 1)
+		if !pad_ok(i) || len(w) < 3 do return false
+		return pm.slice_to_pad(&a.m, i, num(w, 2) - 1) >= 0
+	case "sampler": // sampler PAD: a slicer a sampler again
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		pm.make_sampler(&a.m, i)
+		return true
 	case "warp": // warp PAD on|off [beats|tones|complex|repitch] [BPM]
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 3 do return false
