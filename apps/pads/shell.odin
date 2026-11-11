@@ -15,6 +15,7 @@ import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
 import fc "fire:core"
+import "fire:clap"
 import "fire:fx"
 import "fire:synth"
 
@@ -986,6 +987,33 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if t.kind == .File && len(w) > 3 do t.path = absolute(strings.join(w[3:], " ", context.temp_allocator))
 		if !run_command(a, w[1], t) do return drive_fail(a, fmt.tprintf("command %s did not run on %v", w[1], t))
 		return true
+	case "plugin_pad": // plugin_pad PAD PATH ID: pad PAD (0..) plays plug-in ID of the CLAP file at PATH (from the working folder), selected
+		if len(w) < 4 do return false
+		i := num(w, 1)
+		name := w[3]
+		if lib, err := clap.library_open(absolute(w[2])); err == .None {
+			for d in lib.plugins do if d.id == w[3] do name = strings.clone(d.name, context.temp_allocator)
+			clap.library_close(lib)
+		}
+		pm.make_plugin_pad(&a.m, i, absolute(w[2]), w[3], name)
+		a.selected = i
+		show_device(a, {.Instrument, i, 0})
+		return true
+	case "plugin_editor": // plugin_editor open|close: the selected pad's plug-in's own window
+		if len(w) < 2 do return false
+		if w[1] == "close" {
+			if p := pm.pad_plugin(&a.m.engine, a.selected); p != nil do editor_close(a, p)
+			return true
+		}
+		editor_open(a, {.Instrument, a.selected, 0}) // (headless: it says why it can't)
+		return true
+	case "plugin_lane": // plugin_lane LANE PARAM: the selected pad's lane LANE (1..8) moves its plug-in's parameter PARAM (an id; 0: none)
+		if len(w) < 3 do return false
+		id := fc.Param_Id(num(w, 2))
+		info := fc.Param_Info{}
+		for p in pm.target_params(&a.m.engine, {.Instrument, a.selected, 0}) do if p.id == id do info = p
+		pm.set_plugin_lane(&a.m, a.selected, num(w, 1) - 1, info)
+		return true
 	case "expect":
 		return drive_expect(a, w)
 	}
@@ -1061,6 +1089,21 @@ drive_expect :: proc(a: ^App, w: []string) -> bool {
 	case "song":
 		want, _ := strconv.parse_int(w[2])
 		if a.m.project.song.count != want do return drive_fail(a, fmt.tprintf("expected %d song steps, got %d", want, a.m.project.song.count))
+		return true
+	case "plugin":
+		// expect plugin loaded|failed|editor|no-editor: the selected pad's plug-in
+		p := pm.pad_plugin(&a.m.engine, a.selected)
+		open := false
+		for e in a.editors do open ||= p != nil && e.plugin == p
+		ok: bool
+		switch w[2] {
+		case "loaded":    ok = p != nil
+		case "failed":    ok = pm.pad_plugin_failed(&a.m.engine, a.selected)
+		case "editor":    ok = open
+		case "no-editor": ok = !open
+		case: return false
+		}
+		if !ok do return drive_fail(a, fmt.tprintf("expected the plug-in %s", w[2]))
 		return true
 	case "dirty":
 		if pm.model_dirty(&a.m) != (w[2] == "1") do return drive_fail(a, fmt.tprintf("expected dirty %s", w[2]))

@@ -412,7 +412,7 @@ pads have, and not its neighbours'.
 A tab beside the Browser: the devices there are, in a tree (type to
 find one).
 - **Instruments**: Synth, Sampler, Slicer, Audio track, then the synth's
-  presets by kind (yours too).
+  presets by kind (yours too), then the CLAP instruments found.
 - **Effects**: the synth's (Sound) and the rest (Rhythm and pitch).
 - **Plug-ins**: the CLAP effects found (Settings > Plug-ins), by vendor.
 
@@ -656,6 +656,30 @@ behind). Loading a preset is one undo step.
   priority; always glide, glide by octaves; volume, voices, glide time
   and curve, bend range, velocity tracking, transpose, tune; and the
   output as an oscilloscope and a spectrum.
+
+## Plug-in instruments
+
+A CLAP instrument found in Settings > Plug-ins can be a pad's device.
+Drag it from the Devices panel (Instruments > Plug-ins) onto a pad. The
+pad plays it chromatically, like a synth: its keys, Keyboard mode, the
+piano roll and an armed track's MIDI play its notes. The wheels and
+aftertouch reach it as MIDI.
+
+Its page shows the plug-in, **Change instrument…**, **Open editor** (the
+plug-in's own window, when it has one) and its parameters as knobs. A
+plug-in with many parameters gets a box to find one by name. A knob shows
+the value the plug-in has, so moves in its own window show there too.
+Moving a knob is an undo step.
+
+Right-click a knob to give it one of eight automation lanes (or to stop
+automating it). The lane then appears in the sequence's Automation list
+under that parameter's name. It runs 0 to 100 % of the parameter's range.
+A plug-in pad's other lanes are volume and the EQ.
+
+Saving keeps each plug-in's own state with the project: instruments and
+plug-in effects, in inserts and bus slots. A plug-in that can't be found
+says so on its page and plays nothing; the rest of the project plays.
+Plug-in effects have **Open editor** on their pages too.
 
 ## The transport
 
@@ -941,6 +965,9 @@ expect notes K / expect points K / expect playing 0|1 / expect slot N
 expect midi_key PAD KEY / expect struck PAD MIN   (it has sounded MIN or more times)
 insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
 plugin BUS SLOT ID PATH                      a CLAP plug-in in a bus slot
+plugin_pad PAD PATH ID                       pad PAD (0..) plays CLAP instrument ID (selected)
+plugin_editor open|close / plugin_lane LANE PARAM   its window; lane LANE (1..8) moves parameter PARAM
+expect plugin loaded|failed|editor|no-editor
 edit_fx pad P S | bus B S | perf N           the slot the Effects tab edits
 fx_param ID VALUE                            one of its settings
 send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..the buses in use; -60 dB is off)

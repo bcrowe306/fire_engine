@@ -77,6 +77,7 @@ Effect_Slot :: struct {
 	plugin_path: string, // .Plugin: the .clap file
 	plugin_id:   string, // .Plugin: which of its plug-ins
 	plugin_name: string,
+	state:       string, // .Plugin: its saved state (bytes, interned), put back when it loads
 }
 
 // The value a slot has for parameter `id`, or `default`.
@@ -473,6 +474,7 @@ Fx_Target_Kind :: enum u8 {
 	Pad,
 	Bus,
 	Perf,
+	Instrument, // a plug-in pad's instrument (`index` the pad; no slot)
 }
 
 // The slot `t` points at (a copy), or false.
@@ -485,6 +487,8 @@ target_slot :: proc(m: ^Model, t: Fx_Target) -> (Effect_Slot, bool) {
 		if t.index >= 0 && t.index <= BUSES && t.slot >= 0 && t.slot < BUS_SLOTS do return bus_of(m, t.index).slots[t.slot], true
 	case .Perf:
 		if t.index >= 0 && t.index < PERF_FX do return m.project.perf_fx[t.index], true
+	case .Instrument:
+		if t.index >= 0 && t.index < PADS do return m.project.pads[t.index].instrument, true
 	}
 	return {}, false
 }
@@ -502,6 +506,8 @@ set_target_slot :: proc(m: ^Model, t: Fx_Target, s: Effect_Slot, name: string) {
 	case .Perf:
 		set_perf_fx(m, t.index, 100, name, s)
 		app.seal(&m.history)
+	case .Instrument:
+		set_instrument(m, t.index, s, name)
 	}
 }
 
@@ -520,5 +526,7 @@ set_target_param :: proc(m: ^Model, t: Fx_Target, id: fc.Param_Id, value: f32) {
 		set_bus(m, t.index, 200 + t.slot * 64 + int(id) % 64, "Set Effect", b)
 	case .Perf:
 		set_perf_fx(m, t.index, 200 + int(id) % 64, "Set Effect", s)
+	case .Instrument:
+		set_instrument_param(m, t.index, id, value)
 	}
 }

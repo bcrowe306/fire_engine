@@ -22,12 +22,13 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 22 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent
+PROJECT_VERSION :: 23 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
 // `samples/`). Marks the history saved.
 model_save :: proc(m: ^Model) -> fc.Error {
+	capture_plugin_states(m) // (the plug-ins' own settings)
 	p := &m.project
 	if os.make_directory_all(p.dir) != nil && !os.is_dir(p.dir) do return .Device_Error
 	chunks := project_chunks(p)
@@ -62,6 +63,7 @@ model_save_as :: proc(m: ^Model, dir: string) -> fc.Error {
 // samples copied there; the project itself, its folder and whether it
 // has unsaved changes stay as they are.
 model_save_copy :: proc(m: ^Model, dir: string) -> fc.Error {
+	capture_plugin_states(m)
 	p := &m.project
 	samples, _ := filepath.join({dir, "samples"}, context.temp_allocator)
 	if os.make_directory_all(samples) != nil && !os.is_dir(samples) do return .Device_Error
@@ -136,6 +138,7 @@ model_backup_path :: proc(dir: string) -> string {
 // `.autosave/`: the project itself, and whether it has unsaved changes,
 // stay as they are.
 model_save_backup :: proc(m: ^Model) -> fc.Error {
+	capture_plugin_states(m) // (the plug-ins' own settings)
 	p := &m.project
 	dir, _ := filepath.join({p.dir, BACKUP_DIR}, context.temp_allocator)
 	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return .Device_Error
@@ -468,6 +471,21 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_bool(w, v.seq_keys) // v21
 	fc.write_u8(w, u8(p.transport.click)) // v22
 	fc.write_bool(w, p.transport.no_accent)
+	// v23: every slot's plug-in state (in the order the slots were
+	// written), then each pad's instrument (its state too) and lanes.
+	for pad in p.pads do for sl in pad.inserts do fc.write_string(w, sl.state)
+	for b in p.buses do for sl in b.slots do fc.write_string(w, sl.state)
+	for sl in p.main.slots do fc.write_string(w, sl.state)
+	for sl in p.perf_fx do fc.write_string(w, sl.state)
+	for pad in p.pads {
+		write_slot(w, pad.instrument)
+		fc.write_string(w, pad.instrument.state)
+		for l in pad.plugin_lanes {
+			fc.write_u32(w, u32(l.id))
+			fc.write_f32(w, l.lo)
+			fc.write_f32(w, l.hi)
+		}
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -762,6 +780,21 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			if version >= 22 {
 				p.transport.click = dsp.Click_Sound(min(fc.read_u8(r), u8(max(dsp.Click_Sound))))
 				p.transport.no_accent = fc.read_bool(r)
+			}
+		}
+		if version >= 23 {
+			for &pad in p.pads do for &sl in pad.inserts do sl.state = intern(p, fc.read_string(r))
+			for &b in p.buses do for &sl in b.slots do sl.state = intern(p, fc.read_string(r))
+			for &sl in p.main.slots do sl.state = intern(p, fc.read_string(r))
+			for &sl in p.perf_fx do sl.state = intern(p, fc.read_string(r))
+			for &pad in p.pads {
+				pad.instrument = read_slot(r, p)
+				pad.instrument.state = intern(p, fc.read_string(r))
+				for &l in pad.plugin_lanes {
+					l.id = fc.Param_Id(fc.read_u32(r))
+					l.lo = fc.read_f32(r)
+					l.hi = fc.read_f32(r)
+				}
 			}
 		}
 	} else {

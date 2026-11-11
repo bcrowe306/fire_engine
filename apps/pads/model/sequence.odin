@@ -89,10 +89,15 @@ Lane_Param :: enum u8 {
 	Eq_High,
 	Cutoff,    // Hz
 	Resonance, // percent
+	// A plug-in pad's parameters (which: `Pad.plugin_lanes`), 0..100 % of
+	// each one's range.
+	Plugin_1, Plugin_2, Plugin_3, Plugin_4, Plugin_5, Plugin_6, Plugin_7, Plugin_8,
 }
 
 // Lane names, as the UI shows them.
-LANE_NAMES := [Lane_Param]cstring{.Volume = "Volume", .Pitch = "Pitch", .Eq_Low = "EQ low", .Eq_Mid = "EQ mid", .Eq_High = "EQ high", .Cutoff = "Cutoff", .Resonance = "Resonance"}
+LANE_NAMES := [Lane_Param]cstring{.Volume = "Volume", .Pitch = "Pitch", .Eq_Low = "EQ low", .Eq_Mid = "EQ mid", .Eq_High = "EQ high", .Cutoff = "Cutoff", .Resonance = "Resonance",
+	.Plugin_1 = "Plug-in 1", .Plugin_2 = "Plug-in 2", .Plugin_3 = "Plug-in 3", .Plugin_4 = "Plug-in 4",
+	.Plugin_5 = "Plug-in 5", .Plugin_6 = "Plug-in 6", .Plugin_7 = "Plug-in 7", .Plugin_8 = "Plug-in 8"}
 
 // A lane parameter's range, in its units.
 lane_range :: proc "contextless" (p: Lane_Param) -> (lo, hi: f32) {
@@ -102,6 +107,7 @@ lane_range :: proc "contextless" (p: Lane_Param) -> (lo, hi: f32) {
 	case .Eq_Low, .Eq_Mid, .Eq_High: return -15, 15
 	case .Cutoff:                   return 20, 20_000
 	case .Resonance:                return 0, 100
+	case .Plugin_1 ..= .Plugin_8:   return 0, 100
 	}
 	return 0, 1
 }

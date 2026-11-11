@@ -105,6 +105,8 @@ App :: struct {
 	mixer:    Mixer_State,
 	fx:       pm.Fx_Target, // the effect slot the Effects tab edits
 	plugin_choice: Plugin_Choice,
+	editors:  [dynamic]Plugin_Editor, // plug-ins' own windows open
+	plugin_pad: Plugin_Pad_Ui,
 	proj:     Project_State,
 	detail:   Detail_State,
 	transport: Transport_State, // the toolbar's
@@ -226,6 +228,7 @@ main :: proc() {
 	defer pm.browser_destroy(&a.browser)
 	plugins_load(a)
 	defer plugins_destroy(&a.plugins)
+	defer editors_close_all(a) // (before the plug-ins go)
 
 	if control >= 0 {
 		// Live: commands from a harness, through a driver with no script of
@@ -314,6 +317,8 @@ frame :: proc(a: ^App) {
 	draw_seq_dialogs(a)
 	project_frame(a)
 	pm.sync(&a.m.engine)
+	pm.plugins_idle(&a.m)
+	editors_frame(a)
 	pm.capture_poll(&a.m, &a.capture)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))
 	dt := im.GetIO().DeltaTime

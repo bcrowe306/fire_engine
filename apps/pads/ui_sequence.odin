@@ -291,7 +291,7 @@ draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec
 	pos := im.GetCursorScreenPos()
 	beat, playing := pm.position(&m.engine)
 	dl := im.GetWindowDrawList()
-	im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4}, ui.col(ui.theme().text_dim), fmt.ctprintf("%s %s", pm.pad_label(pad), pm.LANE_NAMES[st.param]))
+	im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4}, ui.col(ui.theme().text_dim), fmt.ctprintf("%s %s", pm.pad_label(pad), lane_label(a, pad, st.param)))
 	if len(view) > 0 && playing {
 		v := value_of(ui.auto_lane_value(view, beat), lo, hi)
 		im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4 + im.GetTextLineHeightWithSpacing()}, ui.col(ui.theme().text), fmt.ctprintf("%.1f", v))
@@ -390,8 +390,12 @@ draw_transport :: proc(a: ^App) {
 	if st.lane == 2 {
 		ui.flow(110)
 		im.SetNextItemWidth(110)
-		if ui.combo("##param", pm.LANE_NAMES[st.param]) {
-			for lp in pm.Lane_Param do if im.Selectable(pm.LANE_NAMES[lp], lp == st.param) do st.param = lp
+		if !lane_shown(a, a.selected, st.param) do st.param = .Volume
+		if ui.combo("##param", lane_label(a, a.selected, st.param)) {
+			for lp in pm.Lane_Param {
+				if !lane_shown(a, a.selected, lp) do continue
+				if im.Selectable(lane_label(a, a.selected, lp), lp == st.param) do st.param = lp
+			}
 			im.EndCombo()
 		}
 	}

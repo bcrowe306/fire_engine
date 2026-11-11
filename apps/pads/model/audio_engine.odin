@@ -4,6 +4,7 @@ import "core:math"
 import "core:os"
 import "core:path/filepath"
 
+import "fire:clap"
 import "fire:clip"
 import "fire:dsp"
 import "fire:graph"
@@ -74,6 +75,7 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 @(private)
 remove_pad_nodes :: proc(g: ^graph.Graph, n: ^Pad_Nodes) {
 	if n.track_in != {} do graph.remove_node(g, n.track_in)
+	if n.inst.plugin != nil do clap.plugin_gui_close(n.inst.plugin) // (before its window goes)
 	graph.remove_node(g, n.voice)
 	graph.remove_node(g, n.eq)
 	graph.remove_node(g, n.auto_voice)

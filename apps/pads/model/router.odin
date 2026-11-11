@@ -82,6 +82,10 @@ Router :: struct {
 	// for its pitch (which slice) in the expression after it.
 	tracks:   [PADS]Track_Events,
 	waiting:  [PADS]struct { id: fc.Note_Id, velocity: f32, offset: u32, set: bool },
+	// A keyed track's sounding notes' keys, by id (its note-offs carry the
+	// key their note-on had: a plug-in matches them by key).
+	sounding: [PADS][KEYED_NOTES]struct { id: fc.Note_Id, key: u8 },
+	sounding_at: [PADS]u8,
 	midi_in_hits:  [PADS]u32, // atomic: MIDI notes that played each pad (activity lights)
 	midi_out_hits: [PADS]u32, // atomic: MIDI notes each pad sent
 	// Audio thread.
@@ -174,6 +178,10 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			// the notes from there play, as its wheels and aftertouch.
 			if status == 0xE0 || status == 0xD0 || (status == 0xB0 && v.bytes[1] == 1) {
 				t := armed_listener(r, int(v.port), int((v.bytes[0] & 15) + 1))
+				if t >= 0 && r.kinds[t] == .Plugin {
+					track_push(r, t, e) // (a plug-in: as MIDI)
+					continue
+				}
 				if t < 0 || r.kinds[t] != .Synth do continue
 				param: fc.Param_Id
 				value: f64
@@ -270,14 +278,33 @@ slice_on :: proc "contextless" (r: ^Router, i: int, offset: u32, id: fc.Note_Id,
 	s := r.slicers[i]
 	if s.mono do track_push(r, i, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
 	key := u8(clamp(int(s.base) + slice, 0, 127))
+	if id != fc.NOTE_ID_ANY {
+		r.sounding[i][r.sounding_at[i] % KEYED_NOTES] = {id, key}
+		r.sounding_at[i] += 1
+	}
 	track_push(r, i, {offset, fc.Note_On{id = id, key = key, velocity = velocity}})
+}
+
+// Notes a keyed track remembers the keys of.
+KEYED_NOTES :: 32
+
+// [rt] The key keyed track `i`'s note `id` sounds on (forgotten now), or
+// `fallback`.
+@(private)
+sounding_key :: proc "contextless" (r: ^Router, i: int, id: fc.Note_Id, fallback: u8) -> u8 {
+	if id == fc.NOTE_ID_ANY do return fallback
+	for &n in r.sounding[i] do if n.id == id && id != 0 {
+		n.id = 0
+		return n.key
+	}
+	return fallback
 }
 
 // [rt] Whether track `i` plays a key a note (a slicer's slices, a synth's
 // pitches) rather than its one key.
 @(private)
 keyed :: #force_inline proc "contextless" (r: ^Router, i: int) -> bool {
-	return r.kinds[i] == .Slicer || r.kinds[i] == .Synth
+	return r.kinds[i] == .Slicer || r.kinds[i] == .Synth || r.kinds[i] == .Plugin
 }
 
 // [rt] The key slice `slice` of slicer track `i` plays on.
@@ -315,7 +342,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 			if !strike(r, out, e.offset, i) do return
 			id := r.next_id
 			r.next_id += 1
-			if r.keys_id[v.key] != 0 do track_push(r, i, {e.offset, fc.Note_Off{id = r.keys_id[v.key], key = pad_key(i)}})
+			if old := r.keys_id[v.key]; old != 0 do track_push(r, i, {e.offset, fc.Note_Off{id = old, key = sounding_key(r, i, old, pad_key(i)) if keyed(r, i) else pad_key(i)}})
 			r.keys_id[v.key] = id
 			if keyed(r, i) { // the key's distance from C3: which slice
 				slice_on(r, i, e.offset, id, int(v.key) - KEYS_CENTER, v.velocity)
@@ -346,7 +373,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 		if v.channel == KEYS_CHANNEL {
 			i := int(r.keys_pad[v.key])
 			if id := r.keys_id[v.key]; id != 0 {
-				if r.modes[i] == .Gate || r.modes[i] == .Loop || keyed(r, i) do track_push(r, i, {e.offset, fc.Note_Off{id = id, key = pad_key(i)}})
+				if r.modes[i] == .Gate || r.modes[i] == .Loop || keyed(r, i) do track_push(r, i, {e.offset, fc.Note_Off{id = id, key = sounding_key(r, i, id, pad_key(i)) if keyed(r, i) else pad_key(i)}})
 				r.keys_id[v.key] = 0
 			}
 			midi_send(r, out, e.offset, i, false, 0)
@@ -362,7 +389,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 				slice_on(r, i, r.waiting[i].offset, v.id, 0, r.waiting[i].velocity)
 				r.waiting[i].set = false
 			}
-			if v.id == fc.NOTE_ID_ANY do x.key = slice_key(r, i, 0)
+			x.key = slice_key(r, i, 0) if v.id == fc.NOTE_ID_ANY else sounding_key(r, i, v.id, slice_key(r, i, 0))
 			track_push(r, i, {e.offset, x}) // (a slice that doesn't gate plays on: its zone is one-shot)
 		} else if r.modes[i] != .Hold {
 			// One-shot and Hold pads play on (the sampler ignores the
@@ -440,6 +467,6 @@ armed_listener :: proc "contextless" (r: ^Router, port, ch: int) -> int {
 		if c := r.in_channel[i]; c != 0 && int(c) != ch do continue
 		return i
 	}
-	for i in 0 ..< PADS do if r.armed[i] && r.kinds[i] == .Synth && r.in_port[i] == IN_ALL do return i
+	for i in 0 ..< PADS do if r.armed[i] && (r.kinds[i] == .Synth || r.kinds[i] == .Plugin) && r.in_port[i] == IN_ALL do return i
 	return -1
 }

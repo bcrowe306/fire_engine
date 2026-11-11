@@ -131,11 +131,8 @@ effect_node :: proc(e: ^Engine, s: Effect_Slot) -> (node: fc.Node, plugin: ^clap
 	case .Cutter:     inner = dsp.cutter_create()
 	case .Stutter:    return dsp.stutter_create(), nil, true // always listening: its switch is its own
 	case .Plugin:
-		lib, err := clap.library_open(s.plugin_path)
-		if err != .None do return {}, nil, false
-		n, p, perr := clap.plugin_create(lib, s.plugin_id, {timeline = e.timeline})
-		clap.library_close(lib) // the plug-in keeps the library open
-		if perr != .None do return {}, nil, false
+		n, p, pok := plugin_node(e, s)
+		if !pok do return {}, nil, false
 		inner, plugin = n, p
 	}
 	return dsp.wet_create(inner, 1 if s.on else 0), plugin, true
@@ -150,6 +147,7 @@ apply_slot :: proc(g: ^graph.Graph, f: ^Fx_Node, s: Effect_Slot, fresh: bool, mi
 		old := slot_value(f.applied, p.id, max(f32))
 		if fresh || old != p.value do graph.set_param(g, f.id, p.id, f64(p.value))
 	}
+	if f.applied.kind == s.kind do reset_dropped(g, f, s)
 	if fresh || f.applied.on != s.on || f.mix != mix {
 		if s.kind == .Stutter {
 			graph.set_param(g, f.id, dsp.STUTTER_PARAM_ACTIVE, 1 if s.on else 0)
@@ -168,6 +166,7 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 	if f.has && f.key == k do return false
 	if !f.has && f.key == k && (k.kind == .None || f.failed) do return false
 	g := e.host.graph
+	if f.plugin != nil do clap.plugin_gui_close(f.plugin) // (before its window goes)
 	if f.has do graph.remove_node(g, f.id)
 	f^ = {key = k}
 	node, plugin, ok := effect_node(e, s)
@@ -459,6 +458,8 @@ target_node :: proc(e: ^Engine, t: Fx_Target) -> ^Fx_Node {
 		if t.index >= 0 && t.index <= BUSES && t.slot >= 0 && t.slot < BUS_SLOTS do return &e.mixer.buses[t.index].slots[t.slot]
 	case .Perf:
 		if t.index >= 0 && t.index < PERF_FX do return &e.mixer.buses[BUSES].perf[t.index]
+	case .Instrument:
+		if t.index >= 0 && t.index < PADS do return &e.nodes[t.index].inst
 	}
 	return nil
 }

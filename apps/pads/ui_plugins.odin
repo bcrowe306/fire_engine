@@ -184,6 +184,13 @@ set_blocked :: proc(a: ^App, path: string, blocked: bool) {
 	}
 }
 
+// The instrument plug-ins found (not blocked, not failed), for a pad.
+plugin_instruments :: proc(a: ^App) -> []Plugin_Entry {
+	out := make([dynamic]Plugin_Entry, context.temp_allocator)
+	for e in a.plugins.entries do if e.instrument && !e.failed && !is_blocked(a, e.path) do append(&out, e)
+	return out[:]
+}
+
 // The effect plug-ins found (not blocked, not failed), for an effect slot.
 plugin_effects :: proc(a: ^App) -> []Plugin_Entry {
 	out := make([dynamic]Plugin_Entry, context.temp_allocator)

@@ -62,6 +62,7 @@ Platform :: struct {
 	fonts:        Fonts,
 	ini_cstr:     cstring,
 	drops:        [dynamic]Drop, // files dropped on the window this frame
+	closed:       [dynamic]sdl.WindowID, // other windows (see `Native_Window`) whose close was clicked this frame
 }
 
 // A file dropped on the window, at a position in logical points.
@@ -152,6 +153,7 @@ platform_destroy :: proc(p: ^Platform) {
 	delete(p.ini_cstr)
 	for d in p.drops do delete(d.path)
 	delete(p.drops)
+	delete(p.closed)
 	sdl.Quit()
 	p^ = {}
 }
@@ -171,6 +173,7 @@ frame_begin :: proc(p: ^Platform) -> bool {
 	}
 	for d in p.drops do delete(d.path)
 	clear(&p.drops)
+	clear(&p.closed)
 	if p.control != nil && p.driver != nil do control_poll(p.control, p.driver)
 	z := p.zoom if p.zoom > 0 else 1
 	if p.driver != nil {
@@ -203,6 +206,8 @@ frame_begin :: proc(p: ^Platform) -> bool {
 			if e.window.windowID == sdl.GetWindowID(p.window) {
 				if p.confirm_quit do p.quit_requested = true
 				else do p.running = false
+			} else {
+				append(&p.closed, e.window.windowID)
 			}
 		}
 	}

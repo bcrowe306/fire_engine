@@ -1,0 +1,27 @@
+# A CLAP instrument on a pad: the test sine (./scripts/clap.sh), its page,
+# a key played through it, a parameter knob, an automation lane.
+size 1440 900
+plugin_pad 0 .build/clap/FireTest.clap dev.fire-engine.test.sine
+wait 10
+expect plugin loaded
+select 0
+note 0 0 4 1
+panel mixer
+play
+wait 30
+expect level pad 0 above -12
+stop
+panel sequence
+wait 5
+screenshot plugin_pad
+plugin_lane 1 9
+wait 5
+plugin_editor open
+wait 5
+screenshot plugin_pad_editor
+plugin_editor close
+expect plugin no-editor
+plugin_pad 1 /nowhere/missing.clap x
+wait 10
+expect plugin failed
+screenshot plugin_pad_missing

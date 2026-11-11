@@ -5,6 +5,7 @@ import "core:math"
 
 import app "app:core"
 import fc "fire:core"
+import "fire:clap"
 import "fire:clip"
 import "fire:dsp"
 import "fire:graph"
@@ -81,6 +82,8 @@ Engine :: struct {
 	watch:      Fx_Target,
 	watch_node: graph.Node_Id, // the node connected to the tap
 	synth_cache: Synth_Cache,  // synths' wavetables and samples
+	gui_requests: [MAX_GUI_REQUESTS]Gui_Request, // this frame's, from `plugins_idle`
+	gui_request_count: int,
 }
 
 // Sets a parameter when it changed (or always, when `fresh`).
@@ -96,6 +99,7 @@ Pad_Nodes :: struct {
 	eq:      graph.Node_Id,
 	handle:  ^sampler.Sampler,
 	synth:   ^synth.Synth, // a synth pad's node (`voice`), instead of the sampler
+	inst:    Fx_Node,      // a plug-in pad's instrument (its node is `voice`)
 	built:   Pad, // the pad as the engine has it
 	zone_src: ^stream.Source, // what its zone plays (its sample, or its warp's rendering)
 	track_in: graph.Node_Id,  // its own stream from the router (see `Track_In`)
@@ -230,20 +234,38 @@ sync :: proc(e: ^Engine) {
 		e.router.midi_out[i] = pad.midi_out
 		e.router.kinds[i] = pad.kind
 		e.router.slicers[i] = {base = pad.slicer.base, mono = pad.slicer.mono}
-		if pad.kind == .Synth do e.router.slicers[i] = {base = 60} // (a note's pitch is its key's distance from C3)
+		if pad.kind == .Synth || pad.kind == .Plugin do e.router.slicers[i] = {base = 60} // (a note's pitch is its key's distance from C3)
 		midi_ports_of(e, i, pad)
 		audio := pad.kind == .Audio
 		is_synth := pad.kind == .Synth
-		want := src != nil || audio || is_synth
-		// A pad that changes kind (or an audio pad its input) is built again.
-		if n.live && (!want || n.audio != audio || (n.synth != nil) != is_synth || (audio && n.built.input != pad.input) || (!audio && n.built.sample != 0 && n.built.voice.voices != pad.voice.voices)) {
+		is_plugin := pad.kind == .Plugin
+		want := src != nil || audio || is_synth || is_plugin
+		// A pad that changes kind (or an audio pad its input, a plug-in pad
+		// its plug-in) is built again.
+		if n.live && (!want || n.audio != audio || (n.synth != nil) != is_synth || n.inst.has != is_plugin || (is_plugin && n.inst.key != key_of(pad.instrument)) || (audio && n.built.input != pad.input) || (!audio && !is_plugin && n.built.sample != 0 && n.built.voice.voices != pad.voice.voices)) {
 			remove_pad_nodes(g, n)
 			structural = true
 		}
 		if !want do continue
+		// (A plug-in that would not load isn't tried again until it changes.)
+		if !n.live && is_plugin && n.inst.failed && n.inst.key == key_of(pad.instrument) do continue
 		if !n.live {
 			voice: fc.Node
-			if audio {
+			ins, outs := 0, 2
+			if audio do ins = 2
+			if is_plugin {
+				n.inst = {key = key_of(pad.instrument)}
+				node, plugin, ok := plugin_node(e, pad.instrument)
+				pi, po := 0, 0
+				if ok do pi, po = clap.plugin_channels(plugin)
+				if !ok || po == 0 {
+					if ok do fc.node_destroy(&node)
+					n.inst.failed = true
+					continue
+				}
+				voice, ins, outs = node, pi, po
+				n.inst.plugin = plugin
+			} else if audio {
 				voice = dsp.pan_create() // what the players and the monitor sum into (panned: a sampler's zone pans)
 			} else if is_synth {
 				node, handle := synth.synth_create()
@@ -252,8 +274,12 @@ sync :: proc(e: ^Engine) {
 				node, handle := sampler.sampler_create({voices = clamp(pad.voice.voices, 1, 32), quality = .Sinc_Low})
 				n.handle, voice = handle, node
 			}
-			sid, err := graph.add_node(g, voice, 2 if audio else 0, 2)
-			if err != .None do continue
+			sid, err := graph.add_node(g, voice, ins, outs)
+			if err != .None {
+				n.inst = {}
+				continue
+			}
+			if is_plugin do n.inst.has, n.inst.id = true, sid
 			eid, err2 := graph.add_node(g, dsp.eq_create(3), 2, 2)
 			if err2 != .None {
 				graph.remove_node(g, sid)
@@ -283,7 +309,7 @@ sync :: proc(e: ^Engine) {
 			graph.connect_events(g, n.auto_eq, eid)
 			graph.connect_events(g, n.auto_fader, fid)
 			e.seq_dirty = true // its automation
-			for c in 0 ..< 2 do graph.connect(g, sid, c, eid, c) // the EQ into the pad's strip (sync_mixer)
+			for c in 0 ..< 2 do graph.connect(g, sid, min(c, outs - 1), eid, c) // the EQ into the pad's strip (sync_mixer)
 			if audio do build_audio(e, i, n, pad)
 			structural = true
 			n.built = {} // everything below is new
@@ -295,6 +321,14 @@ sync :: proc(e: ^Engine) {
 			set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
 			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
 			sync_synth(e, i, n, &pad, fresh)
+			n.built = pad
+			continue
+		}
+		if n.inst.has {
+			fresh := n.built.kind != .Plugin || e.resend
+			set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
+			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
+			apply_instrument(g, &n.inst, pad.instrument, fresh)
 			n.built = pad
 			continue
 		}

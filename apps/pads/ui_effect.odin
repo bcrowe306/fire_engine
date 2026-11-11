@@ -112,11 +112,26 @@ draw_effect :: proc(user: rawptr) {
 		draw_synth_effect(a, e, x0, avail.x - im.GetStyle().ScrollbarSize, top + max(avail.y - 6, 240))
 		return
 	}
+	if s.kind == .Plugin {
+		if f := pm.target_node(&m.engine, t); f != nil && f.plugin != nil {
+			im.SameLine(0, 12)
+			editor_button(a, t, f.plugin)
+		}
+	}
 	im.Spacing()
 	draw_effect_view(a, t, s)
 
 	// Its settings: a knob each, in rows that wrap.
-	params := pm.target_params(&m.engine, t)
+	draw_param_knobs(a, t, s, pm.target_params(&m.engine, t))
+}
+
+// The knobs of the slot `t` points at (`s`), for parameters `params`, in
+// rows that wrap. A plug-in's knob shows what the plug-in has (its own
+// editor may have moved it); an instrument's knob can be given a lane.
+draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []fc.Param_Info) {
+	m := &a.m
+	plugin: ^clap.Plugin
+	if f := pm.target_node(&m.engine, t); f != nil do plugin = f.plugin
 	// Which to show: a delay synced shows a note value, not milliseconds.
 	shown := make([dynamic]fc.Param_Info, 0, len(params), context.temp_allocator)
 	synced := s.kind == .Delay && pm.slot_value(s, dsp.DELAY_PARAM_SYNC, 0) >= 0.5
@@ -136,7 +151,11 @@ draw_effect :: proc(user: rawptr) {
 		is_toggle := p.min == 0 && p.max == 1 && .Stepped in p.flags
 		w: f32 = 104 if is_toggle else ui.KNOB_SIZE + 24
 		im.SetCursorPosX(x0 + f32(col) * cell + max((cell - w) / 2, 0))
-		v := pm.slot_value(s, p.id, f32(p.default))
+		v := pm.slot_value(s, p.id, max(f32))
+		if v == max(f32) {
+			v = f32(p.default)
+			if plugin != nil do if x, ok := clap.plugin_param_value(plugin, p.id); ok do v = f32(x)
+		}
 		if is_toggle {
 			im.BeginGroup()
 			im.Dummy({1, im.GetTextLineHeight() + 4}) // level with the knobs' dials
@@ -169,6 +188,7 @@ draw_effect :: proc(user: rawptr) {
 			pm.set_target_param(m, t, p.id, v)
 		}
 		if e.ended do app.seal(&m.history)
+		if t.kind == .Instrument do lane_menu(a, t.index, p)
 	}
 	if len(params) == 0 do im.TextDisabled("No settings.")
 }
@@ -194,6 +214,7 @@ target_name :: proc(p: ^pm.Project, t: pm.Fx_Target) -> string {
 	case .Pad:  return fmt.tprintf("%s · Insert %d", pm.pad_label(t.index), t.slot + 1)
 	case .Bus:  return fmt.tprintf("%s · Slot %d", pm.bus_index_name(p, t.index), t.slot + 1)
 	case .Perf: return fmt.tprintf("Performance effect %d", t.index + 1)
+	case .Instrument: return fmt.tprintf("%s · Instrument", pm.pad_label(t.index))
 	}
 	return ""
 }

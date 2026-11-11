@@ -70,6 +70,10 @@ show_device :: proc(a: ^App, fx: pm.Fx_Target) {
 		st.track, st.device = {.Pad, fx.index}, {.Slot, fx.slot}
 	case .Bus:  st.track, st.device = {.Bus, fx.index}, {.Slot, fx.slot}
 	case .Perf: st.track, st.device = {.Perf, fx.index}, {.Slot, 0}
+	case .Instrument:
+		a.selected = fx.index
+		st.selected_was = fx.index
+		st.track, st.device = {.Pad, fx.index}, {.Instrument, 0}
 	}
 	st.show = 2
 	ui.panel_focus(&a.ws, "detail")
@@ -210,7 +214,7 @@ device_tabs :: proc(a: ^App) {
 		i := tr.index
 		pad := &m.project.pads[i]
 		name := pm.pad_name(pad) if pm.pad_used(&m.project, i) else ""
-		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, pm.pad_label(i), " " if name != "" else "", name, pad_device_name(pad.kind))
+		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else (ui.ICON_PLUG if pad.kind == .Plugin else ui.ICON_LAYOUT_GRID), pm.pad_label(i), " " if name != "" else "", name, pad_device_name(pad.kind))
 		tab(st, instr, {.Instrument, 0})
 		item_menu(a, pad_target(i), "##instmenu")
 		tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0})
@@ -237,8 +241,11 @@ device_content :: proc(a: ^App) {
 	switch st.device.kind {
 	case .Instrument:
 		if tr.kind == .Pad {
-			if a.m.project.pads[tr.index].kind == .Synth do draw_synth_tabs(a)
-			else do draw_sampler_tabs(a)
+			#partial switch a.m.project.pads[tr.index].kind {
+			case .Synth:  draw_synth_tabs(a)
+			case .Plugin: draw_plugin_pad(a, tr.index)
+			case:         draw_sampler_tabs(a)
+			}
 		}
 	case .Eq:
 		if tr.kind == .Pad do draw_pad_eq(a)
@@ -281,6 +288,7 @@ pad_device_name :: proc(k: pm.Pad_Kind) -> string {
 	case .Audio:   return "Audio"
 	case .Slicer:  return "Slicer"
 	case .Synth:   return "Synth"
+	case .Plugin:  return "Plug-in"
 	}
 	return ""
 }

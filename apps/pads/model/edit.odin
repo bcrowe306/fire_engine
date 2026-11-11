@@ -75,6 +75,9 @@ Pad_Field :: enum {
 	Warp,
 	Slicer, // a slicer's slices or settings (see `set_slicer`)
 	Synth,  // a synth's patch (see `set_synth_value`)
+	Instrument,       // a plug-in pad's instrument (see `set_instrument`)
+	Instrument_Param, // one of its parameters (drags merge)
+	Plugin_Lanes,     // which parameters its lanes move
 }
 
 // Changes one setting of pad `index`'s voice, undoably: `key` names the
@@ -119,7 +122,7 @@ set_pad :: proc(m: ^Model, index: int, field: Pad_Field, name: string, new: Pad)
 // Whether a pad (not yet in a project) has a sound.
 @(private)
 pad_in_use :: proc(pad: Pad) -> bool {
-	return pad.sample != 0 || pad.kind == .Audio || pad.kind == .Slicer || pad.kind == .Synth
+	return pad.sample != 0 || pad.kind == .Audio || pad.kind == .Slicer || pad.kind == .Synth || pad.kind == .Plugin
 }
 
 // The colours new pads take, in turn.

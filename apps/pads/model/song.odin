@@ -396,6 +396,21 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 				at := tb.Beats(sg.start + off + pt.beat - lo)
 				v := f64(pt.value)
 				shape := clip.Segment_Shape.Curve if pt.curve != 0 else .Linear
+				// A plug-in: its lanes move the parameters they were given (the
+				// rest of its voice lanes, nothing).
+				if p.pads[pad].kind == .Plugin {
+					#partial switch pt.param {
+					case .Plugin_1 ..= .Plugin_8:
+						l := p.pads[pad].plugin_lanes[int(pt.param) - int(Lane_Param.Plugin_1)]
+						if l.id == 0 do continue
+						clip.automation_add_point(&vb, l.id, at, f64(l.lo) + v / 100 * f64(l.hi - l.lo), shape, pt.curve); any_voice = true
+						continue
+					case .Pitch, .Cutoff, .Resonance:
+						continue
+					}
+				} else if pt.param >= .Plugin_1 {
+					continue
+				}
 				// A synth: pitch is its transpose, cutoff and resonance filter 1's
 				// (cutoff as a key, so a lane sweeps it in even steps of pitch).
 				if p.pads[pad].kind == .Synth {
@@ -420,6 +435,7 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 				case .Eq_High: clip.automation_add_point(&eb, dsp.eq_band_param(2, .Gain_Db), at, v, shape, pt.curve); any_eq = true
 				case .Cutoff:    clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_FILTER_CUTOFF, at, v, shape, pt.curve); any_voice = true
 				case .Resonance: clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_FILTER_RESONANCE, at, v, shape, pt.curve); any_voice = true
+				case .Plugin_1 ..= .Plugin_8: // (above)
 				}
 			}
 		}

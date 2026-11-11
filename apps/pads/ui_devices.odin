@@ -15,7 +15,8 @@ import im "deps:imgui"
 // its first empty insert. Double-click one for the selected pad.
 
 // The drag-and-drop payload a device carries: what it is, as text
-// ("inst synth", "preset 3", "fx 9", "clap 2").
+// ("inst synth", "preset 3", "fx 9", "clap 2" an effect plug-in, "clapi 0"
+// an instrument plug-in).
 PADS_DEVICE_PAYLOAD :: "PADS_DEVICE"
 
 // The panel's state: the filter typed.
@@ -88,6 +89,10 @@ draw_devices :: proc(user: rawptr) {
 		mine := make([dynamic]Device_Item, context.temp_allocator)
 		for n in pm.preset_list(preset_folder(a)) do append(&mine, Device_Item{n, ui.ICON_LIBRARY, fmt.tprintf("mine %s", n), "One of your synth presets"})
 		if len(mine) > 0 do group(a, "Synth: yours", mine[:], find)
+		// Instrument plug-ins.
+		insts := make([dynamic]Device_Item, context.temp_allocator)
+		for e, k in plugin_instruments(a) do append(&insts, Device_Item{e.name, ui.ICON_PLUG, fmt.tprintf("clapi %d", k), fmt.tprintf("%s %s (CLAP instrument)", e.vendor, e.version)})
+		if len(insts) > 0 do group(a, "Plug-ins", insts[:], find)
 		im.TreePop()
 	}
 	if im.TreeNodeEx("Effects###dgfx", {.DefaultOpen, .SpanAvailWidth}) {
@@ -107,7 +112,7 @@ draw_devices :: proc(user: rawptr) {
 	if im.TreeNodeEx("Plug-ins###dgclap", {.DefaultOpen, .SpanAvailWidth}) {
 		ui.name("devices Plug-ins")
 		entries := plugin_effects(a)
-		if len(entries) == 0 {
+		if len(entries) == 0 && len(plugin_instruments(a)) == 0 {
 			im.TextDisabled("None found yet")
 			if im.SmallButton("Find plug-ins… (Settings)") do a.settings.open, a.settings.page = true, .Plugins
 		}
@@ -157,6 +162,11 @@ put_device :: proc(a: ^App, index: int, code: string) -> bool {
 			if err != .None do return false
 			pm.preset_apply(m, index, &pr)
 		}
+	case "clapi":
+		entries := plugin_instruments(a)
+		if n < 0 || n >= len(entries) do return false
+		e := entries[n]
+		pm.make_plugin_pad(m, index, e.path, e.id, e.name)
 	case "fx", "clap":
 		slot := -1
 		for s, k in m.project.pads[index].inserts do if s.kind == .None {

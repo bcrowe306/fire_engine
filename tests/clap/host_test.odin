@@ -42,7 +42,7 @@ lists_and_describes_the_plugin :: proc(t: ^testing.T) {
 	if !ok do return
 	defer clap.library_close(lib)
 	defer core.node_destroy(&node)
-	if !testing.expect_value(t, len(lib.plugins), 1) do return
+	if !testing.expect_value(t, len(lib.plugins), 2) do return
 	d := lib.plugins[0]
 	testing.expect_value(t, d.id, PLUGIN_ID)
 	testing.expect_value(t, d.name, "Fire Test Gain")
@@ -59,6 +59,49 @@ lists_and_describes_the_plugin :: proc(t: ^testing.T) {
 	testing.expect_value(t, gerr, core.Error.Unsupported)
 	_, open_err := clap.library_open("no/such.clap")
 	testing.expect(t, open_err != .None)
+}
+
+// The library's second plug-in: an instrument (a sine at the held note).
+@(test)
+an_instrument_plays_its_notes :: proc(t: ^testing.T) {
+	lib, err := clap.library_open(bundle())
+	if !testing.expect_value(t, err, core.Error.None) do return
+	defer clap.library_close(lib)
+	d := lib.plugins[1]
+	testing.expect_value(t, d.id, "dev.fire-engine.test.sine")
+	testing.expect(t, len(d.features) > 0 && d.features[0] == "instrument")
+	node, p, cerr := clap.plugin_create(lib, d.id, {})
+	if !testing.expect_value(t, cerr, core.Error.None) do return
+	defer core.node_destroy(&node)
+	ins, outs := clap.plugin_channels(p)
+	testing.expect(t, ins == 0 && outs == 2)
+	cfg := kit.default_render_config()
+	cfg.events = {{1_000, core.Note_On{id = 1, key = 69, velocity = 1}}, {25_000, core.Note_Off{id = 1, key = 69}}}
+	out, r := kit.render(&node, kit.buffer_make(2, 30_000, SR, context.temp_allocator), cfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r)
+	testing.expect(t, r.non_finite == 0 && r.rt_allocations == 0)
+	x := out.channels[0]
+	// Silent before the note, a 440 Hz sine at -6 dB while held, silent after.
+	pre, held, post: f32
+	for v in x[:1_000] do pre = max(pre, abs(v))
+	for v in x[2_000:24_000] do held = max(held, abs(v))
+	for v in x[25_100:] do post = max(post, abs(v))
+	testing.expect(t, pre == 0 && post == 0)
+	testing.expect(t, abs(held - 0.501) < 0.01)
+	crossings := 0
+	for i in 2_001 ..< 24_000 do if (x[i - 1] < 0) != (x[i] < 0) do crossings += 1
+	hz := f64(crossings) / 2 / (22_000 / SR)
+	testing.expect(t, abs(hz - 440) < 3)
+	// Its editor embeds in whatever window it is given.
+	testing.expect(t, clap.plugin_gui_supported(p, .Cocoa) && clap.plugin_gui_supported(p, .X11))
+	w, h, gerr := clap.plugin_gui_open(p, {api = .Cocoa, handle = 0x1234})
+	testing.expect(t, gerr == .None && w == 360 && h == 240)
+	lib2, _ := dynlib.load_library(plugin_binary())
+	defer dynlib.unload_library(lib2)
+	parent := cast(proc "c" () -> uintptr)dynlib.symbol_address(lib2, "fire_test_gui_parent")
+	testing.expect(t, parent != nil && parent() == 0x1234)
+	clap.plugin_gui_close(p)
+	testing.expect(t, parent() == 0)
 }
 
 @(test)

@@ -101,6 +101,7 @@ tasks:
     cmds:
       - task: pads
         vars: {OPT: none}
+      - bash ./scripts/clap.sh # (the test plug-ins pads_plugin.txt plays)
       - for: { var: SCRIPTS }
         # Each script starts with no preferences of its own (favourites, recent projects), never the user's.
         cmd: 'rm -rf {{.OUT}}/pads_prefs && {{.OUT}}/pads{{.EXE}} --fake --headless --prefs {{.OUT}}/pads_prefs --drive "{{toSlash .ITEM}}" --out {{.OUT}}/pads_shots'

@@ -16,9 +16,12 @@ Linux, ARM and Windows, and pushed.
      (rotated), and opened from the status bar's list.
    - [x] Plug-in delay compensation: each track's latency in the mixer,
      the total in the status bar.
-2. **CLAP instruments on pads**: a CLAP instrument plug-in as a pad's
-   device (from the Devices panel); notes and MIDI to it; its window; its
-   state saved with the project; its parameters automatable.
+2. **CLAP instruments on pads**
+   - [x] A CLAP instrument as a pad's device (from the Devices panel),
+     played chromatically; notes, wheels and MIDI to it.
+   - [x] Its editor in a window of its own (plug-in effects' too).
+   - [x] Every plug-in's state saved with the project (effects' too).
+   - [x] Its parameters as knobs, each assignable to one of eight lanes.
 3. **Tempo, locators, loop range**
    - [ ] A tempo lane in the song (points, ramps), followed when playing
      and exporting.
