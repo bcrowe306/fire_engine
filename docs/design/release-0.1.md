@@ -23,11 +23,16 @@ Linux, ARM and Windows, and pushed.
    - [x] Every plug-in's state saved with the project (effects' too).
    - [x] Its parameters as knobs, each assignable to one of eight lanes.
 3. **Tempo, locators, loop range**
-   - [ ] A tempo lane in the song (points, ramps), followed when playing
-     and exporting.
-   - [ ] Time-signature changes at song steps.
-   - [ ] Locators (named markers in the song) to jump to.
-   - [ ] A loop range in the song: loop a few bars of it.
+   - [x] A tempo lane under the song timeline: tempo points at any bar, a
+     line (ramp) or a step to the next; followed when playing and
+     exporting. Step tempos become points.
+   - [x] Time-signature changes per song step (a 7/8 bridge): the
+     metronome, bar lines and quantize follow it while it plays.
+   - [x] Locators: named markers at any bar on the song timeline; click
+     one to jump; a Locators list; previous/next marker shortcuts.
+   - [x] A loop range on the song timeline: drag on its ruler for loop
+     in/out; the loop button loops it in song mode (the whole song when
+     unset).
 4. **Freeze, groups, sidechain**
    - [ ] Freeze a track: its sound rendered to audio and played instead
      (its devices off), unfrozen to edit; flatten to an audio pad.

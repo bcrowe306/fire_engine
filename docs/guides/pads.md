@@ -346,10 +346,14 @@ Delete clears the pad; View > Light Theme switches theme.
   plays the chain of steps, each a sequence played 1–16 times (drag a step
   onto another to move it; with the toolbar's **Loop** on it goes round,
   otherwise it stops at the end). Across the top, the **timeline**: the
-  song laid out in time, bars on its ruler and its total length in minutes
-  and seconds (at each step's tempo), each step a block in its sequence's
+  song laid out in time, bars on its ruler (each step's in its own time
+  signature) and its total length in minutes and seconds (at the song's
+  tempo), each step a block in its sequence's
   colour with its name and repeats (muted ones hatched), and the playhead;
-  click the ruler to play the song from that bar, a block to select its
+  click the ruler to play the song from that bar, drag along it for the
+  **loop range** (the bars the loop goes round, in song mode with **Loop**
+  on; right-click the ruler to loop one bar, go back to the whole song or
+  add a marker), a block to select its
   step (Shift-click: a range; Cmd-click: one more or less). A selected or
   hovered block has a grip at each end: drag the right one to change how
   much of its sequence it plays, the left one to change where that part
@@ -371,7 +375,25 @@ Delete clears the pad; View > Light Theme switches theme.
   and **Length** in beats, drawn over the sequence), **Transpose** — each a
   number to drag (a step at a time; Shift: finer), scroll, or
   double-click and type — **Mute**, its **own
-  tempo**, and Duplicate/Remove. The picker at the top holds
+  tempo** (while the song has no tempo lane), its **Time** signature (the
+  project's, or its own: 3/4, 7/8...; the metronome, bars and the clock
+  follow it while it plays), and Duplicate/Remove.
+
+  Above the timeline, the **markers** (locators): double-click the strip
+  for one at that bar (its name box opens), click one to go there
+  (playing: it plays from there; stopped: play starts there), drag one to
+  move it, right-click to rename or remove it. They are listed on the
+  left too, with **+** for one where the song is. **Alt+Right** and
+  **Alt+Left** go to the next and previous marker. Below the timeline,
+  the **tempo lane** (**Tempo lane** in the bar above shows it; it shows
+  anyway once the song has points): the song's tempo across it, and the
+  tempo now.
+  Double-click it for a tempo point there (the first one turns the steps'
+  tempos into points, so the song plays as it did). Drag a point to move
+  it in time and tempo; right-click one to make it **ramp** to the next
+  (the tempo moves in a line between them) or remove it. Playing and
+  exporting follow it, round the loop too. The markers, loop range and
+  tempo lane are each arrangement's own. The picker at the top holds
   **arrangements**: several songs from the same sequences, one current
   (Song mode and export play it); right-click it to add, duplicate,
   rename or delete one. **Add** (the current sequence's name) puts the current one at
@@ -980,7 +1002,8 @@ expect fx KIND                               what the edited slot holds
 save / save_as DIR / open DIR / new          projects
 export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
 resample / export_dialog [off]               resample to a pad; the Export dialog
-song add SLOT [REPEATS] | mode on|off | loop on|off | clear
+song add SLOT [REPEATS] | mode on|off | loop on|off | clear | step STEP
+song tempo BEAT BPM [ramp] | meter STEP NUM DEN | marker BEAT NAME | range START END | range off | jump MARKER
 switch end|bar|beat|now                      when a sequence picked while playing takes over
 expect file PATH / expect song K / expect dirty 0|1 / expect pads_loaded K
 ```
@@ -1051,6 +1074,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
+| `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a tempo point on the tempo lane, undo |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |

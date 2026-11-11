@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 23 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads
+PROJECT_VERSION :: 24 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -486,6 +486,29 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_f32(w, l.hi)
 		}
 	}
+	// v24: each arrangement's song time (the current one's as it is).
+	for k in 0 ..< p.arrangement_count {
+		sg := p.song if k == p.arrangement else p.arrangements[k].song
+		fc.write_int(w, sg.tempo_count)
+		for pt in sg.tempo[:sg.tempo_count] {
+			fc.write_f64(w, pt.beat)
+			fc.write_f64(w, pt.bpm)
+			fc.write_bool(w, pt.ramp)
+		}
+		fc.write_int(w, sg.marker_count)
+		for &mk in sg.markers[:sg.marker_count] {
+			fc.write_f64(w, mk.beat)
+			fc.write_string(w, marker_name(&mk))
+		}
+		fc.write_bool(w, sg.loop_on)
+		fc.write_f64(w, sg.loop_start)
+		fc.write_f64(w, sg.loop_end)
+		fc.write_int(w, sg.count)
+		for st in sg.steps[:sg.count] {
+			fc.write_int(w, st.meter.num)
+			fc.write_int(w, st.meter.den)
+		}
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -796,6 +819,32 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 					l.hi = fc.read_f32(r)
 				}
 			}
+		}
+		if version >= 24 {
+			for &a in p.arrangements[:p.arrangement_count] {
+				sg := &a.song
+				sg.tempo_count = clamp(fc.read_int(r), 0, MAX_TEMPO_POINTS)
+				for &pt in sg.tempo[:sg.tempo_count] {
+					pt.beat = max(fc.read_f64(r), 0)
+					pt.bpm = clamp(fc.read_f64(r), 40, 300)
+					pt.ramp = fc.read_bool(r)
+				}
+				sg.marker_count = clamp(fc.read_int(r), 0, MAX_MARKERS)
+				for &mk in sg.markers[:sg.marker_count] {
+					mk.beat = max(fc.read_f64(r), 0)
+					copy(mk.name[:len(mk.name) - 1], fc.read_string(r))
+				}
+				sg.loop_on = fc.read_bool(r)
+				sg.loop_start = max(fc.read_f64(r), 0)
+				sg.loop_end = max(fc.read_f64(r), 0)
+				n := clamp(fc.read_int(r), 0, SONG_STEPS)
+				for k in 0 ..< n {
+					ts := Time_Sig{clamp(fc.read_int(r), 0, 16), fc.read_int(r)}
+					if ts.den != 2 && ts.den != 4 && ts.den != 8 && ts.den != 16 do ts = {}
+					if k < sg.count do sg.steps[k].meter = ts
+				}
+			}
+			p.song = p.arrangements[p.arrangement].song
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES

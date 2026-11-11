@@ -26,6 +26,7 @@ Song_Step :: struct {
 	transpose: i8,  // semitones added to its notes
 	bpm:       f64, // its own tempo (0: the sequence's, or the project's)
 	label:     [16]u8, // a section's name ("Verse"), shown on the timeline
+	meter:     Time_Sig, // its own time signature while it plays ({0, 0}: the project's)
 }
 
 // How many beats step `st` plays each time round (its part of the sequence).
@@ -50,9 +51,7 @@ steps_alike :: proc(a, b: Song_Step) -> bool {
 
 // The song's length in seconds, at each step's tempo.
 song_seconds :: proc(p: ^Project) -> f64 {
-	total := 0.0
-	for st, i in p.song.steps[:p.song.count] do total += step_period(p, st) * f64(max(st.repeats, 1)) * 60 / step_tempo(p, i)
-	return total
+	return song_seconds_between(p, 0, song_beats(p))
 }
 
 // A step's label ("" when it has none).
@@ -82,6 +81,13 @@ Song :: struct {
 	steps: [SONG_STEPS]Song_Step,
 	count: int,
 	// (Whether it goes round is the transport's loop.)
+	tempo:       [MAX_TEMPO_POINTS]Tempo_Point, // its tempo lane, by beat (none: the steps' and sequences' tempos)
+	tempo_count: int,
+	markers:      [MAX_MARKERS]Marker, // its locators, by beat
+	marker_count: int,
+	loop_on:    bool, // the loop goes round loop_start..loop_end (beats) instead of the whole song
+	loop_start: f64,
+	loop_end:   f64,
 }
 
 // When a sequence picked while playing takes over.
@@ -106,6 +112,17 @@ set_song :: proc(m: ^Model, name: string, new: Song) {
 		if mm.project.song_mode do mm.engine.seq_dirty = true
 	})
 	app.seal(&m.history)
+}
+
+// Replaces the song with `new` as part of a drag: the drag's moves (one
+// `name`) merge into one undo step; seal when it ends.
+set_song_drag :: proc(m: ^Model, name: string, new: Song) {
+	if m.project.song == new do return
+	app.set_value(&m.history, name, {3000, 1}, m.project.song, new, proc(ctx: rawptr, k: app.Key, v: Song) {
+		mm := (^Model)(ctx)
+		mm.project.song = v
+		if mm.project.song_mode do mm.engine.seq_dirty = true
+	})
 }
 
 // Adds slot `slot` at the end of the song (or after step `after`).
@@ -303,6 +320,11 @@ plan_song :: proc(p: ^Project, at: f64) -> (pl: Plan) {
 	}
 	pl.count, pl.at = p.song.count, at
 	if p.transport.loop do pl.loop_start, pl.loop_end = 0, start
+	// Its loop range, inside the song.
+	if p.transport.loop && p.song.loop_on {
+		a, b := clamp(p.song.loop_start, 0, start), clamp(p.song.loop_end, 0, start)
+		if b - a >= 1.0 / 16 do pl.loop_start, pl.loop_end = a, b
+	}
 	return
 }
 

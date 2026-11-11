@@ -82,6 +82,12 @@ Engine :: struct {
 	watch:      Fx_Target,
 	watch_node: graph.Node_Id, // the node connected to the tap
 	synth_cache: Synth_Cache,  // synths' wavetables and samples
+	// Song mode: the timeline leads the clock, with the song's tempo map
+	// laid out `map_passes` times round (made again when the song changes).
+	map_on:     bool,
+	map_dirty:  bool,
+	map_passes: int,
+	cue:        f64, // song mode: where play starts (a marker jumped to while stopped)
 	gui_requests: [MAX_GUI_REQUESTS]Gui_Request, // this frame's, from `plugins_idle`
 	gui_request_count: int,
 }
@@ -372,7 +378,15 @@ sync_sequencer :: proc(e: ^Engine) {
 	p := e.project
 	// The tempo: what plays now sets it (a sequence may have its own), and
 	// the next sequence's goes in exactly where that one takes over.
-	{
+	if p.song_mode && p.song.count > 0 {
+		song_map_sync(e)
+	} else if e.map_on {
+		transport.set_leader(e.host.clock, {})
+		transport.set_tempo_map(e.host.clock, e.timeline, nil)
+		e.map_on = false
+		e.bpm = 0 // (the live tempo sent again)
+	}
+	if !e.map_on {
 		pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
 		cur, next := audio_runs(e.plan, f64(pos))
 		run_tempo :: proc(p: ^Project, r: Audio_Run) -> f64 {
@@ -439,6 +453,7 @@ sync_sequencer :: proc(e: ^Engine) {
 	} else {
 		e.plan = plan_pattern(p, p.slot, at)
 	}
+	e.map_dirty = true
 	// Once, to its end: while exporting, or with the transport's loop off.
 	if e.export_once || !p.transport.loop do e.plan.loop_start, e.plan.loop_end = 0, 0
 	c := plan_clip(p, e.plan)
@@ -578,6 +593,7 @@ play :: proc(e: ^Engine, count_in := false, from_beat := 0.0) {
 	e.seq_dirty = true
 	sync_sequencer(e)
 	from := max(from_beat, 0)
+	if from == 0 && e.project.song_mode do from = e.cue
 	if count_in do from = -f64(clamp(e.project.transport.count_in, 0, 2)) * bar_beats(e.project)
 	place_audio(e, from) // the players have what plays from the top before it does
 	transport.locate(e.host.clock, e.timeline, tb.Beats(from))
@@ -588,7 +604,7 @@ play :: proc(e: ^Engine, count_in := false, from_beat := 0.0) {
 // own settings back.
 stop :: proc(e: ^Engine) {
 	transport.stop(e.host.clock, e.timeline)
-	transport.locate(e.host.clock, e.timeline, 0)
+	transport.locate(e.host.clock, e.timeline, tb.Beats(e.cue) if e.project.song_mode else 0) // (back to where it started)
 	// Automation lets go of the pads (a locate would set them again), and
 	// comes back with the next play.
 	for &n, i in e.nodes do if n.automated {

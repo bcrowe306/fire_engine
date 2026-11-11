@@ -44,6 +44,11 @@ State :: struct {
 	song_step:  int, // the step playing (1-based; 0: none)
 	song_beat:  f64, // where in the song (beats)
 	song_seconds: f64, // how long the song plays
+	tempo_points: [dynamic][3]f64, // the song's tempo lane: beat, BPM, 1 if it ramps
+	markers:    [dynamic]string, // the song's markers, in order
+	marker_beats: [dynamic]f64,
+	song_loop:  [2]f64, // its loop range (beats; 0, 0: none)
+	cue:        f64, // where song mode starts
 	song_selected: int, // the step whose settings show (1-based; 0: none)
 	song_sel:   [dynamic]int, // the selected steps (1-based)
 	arrangements: [dynamic]string,
@@ -279,6 +284,16 @@ state_json :: proc(a: ^App) -> string {
 		s.song_step, s.song_beat = step + 1, beat
 	}
 	s.song_seconds = pm.song_seconds(p)
+	s.tempo_points = make([dynamic][3]f64, context.temp_allocator)
+	for pt in p.song.tempo[:p.song.tempo_count] do append(&s.tempo_points, [3]f64{pt.beat, pt.bpm, 1 if pt.ramp else 0})
+	s.markers = make([dynamic]string, context.temp_allocator)
+	s.marker_beats = make([dynamic]f64, context.temp_allocator)
+	for &mk in p.song.markers[:p.song.marker_count] {
+		append(&s.markers, strings.clone(pm.marker_name(&mk), context.temp_allocator))
+		append(&s.marker_beats, mk.beat)
+	}
+	if p.song.loop_on do s.song_loop = {p.song.loop_start, p.song.loop_end}
+	s.cue = m.engine.cue
 	s.song_selected = a.song_ui.step + 1 if a.song_ui.step < p.song.count else 0
 	s.song_sel = make([dynamic]int, context.temp_allocator)
 	for k in 0 ..< p.song.count do if k in a.song_ui.sel do append(&s.song_sel, k + 1)

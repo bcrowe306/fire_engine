@@ -84,6 +84,10 @@ setup_actions :: proc(a: ^App) {
 	}
 	add(acts, {id = "play", label = "Play / Stop", icon = ui.ICON_PLAY, chord = i32(im.Key.Space), user = a,
 		run = proc(u: rawptr) { toggle_play((^App)(u)) }})
+	add(acts, {id = "next_marker", label = "Next Marker", icon = ui.ICON_SKIP_FORWARD, chord = ui.MOD_ALT | i32(im.Key.RightArrow), user = a,
+		run = proc(u: rawptr) { marker_step((^App)(u), false) }})
+	add(acts, {id = "prev_marker", label = "Previous Marker", icon = ui.ICON_SKIP_BACK, chord = ui.MOD_ALT | i32(im.Key.LeftArrow), user = a,
+		run = proc(u: rawptr) { marker_step((^App)(u), true) }})
 	add(acts, {id = "record", label = "Record", icon = ui.ICON_CIRCLE_DOT, chord = ui.MOD_CMD | i32(im.Key.R), user = a,
 		run = proc(u: rawptr) { toggle_record((^App)(u)) },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).capture.armed }})
@@ -886,7 +890,9 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		start_resample(a)
 		return true
 	case "song":
-		// song add SLOT [REPEATS] / song mode on|off / song loop on|off / song clear
+		// song add SLOT [REPEATS] / song mode on|off / song loop on|off / song clear /
+		// song tempo BEAT BPM [ramp] / song meter STEP NUM DEN / song marker BEAT NAME /
+		// song range START END | off / song jump MARKER
 		if len(w) < 2 do return false
 		switch w[1] {
 		case "add":
@@ -901,6 +907,34 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			pm.set_transport(&a.m, .Loop, "Loop", tr)
 		case "clear":
 			pm.set_song(&a.m, "Clear Song", {})
+		case "tempo": // song tempo BEAT BPM [ramp]: a tempo point
+			if len(w) < 4 do return false
+			b, _ := strconv.parse_f64(w[2])
+			bpm, _ := strconv.parse_f64(w[3])
+			pm.tempo_point_add(&a.m, {b, bpm, len(w) > 4 && w[4] == "ramp"})
+		case "meter": // song meter STEP NUM DEN: step STEP's (1..) time signature
+			if len(w) < 5 do return false
+			pm.set_step_meter(&a.m, num(w, 2) - 1, {num(w, 3), num(w, 4)})
+		case "marker": // song marker BEAT NAME
+			if len(w) < 4 do return false
+			b, _ := strconv.parse_f64(w[2])
+			pm.marker_add(&a.m, b, strings.join(w[3:], " ", context.temp_allocator))
+		case "range": // song range START END (beats) | song range off: the loop range
+			if len(w) > 2 && w[2] == "off" {
+				pm.set_song_loop(&a.m, false, 0, 0)
+			} else if len(w) > 3 {
+				x, _ := strconv.parse_f64(w[2])
+				y, _ := strconv.parse_f64(w[3])
+				pm.set_song_loop(&a.m, true, x, y)
+			} else {
+				return false
+			}
+		case "step": // song step STEP: its settings show (1..)
+			a.song_ui.step = clamp(num(w, 2) - 1, -1, a.m.project.song.count - 1)
+		case "jump": // song jump MARKER: go to marker MARKER (1..)
+			k := num(w, 2) - 1
+			if k < 0 || k >= a.m.project.song.marker_count do return false
+			pm.song_jump(&a.m.engine, a.m.project.song.markers[k].beat)
 		case: return false
 		}
 		return true

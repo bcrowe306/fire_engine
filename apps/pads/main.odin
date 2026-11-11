@@ -224,6 +224,7 @@ main :: proc() {
 	setup_workspace(a)
 	defer ui.workspace_destroy(&a.ws)
 	a.bview.renaming = -1
+	a.song_ui.time.marker_drag, a.song_ui.time.point_drag = -1, -1
 	pm.browser_init(&a.browser, favorites_path(a))
 	defer pm.browser_destroy(&a.browser)
 	plugins_load(a)

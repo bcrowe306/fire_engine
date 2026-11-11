@@ -30,6 +30,7 @@ Song_State :: struct {
 	drag_bpp:    f64, // beats a point, while it lasts
 	drag_total:  f64, // the song's length as it began (the scale holds still)
 	drop_to:     int, // moving: before which step it lands
+	time:        Song_Time_Ui, // the markers, the loop range, the tempo lane
 }
 
 // What a drag on the timeline does.
@@ -62,7 +63,9 @@ draw_song :: proc(user: rawptr) {
 
 	draw_arrangement_bar(a)
 	im.Spacing()
+	draw_song_markers(a)
 	draw_song_timeline(a)
+	draw_tempo_lane(a)
 	im.Spacing()
 
 	avail := im.GetContentRegionAvail()
@@ -73,7 +76,11 @@ draw_song :: proc(user: rawptr) {
 	if im.BeginChild("##songsteps", {max(avail.x - left_w - right_w - 16, 160), avail.y}) do draw_song_steps(a)
 	im.EndChild()
 	im.SameLine(0, 8)
-	if im.BeginChild("##stepsettings", {right_w, avail.y}) do draw_step_settings(a)
+	if im.BeginChild("##stepsettings", {right_w, avail.y}) {
+		draw_step_settings(a)
+		im.Spacing()
+		draw_marker_list(a)
+	}
 	im.EndChild()
 }
 
@@ -141,6 +148,11 @@ draw_arrangement_bar :: proc(a: ^App) {
 		im.EndCombo()
 	}
 	if im.IsItemHovered() do im.SetTooltip("Lay another sequence's notes over this one")
+	im.SameLine(0, 12)
+	tm := &a.song_ui.time
+	shown := tempo_lane_shown(a)
+	if ui.toggle("Tempo lane", &shown) do tm.show_tempo = shown
+	if im.IsItemHovered() do im.SetTooltip("The song's tempo across the timeline (shown while it has points)")
 }
 
 // "1:23": seconds as minutes and seconds.
@@ -173,7 +185,8 @@ draw_song_timeline :: proc(a: ^App) {
 	im.InvisibleButton("##ruler", {w, ruler_h})
 	ui.name("song ruler")
 	ruler_hot := im.IsItemHovered()
-	ruler_clicked := im.IsItemClicked()
+	ruler_down, ruler_active := im.IsItemActivated(), im.IsItemActive()
+	if im.IsItemClicked(.Right) do im.OpenPopup("##rulermenu")
 	im.InvisibleButton("##timeline", {w, lane_h})
 	ui.name("song timeline")
 	lane_hot, lane_down, lane_active := im.IsItemHovered(), im.IsItemActivated(), im.IsItemActive()
@@ -188,12 +201,20 @@ draw_song_timeline :: proc(a: ^App) {
 	x0, x1 := pos.x + 6, pos.x + w - 70
 	bx :: proc(b, total: f64, x0, x1: f32) -> f32 { return x0 + (x1 - x0) * f32(b / total) }
 	im.DrawList_PushClipRect(dl, {x0 - 6, pos.y}, {x1 + 2, pos.y + ruler_h + lane_h}, true)
-	// The ruler: bars (fewer labels when they crowd).
-	bar := pm.bar_beats(p)
-	bars := int(math.ceil(max(total, shown) / bar))
+	// The loop range, across the ruler and faintly over the blocks.
+	if p.song.loop_on {
+		la, lb := bx(p.song.loop_start, shown, x0, x1), bx(p.song.loop_end, shown, x0, x1)
+		lc := t.accent if p.transport.loop else t.text_dim
+		im.DrawList_AddRectFilled(dl, {la, pos.y}, {lb, pos.y + ruler_h}, ui.col(ui.with_alpha(lc, 0.35)), 2)
+		im.DrawList_AddRectFilled(dl, {la, pos.y + ruler_h}, {lb, pos.y + ruler_h + lane_h}, ui.col(ui.with_alpha(lc, 0.08)))
+	}
+	// The ruler: bars, each step's in its time signature (fewer labels
+	// when they crowd).
+	starts := pm.song_bars(p)
+	bars := len(starts) - 1
 	every := max(1, int(math.ceil(f32(bars) * 34 / (x1 - x0))))
 	for b in 0 ..= bars {
-		x := bx(f64(b) * bar, shown, x0, x1)
+		x := bx(starts[b], shown, x0, x1)
 		strong := b % every == 0
 		im.DrawList_AddLine(dl, {x, pos.y + (8 if strong else 13)}, {x, pos.y + ruler_h}, ui.col(ui.mix(ui.PLOT_BG, t.text, 0.4 if strong else 0.15)), 1)
 		if strong && b < bars do im.DrawList_AddText(dl, {x + 3, pos.y + 2}, ui.col(t.text_dim), fmt.ctprintf("%d", b + 1))
@@ -277,19 +298,58 @@ draw_song_timeline :: proc(a: ^App) {
 	}
 	im.DrawList_PopClipRect(dl)
 	im.DrawList_AddText(dl, {x1 + 8, pos.y + 2}, ui.col(t.text), fmt.ctprintf("%s", clock_text(secs)))
-	im.DrawList_AddText(dl, {x1 + 8, pos.y + ruler_h + 4}, ui.col(t.text_dim), fmt.ctprintf("%d bars", int(math.ceil(total / bar))))
-	if ruler_hot {
-		b := clamp(f64((mx - x0) / (x1 - x0)) * total, 0, total)
-		b = math.floor(b / bar) * bar
+	im.DrawList_AddText(dl, {x1 + 8, pos.y + ruler_h + 4}, ui.col(t.text_dim), fmt.ctprintf("%d bars", bars))
+	// The ruler: a click plays from its bar; a drag along it is the loop
+	// range (in bars); right-click for its menu.
+	tm := &ss.time
+	at_bar :: proc(p: ^pm.Project, mx, x0, x1: f32, total: f64) -> f64 {
+		_, s := pm.song_bar_at(p, clamp(f64((mx - x0) / (x1 - x0)) * total, 0, total))
+		return s
+	}
+	bar_no :: proc(p: ^pm.Project, b: f64) -> int { n, _ := pm.song_bar_at(p, b); return n + 1 }
+	bar_after :: proc(p: ^pm.Project, b: f64, total: f64) -> f64 {
+		n, _ := pm.song_bar_at(p, b)
+		starts := pm.song_bars(p)
+		return starts[n + 1] if n + 1 < len(starts) else total
+	}
+	if ruler_hot && !tm.ruler_moved {
+		b := at_bar(p, mx, x0, x1, total)
 		x := bx(b, total, x0, x1)
 		im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + ruler_h}, ui.col(ui.with_alpha(t.warn, 0.6)), 1)
-		im.SetTooltip("%s", fmt.ctprintf("Play the song from bar %d", int(b / bar) + 1))
+		im.SetTooltip("%s", fmt.ctprintf("Click: play the song from bar %d · drag: the loop range · right-click: markers, the loop", bar_no(p, b)))
 	}
-	if ruler_clicked {
-		b := math.floor(clamp(f64((mx - x0) / (x1 - x0)) * total, 0, total) / bar) * bar
-		p.song_mode = true
-		m.engine.seq_dirty = true
-		pm.play(&m.engine, from_beat = b)
+	if ruler_down do tm.ruler_x, tm.ruler_moved, tm.ruler_from = mx, false, at_bar(p, mx, x0, x1, total)
+	if ruler_active && abs(mx - tm.ruler_x) > 4 {
+		tm.ruler_moved = true
+		b := at_bar(p, mx, x0, x1, total)
+		lo, hi := min(tm.ruler_from, b), bar_after(p, max(tm.ruler_from, b), total)
+		pm.set_song_loop(m, true, lo, hi, drag = true)
+		im.SetTooltip("%s", fmt.ctprintf("Loop bars %d to %d", bar_no(p, lo), bar_no(p, hi - 1e-6)))
+	}
+	if !ruler_active && tm.ruler_x != 0 {
+		if tm.ruler_moved {
+			app.seal(&m.history)
+			if !p.transport.loop do p.transport.loop = true // (a range to loop: looping)
+			m.engine.seq_dirty = true
+		} else {
+			p.song_mode = true
+			m.engine.seq_dirty = true
+			pm.play(&m.engine, from_beat = tm.ruler_from)
+		}
+		tm.ruler_x, tm.ruler_moved = 0, false
+	}
+	if im.BeginPopup("##rulermenu") {
+		b := at_bar(p, tm.menu_x if tm.menu_x != 0 else mx, x0, x1, total)
+		if tm.menu_x == 0 do tm.menu_x = mx
+		if im.MenuItem(fmt.ctprintf("Add a marker at bar %d", bar_no(p, b))) {
+			k := pm.marker_add(m, b, fmt.tprintf("Marker %d", p.song.marker_count + 1))
+			if k >= 0 do tm.rename, tm.rename_open = k, true
+		}
+		if im.MenuItem(fmt.ctprintf("Loop bar %d", bar_no(p, b))) do pm.set_song_loop(m, true, b, bar_after(p, b, total))
+		if im.MenuItem("Loop the whole song", nil, false, p.song.loop_on) do pm.set_song_loop(m, false, 0, 0)
+		im.EndPopup()
+	} else {
+		tm.menu_x = 0
 	}
 
 	// The mouse on the lane.
@@ -627,6 +687,9 @@ draw_song_side :: proc(a: ^App) {
 	}
 }
 
+// The time signatures a step can have.
+STEP_METERS := [?]pm.Time_Sig{{2, 4}, {3, 4}, {4, 4}, {5, 4}, {6, 4}, {7, 4}, {3, 8}, {5, 8}, {6, 8}, {7, 8}, {9, 8}, {12, 8}}
+
 // The selected step's settings: its sequence, how many times, which part
 // of it (start and length, drawn over the sequence's length), muted,
 // transposed, its own tempo, its name; duplicate and remove.
@@ -724,14 +787,18 @@ draw_step_settings :: proc(a: ^App) {
 	}
 	im.SameLine(0, 12)
 	own := st.bpm > 0
-	if ui.toggle("Own tempo", &own) {
+	if p.song.tempo_count == 0 && ui.toggle("Own tempo", &own) {
 		n = st
 		n.bpm = pm.step_tempo(p, i) if own else 0
 		pm.set_step(m, i, n, "Step Tempo")
 		app.seal(&m.history)
 	}
 	im.SameLine(0, 6)
-	if own {
+	if p.song.tempo_count > 0 {
+		own = false
+		im.AlignTextToFramePadding()
+		im.TextDisabled("%s", fmt.ctprintf("%.0f BPM (the tempo lane)", pm.song_tempo_at(p, pm.step_start(p, i))))
+	} else if own {
 		bpm := st.bpm
 		te := ui.number_drag("step tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", max(im.GetContentRegionAvail().x, 60))
 		n = st
@@ -741,8 +808,22 @@ draw_step_settings :: proc(a: ^App) {
 		im.AlignTextToFramePadding()
 		im.TextDisabled("%s", fmt.ctprintf("%.0f BPM", pm.step_tempo(p, i)))
 	}
+	// Its time signature (the project's, or its own).
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Time")
+	im.SameLine()
+	im.SetNextItemWidth(130)
+	cur := st.meter
+	label := fmt.ctprintf("%d/%d", cur.num, cur.den) if cur.num > 0 else fmt.ctprintf("Project's (%d/%d)", p.transport.time_sig.num, p.transport.time_sig.den)
+	if ui.combo("##stepmeter", label) {
+		if im.Selectable("The project's", cur.num == 0) do pm.set_step_meter(m, i, {})
+		for ts in STEP_METERS do if im.Selectable(fmt.ctprintf("%d/%d", ts.num, ts.den), ts == cur) do pm.set_step_meter(m, i, ts)
+		im.EndCombo()
+	}
+	ui.name("step meter")
 	beats := pm.step_period(p, st) * f64(max(st.repeats, 1))
-	secs := beats * 60 / pm.step_tempo(p, i)
+	from := pm.step_start(p, i)
+	secs := pm.song_seconds_between(p, from, from + beats)
 	if ui.icon_button(ui.ICON_COPY_PLUS, "Duplicate the step") do pm.song_add(m, int(st.slot), i, int(st.repeats))
 	im.SameLine(0, 4)
 	if ui.icon_button(ui.ICON_X, "Remove the step") {
