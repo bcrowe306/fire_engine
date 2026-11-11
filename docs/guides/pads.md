@@ -514,7 +514,15 @@ the newest note has it now. Drag the ring's end up or down for the amount
   bend it (or pick a preset). Mode (trigger, sync, envelope, sustain
   envelope, loop point, loop hold), rate (in seconds, to the tempo,
   dotted, triplet, or the note's pitch), phase, fade-in, delay, stereo
-  offset and smoothing.
+  offset and smoothing. **R1–R4** on the same row are the four random
+  modulators. Each has a style: *Perlin* (smooth noise), *Sample & hold*
+  (a new value each step, held), *Sine glide* (a new value each step,
+  glided to) or *Lorenz* (a chaotic attractor's path, which never
+  repeats). Each also has a rate (as an LFO's), *Stereo* (the right side
+  wanders on its own) and *Retrigger* (every note wanders the same way).
+  The picture shows four seconds of its wander at that rate. While a
+  note plays and the modulator is routed, a dot at its right edge shows
+  the newest note's value.
 - **Mod**: every source as a chip, and every modulation: its amount, curve,
   bipolar, stereo (the right side moved the other way) and on.
 - **Effects**: the synth's nine effects in a chain: chorus, compressor,
@@ -868,7 +876,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
-| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone) |
+| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob) |
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |

@@ -16,6 +16,7 @@ import im "deps:imgui"
 import sdl "deps:sdl3"
 import fc "fire:core"
 import "fire:fx"
+import "fire:synth"
 
 setup_actions :: proc(a: ^App) {
 	acts := &a.actions
@@ -626,6 +627,11 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			return true
 		}
 		return false
+	case "synth_lfo": // synth_lfo K: the LFO tab shows LFO K (1..8) or random modulator K - 8 (9..12)
+		k := num(w, 1)
+		if k < 1 || k > synth.LFOS + synth.RANDOMS do return false
+		a.synth_ui.lfo = k - 1
+		return true
 	case "synth_fx": // synth_fx NAME: the effect the Effects tab shows (chorus, compressor, delay, distortion, eq, filter, flanger, phaser, reverb)
 		if len(w) < 2 do return false
 		for e in fx.Effect do if strings.to_lower(fmt.tprint(e), context.temp_allocator) == w[1] {

@@ -71,11 +71,13 @@ draw_synth_effects :: proc(a: ^App) {
 	top := im.GetCursorScreenPos()
 	list_w: f32 = 168
 	row_h := im.GetFrameHeight()
-	// The chain, in order.
+	// The chain, in order (scrolling, if the panel is short).
+	im.BeginChild("##fxchain", {list_w, avail.y})
+	ctop := im.GetCursorScreenPos()
 	for e, k in sy.fx_order {
 		name := synth.EFFECT_NAMES[e]
 		im.PushIDInt(i32(e))
-		im.SetCursorScreenPos({top.x, top.y + f32(k) * (row_h + 3)})
+		im.SetCursorScreenPos({ctop.x, ctop.y + f32(k) * (row_h + 3)})
 		on := pm.synth_value(m, i, effect_on(e)) > 0.5
 		if ui.icon_button(ui.ICON_POWER, fmt.ctprintf("%s on / off", name), on = on) {
 			pm.set_synth_value(m, i, effect_on(e), 0 if on else 1, name)
@@ -85,7 +87,7 @@ draw_synth_effects :: proc(a: ^App) {
 		im.SameLine(0, 6)
 		label := fmt.ctprintf("%d  %s%s###fxrow", k + 1, name, "" if on else "  (off)")
 		if !on do im.PushStyleColorVec4(.Text, transmute(im.Vec4)ui.theme().text_dim)
-		if im.Selectable(label, st.effect == e, {}, {list_w - row_h - 6, row_h}) do st.effect = e
+		if im.Selectable(label, st.effect == e, {}, {list_w - row_h - 6 - im.GetStyle().ScrollbarSize, row_h}) do st.effect = e
 		if !on do im.PopStyleColor()
 		ui.name(fmt.tprintf("effect %s", name))
 		if im.IsItemHovered() do im.SetTooltip("Drag up or down to move it in the chain")
@@ -103,6 +105,7 @@ draw_synth_effects :: proc(a: ^App) {
 		}
 		im.PopID()
 	}
+	im.EndChild()
 	// The one chosen.
 	x0 := top.x + list_w + 16
 	w := avail.x - list_w - 16 - im.GetStyle().ScrollbarSize

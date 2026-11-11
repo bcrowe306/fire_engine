@@ -1,0 +1,17 @@
+# The synth's random modulators on the LFO tab: each style's picture, a note playing.
+size 1440 900
+synth 0
+select 0
+note 0 0 4 1
+play
+synth_tab lfo
+synth_lfo 9
+synth_param 0 650 0
+wait 10
+screenshot synth_random_perlin
+synth_param 0 650 1
+wait 10
+screenshot synth_random_hold
+synth_param 0 650 3
+wait 10
+screenshot synth_random_lorenz

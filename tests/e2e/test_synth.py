@@ -125,3 +125,25 @@ def test_the_effects_chain(app):
     app.cmd("release 0")
     app.key("cmd+z")
     assert app.pad(0)["synth"]["effects"][0] == "Chorus"
+
+
+def test_a_random_modulator(app):
+    synth_pad(app)
+    tab(app, "LFO")
+    app.cmd("synth_lfo 9")
+    app.wait(3)
+    app.expect_item("synth random view", window="detail")
+    app.click("random style", window="detail")
+    app.click("Lorenz")
+    assert app.pad(0)["synth"]["params"]["Random 1 Style"] == 3
+    tab(app, "Filter")
+    app.drag("mod Random 1", "Cutoff", to_window="detail")
+    routes = app.pad(0)["synth"]["routes"]
+    assert routes[-1]["source"] == "Random 1" and routes[-1]["dest"] == "Filter 1 Cutoff", routes
+    app.cmd("hit 0")
+    app.wait(10)
+    tab(app, "LFO")
+    app.cmd("synth_lfo 9")
+    app.wait(5)
+    app.screenshot("synth_random")
+    app.cmd("release 0")

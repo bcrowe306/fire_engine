@@ -85,3 +85,39 @@ effect_parameters :: proc(t: ^testing.T) {
 	d := synth.param_spec(synth.effect_param(.Reverb, synth.Reverb_Field.Decay))
 	testing.expectf(t, abs(synth.param_curve(d, d.default) - 1) < 1e-6, "the reverb decays in 1 s by default")
 }
+
+// A random modulator on a voice: it moves the level; retriggered, two
+// notes move alike, else each its own way.
+@(test)
+randoms_on_a_voice :: proc(t: ^testing.T) {
+	levels :: proc(t: ^testing.T, retrigger: bool) -> (a, b: [12]f64) {
+		r := rig_synth()
+		defer rig_synth_free(r)
+		set_param(r, synth.random_param(1, .Style), f32(synth.Random_Style.Sample_Hold))
+		set_param(r, synth.random_param(1, .Rate), 0) // Hz
+		set_param(r, synth.random_param(1, .Hz), 3)   // 8 steps a second
+		set_param(r, synth.random_param(1, .Retrigger), 1 if retrigger else 0)
+		synth.patch_add_route(&r.patch, {source = .Random_1, dest = synth.osc_param(1, .Level), amount = -0.8})
+		synth.synth_set_patch(r.s, &r.patch)
+		out := play_synth(t, r, {on(0, 69), off(24_000, 69), on(48_000, 69)}, 72_000)
+		l := out.channels[0]
+		for k in 0 ..< 12 {
+			a[k] = kit.rms(l[2400 + k * 1600:2400 + (k + 1) * 1600])
+			b[k] = kit.rms(l[50_400 + k * 1600:50_400 + (k + 1) * 1600])
+		}
+		return
+	}
+	a, b := levels(t, true)
+	lo, hi: f64 = 1e9, 0
+	alike := 0.0
+	for k in 0 ..< 12 {
+		lo, hi = min(lo, a[k]), max(hi, a[k])
+		alike = max(alike, abs(a[k] - b[k]))
+	}
+	testing.expectf(t, hi > 1.5 * lo, "it moves the level (%v..%v)", lo, hi)
+	testing.expectf(t, alike < 0.02 * hi, "retriggered: both notes alike (%v)", alike)
+	c, d := levels(t, false)
+	apart := 0.0
+	for k in 0 ..< 12 do apart = max(apart, abs(c[k] - d[k]))
+	testing.expectf(t, apart > 0.1 * hi, "free: each its own (%v)", apart)
+}

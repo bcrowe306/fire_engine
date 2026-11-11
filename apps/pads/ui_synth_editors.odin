@@ -305,11 +305,15 @@ draw_synth_lfo :: proc(a: ^App) {
 	m := &a.m
 	i := a.selected
 	st := &a.synth_ui
-	names := []string{"1", "2", "3", "4", "5", "6", "7", "8"}
+	names := []string{"1", "2", "3", "4", "5", "6", "7", "8", "R1", "R2", "R3", "R4"}
 	im.AlignTextToFramePadding()
 	im.TextDisabled("LFO")
 	im.SameLine()
 	ui.segmented("synth_lfo", names, &st.lfo)
+	if st.lfo >= synth.LFOS {
+		draw_synth_random(a, st.lfo - synth.LFOS + 1)
+		return
+	}
 	n := st.lfo + 1
 	l :: synth.lfo_param
 	im.SameLine(0, 14)
@@ -338,6 +342,82 @@ draw_synth_lfo :: proc(a: ^App) {
 	speed := synth.lfo_param(n, .Hz) if rate == .Seconds else (l(n, .Key_Transpose) if rate == .Keytrack else l(n, .Tempo))
 	speed_label: cstring = "Rate" if rate != .Keytrack else "Transpose"
 	synth_knob_row(a, avail.x, {{speed_label, speed}, {"Phase", l(n, .Phase)}, {"Fade In", l(n, .Fade)}, {"Delay", l(n, .Delay)}, {"Stereo", l(n, .Stereo)}, {"Smooth Time", l(n, .Smooth_Time)}})
+}
+
+RANDOM_STYLE_NAMES := []string{"Perlin", "Sample & hold", "Sine glide", "Lorenz"}
+
+// Random modulator `n` (1..4): its style and rate, a picture of how it
+// wanders at that rate (four seconds of it), the newest note's value now
+// at its right edge, and its knobs.
+draw_synth_random :: proc(a: ^App, n: int) {
+	m := &a.m
+	i := a.selected
+	r :: synth.random_param
+	im.SameLine(0, 14)
+	mod_chip(a, synth.Mod_Source(int(synth.Mod_Source.Random_1) + n - 1))
+	im.SameLine(0, 14)
+	synth_choice(a, r(n, .Style), RANDOM_STYLE_NAMES, 120, "##rstyle")
+	ui.name("random style")
+	im.SameLine(0, 6)
+	synth_choice(a, r(n, .Rate), LFO_RATE_NAMES, 90, "##rrate")
+	im.SameLine(0, 10)
+	synth_toggle(a, "Stereo##rnd", r(n, .Stereo))
+	im.SameLine(0, 10)
+	synth_toggle(a, "Retrigger##rnd", r(n, .Retrigger))
+	im.Spacing()
+	avail := im.GetContentRegionAvail()
+	h := max(avail.y - im.GetTextLineHeight() * 2 - ui.KNOB_SIZE - 30, 80)
+	// The picture: its wander over four seconds, as set.
+	sy := &m.project.pads[i].synth
+	p := synth.Random_Params {
+		style = synth.Random_Style(int(math.round(curved(sy, r(n, .Style))))), stereo = curved(sy, r(n, .Stereo)) > 0.5,
+		timing = {rate = synth.Lfo_Rate(int(math.round(curved(sy, r(n, .Rate))))), hz = curved(sy, r(n, .Hz)), tempo = int(math.round(curved(sy, r(n, .Tempo)))), key_transpose = curved(sy, r(n, .Key_Transpose))},
+	}
+	bpm := m.project.bpm if m.project.bpm > 0 else 120
+	hz := synth.lfo_hz(&p.timing, bpm, 60)
+	t := ui.theme()
+	dl := im.GetWindowDrawList()
+	pos := im.GetCursorScreenPos()
+	im.Dummy({avail.x, h})
+	ui.name("synth random view")
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + avail.x, pos.y + h}, ui.col(ui.PLOT_BG), t.radius)
+	x0, x1, y0, y1 := pos.x + 10, pos.x + avail.x - 40, pos.y + 10, pos.y + h - 10
+	state: synth.Random_State
+	synth.random_start(&state, &p, u32(n) * 7919)
+	N :: 240
+	pts: [2][N]im.Vec2
+	for k in 0 ..< N {
+		val := synth.random_step(&state, &p, hz, 4.0 / N)
+		for side in 0 ..< 2 do pts[side][k] = {x0 + (x1 - x0) * f32(k) / (N - 1), y1 - val[side] * (y1 - y0)}
+	}
+	color := mod_color(synth.Mod_Source(int(synth.Mod_Source.Random_1) + n - 1))
+	if p.stereo do im.DrawList_AddPolyline(dl, &pts[1][0], N, ui.col(ui.with_alpha(color, 0.45)), 1.6)
+	im.DrawList_AddPolyline(dl, &pts[0][0], N, ui.col(color), 2.4)
+	im.DrawList_AddText(dl, {x0 + 4, y0}, ui.col(t.text_dim), "4 s")
+	src := synth.Mod_Source(int(synth.Mod_Source.Random_1) + n - 1)
+	routed := false
+	for rt in sy.routes[:sy.route_count] do routed ||= rt.source == src && !rt.bypass
+	if live, ok := pm.synth_live(&m.engine, i); ok && live.sounding && routed {
+		y := y1 - clamp(live.randoms[n - 1], 0, 1) * (y1 - y0)
+		im.DrawList_AddLine(dl, {x1 + 6, y}, {x1 + 30, y}, ui.col(t.text), 2)
+		im.DrawList_AddCircleFilled(dl, {x1 + 30, y}, 4.5, ui.col(color))
+	}
+	im.Spacing()
+	rate := p.timing.rate
+	speed := r(n, .Hz) if rate == .Seconds else (r(n, .Key_Transpose) if rate == .Keytrack else r(n, .Tempo))
+	speed_label: cstring = "Rate" if rate != .Keytrack else "Transpose"
+	knobs := make([dynamic]Knob, context.temp_allocator)
+	append(&knobs, Knob{speed_label, speed})
+	if rate == .Keytrack do append(&knobs, Knob{"Tune", r(n, .Key_Tune)})
+	synth_knob_row(a, avail.x, knobs[:])
+}
+
+// A patch's parameter `id`, through its curve.
+@(private = "file")
+curved :: proc(sy: ^pm.Synth_Patch, id: fc.Param_Id) -> f32 {
+	spec := synth.param_spec(id)
+	if spec == nil do return 0
+	return synth.param_curve(spec, sy.values[id])
 }
 
 // LFO `k`'s (0-based) shape, `size` big, to draw on; the newest note's

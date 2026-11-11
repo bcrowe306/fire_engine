@@ -98,3 +98,42 @@ an_lfo_runs_its_shape :: proc(t: ^testing.T) {
 	testing.expectf(t, v[0] > 0.15 && v[0] < 0.4, "a quarter into its fade, a quarter of the way (%v)", v[0])
 	_ = math.PI
 }
+
+// Each random style: in 0..1 and moving; held, it holds within a step;
+// glided or Perlin or Lorenz, it never jumps; retriggered, every note
+// wanders the same; stereo, the sides differ.
+@(test)
+random_modulators :: proc(t: ^testing.T) {
+	trace :: proc(style: synth.Random_Style, seed: u32, stereo := false) -> (out: [2][400]f32) {
+		p := synth.Random_Params{style = style, stereo = stereo}
+		r: synth.Random_State
+		synth.random_start(&r, &p, seed)
+		for k in 0 ..< 400 {
+			v := synth.random_step(&r, &p, 4, 0.01) // 4 steps a second, 10 ms apart
+			out[0][k], out[1][k] = v[0], v[1]
+		}
+		return
+	}
+	for style in synth.Random_Style {
+		x := trace(style, 1234)
+		lo, hi, jump: f32 = 1, 0, 0
+		for k in 0 ..< 400 {
+			lo, hi = min(lo, x[0][k]), max(hi, x[0][k])
+			if k > 0 do jump = max(jump, abs(x[0][k] - x[0][k - 1]))
+		}
+		testing.expectf(t, lo >= 0 && hi <= 1 && hi - lo > 0.2, "%v: in 0..1 and moving (%v..%v)", style, lo, hi)
+		if style == .Sample_Hold {
+			same := 0
+			for k in 1 ..< 400 do if x[0][k] == x[0][k - 1] do same += 1
+			testing.expectf(t, same > 350, "held: steps 25 samples long (%d alike)", same)
+		} else {
+			testing.expectf(t, jump < 0.2, "%v: no jumps (%v)", style, jump)
+		}
+		y := trace(style, 1234)
+		testing.expectf(t, x == y, "%v: the same seed, the same wander", style)
+		z := trace(style, 99, true)
+		diff: f32 = 0
+		for k in 0 ..< 400 do diff += abs(z[0][k] - z[1][k])
+		testing.expectf(t, diff > 5, "%v: stereo, the sides apart (%v)", style, diff)
+	}
+}

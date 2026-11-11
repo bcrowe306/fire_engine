@@ -282,7 +282,8 @@ synth_toggle :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 // drag one onto any knob on any tab).
 draw_synth_tabs :: proc(a: ^App) {
 	st := &a.synth_ui
-	right := im.GetCursorScreenPos().x + im.GetContentRegionAvail().x
+	left := im.GetCursorScreenPos().x
+	right := left + im.GetContentRegionAvail().x
 	line_y := im.GetCursorScreenPos().y
 	if !im.BeginTabBar("##synth_tabs") do return
 	shown := st.tab
@@ -301,21 +302,26 @@ draw_synth_tabs :: proc(a: ^App) {
 	im.EndTabBar()
 	// The sources, right-aligned on the tab bar's line (if there is room).
 	{
-		chips := []synth.Mod_Source{.Env_1, .Env_2, .Env_3, .Env_4, .Env_5, .Env_6, .Lfo_1, .Lfo_2, .Lfo_3, .Lfo_4, .Lfo_5, .Lfo_6, .Lfo_7, .Lfo_8, .Macro_1, .Macro_2, .Macro_3, .Macro_4, .Velocity, .Note, .Aftertouch, .Mod_Wheel, .Pitch_Wheel, .Random}
+		chips := []synth.Mod_Source{.Env_1, .Env_2, .Env_3, .Env_4, .Env_5, .Env_6, .Lfo_1, .Lfo_2, .Lfo_3, .Lfo_4, .Lfo_5, .Lfo_6, .Lfo_7, .Lfo_8, .Random_1, .Random_2, .Random_3, .Random_4, .Macro_1, .Macro_2, .Macro_3, .Macro_4, .Velocity, .Note, .Aftertouch, .Mod_Wheel, .Pitch_Wheel, .Random}
 		w: f32 = 0
-		for s in chips do w += mini_chip_width(s) + 2
+		for s in chips do w += mini_chip_width(s) + 1
 		x := right - w
 		after := im.GetCursorScreenPos()
 		y := line_y + 1
 		if x <= tabs_end + 16 { // no room beside the tabs: a line of its own under them
-			x = right - w
+			x = max(right - w, left)
 			y = after.y
 			after.y += im.GetFrameHeight() + 2
 		}
 		for s in chips {
+			if x + mini_chip_width(s) > right && x > left { // (wider than the panel: on to another line)
+				x = left
+				y += im.GetFrameHeight() + 2
+				after.y = max(after.y, y + im.GetFrameHeight() + 2)
+			}
 			im.SetCursorScreenPos({x, y})
 			mini_chip(a, s)
-			x += mini_chip_width(s) + 2
+			x += mini_chip_width(s) + 1
 		}
 		im.SetCursorScreenPos(after)
 	}
@@ -346,6 +352,7 @@ mini_name :: proc(s: synth.Mod_Source) -> string {
 	case .Env_1 ..= .Env_6:   return fmt.tprintf("E%d", int(s) - int(synth.Mod_Source.Env_1) + 1)
 	case .Lfo_1 ..= .Lfo_8:   return fmt.tprintf("L%d", int(s) - int(synth.Mod_Source.Lfo_1) + 1)
 	case .Macro_1 ..= .Macro_4: return fmt.tprintf("M%d", int(s) - int(synth.Mod_Source.Macro_1) + 1)
+	case .Random_1 ..= .Random_4: return fmt.tprintf("R%d", int(s) - int(synth.Mod_Source.Random_1) + 1)
 	case .Velocity:    return "Vel"
 	case .Note:        return "Key"
 	case .Aftertouch:  return "AT"
@@ -357,7 +364,7 @@ mini_name :: proc(s: synth.Mod_Source) -> string {
 }
 
 mini_chip_width :: proc(s: synth.Mod_Source) -> f32 {
-	return im.CalcTextSize(fmt.ctprintf("%s", mini_name(s))).x + 10
+	return im.CalcTextSize(fmt.ctprintf("%s", mini_name(s))).x + 8
 }
 
 // A small chip for source `s` (its short name), to drag onto a knob.
@@ -544,7 +551,7 @@ draw_synth_mod :: proc(a: ^App) {
 	im.TextDisabled("Drag a source onto any knob:")
 	n := 0
 	for s in synth.Mod_Source {
-		if s == .None || (s >= .Random_1 && s <= .Random_4) do continue
+		if s == .None do continue
 		if n > 0 do ui.flow(chip_width(a, s), 4)
 		mod_chip(a, s)
 		n += 1

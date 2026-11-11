@@ -29,7 +29,8 @@ plan before it is built.
      every setting modulatable, the Effects tab with a picture each.
      Still to do: profile the chain on ARM (6.7% of an M-series core with
      all nine on; the chorus's eight delays are the likely hot spot).
-  3. Spectral morphs, spectral unison, the four random modulators.
+  3. Spectral morphs, spectral unison, the four random modulators (the
+     randoms done: Perlin, sample and hold, sine glide, Lorenz).
   4. The wavetable editor.
   5. Presets (our own format, a built-in bank).
   - Later: MPE (per-note bend, slide, lift) and microtuning (.scl/.kbm/.tun).

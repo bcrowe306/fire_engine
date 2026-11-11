@@ -149,6 +149,14 @@ MACROS :: 4
 
 Macro controls.
 
+### RANDOMS
+
+```odin
+RANDOMS :: 4
+```
+
+Random modulators a voice has.
+
 ### PARAM_SLOTS
 
 ```odin
@@ -652,6 +660,70 @@ One LFO of one voice (or a free one): where it is, a side each.
 | `value` | its value now, left and right (0..1) |
 | `phase` | the phase it read at (for drawing a dot) |
 
+### Random_Style
+
+```odin
+Random_Style :: enum u8 {
+	Perlin,
+	Sample_Hold,
+	Sine_Interpolate,
+	Lorenz,
+}
+```
+
+How a random modulator wanders.
+
+| Value | Description |
+|-------|-------------|
+| `Perlin` | smooth noise: a slope at each step, eased between |
+| `Sample_Hold` | a new value each step, held |
+| `Sine_Interpolate` | a new value each step, glided to along half a cosine |
+| `Lorenz` | the Lorenz attractor's x: never repeats, never jumps |
+
+### Random_Params
+
+```odin
+Random_Params :: struct {
+	style: Random_Style,
+	timing: Lfo_Params,
+	stereo: bool,
+	retrigger: bool,
+}
+```
+
+A random modulator's settings (its rate as an LFO's: `lfo_hz`).
+
+| Field | Description |
+|-------|-------------|
+| `style` |  |
+| `timing` | only its rate, hz, tempo and key fields |
+| `stereo` | the right side wanders on its own |
+| `retrigger` | each note starts the same wander (else its own) |
+
+### Random_State
+
+```odin
+Random_State :: struct {
+	phase: f32,
+	from: [2]f32,
+	to: [2]f32,
+	lorenz: [2][3]f32,
+	rng: u32,
+	value: [2]f32,
+}
+```
+
+One random modulator of one voice.
+
+| Field | Description |
+|-------|-------------|
+| `phase` | 0..1 through the step |
+| `from` | the step's start value (or gradient: Perlin), a side |
+| `to` | and its end |
+| `lorenz` | x, y, z |
+| `rng` |  |
+| `value` | now (0..1) |
+
 ### Unison_Stack
 
 ```odin
@@ -1041,6 +1113,23 @@ Lfo_Field :: enum u16 {
 
 An LFO's parameters.
 
+### Random_Field
+
+```odin
+Random_Field :: enum u16 {
+	Style,
+	Rate,
+	Hz,
+	Tempo,
+	Stereo,
+	Retrigger,
+	Key_Transpose,
+	Key_Tune,
+}
+```
+
+A random modulator's parameters.
+
 ### Destination
 
 ```odin
@@ -1179,7 +1268,7 @@ A modulation source.
 | `Random_1` |  |
 | `Random_2` |  |
 | `Random_3` |  |
-| `Random_4` | (milestone 3: silent until then) |
+| `Random_4` | the random modulators (0..1) |
 | `Macro_1` |  |
 | `Macro_2` |  |
 | `Macro_3` |  |
@@ -1225,6 +1314,7 @@ Patch :: struct {
 	shape_tables: [8][2048]f32,
 	used_envs: bit_set[int],
 	used_lfos: bit_set[int],
+	used_randoms: bit_set[int],
 	values: [988]f32,
 	has_values: bool,
 }
@@ -1244,6 +1334,7 @@ whoever made the patch; they must outlive it.
 | `shape_tables` | Each LFO's shape rendered, and the envelopes and LFOs some route uses (filled by `patch_prepare`; the rest aren't run). |
 | `used_envs` |  |
 | `used_lfos` |  |
+| `used_randoms` |  |
 | `values` | Parameter values to take with the patch (by id), when `has_values`: every parameter set at once, beyond what parameter events can carry in one block. |
 | `has_values` |  |
 
@@ -1347,6 +1438,7 @@ Synth_Live :: struct {
 	env_stage: [6]i32,
 	lfos: [8]f32,
 	lfo_phase: [8]f32,
+	randoms: [4]f32,
 	frames: [3]f32,
 	cutoffs: [2]f32,
 	peak: [2]f32,
@@ -1364,6 +1456,7 @@ thread, read by any; each value is atomic on its own).
 | `env_stage` |  |
 | `lfos` |  |
 | `lfo_phase` |  |
+| `randoms` | each random modulator's value now (its left side) |
 | `frames` | each oscillator's frame position now (0..1) |
 | `cutoffs` |  |
 | `peak` | the output's peak since the last read |
@@ -1597,6 +1690,24 @@ lfo_step :: proc "contextless"(l: ^Lfo_State, p: ^Lfo_Params, table: []f32, hz: 
 **Realtime-safe** (callable on the audio thread). Moves it on by `dt` seconds at `hz` and returns its values (left,
 right; 0..1) from the rendered shape `table`.
 
+### random_start
+
+```odin
+random_start :: proc "contextless"(r: ^Random_State, p: ^Random_Params, seed: u32)
+```
+
+**Realtime-safe** (callable on the audio thread). A note starts it: from `seed` (the same each note when it
+retriggers).
+
+### random_step
+
+```odin
+random_step :: proc "contextless"(r: ^Random_State, p: ^Random_Params, hz: f32, dt: f32) -> [2]f32
+```
+
+**Realtime-safe** (callable on the audio thread). Moves it on by `dt` seconds at `hz` steps a second and returns its
+values (left, right; 0..1).
+
 ### osc_shared_init
 
 ```odin
@@ -1684,6 +1795,14 @@ lfo_param :: proc "contextless"(n: int, f: Lfo_Field) -> core.Param_Id
 ```
 
 The id of LFO `n`'s (1..8) parameter `f`.
+
+### random_param
+
+```odin
+random_param :: proc "contextless"(n: int, f: Random_Field) -> core.Param_Id
+```
+
+The id of random modulator `n`'s (1..4) parameter `f`.
 
 ### param_spec
 

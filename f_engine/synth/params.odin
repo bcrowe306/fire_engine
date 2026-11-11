@@ -61,6 +61,9 @@ Env_Field :: enum u16 {Delay, Attack, Hold, Decay, Sustain, Release, Attack_Powe
 // An LFO's parameters.
 Lfo_Field :: enum u16 {Mode, Rate, Hz, Tempo, Phase, Fade, Delay, Smooth, Smooth_Time, Stereo, Key_Transpose, Key_Tune}
 
+// A random modulator's parameters.
+Random_Field :: enum u16 {Style, Rate, Hz, Tempo, Stereo, Retrigger, Key_Transpose, Key_Tune}
+
 // Wavetable oscillators a synth has.
 OSCS :: 3
 // Filters a voice has.
@@ -71,6 +74,8 @@ ENVS :: 6
 LFOS :: 8
 // Macro controls.
 MACROS :: 4
+// Random modulators a voice has.
+RANDOMS :: 4
 
 // Where a source's sound goes.
 Destination :: enum u8 {Filter_1, Filter_2, Both_Filters, Effects, Direct}
@@ -108,6 +113,8 @@ Param_Spec :: struct {
 @(private) ENV_STRIDE :: 16
 @(private) LFO_BASE :: 520
 @(private) LFO_STRIDE :: 16
+@(private) RANDOM_BASE :: 650
+@(private) RANDOM_STRIDE :: 10
 
 // The id of global parameter `f`.
 global_param :: #force_inline proc "contextless" (f: Global_Field) -> core.Param_Id { return core.Param_Id(GLOBAL_BASE + int(f)) }
@@ -121,6 +128,9 @@ filter_param :: #force_inline proc "contextless" (n: int, f: Filter_Field) -> co
 env_param :: #force_inline proc "contextless" (n: int, f: Env_Field) -> core.Param_Id { return core.Param_Id(ENV_BASE + (n - 1) * ENV_STRIDE + int(f)) }
 // The id of LFO `n`'s (1..8) parameter `f`.
 lfo_param :: #force_inline proc "contextless" (n: int, f: Lfo_Field) -> core.Param_Id { return core.Param_Id(LFO_BASE + (n - 1) * LFO_STRIDE + int(f)) }
+
+// The id of random modulator `n`'s (1..4) parameter `f`.
+random_param :: #force_inline proc "contextless" (n: int, f: Random_Field) -> core.Param_Id { return core.Param_Id(RANDOM_BASE + (n - 1) * RANDOM_STRIDE + int(f)) }
 
 // Ids span 1 ..< PARAM_SLOTS (with gaps between blocks).
 PARAM_SLOTS :: FX_BASE + len(fx.Effect) * FX_STRIDE
@@ -264,6 +274,18 @@ build_params :: proc "contextless" () {
 		add(l(n, .Stereo), name(n, "Stereo"), -0.5, 0.5, 0)
 		add(l(n, .Key_Transpose), name(n, "Key Transpose"), -60, 36, -12, .Indexed)
 		add(l(n, .Key_Tune), name(n, "Key Tune"), -1, 1, 0)
+	}
+	for n in 1 ..= RANDOMS {
+		r :: proc(n: int, f: Random_Field) -> core.Param_Id { return random_param(n, f) }
+		name :: proc(n: int, s: string) -> string { return fmt.aprintf("Random %d %s", n, s) }
+		add(r(n, .Style), name(n, "Style"), 0, f32(len(Random_Style) - 1), 0, .Indexed, false)
+		add(r(n, .Rate), name(n, "Rate Mode"), 0, f32(len(Lfo_Rate) - 1), 1, .Indexed, false)
+		add(r(n, .Hz), name(n, "Frequency"), -7, 9, 1, .Exponential)
+		add(r(n, .Tempo), name(n, "Tempo"), 0, 12, 8, .Indexed)
+		add(r(n, .Stereo), name(n, "Stereo"), 0, 1, 0, .Indexed, false)
+		add(r(n, .Retrigger), name(n, "Retrigger"), 0, 1, 0, .Indexed, false)
+		add(r(n, .Key_Transpose), name(n, "Key Transpose"), -60, 36, -12, .Indexed)
+		add(r(n, .Key_Tune), name(n, "Key Tune"), -1, 1, 0)
 	}
 	build_fx_params()
 	for p in PARAMS do append(&node_params, core.Param_Info{id = p.id, name = p.name, unit = p.unit, min = f64(p.min), max = f64(p.max), default = f64(p.default), flags = {.Automatable}})

@@ -44,6 +44,7 @@ Voice :: struct {
 	filters:     [FILTERS]fx.Filter_State,
 	envs:        [ENVS]Env_State,
 	lfos:        [LFOS]Lfo_State,
+	randoms:     [RANDOMS]Random_State,
 	mod:         [2][PARAM_COUNT_MAX]f32, // each parameter's modulation now, a side
 	last_inc:    [OSCS]f32,
 	last_cut:    [FILTERS]f32,
@@ -59,12 +60,13 @@ Voice :: struct {
 	// newest voice moves).
 	last_envs:   [ENVS]f32,
 	last_lfos:   [LFOS][2]f32,
+	last_rands:  [RANDOMS][2]f32,
 	finished:    bool, // its amp envelope ended: free once `out` is drained
 }
 
 // Room for every parameter's modulation.
 @(private)
-PARAM_COUNT_MAX :: 320
+PARAM_COUNT_MAX :: 352
 
 // What the newest voice is doing, for a UI to draw (written by the audio
 // thread, read by any; each value is atomic on its own).
@@ -75,6 +77,7 @@ Synth_Live :: struct {
 	env_stage: [ENVS]i32,
 	lfos:      [LFOS]f32,
 	lfo_phase: [LFOS]f32,
+	randoms:   [RANDOMS]f32, // each random modulator's value now (its left side)
 	frames:    [OSCS]f32, // each oscillator's frame position now (0..1)
 	cutoffs:   [FILTERS]f32,
 	peak:      [2]f32,    // the output's peak since the last read
@@ -343,6 +346,12 @@ voice_trigger :: proc "contextless" (s: ^Synth, v: ^Voice, fresh: bool) {
 		p := lfo_params(s, v, i + 1)
 		lfo_note_on(&v.lfos[i], &p, lfo_hz(&p, s.bpm, v.pitch), s.song_seconds)
 	}
+	for i in 0 ..< RANDOMS {
+		p := random_params(s, v, i + 1)
+		seed := u32(i + 1) * 0x9e3779b9 if p.retrigger else u32(s.clock) * 2246822519 + u32(i) * 3266489917
+		random_start(&v.randoms[i], &p, seed)
+		v.last_rands[i] = v.randoms[i].value
+	}
 	if fresh {
 		seed := u32(s.clock) * 2654435761
 		for i in 0 ..< OSCS {
@@ -466,6 +475,18 @@ lfo_params :: proc "contextless" (s: ^Synth, v: ^Voice, n: int) -> Lfo_Params {
 		key_transpose = vvalue(s, v, l(n, .Key_Transpose)), key_tune = vvalue(s, v, l(n, .Key_Tune)),
 		phase = vvalue(s, v, l(n, .Phase)), fade = vvalue(s, v, l(n, .Fade)), delay = vvalue(s, v, l(n, .Delay)),
 		smooth = value(s, l(n, .Smooth)) > 0, smooth_time = vvalue(s, v, l(n, .Smooth_Time)), stereo = vvalue(s, v, l(n, .Stereo)),
+	}
+}
+
+@(private)
+random_params :: proc "contextless" (s: ^Synth, v: ^Voice, n: int) -> Random_Params {
+	r :: random_param
+	return {
+		style = Random_Style(int(value(s, r(n, .Style)))), stereo = value(s, r(n, .Stereo)) > 0, retrigger = value(s, r(n, .Retrigger)) > 0,
+		timing = {
+			rate = Lfo_Rate(int(value(s, r(n, .Rate)))), hz = vvalue(s, v, r(n, .Hz)), tempo = int(vvalue(s, v, r(n, .Tempo))),
+			key_transpose = vvalue(s, v, r(n, .Key_Transpose)), key_tune = vvalue(s, v, r(n, .Key_Tune)),
+		},
 	}
 }
 
@@ -623,8 +644,14 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 		if table == nil do continue
 		lfo_vals[i] = lfo_step(&v.lfos[i], &p, table, lfo_hz(&p, s.bpm, v.pitch), dt)
 	}
-	voice_mod(s, v, env_vals, lfo_vals)
-	v.last_envs, v.last_lfos = env_vals, lfo_vals
+	rand_vals: [RANDOMS][2]f32
+	for i in 0 ..< RANDOMS {
+		if patch == nil || i not_in patch.used_randoms do continue
+		p := random_params(s, v, i + 1)
+		rand_vals[i] = random_step(&v.randoms[i], &p, lfo_hz(&p.timing, s.bpm, v.pitch), dt)
+	}
+	voice_mod(s, v, env_vals, lfo_vals, rand_vals)
+	v.last_envs, v.last_lfos, v.last_rands = env_vals, lfo_vals, rand_vals
 	// The amp envelope, a sample at a time.
 	amp := s.scratch[6][:n]
 	{
@@ -733,7 +760,7 @@ route_source :: proc "contextless" (s: ^Synth, d: Destination, src, f1, f2, dry,
 // [rt] Works out every route for voice `v`: each destination's
 // modulation, a side each.
 @(private)
-voice_mod :: proc "contextless" (s: ^Synth, v: ^Voice, envs: [ENVS]f32, lfos: [LFOS][2]f32) #no_bounds_check {
+voice_mod :: proc "contextless" (s: ^Synth, v: ^Voice, envs: [ENVS]f32, lfos: [LFOS][2]f32, rands: [RANDOMS][2]f32) #no_bounds_check {
 	for &side in v.mod do for &x in side do x = 0
 	p := s.patch
 	if p == nil do return
@@ -743,7 +770,7 @@ voice_mod :: proc "contextless" (s: ^Synth, v: ^Voice, envs: [ENVS]f32, lfos: [L
 		if spec == nil do continue
 		idx := PARAM_INDEX[r.dest]
 		if int(idx) >= PARAM_COUNT_MAX do continue
-		m := route_amount(&r, spec, source_value(s, v, r.source, envs, lfos))
+		m := route_amount(&r, spec, source_value(s, v, r.source, envs, lfos, rands))
 		v.mod[0][idx] += m[0]
 		v.mod[1][idx] += m[1]
 	}
@@ -784,15 +811,17 @@ fx_modulate :: proc "contextless" (s: ^Synth) #no_bounds_check {
 		if r.bypass || r.source == .None || !is_effect_param(r.dest) do continue
 		spec := param_spec(r.dest)
 		if spec == nil do continue
-		m := route_amount(&r, spec, source_value(s, v, r.source, v.last_envs, v.last_lfos))
+		m := route_amount(&r, spec, source_value(s, v, r.source, v.last_envs, v.last_lfos, v.last_rands))
 		s.fx_mod[int(r.dest) - FX_BASE] += m[0]
 	}
 }
 
 // [rt] A source's value now for voice `v` (left, right).
 @(private)
-source_value :: proc "contextless" (s: ^Synth, v: ^Voice, src: Mod_Source, envs: [ENVS]f32, lfos: [LFOS][2]f32) -> [2]f32 {
+source_value :: proc "contextless" (s: ^Synth, v: ^Voice, src: Mod_Source, envs: [ENVS]f32, lfos: [LFOS][2]f32, rands: [RANDOMS][2]f32) -> [2]f32 {
 	#partial switch src {
+	case .Random_1 ..= .Random_4:
+		return rands[int(src) - int(Mod_Source.Random_1)]
 	case .Env_1 ..= .Env_6:
 		e := envs[int(src) - int(Mod_Source.Env_1)]
 		return {e, e}
@@ -834,6 +863,7 @@ live_update :: proc "contextless" (s: ^Synth) {
 		s.live.lfo_phase[i] = newest.lfos[i].phase
 	}
 	for i in 0 ..< OSCS do s.live.frames[i] = vvalue(s, newest, osc_param(i + 1, .Frame))
+	for i in 0 ..< RANDOMS do s.live.randoms[i] = newest.last_rands[i][0]
 	for i in 0 ..< FILTERS do s.live.cutoffs[i] = newest.last_cut[i]
 }
 

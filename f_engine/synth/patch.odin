@@ -15,7 +15,7 @@ Mod_Source :: enum u8 {
 	None,
 	Env_1, Env_2, Env_3, Env_4, Env_5, Env_6,
 	Lfo_1, Lfo_2, Lfo_3, Lfo_4, Lfo_5, Lfo_6, Lfo_7, Lfo_8,
-	Random_1, Random_2, Random_3, Random_4, // (milestone 3: silent until then)
+	Random_1, Random_2, Random_3, Random_4, // the random modulators (0..1)
 	Macro_1, Macro_2, Macro_3, Macro_4,
 	Velocity,       // the note's, 0..1
 	Note,           // the key, 0 (C-2) .. 1 (G8)
@@ -64,6 +64,7 @@ Patch :: struct {
 	shape_tables: [LFOS][LFO_RESOLUTION]f32,
 	used_envs:    bit_set[0 ..< ENVS],
 	used_lfos:    bit_set[0 ..< LFOS],
+	used_randoms: bit_set[0 ..< RANDOMS],
 	// Parameter values to take with the patch (by id), when `has_values`:
 	// every parameter set at once, beyond what parameter events can carry
 	// in one block.
@@ -76,11 +77,12 @@ Patch :: struct {
 patch_prepare :: proc(p: ^Patch) {
 	for i in 0 ..< LFOS do lfo_shape_render(&p.shapes[i], p.shape_tables[i][:])
 	if !fx.chain_order_valid(p.fx_order) do p.fx_order = fx.CHAIN_ORDER
-	p.used_envs, p.used_lfos = {0}, {}
+	p.used_envs, p.used_lfos, p.used_randoms = {0}, {}, {}
 	for r in p.routes[:p.route_count] {
 		#partial switch r.source {
 		case .Env_1 ..= .Env_6: p.used_envs += {int(r.source) - int(Mod_Source.Env_1)}
 		case .Lfo_1 ..= .Lfo_8: p.used_lfos += {int(r.source) - int(Mod_Source.Lfo_1)}
+		case .Random_1 ..= .Random_4: p.used_randoms += {int(r.source) - int(Mod_Source.Random_1)}
 		}
 	}
 }

@@ -326,3 +326,118 @@ lfo_step :: proc "contextless" (l: ^Lfo_State, p: ^Lfo_Params, table: []f32, hz,
 	}
 	return l.value
 }
+
+// --- Random modulators ---------------------------------------------------------------------------
+
+// How a random modulator wanders.
+Random_Style :: enum u8 {
+	Perlin,           // smooth noise: a slope at each step, eased between
+	Sample_Hold,      // a new value each step, held
+	Sine_Interpolate, // a new value each step, glided to along half a cosine
+	Lorenz,           // the Lorenz attractor's x: never repeats, never jumps
+}
+
+// A random modulator's settings (its rate as an LFO's: `lfo_hz`).
+Random_Params :: struct {
+	style:     Random_Style,
+	timing:    Lfo_Params, // only its rate, hz, tempo and key fields
+	stereo:    bool,       // the right side wanders on its own
+	retrigger: bool,       // each note starts the same wander (else its own)
+}
+
+// One random modulator of one voice.
+Random_State :: struct {
+	phase:  f32,       // 0..1 through the step
+	from:   [2]f32,    // the step's start value (or gradient: Perlin), a side
+	to:     [2]f32,    // and its end
+	lorenz: [2][3]f32, // x, y, z
+	rng:    u32,
+	value:  [2]f32,    // now (0..1)
+}
+
+// [rt] A random number 0 ..< 1 (xorshift).
+@(private)
+random_next :: #force_inline proc "contextless" (r: ^u32) -> f32 {
+	x := r^
+	x ~= x << 13
+	x ~= x >> 17
+	x ~= x << 5
+	r^ = x
+	return f32(x >> 8) / 16_777_216
+}
+
+// [rt] A note starts it: from `seed` (the same each note when it
+// retriggers).
+random_start :: proc "contextless" (r: ^Random_State, p: ^Random_Params, seed: u32) {
+	r^ = {}
+	r.rng = seed | 1
+	for side in 0 ..< 2 {
+		r.from[side], r.to[side] = random_next(&r.rng), random_next(&r.rng)
+		r.lorenz[side] = {random_next(&r.rng) * 2 - 1, random_next(&r.rng) * 2 - 1, 20 + random_next(&r.rng) * 10}
+	}
+	if !p.stereo {
+		r.from[1], r.to[1], r.lorenz[1] = r.from[0], r.to[0], r.lorenz[0]
+	}
+	r.value = random_value(r, p)
+}
+
+// [rt] Moves it on by `dt` seconds at `hz` steps a second and returns its
+// values (left, right; 0..1).
+random_step :: proc "contextless" (r: ^Random_State, p: ^Random_Params, hz, dt: f32) -> [2]f32 {
+	adv := max(hz, 0) * dt
+	if p.style == .Lorenz {
+		// σ 10, ρ 28, β 8/3; a step of the rate is about a loop of it.
+		SIGMA :: 10.0
+		RHO :: 28.0
+		BETA :: 8.0 / 3.0
+		total := min(adv * 0.75, 4)
+		steps := clamp(int(total / 0.005) + 1, 1, 800)
+		h := total / f32(steps)
+		for side in 0 ..< (2 if p.stereo else 1) {
+			q := &r.lorenz[side]
+			for _ in 0 ..< steps {
+				dx := SIGMA * (q[1] - q[0])
+				dy := q[0] * (RHO - q[2]) - q[1]
+				dz := q[0] * q[1] - BETA * q[2]
+				q[0] += dx * h
+				q[1] += dy * h
+				q[2] += dz * h
+			}
+		}
+		if !p.stereo do r.lorenz[1] = r.lorenz[0]
+	} else {
+		r.phase += adv
+		for r.phase >= 1 {
+			r.phase -= 1
+			for side in 0 ..< 2 {
+				r.from[side] = r.to[side]
+				r.to[side] = random_next(&r.rng)
+			}
+			if !p.stereo do r.from[1], r.to[1] = r.from[0], r.to[0]
+		}
+	}
+	r.value = random_value(r, p)
+	return r.value
+}
+
+// [rt] Its values where it is now.
+@(private)
+random_value :: proc "contextless" (r: ^Random_State, p: ^Random_Params) -> (v: [2]f32) {
+	t := clamp(r.phase, 0, 1)
+	for side in 0 ..< 2 {
+		a, b := r.from[side], r.to[side]
+		switch p.style {
+		case .Sample_Hold:      v[side] = b
+		case .Sine_Interpolate: v[side] = a + (b - a) * (0.5 - 0.5 * math.cos(t * math.PI))
+		case .Perlin:
+			// The step's two slopes (-1..1), eased between: about -0.5..0.5.
+			g0, g1 := a * 2 - 1, b * 2 - 1
+			f := t * t * t * (t * (t * 6 - 15) + 10)
+			n := g0 * t + (g1 * (t - 1) - g0 * t) * f
+			v[side] = clamp(0.5 + n, 0, 1)
+		case .Lorenz:
+			v[side] = clamp((r.lorenz[side][0] + 20) / 40, 0, 1)
+		}
+	}
+	return
+}
