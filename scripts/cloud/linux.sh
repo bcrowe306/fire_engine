@@ -7,6 +7,7 @@
 #   ./scripts/cloud/linux.sh sync      copy the working tree to ~/fire_engine
 #   ./scripts/cloud/linux.sh test [..] sync, then run ./scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/linux.sh ssh [cmd] shell or command on the droplet
+#   ./scripts/cloud/linux.sh get R L  copy ~/fire_engine/R from it to L here
 #   ./scripts/cloud/linux.sh off       power off (end of session)
 #   ./scripts/cloud/linux.sh down      destroy the droplet
 #   ./scripts/cloud/linux.sh status
@@ -107,6 +108,12 @@ test)
 ssh)
 	shift
 	remote "$@"
+	;;
+get)
+	# get REMOTE LOCAL: copy a file (or folder) from the machine (REMOTE
+	# relative to ~/fire_engine) to LOCAL.
+	[ $# -ge 3 ] || { echo "usage: $0 get REMOTE LOCAL" >&2; exit 2; }
+	scp -q -r "${SSH_OPTS[@]}" "root@"$(ip)":~/fire_engine/$2" "$3"
 	;;
 off)
 	if [ -z "$(ip)" ]; then echo "no droplet named $NAME"; exit 0; fi

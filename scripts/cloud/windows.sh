@@ -7,6 +7,7 @@
 #   ./scripts/cloud/windows.sh sync      copy the working tree to C:\fire
 #   ./scripts/cloud/windows.sh test [..] sync, then run scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/windows.sh ssh [cmd] PowerShell command (or shell) on the instance
+#   ./scripts/cloud/windows.sh get R L  copy C:/fire/R from it to L here
 #   ./scripts/cloud/windows.sh off       stop the instance (end of session)
 #   ./scripts/cloud/windows.sh down      terminate it and delete its security group
 #   ./scripts/cloud/windows.sh status
@@ -184,6 +185,12 @@ test)
 ssh)
 	shift
 	remote "$@"
+	;;
+get)
+	# get REMOTE LOCAL: copy a file (or folder) from the machine (REMOTE
+	# relative to C:/fire) to LOCAL.
+	[ $# -ge 3 ] || { echo "usage: $0 get REMOTE LOCAL" >&2; exit 2; }
+	scp -q -r "${SSH_OPTS[@]}" "Administrator@"$(ip "$(instance_id)")":C:/fire/$2" "$3"
 	;;
 off)
 	id="$(instance_id)"

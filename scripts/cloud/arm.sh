@@ -7,6 +7,7 @@
 #   ./scripts/cloud/arm.sh sync      copy the working tree to ~/fire_engine
 #   ./scripts/cloud/arm.sh test [..] sync, then run ./scripts/test.sh there (args/env passed on)
 #   ./scripts/cloud/arm.sh ssh [cmd] shell or command on the instance
+#   ./scripts/cloud/arm.sh get R L  copy ~/fire_engine/R from it to L here
 #   ./scripts/cloud/arm.sh off       stop the instance (end of session)
 #   ./scripts/cloud/arm.sh down      terminate it and delete its security group
 #   ./scripts/cloud/arm.sh status
@@ -152,6 +153,12 @@ test)
 ssh)
 	shift
 	remote "$@"
+	;;
+get)
+	# get REMOTE LOCAL: copy a file (or folder) from the machine (REMOTE
+	# relative to ~/fire_engine) to LOCAL.
+	[ $# -ge 3 ] || { echo "usage: $0 get REMOTE LOCAL" >&2; exit 2; }
+	scp -q -r "${SSH_OPTS[@]}" "ubuntu@"$(ip "$(instance_id)")":~/fire_engine/$2" "$3"
 	;;
 off)
 	id="$(instance_id)"
