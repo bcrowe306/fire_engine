@@ -8,6 +8,7 @@ import app "app:core"
 import "fire:clip"
 import "fire:dsp"
 import "fire:sampler"
+import "fire:synth"
 import tb "fire:timebase"
 
 // Steps a song can have.
@@ -395,6 +396,22 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 				at := tb.Beats(sg.start + off + pt.beat - lo)
 				v := f64(pt.value)
 				shape := clip.Segment_Shape.Curve if pt.curve != 0 else .Linear
+				// A synth: pitch is its transpose, cutoff and resonance filter 1's
+				// (cutoff as a key, so a lane sweeps it in even steps of pitch).
+				if p.pads[pad].kind == .Synth {
+					#partial switch pt.param {
+					case .Pitch:
+						clip.automation_add_point(&vb, synth.global_param(.Transpose), at, math.round(v), .Step); any_voice = true
+						continue
+					case .Cutoff:
+						key := 69 + 12 * math.log2(max(v, 1) / 440)
+						clip.automation_add_point(&vb, synth.filter_param(1, .Cutoff), at, key, shape, pt.curve); any_voice = true
+						continue
+					case .Resonance:
+						clip.automation_add_point(&vb, synth.filter_param(1, .Resonance), at, v / 100, shape, pt.curve); any_voice = true
+						continue
+					}
+				}
 				switch pt.param {
 				case .Volume:  clip.automation_add_point(&fb, dsp.GAIN_PARAM_DB, at, v, shape, pt.curve); any_fader = true
 				case .Pitch:   clip.automation_add_point(&vb, sampler.SAMPLER_PARAM_TRANSPOSE, at, math.round(v), .Step); any_voice = true

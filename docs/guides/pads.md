@@ -476,7 +476,10 @@ A pad can be a **synth**: a wavetable synthesizer (`fire:synth`; the
 design is in [docs/design/synth.md](/design/synth/)). Right-click a pad and
 choose **Synth** (again to make it a sampler; its patch is kept). It plays
 chromatically: a pad hit plays C3, the piano roll and Keyboard mode play
-its pitches, and an armed track's MIDI plays it.
+its pitches, and an armed track's MIDI plays it (an armed synth taking
+All MIDI too, by key rather than the drum map), pitch bend, the mod wheel
+and channel pressure included. The Pitch, Cutoff and Resonance lanes reach
+its transpose and filter 1.
 
 Its device has eight tabs; on the tab bar's line (or just under it) are
 the **sources**: E1–E6 (envelopes), L1–L8 (LFOs), M1–M4 (macros), velocity,

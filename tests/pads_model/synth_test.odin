@@ -99,3 +99,21 @@ midi_plays_and_bends_an_armed_synth :: proc(t: ^testing.T) {
 	app.host_midi_inject(&r.host, {0x80, 69, 0})
 	render(r, 48_000)
 }
+
+// A Cutoff lane on a synth pad moves its filter 1's cutoff (as a key) as
+// the sequence plays.
+@(test)
+a_cutoff_lane_moves_a_synths_filter :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_lane")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	pm.add_point(m, 0, {pad = 0, param = .Cutoff, beat = 0, value = 200})
+	pm.add_point(m, 0, {pad = 0, param = .Cutoff, beat = 4, value = 3200})
+	pm.play(&m.engine)
+	render(r, 24_000) // half a second at 120 BPM: a beat in
+	key := r.m.engine.nodes[0].synth.values[synth.filter_param(1, .Cutoff)]
+	lo := f32(69 + 12 * math.log2(200.0 / 440))
+	hi := f32(69 + 12 * math.log2(3200.0 / 440))
+	testing.expectf(t, key > lo + 2 && key < hi - 2, "between the points' keys (%v in %v..%v)", key, lo, hi)
+}
