@@ -28,6 +28,49 @@ defer synth.wavetable_destroy(t)
 
 ## Constants
 
+### FILTER_DEFAULTS
+
+```odin
+FILTER_DEFAULTS : Filter_Params : Filter_Params{model = .Analog, style = .Db12, cutoff = 60, resonance = 0.5, mix = 1, formant_x = 0.5, formant_y = 0.5, formant_resonance = 0.85, comb_offset = 42}
+```
+
+Default filter settings.
+
+### FORMANT_STYLES
+
+```odin
+FORMANT_STYLES : [2][4]string : [2][4]string{{"A", "O", "I", "E"}, {"A", "I", "U", "O"}}
+```
+
+Formant styles: the vowels at the corners of the X/Y square (bottom
+left, bottom right, top left, top right).
+
+### COMB_SIZE
+
+```odin
+COMB_SIZE :: 8192
+```
+
+Samples of delay a comb can hold (a side): enough for a 6 Hz comb at 48 kHz.
+
+### COMB_STYLES
+
+```odin
+COMB_STYLES : [6]string : [6]string{"Low High Comb", "Low High Flange+", "Low High Flange-", "Band Spread Comb", "Band Spread Flange+", "Band Spread Flange-"}
+```
+
+Comb styles (`Filter_Params.style` for the Comb model): feedback (comb,
+a positive flange, a negative flange) by filter (a low/high blend, or a
+band whose width the blend sets).
+
+### PHASER_STYLES
+
+```odin
+PHASER_STYLES : [2]string : [2]string{"Positive", "Negative"}
+```
+
+Phaser styles (`Filter_Params.style` for the Phaser model).
+
 ### OSC_MAX_UNISON
 
 ```odin
@@ -127,6 +170,189 @@ shapes and additive recipes; none is copied from anywhere.
 | `Vowels` | a buzz through the formants of a, e, i, o, u |
 | `Sync_Saw` | a saw hard-synced from 1× to 8× its rate |
 | `Drawbars` | organ registrations, flute to full |
+
+### Filter_Model
+
+```odin
+Filter_Model :: enum u8 {
+	Analog,
+	Dirty,
+	Ladder,
+	Digital,
+	Diode,
+	Formant,
+	Comb,
+	Phaser,
+}
+```
+
+A synth voice's filter: one of eight models, each with styles, a
+cutoff (as a key, so modulation moves it in semitones), resonance,
+drive and a blend between its responses.
+
+| Value | Description |
+|-------|-------------|
+| `Analog` | a Sallen-Key: two resonant poles (12 dB) or four (24 dB), driven into tanh |
+| `Dirty` | the analog's poles saturating inside the loop |
+| `Ladder` | four saturating poles with global feedback |
+| `Digital` | a clean state-variable filter |
+| `Diode` | a diode ladder: high-pass before, a nastier resonance |
+| `Formant` | four band-passes on a vowel's formants, moved by X and Y |
+| `Comb` | a tuned delay: combs and flangers |
+| `Phaser` | all-pass stages with resonance: peaks or notches |
+
+### Filter_Style
+
+```odin
+Filter_Style :: enum u8 {
+	Db12,
+	Db24,
+	Notch_Pass_Swap,
+	Dual_Notch_Band,
+	Band_Peak_Notch,
+	Shelving,
+}
+```
+
+A style: how the model is wired. Not every model has every style; each
+says which it takes (see `filter_styles`).
+
+| Value | Description |
+|-------|-------------|
+| `Db12` | 12 dB: low, band and high by the blend |
+| `Db24` | 24 dB |
+| `Notch_Pass_Swap` | low-pass to notch to high-pass |
+| `Dual_Notch_Band` | two notches, the blend moving them |
+| `Band_Peak_Notch` | band-pass to peak to notch |
+| `Shelving` | low shelf, peak, high shelf (Digital) |
+
+### Filter_Params
+
+```odin
+Filter_Params :: struct {
+	model: Filter_Model,
+	style: Filter_Style,
+	cutoff: f32,
+	resonance: f32,
+	drive_db: f32,
+	blend: f32,
+	mix: f32,
+	gain_db: f32,
+	formant_x: f32,
+	formant_y: f32,
+	formant_transpose: f32,
+	formant_resonance: f32,
+	formant_spread: f32,
+	comb_offset: f32,
+}
+```
+
+What a filter does for one render (modulated, in its working units).
+
+| Field | Description |
+|-------|-------------|
+| `model` |  |
+| `style` |  |
+| `cutoff` | as a key (8..136; 60 is middle C) |
+| `resonance` | 0..1 |
+| `drive_db` | 0..20 |
+| `blend` | 0..2: low (0), band (1), high (2) for most styles |
+| `mix` | 0..1: the dry signal against the filtered |
+| `gain_db` | shelving: the shelf's gain |
+| `formant_x` |  |
+| `formant_y` | 0..1: the vowel (Formant) |
+| `formant_transpose` | semitones |
+| `formant_resonance` | 0.3..1 |
+| `formant_spread` | -1..1 |
+| `comb_offset` | semitones the second comb sits above (0..84) |
+
+### Filter_State
+
+```odin
+Filter_State :: struct {
+	model: Filter_Model,
+	set: bool,
+	poles: [2][24]f32,
+	extra: [2][4]f32,
+	last: Filter_Coeffs,
+	formant: Formant_State,
+	comb: Comb_State,
+	phaser: Phaser_State,
+}
+```
+
+One filter of one voice: its model's state, a side each, and the
+coefficients it glides from. Zero it to reset.
+
+| Field | Description |
+|-------|-------------|
+| `model` | the model the state is for (a new one resets it) |
+| `set` |  |
+| `poles` | The analog family's poles (Analog, Dirty: two pre, two main; Ladder, Diode: four; Digital: two integrators), a side each. |
+| `extra` |  |
+| `last` |  |
+| `formant` |  |
+| `comb` |  |
+| `phaser` |  |
+
+### Formant_State
+
+```odin
+Formant_State :: struct {
+	ic: [2][4][2]f32,
+	last: [4][3]f32,
+}
+```
+
+A formant filter's state: four state-variable filters a side, and the
+settings it glides from.
+
+| Field | Description |
+|-------|-------------|
+| `ic` |  |
+| `last` | each formant's key, damping, gain |
+
+### Comb_State
+
+```odin
+Comb_State :: struct {
+	memory: [2][8192]f32,
+	at: int,
+	poles: [2][4]f32,
+	last: [6]f32,
+}
+```
+
+A comb's state: its delay lines, its two filters a side, and the
+settings it glides from.
+
+| Field | Description |
+|-------|-------------|
+| `memory` |  |
+| `at` |  |
+| `poles` |  |
+| `last` | feedback, scale, coefficient 1, coefficient 2, low gain, high gain |
+
+### Phaser_State
+
+```odin
+Phaser_State :: struct {
+	stages: [2][12][2]f32,
+	clean: [2][4]f32,
+	feedback: [2]f32,
+	last: [5]f32,
+}
+```
+
+A phaser's state: twelve all-pass stages a side, two filters that
+keep its feedback in a band, and its last output.
+
+| Field | Description |
+|-------|-------------|
+| `stages` |  |
+| `clean` |  |
+| `feedback` |  |
+| `last` | resonance, drive, peak 1, peak 3, peak 5 |
 
 ### Unison_Stack
 
@@ -446,6 +672,25 @@ builtin_table :: proc(which: Builtin_Table, allocator: mem.Allocator = context.a
 
 Control thread. Makes built-in table `which` (free with
 `wavetable_destroy`).
+
+### key_to_hz
+
+```odin
+key_to_hz :: proc "contextless"(key: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The key a frequency is (key 69 is 440 Hz).
+
+### filter_render
+
+```odin
+filter_render :: proc "contextless"(f: ^Filter_State, p: ^Filter_Params, cutoff: []f32, in_: ^[2][]f32, out: ^[2][]f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Filters `in_` (a channel each) into `out` with `p`, per sample at
+the cutoffs in `cutoff` (keys, one a sample: modulation is in them).
+`out` may be `in_`. Settings glide from the last render's across this
+one.
 
 ### osc_shared_init
 
