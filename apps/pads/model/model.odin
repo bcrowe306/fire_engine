@@ -231,6 +231,7 @@ Project :: struct {
 	bpm:     f64,
 	pads:    [PADS]Pad,
 	samples: app.Store(Sample),
+	wave_docs: app.Store(Wave_Doc), // the project's own wavetables (the wavetable editor's)
 	sequences: [SLOTS]Sequence,
 	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence
 	slot:    int, // the current sequence: what plays and is edited
@@ -301,6 +302,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	p.perform = {arp = {rate = .Sixteenth, gate = 0.5, octaves = 1}, repeat = {rate = .Sixteenth, gate = 0.5}}
 	for &k, key in p.midi_map do k = i16(key) if key < PADS else -1 // note N plays pad N (A1 = 0)
 	app.store_init(&p.samples)
+	app.store_init(&p.wave_docs)
 	strings.intern_init(&p.strings)
 	p.dir = intern(p, dir)
 }
@@ -309,6 +311,7 @@ project_init :: proc(p: ^Project, dir: string) {
 project_destroy :: proc(p: ^Project) {
 	for &s in p.sequences do delete_sequence(&s)
 	app.store_destroy(&p.samples)
+	app.store_destroy(&p.wave_docs)
 	strings.intern_destroy(&p.strings)
 }
 

@@ -188,6 +188,14 @@ The order is "playable first". Each milestone is tested, test-driven
    each voice.
 4. **The wavetable editor**: drawn waves, line shapes, audio slicing, and
    frequency and phase edits.
+
+   Done. `synth.Table_Doc` (keyframes and blend) is built by
+   `table_doc_build`. Pads keeps the project's tables in a store; an
+   oscillator plays one through `Synth_Source.table`. An edit bumps the
+   document's generation, and the engine rebuilds the table at most
+   every 80 ms. A replaced table is freed 2 s later, once every node has
+   taken the patch that replaced it. The editor is a window over the
+   app.
 5. **Presets** in our own format, with a browser and a built-in bank.
 
 Later (in `TODO.md`): MPE (per-note bend, slide and lift as sources) and

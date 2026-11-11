@@ -18,6 +18,7 @@ import "fire:synth"
 Synth_Source :: struct {
 	builtin: u8,     // a `synth.Builtin_Table` (or `synth.Builtin_Noise`)
 	sample:  app.Id, // the project's sample, when not 0
+	table:   app.Id, // the project's own wavetable (the editor's), when not 0
 }
 
 // A synth pad's sound.
@@ -184,6 +185,10 @@ synth_macro_name :: proc(m: ^Model, index: int, n: int) -> string {
 
 // The name of a wavetable choice (a built-in's, or the sample's).
 synth_source_name :: proc(m: ^Model, src: Synth_Source, noise := false) -> string {
+	if src.table != 0 {
+		if app.store_get(&m.project.wave_docs, src.table) != nil do return wave_doc_name(m, src.table)
+		return "(missing)"
+	}
 	if src.sample != 0 {
 		if s := app.store_get(&m.project.samples, src.sample); s != nil do return s.name
 		return "(missing)"

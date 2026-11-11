@@ -147,3 +147,31 @@ def test_a_random_modulator(app):
     app.wait(5)
     app.screenshot("synth_random")
     app.cmd("release 0")
+
+
+def test_the_wavetable_editor(app):
+    synth_pad(app)
+    tab(app, "Osc")
+    app.click("edit wavetable", window="detail")
+    app.click("new table")
+    w = app.state()["wavetable"]
+    assert w["open"] and w["positions"] == [0, 255] and w["sources"] == ["Harmonics", "Harmonics"], w
+    assert app.pad(0)["synth"]["tables"][0] == "Wavetable"
+    # The second keyframe (the saw): its 2nd harmonic dragged to the top.
+    app.cmd("wavetable_key 2")
+    app.wait(2)
+    x0, y0, x1, y1 = [i for i in app.items("harmonics") if i["label"] == "harmonics"][0]["rect"]
+    bw = (x1 - x0 - 24) / 64
+    hx = x0 + 12 + bw * 1.5
+    app.cmd(f"drag {hx} {y0 + 60} {hx} {y0 + 14} 8")
+    app.wait(3)
+    lv = app.state()["wavetable"]["levels"]
+    assert lv[1] > 0.9, lv[:4]
+    assert app.state()["undo"] == "Harmonic Level"
+    # A new keyframe between (double-click on the strip).
+    app.click("keyframes", double=True, at=(0.5, 0.5))
+    w = app.state()["wavetable"]
+    assert len(w["positions"]) == 3 and 100 < w["positions"][2] < 156, w["positions"]
+    app.screenshot("wavetable_editor")
+    app.key("cmd+z")
+    assert len(app.state()["wavetable"]["positions"]) == 2

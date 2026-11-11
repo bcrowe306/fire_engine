@@ -208,6 +208,38 @@ SCOPE_FRAMES :: 2048
 
 Frames of output a synth keeps for drawing.
 
+### TABLE_KEYS
+
+```odin
+TABLE_KEYS :: 16
+```
+
+The most keyframes a table has.
+
+### DRAW_POINTS
+
+```odin
+DRAW_POINTS :: 256
+```
+
+Points a drawn keyframe has across its cycle.
+
+### LINE_POINTS
+
+```odin
+LINE_POINTS :: 32
+```
+
+The most points a line-shape keyframe has.
+
+### TABLE_HARMONICS
+
+```odin
+TABLE_HARMONICS :: 64
+```
+
+Harmonics a harmonics keyframe sets.
+
 ### WAVE_SIZE
 
 ```odin
@@ -1575,6 +1607,85 @@ The node's state.
 | `scope` | The output's last `SCOPE_FRAMES` (its two sides summed), for a UI's oscilloscope and spectrum; `scope_at` is where the next goes. |
 | `scope_at` |  |
 
+### Key_Source
+
+```odin
+Key_Source :: enum u8 {
+	Draw,
+	Lines,
+	Harmonics,
+	Audio,
+}
+```
+
+How a keyframe is made.
+
+| Value | Description |
+|-------|-------------|
+| `Draw` | `draw`: the cycle as drawn, a point each 1/256th |
+| `Lines` | `points`: joined by curves (each its `powers`) |
+| `Harmonics` | `levels` and `phases` of harmonics 1 .. 64 |
+| `Audio` | a cycle of the table's audio, from `audio_at` on |
+
+### Table_Blend
+
+```odin
+Table_Blend :: enum u8 {
+	Crossfade,
+	Spectral,
+}
+```
+
+How the frames between keyframes are made.
+
+| Value | Description |
+|-------|-------------|
+| `Crossfade` | a mix of the two keyframes' waves |
+| `Spectral` | each harmonic's level and phase glided apart |
+
+### Table_Key
+
+```odin
+Table_Key :: struct {
+	position: int,
+	source: Key_Source,
+	draw: [256]f32,
+	points: [32][2]f32,
+	powers: [32]f32,
+	point_count: int,
+	levels: [64]f32,
+	phases: [64]f32,
+	audio_at: f32,
+}
+```
+
+A keyframe.
+
+| Field | Description |
+|-------|-------------|
+| `position` | its frame (0 ..< WAVE_FRAMES) |
+| `source` |  |
+| `draw` | -1..1 |
+| `points` | x 0..1 (rising), y -1..1 |
+| `powers` | the curve from each point to the next |
+| `point_count` |  |
+| `levels` | 0..1 |
+| `phases` | 0..1 (of a cycle) |
+| `audio_at` | 0..1: where in the audio its cycle starts |
+
+### Table_Doc
+
+```odin
+Table_Doc :: struct {
+	keys: [16]Table_Key,
+	count: int,
+	blend: Table_Blend,
+}
+```
+
+A wavetable to edit: its keyframes (`count` of them, in `keys`) and its
+blend.
+
 ### Wavetable
 
 ```odin
@@ -1794,6 +1905,14 @@ modulation are in it). `mod` is the FM or RM source, a channel each
 (nil without). Settings that changed since the last render glide to
 their new values across this one.
 
+### power_scale
+
+```odin
+power_scale :: proc "contextless"(t: f32, power: f32) -> f32
+```
+
+The exponential curve `power` puts on t (0..1); near 0 power, t itself.
+
 ### global_param
 
 ```odin
@@ -2000,6 +2119,45 @@ synth_live :: proc "contextless"(s: ^Synth) -> Synth_Live
 ```
 
 The newest voice, as `Synth_Live` (a copy).
+
+### table_key_default
+
+```odin
+table_key_default :: proc(source: Key_Source, position: int = 0) -> (k: Table_Key)
+```
+
+A keyframe made `source` way, with every way's data set to something
+to start from: a sine (drawn, as lines, as its first harmonic).
+
+### table_doc_default
+
+```odin
+table_doc_default :: proc() -> (d: Table_Doc)
+```
+
+A table to start editing: a sine at the first frame, a saw (its 64
+harmonics) at the last, spectrally blended.
+
+### table_key_render
+
+```odin
+table_key_render :: proc(k: ^Table_Key, audio: []f32, out: []f32)
+```
+
+Keyframe `k` as a cycle into `out` (`WAVE_SIZE`); `audio` is the
+table's sound (mono), for an audio keyframe.
+
+### table_doc_build
+
+```odin
+table_doc_build :: proc(name: string, d: ^Table_Doc, audio: []f32, allocator: mem.Allocator = context.allocator) -> (t: ^Wavetable, err: core.Error)
+```
+
+Control thread. The wavetable `d` makes, called `name`: one frame for
+one keyframe, else `WAVE_FRAMES` with each keyframe at its frame (the
+first held back to frame 0, the last on to the end) and those between
+blended. `audio` (mono) is what audio keyframes slice. Free with
+`wavetable_destroy`.
 
 ### wavetable_make
 

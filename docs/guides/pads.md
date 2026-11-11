@@ -510,6 +510,29 @@ the newest note has it now. Drag the ring's end up or down for the amount
   The **Morph** knob sets how far. Formant scale, the two stretches and
   skew do nothing at 50%; the others do nothing at 0. The view draws
   the playing frame as morphed.
+- **The wavetable editor** (the pencil beside an oscillator's wavetable)
+  opens a window over the app. A built-in table can't be edited: start
+  a **New table** (a sine to a saw) or **Edit a copy** of the one
+  playing (up to four of its frames, as drawn keyframes). A table has up
+  to 16 keyframes, each at a frame. On the strip along the top, click one
+  to edit it, drag it along, or double-click between two for a new one;
+  **+** adds one halfway to the next, the bin removes the chosen one.
+  Each keyframe is made one of four ways:
+  - **Draw**: drag across the cycle to draw it.
+  - **Lines**: points joined by curves. Drag a point, double-click for a
+    new one, right-click one to remove it; drag a line's middle dot to
+    bend it.
+  - **Harmonics**: 64 bars for the levels, and below them the phases;
+    drag across them.
+  - **Audio**: a cycle of the table's sound (drop one on it); drag along
+    the sound to choose where.
+
+  Frames between keyframes **Crossfade** (a mix of the two waves) or are
+  **Spectral** (each harmonic's level and phase glide), as the table is
+  set. The 3D view beside shows the table as built, the keyframe lit.
+  Every edit is one undo step, the table is saved with the project, and
+  the sound follows within a tenth of a second. Tables of the project's
+  own are also listed in each oscillator's wavetable menu.
 - **Filter**: two filters side by side: analog, dirty, ladder, digital,
   diode, formant, comb or phaser, each with its styles. The response is
   measured from the filter itself and drawn; drag its handle for cutoff
@@ -884,7 +907,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
-| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob) |
+| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone) |
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |

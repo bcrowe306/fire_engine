@@ -20,7 +20,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 16 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order
+PROJECT_VERSION :: 17 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -126,6 +126,28 @@ project_chunks :: proc(p: ^Project) -> []session.App_Chunk {
 			fc.write_i64(w, s.frames)
 			fc.write_f64(w, s.rate)
 			fc.write_int(w, s.channels)
+		})
+	}, p)
+	chunk(&out, proc(w: ^fc.State_Writer, p: ^Project) {
+		app.store_save(w, WAVETABLES_TAG, 1, &p.wave_docs, proc(w: ^fc.State_Writer, d: ^Wave_Doc) {
+			fc.write_string(w, strings.truncate_to_byte(string(d.name[:]), 0))
+			fc.write_u64(w, u64(d.sample))
+			fc.write_u8(w, u8(d.doc.blend))
+			fc.write_int(w, d.doc.count)
+			for &k in d.doc.keys[:clamp(d.doc.count, 0, synth.TABLE_KEYS)] {
+				fc.write_int(w, k.position)
+				fc.write_u8(w, u8(k.source))
+				for v in k.draw do fc.write_f32(w, v)
+				fc.write_int(w, k.point_count)
+				for q in 0 ..< synth.LINE_POINTS {
+					fc.write_f32(w, k.points[q][0])
+					fc.write_f32(w, k.points[q][1])
+					fc.write_f32(w, k.powers[q])
+				}
+				for v in k.levels do fc.write_f32(w, v)
+				for v in k.phases do fc.write_f32(w, v)
+				fc.write_f32(w, k.audio_at)
+			}
 		})
 	}, p)
 	chunk(&out, write_project, p)
@@ -375,6 +397,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		for t in sy.tables {
 			fc.write_u8(w, t.builtin)
 			fc.write_u64(w, u64(t.sample))
+			fc.write_u64(w, u64(t.table)) // v17
 		}
 		fc.write_u8(w, sy.sample.builtin)
 		fc.write_u64(w, u64(sy.sample.sample))
@@ -389,6 +412,30 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 project_read :: proc(p: ^Project, l: session.Loaded) -> fc.Error {
 	if c, ok := session.find_extra(l, app.DOCUMENT_TAG); ok {
 		app.document_load({c.tag, c.version, c.data}, &p.ids) or_return
+	}
+	if c, ok := session.find_extra(l, WAVETABLES_TAG); ok {
+		app.store_load({c.tag, c.version, c.data}, &p.wave_docs, proc(r: ^fc.State_Reader, version: u32, d: ^Wave_Doc) -> bool {
+			copy(d.name[:len(d.name) - 1], fc.read_string(r))
+			d.sample = app.Id(fc.read_u64(r))
+			d.doc.blend = synth.Table_Blend(min(fc.read_u8(r), u8(max(synth.Table_Blend))))
+			d.doc.count = clamp(fc.read_int(r), 1, synth.TABLE_KEYS)
+			for &k in d.doc.keys[:d.doc.count] {
+				k.position = clamp(fc.read_int(r), 0, synth.WAVE_FRAMES - 1)
+				k.source = synth.Key_Source(min(fc.read_u8(r), u8(max(synth.Key_Source))))
+				for &v in k.draw do v = clamp(fc.read_f32(r), -1, 1)
+				k.point_count = clamp(fc.read_int(r), 1, synth.LINE_POINTS)
+				for q in 0 ..< synth.LINE_POINTS {
+					k.points[q] = {clamp(fc.read_f32(r), 0, 1), clamp(fc.read_f32(r), -1, 1)}
+					k.powers[q] = clamp(fc.read_f32(r), -20, 20)
+				}
+				for &v in k.levels do v = clamp(fc.read_f32(r), 0, 1)
+				for &v in k.phases do v = clamp(fc.read_f32(r), 0, 1)
+				k.audio_at = clamp(fc.read_f32(r), 0, 1)
+			}
+			wave_gen += 1
+			d.gen = wave_gen
+			return true
+		}) or_return
 	}
 	if c, ok := session.find_extra(l, SAMPLES_TAG); ok {
 		@(static) project: ^Project
@@ -682,7 +729,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 				if s.sample != 0 && app.store_get(&p.samples, s.sample) == nil do s.sample = 0
 				return
 			}
-			for &t in sy.tables do t = read_source(r, p)
+			for &t in sy.tables {
+				t = read_source(r, p)
+				if version >= 17 do t.table = app.Id(fc.read_u64(r))
+			}
 			sy.sample = read_source(r, p)
 			for &name in sy.macro_names {
 				name = {}

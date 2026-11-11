@@ -17,6 +17,9 @@ Synth_Cache :: struct {
 	noise:   [synth.Builtin_Noise]^synth.Sample,
 	imported_tables:  map[app.Id]^synth.Wavetable,
 	imported_samples: map[app.Id]^synth.Sample,
+	docs:      map[app.Id]Built_Doc,   // the project's own tables, as last built
+	doc_audio: map[app.Id][]f32,       // the sounds they slice
+	retired:   [dynamic]Retired_Table, // replaced, to free soon
 }
 
 // Frees what the cache made (once no synth node can be playing it).
@@ -25,8 +28,14 @@ synth_cache_destroy :: proc(c: ^Synth_Cache) {
 	for s in c.noise do synth.sample_destroy(s)
 	for _, t in c.imported_tables do synth.wavetable_destroy(t)
 	for _, s in c.imported_samples do synth.sample_destroy(s)
+	for _, b in c.docs do synth.wavetable_destroy(b.table)
+	for r in c.retired do synth.wavetable_destroy(r.table)
+	for _, a in c.doc_audio do delete(a)
 	delete(c.imported_tables)
 	delete(c.imported_samples)
+	delete(c.docs)
+	delete(c.doc_audio)
+	delete(c.retired)
 	c^ = {}
 }
 
@@ -34,6 +43,7 @@ synth_cache_destroy :: proc(c: ^Synth_Cache) {
 // a sample read as frames of 2048 (a shorter one stretched into one).
 synth_table :: proc(e: ^Engine, src: Synth_Source) -> ^synth.Wavetable {
 	c := &e.synth_cache
+	if src.table != 0 do return doc_table(e, src.table)
 	if src.sample == 0 {
 		b := synth.Builtin_Table(min(src.builtin, u8(max(synth.Builtin_Table))))
 		if c.tables[b] == nil do c.tables[b], _ = synth.builtin_table(b)
@@ -107,7 +117,14 @@ sync_synth :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: ^Pad, fresh: bool) {
 		id := spec.id
 		if was.values[id] != now.values[id] do graph.set_param(g, n.voice, id, f64(now.values[id]))
 	}
-	if bulk || was.route_count != now.route_count || was.routes != now.routes || was.shapes != now.shapes || was.tables != now.tables || was.sample != now.sample || was.fx_order != now.fx_order {
+	free_retired_tables(e)
+	edited := false // (a table of the project's changed)
+	for src in now.tables do if src.table != 0 {
+		changed, due := doc_stale(e, src.table)
+		if due do edited = true
+		else if changed do mark(e, i) // (not yet: look again next time)
+	}
+	if bulk || edited || was.route_count != now.route_count || was.routes != now.routes || was.shapes != now.shapes || was.tables != now.tables || was.sample != now.sample || was.fx_order != now.fx_order {
 		p := synth.patch_default()
 		if bulk {
 			p.values = now.values

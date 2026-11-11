@@ -34,7 +34,8 @@ plan before it is built.
      (Perlin, sample and hold, sine glide, Lorenz). Spectral unison (each
      unison pair its own morphed buffer) waits on the voice budget: 8× the
      rebuilds, 128 KB an oscillator a voice.
-  4. The wavetable editor.
+  4. The wavetable editor — done: drawn, line, harmonic and audio
+     keyframes, crossfade or spectral blends, a window over the app.
   5. Presets (our own format, a built-in bank).
   - Later: MPE (per-note bend, slide, lift) and microtuning (.scl/.kbm/.tun).
 - **Effects from the synth as inserts** — the nine `fire:fx` effects

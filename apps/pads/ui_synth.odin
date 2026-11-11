@@ -413,14 +413,25 @@ draw_synth_osc :: proc(a: ^App) {
 		im.SameLine(0, 14)
 		im.SetNextItemWidth(150)
 		if ui.combo("##table", fmt.ctprintf("%s  %s", ui.ICON_AUDIO_WAVEFORM, pm.synth_source_name(m, sy.tables[st.osc]))) {
-			for b in synth.Builtin_Table do if im.Selectable(fmt.ctprintf("%s###tb%d", synth.BUILTIN_NAMES[b], int(b)), sy.tables[st.osc].sample == 0 && int(sy.tables[st.osc].builtin) == int(b)) {
+			cur := sy.tables[st.osc]
+			for b in synth.Builtin_Table do if im.Selectable(fmt.ctprintf("%s###tb%d", synth.BUILTIN_NAMES[b], int(b)), cur.sample == 0 && cur.table == 0 && int(cur.builtin) == int(b)) {
 				pm.set_synth_table(m, i, st.osc, {builtin = u8(b)})
+			}
+			if app.store_len(&m.project.wave_docs) > 0 {
+				im.Separator()
+				im.TextDisabled("The project's own")
+				for it in m.project.wave_docs.items do if im.Selectable(fmt.ctprintf("%s###wd%d", pm.wave_doc_name(m, it.id), u64(it.id)), cur.table == it.id) {
+					pm.set_synth_table(m, i, st.osc, {table = it.id})
+				}
 			}
 			im.Separator()
 			im.TextDisabled("Or drop an audio file on the view")
 			im.EndCombo()
 		}
 		ui.name("wavetable")
+		im.SameLine(0, 4)
+		if ui.icon_button(ui.ICON_PENCIL, "Edit this wavetable (a copy, if it is built in)") do open_wave_editor(a, st.osc)
+		ui.name("edit wavetable")
 		im.SameLine(0, 14)
 		synth_choice(a, synth.osc_param(o, .Destination), DESTINATION_NAMES, 110, "##dest")
 		ui.flow(100, 14)

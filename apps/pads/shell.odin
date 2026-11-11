@@ -627,6 +627,27 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			return true
 		}
 		return false
+	case "wavetable_editor": // wavetable_editor OSC [new|copy|close]: the editor on oscillator OSC (1..3) of the selected pad
+		o := num(w, 1)
+		if o < 1 || o > synth.OSCS do return false
+		open_wave_editor(a, o - 1)
+		if len(w) > 2 && w[2] == "new" do pm.new_wave_doc(&a.m, a.selected, o - 1)
+		if len(w) > 2 && w[2] == "copy" do pm.new_wave_doc(&a.m, a.selected, o - 1, true)
+		if len(w) > 2 && w[2] == "close" do a.wte.open = false
+		return true
+	case "wavetable_key": // wavetable_key K [draw|lines|harmonics|audio]: choose keyframe K (1..) in the editor, and its source
+		k := num(w, 1)
+		a.wte.key = k - 1
+		if len(w) > 2 {
+			src := a.m.project.pads[a.wte.pad].synth.tables[a.wte.osc]
+			d := app.store_get(&a.m.project.wave_docs, src.table)
+			if d == nil || k < 1 || k > d.doc.count do return false
+			x := d^
+			for s, n in KEY_SOURCE_NAMES do if strings.to_lower(s, context.temp_allocator) == w[2] do x.doc.keys[k - 1].source = synth.Key_Source(n)
+			pm.set_wave_doc(&a.m, src.table, x, "Keyframe Source")
+			app.seal(&a.m.history)
+		}
+		return true
 	case "synth_lfo": // synth_lfo K: the LFO tab shows LFO K (1..8) or random modulator K - 8 (9..12)
 		k := num(w, 1)
 		if k < 1 || k > synth.LFOS + synth.RANDOMS do return false

@@ -2,6 +2,7 @@ package test_pads_model
 
 import "core:math"
 import "core:testing"
+import "core:time"
 
 import app "app:core"
 import fc "fire:core"
@@ -185,4 +186,49 @@ a_synths_effects_reorder_and_sound :: proc(t: ^testing.T) {
 	defer rig_destroy(r2)
 	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
 	testing.expect(t, r2.m.project.pads[0].synth == m.project.pads[0].synth, "the order and effects saved")
+}
+
+// A wavetable of the project's own: made for an oscillator, it plays
+// (a sine at frame 0); an edit (its first keyframe a saw's harmonics)
+// reaches the sound; undone, it is a sine again; saved and loaded whole.
+@(test)
+a_projects_wavetable_plays_and_saves :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_wave_doc")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	pm.set_synth_value(m, 0, synth.filter_param(1, .On), 0, "Filter")
+	pm.set_synth_value(m, 0, synth.osc_param(1, .Random_Phase), 0, "Phase")
+	id := pm.new_wave_doc(m, 0, 0)
+	testing.expect(t, id != 0 && m.project.pads[0].synth.tables[0].table == id, "the oscillator plays it")
+	testing.expect_value(t, pm.synth_source_name(m, m.project.pads[0].synth.tables[0]), "Wavetable")
+	render(r, 256)
+	harmonic2 :: proc(r: ^Rig) -> f64 {
+		pm.hit(&r.m.engine, 0, true, 1)
+		out := render(r, 9_600)
+		pm.hit(&r.m.engine, 0, false, 0)
+		render(r, 24_000)
+		return kit.tone_amplitude(out[0][4800:], SR, 523.25) / max(kit.tone_amplitude(out[0][4800:], SR, 261.63), 1e-9)
+	}
+	testing.expectf(t, harmonic2(r) < 0.05, "a sine at frame 0 (%v)", harmonic2(r))
+	d := app.store_get(&m.project.wave_docs, id)^
+	for h in 0 ..< synth.TABLE_HARMONICS do d.doc.keys[0].levels[h] = 1 / f32(h + 1)
+	pm.set_wave_doc(m, id, d, "Harmonic Level")
+	app.seal(&m.history)
+	time.sleep(100 * time.Millisecond) // (rebuilt no sooner than 80 ms after the last)
+	render(r, 256)
+	testing.expectf(t, abs(harmonic2(r) - 0.5) < 0.1, "edited: a saw (%v)", harmonic2(r))
+	app.undo(&m.history)
+	time.sleep(100 * time.Millisecond)
+	render(r, 256)
+	testing.expectf(t, harmonic2(r) < 0.05, "undone: a sine again")
+	app.redo(&m.history)
+
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	r2 := rig_make(t, "synth_wave_doc_load")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
+	got := app.store_get(&r2.m.project.wave_docs, id)
+	testing.expect(t, got != nil && got.doc == app.store_get(&m.project.wave_docs, id).doc, "the table saved whole")
+	testing.expect_value(t, r2.m.project.pads[0].synth.tables[0].table, id)
 }

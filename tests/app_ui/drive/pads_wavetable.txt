@@ -1,0 +1,17 @@
+# The wavetable editor: a new table (a sine to a saw), each source's editor.
+size 1440 900
+synth 0
+select 0
+synth_tab osc
+wavetable_editor 1 new
+wait 10
+screenshot wavetable_harmonics
+wavetable_key 2 lines
+wait 10
+screenshot wavetable_lines
+wavetable_key 1 draw
+wait 10
+screenshot wavetable_draw
+wavetable_key 1 audio
+wait 10
+screenshot wavetable_audio

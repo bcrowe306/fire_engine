@@ -17,6 +17,7 @@ State :: struct {
 	selected:   int,
 	bank:       int,
 	keyboard:   [16]string, // Keyboard mode: the note each pad of the grid plays ("": none)
+	wavetable:  State_Wavetable, // the wavetable editor (when open on a table of the project's)
 	play_mode:  string,
 	detail_tab: string, // the sampler's tab in front, or "EQ", or "Effect"
 	track:      string, // what the bottom panel shows: "pad 1", "bus 1" (5: main), "perf 1"
@@ -100,6 +101,18 @@ State_Route :: struct {
 	source, dest: string,
 	amount:       f32,
 	bipolar:      bool,
+}
+
+// The wavetable editor's table: its name, keyframes (each its frame and
+// source), the chosen one and its harmonics' levels.
+State_Wavetable :: struct {
+	open:      bool,
+	name:      string,
+	blend:     string,
+	positions: []int,
+	sources:   []string,
+	key:       int,
+	levels:    []f32,
 }
 
 // A slicer pad's slices (each start, level, pitch) and how they play.
@@ -214,6 +227,19 @@ state_json :: proc(a: ^App) -> string {
 			ps: [4]int
 			notes := keyboard_notes(a, k, &ps)
 			s.keyboard[k] = fmt.tprintf("%s", ui.note_name(60 + notes[0])) if keyboard_in_range(notes) else ""
+		}
+	}
+	if a.wte.open && a.wte.pad >= 0 && a.wte.pad < pm.PADS {
+		src := p.pads[a.wte.pad].synth.tables[a.wte.osc]
+		if d := app.store_get(&p.wave_docs, src.table); d != nil {
+			w := &s.wavetable
+			w.open, w.name, w.blend, w.key = true, pm.wave_doc_name(m, src.table), enum_name(d.doc.blend), a.wte.key
+			w.positions = make([]int, d.doc.count, context.temp_allocator)
+			w.sources = make([]string, d.doc.count, context.temp_allocator)
+			for k in 0 ..< d.doc.count do w.positions[k], w.sources[k] = d.doc.keys[k].position, enum_name(d.doc.keys[k].source)
+			kk := clamp(a.wte.key, 0, d.doc.count - 1)
+			w.levels = make([]f32, synth.TABLE_HARMONICS, context.temp_allocator)
+			copy(w.levels, d.doc.keys[kk].levels[:])
 		}
 	}
 	s.play_mode = enum_name(a.play_mode)

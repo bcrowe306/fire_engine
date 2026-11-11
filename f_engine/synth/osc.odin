@@ -269,7 +269,6 @@ osc_set_targets :: proc "contextless" (s: ^Osc_State, p: ^Osc_Params, unison, pa
 }
 
 // The exponential curve `power` puts on t (0..1); near 0 power, t itself.
-@(private)
 power_scale :: proc "contextless" (t, power: f32) -> f32 {
 	if abs(power) < 0.01 do return t
 	return (math.exp(power * t) - 1) / (math.exp(power) - 1)
