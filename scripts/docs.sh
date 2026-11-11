@@ -12,7 +12,7 @@ cd "$ROOT"
 
 # package dir (under f_engine/) [: target for OS-specific packages]
 PACKAGES=(
-	core timebase rt dsp graph transport link audiofile audiofile/codecs stream clip record sampler clap clap/sdk surface session stretch perform
+	core timebase rt dsp graph transport link audiofile audiofile/codecs stream clip record sampler synth clap clap/sdk surface session stretch perform
 	backend backend/fake backend/jack
 	backend/coreaudio:darwin_arm64 backend/alsa:linux_amd64 backend/wasapi:windows_amd64 backend/asio:windows_amd64
 	midi midi/coremidi:darwin_arm64 midi/alsa:linux_amd64 midi/winmm:windows_amd64
