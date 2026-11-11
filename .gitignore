@@ -5,6 +5,7 @@
 *.dSYM/
 .DS_Store
 JUCE/
+vital/
 .build/
 tracktion_engine/
 
