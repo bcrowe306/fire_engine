@@ -71,6 +71,62 @@ PHASER_STYLES : [2]string : [2]string{"Positive", "Negative"}
 
 Phaser styles (`Filter_Params.style` for the Phaser model).
 
+### ENV_DEFAULTS
+
+```odin
+ENV_DEFAULTS : Env_Params : Env_Params{attack = 0.0005, decay = 1, sustain = 1, release = 0.09, decay_power = -2, release_power = -2}
+```
+
+Default envelope settings (an amp envelope's).
+
+### ENV_KILL_SECONDS
+
+```odin
+ENV_KILL_SECONDS :: 0.05
+```
+
+Seconds a killed envelope (a stolen voice) takes to fall to nothing.
+
+### LFO_MAX_POINTS
+
+```odin
+LFO_MAX_POINTS :: 64
+```
+
+The most points an LFO shape has.
+
+### LFO_RESOLUTION
+
+```odin
+LFO_RESOLUTION :: 2048
+```
+
+Values in a rendered LFO shape (one cycle).
+
+### LFO_TEMPO_RATIOS
+
+```odin
+LFO_TEMPO_RATIOS : [13]f32 : [13]f32{0, 1.0 / 128, 1.0 / 64, 1.0 / 32, 1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0 / 2, 1, 2, 4, 8, 16}
+```
+
+Tempo divisions (the `Lfo_Params.tempo` index): cycles a beat.
+
+### LFO_TEMPO_NAMES
+
+```odin
+LFO_TEMPO_NAMES : [13]string : [13]string{"Freeze", "32/1", "16/1", "8/1", "4/1", "2/1", "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64"}
+```
+
+Their names (as bars and notes).
+
+### LFO_DEFAULTS
+
+```odin
+LFO_DEFAULTS : Lfo_Params : Lfo_Params{mode = .Trigger, rate = .Tempo, hz = 2, tempo = 7, key_transpose = -12, smooth_time = 0.0055}
+```
+
+Default LFO settings: retriggered, a cycle every two beats.
+
 ### OSC_MAX_UNISON
 
 ```odin
@@ -353,6 +409,200 @@ keep its feedback in a band, and its last output.
 | `clean` |  |
 | `feedback` |  |
 | `last` | resonance, drive, peak 1, peak 3, peak 5 |
+
+### Env_Params
+
+```odin
+Env_Params :: struct {
+	delay: f32,
+	attack: f32,
+	hold: f32,
+	decay: f32,
+	release: f32,
+	sustain: f32,
+	attack_power: f32,
+	decay_power: f32,
+	release_power: f32,
+}
+```
+
+An envelope's settings: times in seconds, sustain 0..1, and each
+curved segment's power (0 straight). A negative decay or release power
+drops fast, then slows (as a natural decay does); a positive attack
+power rises fast, then slows.
+
+### Env_Stage
+
+```odin
+Env_Stage :: enum u8 {
+	Done,
+	Delay,
+	Attack,
+	Hold,
+	Decay,
+	Release,
+	Kill,
+}
+```
+
+Where an envelope is.
+
+### Env_State
+
+```odin
+Env_State :: struct {
+	stage: Env_Stage,
+	pos: f32,
+	value: f32,
+	start: f32,
+}
+```
+
+An envelope of one voice. Zero is done (silent).
+
+| Field | Description |
+|-------|-------------|
+| `stage` |  |
+| `pos` | 0..1 through the stage |
+| `value` |  |
+| `start` | the level the stage began from (attack, release, kill) |
+
+### Lfo_Shape
+
+```odin
+Lfo_Shape :: struct {
+	points: [64][2]f32,
+	powers: [64]f32,
+	count: int,
+	smooth: bool,
+}
+```
+
+An LFO's shape: points (x 0..1 across the cycle, y 0..1 its value)
+joined by segments, each with a power (its curve), smoothed with an
+S-curve if `smooth`. Render it with `lfo_shape_render` into a table.
+
+| Field | Description |
+|-------|-------------|
+| `points` |  |
+| `powers` | the segment after each point |
+| `count` |  |
+| `smooth` |  |
+
+### Lfo_Preset
+
+```odin
+Lfo_Preset :: enum u8 {
+	Triangle,
+	Sine,
+	Saw_Up,
+	Saw_Down,
+	Square,
+	Ramp_Envelope,
+}
+```
+
+Shapes an LFO can start from.
+
+### Lfo_Mode
+
+```odin
+Lfo_Mode :: enum u8 {
+	Trigger,
+	Sync,
+	Envelope,
+	Sustain_Envelope,
+	Loop_Point,
+	Loop_Hold,
+}
+```
+
+How an LFO runs against its note.
+
+| Value | Description |
+|-------|-------------|
+| `Trigger` | restarts with each note, loops |
+| `Sync` | loops in step with the song (the transport's position), whatever the note |
+| `Envelope` | runs once from each note, then holds |
+| `Sustain_Envelope` | runs to its phase point while the note is held, then on to the end |
+| `Loop_Point` | once through, then loops from its phase point |
+| `Loop_Hold` | loops up to its phase point while held, then on to the end |
+
+### Lfo_Rate
+
+```odin
+Lfo_Rate :: enum u8 {
+	Seconds,
+	Tempo,
+	Dotted,
+	Triplet,
+	Keytrack,
+}
+```
+
+What sets an LFO's rate.
+
+### Lfo_Params
+
+```odin
+Lfo_Params :: struct {
+	mode: Lfo_Mode,
+	rate: Lfo_Rate,
+	hz: f32,
+	tempo: int,
+	key_transpose: f32,
+	key_tune: f32,
+	phase: f32,
+	fade: f32,
+	delay: f32,
+	smooth: bool,
+	smooth_time: f32,
+	stereo: f32,
+}
+```
+
+An LFO's settings.
+
+| Field | Description |
+|-------|-------------|
+| `mode` |  |
+| `rate` |  |
+| `hz` | Seconds: cycles a second |
+| `tempo` | Tempo, Dotted, Triplet: an index into LFO_TEMPO_RATIOS |
+| `key_transpose` |  |
+| `key_tune` | Keytrack: semitones off the note |
+| `phase` | 0..1: where it starts (or its loop or hold point) |
+| `fade` | seconds to fade in, from the shape's start value |
+| `delay` | seconds before it starts |
+| `smooth` | glide toward the shape (a half-life of `smooth_time` / 5) |
+| `smooth_time` | seconds |
+| `stereo` | -0.5..0.5: the right side's phase offset from the left |
+
+### Lfo_State
+
+```odin
+Lfo_State :: struct {
+	offset: f64,
+	waited: f32,
+	fade: f32,
+	smooth: [2]f32,
+	held: bool,
+	value: [2]f32,
+	phase: f32,
+}
+```
+
+One LFO of one voice (or a free one): where it is, a side each.
+
+| Field | Description |
+|-------|-------------|
+| `offset` | cycles since it started (wrapped when looping) |
+| `waited` | seconds since the note (for the delay) |
+| `fade` | 0..1 |
+| `smooth` |  |
+| `held` |  |
+| `value` | its value now, left and right (0..1) |
+| `phase` | the phase it read at (for drawing a dot) |
 
 ### Unison_Stack
 
@@ -691,6 +941,113 @@ filter_render :: proc "contextless"(f: ^Filter_State, p: ^Filter_Params, cutoff:
 the cutoffs in `cutoff` (keys, one a sample: modulation is in them).
 `out` may be `in_`. Settings glide from the last render's across this
 one.
+
+### env_gate_on
+
+```odin
+env_gate_on :: proc "contextless"(e: ^Env_State, p: ^Env_Params)
+```
+
+**Realtime-safe** (callable on the audio thread). A note starts it: from where it is (so a retrigger doesn't click),
+through the delay if it has one.
+
+### env_gate_off
+
+```odin
+env_gate_off :: proc "contextless"(e: ^Env_State)
+```
+
+**Realtime-safe** (callable on the audio thread). The note ends: it releases from where it is.
+
+### env_kill
+
+```odin
+env_kill :: proc "contextless"(e: ^Env_State)
+```
+
+**Realtime-safe** (callable on the audio thread). The voice is stolen: a quick fall to nothing.
+
+### env_step
+
+```odin
+env_step :: proc "contextless"(e: ^Env_State, p: ^Env_Params, dt: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). Moves it on by `dt` seconds and returns its value then.
+
+### env_render
+
+```odin
+env_render :: proc "contextless"(e: ^Env_State, p: ^Env_Params, out: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Renders it a sample at a time into `out` (for an amp envelope).
+
+### env_done
+
+```odin
+env_done :: proc "contextless"(e: ^Env_State) -> bool
+```
+
+**Realtime-safe** (callable on the audio thread). Whether it has finished (released to nothing).
+
+### lfo_preset
+
+```odin
+lfo_preset :: proc "contextless"(which: Lfo_Preset) -> (s: Lfo_Shape)
+```
+
+The shape of preset `which`.
+
+### lfo_shape_render
+
+```odin
+lfo_shape_render :: proc "contextless"(s: ^Lfo_Shape, table: []f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Renders `s` into `table` (`LFO_RESOLUTION` values, one cycle).
+
+### lfo_table_at
+
+```odin
+lfo_table_at :: proc "contextless"(table: []f32, phase: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The value of a rendered shape at `phase` (0..1), interpolated.
+
+### lfo_hz
+
+```odin
+lfo_hz :: proc "contextless"(p: ^Lfo_Params, bpm: f64, note: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The rate an LFO runs at, in cycles a second.
+
+### lfo_note_on
+
+```odin
+lfo_note_on :: proc "contextless"(l: ^Lfo_State, p: ^Lfo_Params, hz: f32, song_seconds: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). A note starts it. In Sync mode it starts where the song is
+(`song_seconds` into it at `hz`).
+
+### lfo_note_off
+
+```odin
+lfo_note_off :: proc "contextless"(l: ^Lfo_State)
+```
+
+**Realtime-safe** (callable on the audio thread). The note is let go (the sustain and hold modes move on).
+
+### lfo_step
+
+```odin
+lfo_step :: proc "contextless"(l: ^Lfo_State, p: ^Lfo_Params, table: []f32, hz: f32, dt: f32) -> [2]f32
+```
+
+**Realtime-safe** (callable on the audio thread). Moves it on by `dt` seconds at `hz` and returns its values (left,
+right; 0..1) from the rendered shape `table`.
 
 ### osc_shared_init
 
