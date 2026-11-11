@@ -116,10 +116,12 @@ for other toggles.
     faintly and, brightly, the filter as it is now — its envelope, the
     velocity, key tracking, LFOs and automation all move it. Drag its
     handle sideways for the cutoff and up for resonance (Shift: fine).
-    Beside it the filter's own envelope (drawn as deep as its amount);
-    knobs for cutoff, resonance, key tracking, velocity, the envelope's
-    amount and its A, D, S, R.
-  - **Pitch**: the pitch envelope (upside down for a negative amount),
+    Beside it the filter's own envelope, the full height of its plot
+    (upside down for a negative amount, faint at none). The filter's knobs
+    (cutoff, resonance, key tracking, velocity, the envelope's amount)
+    spread under the response, the envelope's A, D, S, R under it.
+  - **Pitch**: the pitch envelope, full height (upside down for a negative
+    amount, faint at none),
     how many semitones it has the newest note at now, and knobs for its
     amount, velocity to pitch, key tracking and A, D, S, R.
   - **LFO**: two, side by side: a shape (sine, triangle, saw up and down,

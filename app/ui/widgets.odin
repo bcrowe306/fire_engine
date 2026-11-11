@@ -40,6 +40,12 @@ col :: proc "contextless" (c: Color) -> u32 {
 	return im.GetColorU32Vec4(transmute(im.Vec4)c)
 }
 
+// How wide `knob(label, ...)` is, `size` across: the knob or its label,
+// whichever is wider (to lay knobs out before drawing them).
+knob_width :: proc(label: cstring, size: f32 = KNOB_SIZE) -> f32 {
+	return max(size, im.CalcTextSize(shown_label(label)).x)
+}
+
 // A rotary knob: drag up and down (Shift for fine), scroll, double-click
 // to reset to `default`. Shows `format` of the value under it, and the
 // label above. With `log_scale` (min_v > 0) it turns in ratios: times and

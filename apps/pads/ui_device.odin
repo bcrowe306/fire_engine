@@ -68,6 +68,42 @@ put_voice :: proc(a: ^App, key: Voice_Key, step: string, v: pm.Voice) {
 }
 
 // The height of a row of knobs.
+// A row of controls spread across `w` from `x0` (screen): each in the
+// middle of its own equal column (see `spread_next`).
+@(private)
+Spread :: struct {
+	x0, y, w: f32,
+	n, k:     int,
+	used:     f32, // how far across the knobs so far reach
+}
+
+// A spread of `n` knobs from the cursor, `w` wide (0: the rest of the row).
+@(private)
+spread_begin :: proc(n: int, w: f32 = 0) -> Spread {
+	p := im.GetCursorScreenPos()
+	return {x0 = p.x, y = p.y, w = w if w > 0 else im.GetContentRegionAvail().x, n = max(n, 1)}
+}
+
+// Places the cursor for the next knob, labelled `label`, in the middle of
+// its column (wider than an equal share when the knob needs it, so that
+// in a narrow panel they never overlap).
+@(private)
+spread_next :: proc(s: ^Spread, label: cstring) {
+	kw := ui.knob_width(label)
+	col := max(s.w / f32(s.n), kw + 12)
+	im.SetCursorScreenPos({s.x0 + s.used + (col - kw) / 2, s.y})
+	s.used += col
+	s.k += 1
+}
+
+// An envelope's depth as `ui.adsr_plot` draws it: full height, upside down
+// when negative, and its colour faint at no depth (it does nothing then).
+@(private)
+env_depth :: proc(amount: f32, color: ui.Color) -> (sign: f32, c: ui.Color) {
+	sign = -1 if amount < 0 else 1
+	return sign, ui.mix(ui.PLOT_BG, color, 0.5 + 0.5 * clamp(abs(amount), 0, 1))
+}
+
 @(private)
 knob_row_h :: proc() -> f32 {
 	return im.GetTextLineHeight() * 2 + ui.KNOB_SIZE + 6 + 3 * im.GetStyle().ItemSpacing.y + 8
@@ -92,12 +128,14 @@ draw_env :: proc(a: ^App) {
 	}
 	if e.ended do app.seal(&m.history)
 	im.Spacing()
+	row := spread_begin(4, avail.x)
+	spread_next(&row, "Attack")
 	knob_f32(a, "Attack", &pad.attack, 0.0005, 10, 0.001, "%.3f s", .Attack, "Set Attack", log_scale = true)
-	im.SameLine(0, 14)
+	spread_next(&row, "Decay")
 	voice_knob(a, "Decay", &a.voice_edit.decay, 0.005, 10, 1, "%.2f s", int(Voice_Key.Amp_Adsr), "Set Decay", true)
-	im.SameLine(0, 14)
+	spread_next(&row, "Sustain")
 	voice_knob(a, "Sustain", &a.voice_edit.sustain, 0, 1, 1, "%.2f", int(Voice_Key.Amp_Adsr) + 1, "Set Sustain")
-	im.SameLine(0, 14)
+	spread_next(&row, "Release")
 	knob_f32(a, "Release", &pad.release, 0.005, 20, 0.05, "%.2f s", .Release, "Set Release", log_scale = true)
 }
 
@@ -213,7 +251,9 @@ draw_filter :: proc(a: ^App) {
 	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%.0f Hz, resonance %.0f%%: drag sideways for the cutoff, up for resonance (Shift: fine)", v.cutoff, v.resonance * 100))
 	im.SameLine(0, 8)
 	fa := v.filter_adsr
-	fe := ui.adsr_plot("filter envelope", &fa, {avail.x - resp_w - 8, plot_h}, color, f32(live.filter_env) if live.sounding else -1, secs, v.filter_env)
+	env_w := avail.x - resp_w - 8
+	sign, env_c := env_depth(v.filter_env, color)
+	fe := ui.adsr_plot("filter envelope", &fa, {env_w, plot_h}, env_c, f32(live.filter_env) if live.sounding else -1, secs, sign)
 	if fe.changed {
 		nv := v
 		nv.filter_adsr = fa
@@ -221,35 +261,41 @@ draw_filter :: proc(a: ^App) {
 	}
 	if fe.ended do app.seal(&m.history)
 
+	// The filter's knobs under its response, the envelope's under it.
 	im.Spacing()
+	row := spread_begin(5, resp_w)
+	spread_next(&row, "Cutoff")
 	voice_knob(a, "Cutoff", &a.voice_edit.cutoff, 20, 20_000, 20_000, "%.0f Hz", int(Voice_Key.Cutoff), "Set Cutoff", true)
-	im.SameLine(0, 14)
+	spread_next(&row, "Resonance")
 	voice_knob(a, "Resonance", &a.voice_edit.resonance, 0, 1, 0, "%.2f", int(Voice_Key.Resonance), "Set Resonance")
-	im.SameLine(0, 14)
+	spread_next(&row, "Key")
 	voice_knob(a, "Key", &a.voice_edit.key_track, 0, 1, 0, "%.2f", int(Voice_Key.Key_Track), "Set Key Tracking")
-	im.SameLine(0, 14)
+	spread_next(&row, "Velocity")
 	voice_knob(a, "Velocity", &a.voice_edit.vel_cutoff, -1, 1, 0, "%+.2f", int(Voice_Key.Vel_Cutoff), "Set Filter Velocity")
-	im.SameLine(0, 14)
+	spread_next(&row, "Env")
 	voice_knob(a, "Env", &a.voice_edit.filter_env, -1, 1, 0, "%+.2f", int(Voice_Key.Filter_Env), "Set Filter Envelope")
-	im.SameLine(0, 28)
-	adsr_knobs(a, &a.voice_edit.filter_adsr, int(Voice_Key.Filter_Adsr), "Filter")
+	// (Too narrow for both rows side by side: the envelope's on a row of its own.)
+	env_row := Spread{x0 = max(row.x0 + resp_w + 8, row.x0 + row.used), y = row.y, w = env_w, n = 4}
+	if env_row.x0 + 4 * (ui.KNOB_SIZE + 12) > row.x0 + avail.x do env_row = spread_begin(4, avail.x)
+	adsr_knobs(a, &a.voice_edit.filter_adsr, int(Voice_Key.Filter_Adsr), "Filter", &env_row)
 }
 
 // Knobs for an envelope of the voice (attack, decay, sustain, release).
 @(private)
-adsr_knobs :: proc(a: ^App, adsr: ^[4]f32, key: int, what: string) {
+adsr_knobs :: proc(a: ^App, adsr: ^[4]f32, key: int, what: string, row: ^Spread) {
+	spread_next(row, "A")
 	voice_knob(a, "A", &adsr[0], 0.0005, 10, 0.001, "%.3f s", key, fmt.tprintf("Set %s Attack", what), true)
-	im.SameLine(0, 10)
+	spread_next(row, "D")
 	voice_knob(a, "D", &adsr[1], 0.005, 10, 0.5, "%.2f s", key, fmt.tprintf("Set %s Decay", what), true)
-	im.SameLine(0, 10)
+	spread_next(row, "S")
 	voice_knob(a, "S", &adsr[2], 0, 1, 0, "%.2f", key, fmt.tprintf("Set %s Sustain", what))
-	im.SameLine(0, 10)
+	spread_next(row, "R")
 	voice_knob(a, "R", &adsr[3], 0.005, 20, 0.2, "%.2f s", key, fmt.tprintf("Set %s Release", what), true)
 }
 
 // --- Pitch ------------------------------------------------------------------------------------
 
-// The pitch envelope (drawn as deep as its amount, upside down for a
+// The pitch envelope (full height, faint at no depth, upside down for a
 // negative one), what it does to the newest note now, and knobs.
 draw_pitch :: proc(a: ^App) {
 	m := &a.m
@@ -262,7 +308,9 @@ draw_pitch :: proc(a: ^App) {
 	plot_h := max(avail.y - knob_row_h() - 8, 90)
 	readout_w: f32 = 150
 	pa := v.pitch_adsr
-	e := ui.adsr_plot("pitch envelope", &pa, {avail.x - readout_w - 8, plot_h}, color, f32(live.pitch_env) if live.sounding else -1, secs, v.pitch_env / 48)
+	env_w := avail.x - readout_w - 8
+	sign, env_c := env_depth(v.pitch_env / 12, color) // (an octave or more: full colour)
+	e := ui.adsr_plot("pitch envelope", &pa, {env_w, plot_h}, env_c, f32(live.pitch_env) if live.sounding else -1, secs, sign)
 	if e.changed {
 		nv := v
 		nv.pitch_adsr = pa
@@ -292,13 +340,14 @@ draw_pitch :: proc(a: ^App) {
 	im.DrawList_AddRectFilled(dl, {pos.x + readout_w - 14, min(mid, mid - bar)}, {pos.x + readout_w - 8, max(mid, mid - bar)}, ui.col(color), 2)
 
 	im.Spacing()
+	row := spread_begin(7, env_w)
+	spread_next(&row, "Amount")
 	voice_knob(a, "Amount", &a.voice_edit.pitch_env, -48, 48, 0, "%+.1f st", int(Voice_Key.Pitch_Env), "Set Pitch Envelope")
-	im.SameLine(0, 14)
+	spread_next(&row, "Velocity")
 	voice_knob(a, "Velocity", &a.voice_edit.vel_pitch, -24, 24, 0, "%+.1f st", int(Voice_Key.Vel_Pitch), "Set Pitch Velocity")
-	im.SameLine(0, 14)
+	spread_next(&row, "Key")
 	voice_knob(a, "Key", &a.voice_edit.pitch_track, 0, 1, 1, "%.2f", int(Voice_Key.Pitch_Track), "Set Pitch Key Tracking")
-	im.SameLine(0, 28)
-	adsr_knobs(a, &a.voice_edit.pitch_adsr, int(Voice_Key.Pitch_Adsr), "Pitch")
+	adsr_knobs(a, &a.voice_edit.pitch_adsr, int(Voice_Key.Pitch_Adsr), "Pitch", &row)
 }
 
 // --- LFO --------------------------------------------------------------------------------------
