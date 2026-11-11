@@ -152,7 +152,7 @@ main :: proc() {
 	p := &a.platform
 	layout := ""
 	if a.settings.layout do layout, _ = filepath.join({settings_folder(a), "layout.ini"})
-	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0, ini_path = layout}) {
+	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, draw_unseen = profile > 0, vsync = profile == 0, ini_path = layout}) {
 		ui.platform_destroy(p)
 		os.exit(1)
 	}
@@ -213,7 +213,9 @@ main :: proc() {
 		a.driver.command = drive_command
 		a.driver.user = a
 		p.driver, p.control = &a.driver, &a.control
-		if headless do p.fixed_dt = 1.0 / 60
+		// Headless, frames go by only while a command runs (a test's frames
+		// are the ones it asked for, however busy the machine).
+		if headless do p.fixed_dt, a.control.lockstep = 1.0 / 60, true
 		ui.probe_on(true)
 		fmt.printfln("control: listening on 127.0.0.1:%d", a.control.port)
 		os.flush(os.stdout)

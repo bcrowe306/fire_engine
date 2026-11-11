@@ -30,6 +30,7 @@ task app:pads             # build .build/app/pads (collections: fire, app=app, d
 task app:test             # tests/app_* (headless) + apps/ui_tests (UI cases with a window, main thread)
 task app:pads-drive       # Pads driven by tests/app_ui/drive/pads*.txt (fake audio, headless; expect lines)
 task app:e2e              # tests/e2e: Pads used by mouse and keys over --control (pytest); a crash fails with its report
+                          # (HEADLESS=1: in parallel, JOBS=N to choose; frames drawn only for screenshots)
 task app:ctl              # Pads under remote control: type drive commands (click_item, drag_item, state...)
 .build/app/pads --headless --drive tests/app_ui/drive/smoke.txt --out .build/app/shots   # scripted run + screenshots
 ```

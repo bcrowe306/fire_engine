@@ -13,7 +13,10 @@ an SDL_GPU device, and a Dear ImGui context drawn into it.
 Every frame is drawn into an offscreen texture, then copied to the
 window. That makes screenshots a texture download, and lets the platform
 run without a window surface at all (`headless`), for driving the UI from a
-script on machines without a display (see `Driver`).
+script on machines without a display (see `Driver`). Headless, a frame is
+drawn only when a screenshot takes it: ImGui still builds every frame (so
+items, their rects and input work as ever), but nobody sees the pixels, and
+on a machine without a GPU drawing them is most of a frame's time.
 
 See /guides/app-layer/ for a walk-through.
 */
@@ -34,6 +37,7 @@ Platform_Settings :: struct {
 	width:    int,    // window size in logical points; 0 = 1280 × 800
 	height:   int,
 	headless: bool,   // no window surface: draw offscreen only (for scripted runs)
+	draw_unseen: bool, // headless: draw every frame, not only those a screenshot takes (to time the GPU)
 	vsync:    bool,   // wait for the display between frames (ignored headless)
 	ini_path: string, // where ImGui keeps window and docking layout; "" = nowhere
 }
@@ -224,9 +228,18 @@ frame_begin :: proc(p: ^Platform) -> bool {
 }
 
 // Ends the ImGui frame and draws it: into the offscreen frame, then onto
-// the window. Takes the driver's screenshot, if it asked for one.
+// the window. Takes the driver's screenshot, if it asked for one. Headless,
+// only a frame a screenshot takes is drawn (unless `draw_unseen`).
 frame_end :: proc(p: ^Platform) {
 	im.Render()
+	shot := p.driver != nil && p.driver.shot_path != ""
+	if p.settings.headless && !p.settings.draw_unseen && !shot {
+		// Textures ImGui wants made or updated (the font atlas) wait in its
+		// list for the next frame that is drawn.
+		p.frame += 1
+		free_all(context.temp_allocator)
+		return
+	}
 	draw_data := im.GetDrawData()
 	cmd := sdl.AcquireGPUCommandBuffer(p.device)
 	if cmd == nil do return
@@ -261,7 +274,7 @@ frame_end :: proc(p: ^Platform) {
 		}
 		sdl.BlitGPUTexture(cmd, blit)
 	}
-	if p.driver != nil && p.driver.shot_path != "" {
+	if shot {
 		screenshot_submit(p, cmd, p.driver.shot_path)
 		delete(p.driver.shot_path)
 		p.driver.shot_path = ""

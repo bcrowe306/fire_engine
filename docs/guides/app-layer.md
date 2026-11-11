@@ -40,7 +40,12 @@ for ui.frame_begin(&p) {
   window. Screenshots are therefore a download of that texture, and
   `headless = true` draws with no window on screen at all (on Linux
   without a display server, through SDL's offscreen driver and any Vulkan
-  device, including Mesa's software one).
+  device, including Mesa's software one). Headless, a frame is drawn only
+  when a screenshot takes it: ImGui still builds every frame, so items,
+  their rects and input behave as ever, but a machine without a GPU
+  (a test VM) skips the software draw that is most of a frame's cost.
+  `Platform_Settings.draw_unseen` draws every frame anyway (`--profile`
+  sets it, to time the GPU too).
 - High-DPI: ImGui works in logical points and draws at the display's
   pixel density; `Platform.ui_scale` enlarges the style only where the OS
   asks for more (a Windows display at 150%).
@@ -231,7 +236,11 @@ the same commands as a script, one per line, each answered with a line
 of JSON once it has run (`{"ok": true, "output": "..."}`, or `"ok":
 false` and an `"error"`). With it the app runs as usual between commands,
 in a window or headless. Pads starts it with `--control PORT` (0: any
-free port; it prints the one it took).
+free port; it prints the one it took). With `Control.lockstep` (Pads sets
+it headless) frames go by only while a command runs: between commands the
+app waits for the next line, so a test's frames are exactly the ones it
+asked for however slow the harness or busy the machine, and an idle app
+leaves the CPU to the others.
 
 `ui.crash_install` (with `context.assertion_failure_proc =
 ui.crash_assertion` in main) makes a crash report itself on standard

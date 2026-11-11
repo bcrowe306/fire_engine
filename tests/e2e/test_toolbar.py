@@ -57,9 +57,12 @@ def test_tempo_drags_by_one_and_shift_by_a_tenth(app):
 
 def test_tap_tempo(app):
     for _ in range(4):
-        app.click("Tap")  # a click and its wait take 25 frames: 5/12 s at 60 frames a second, 144 BPM
+        # A click and its wait take 23 frames: 23/60 s, 156.5 BPM (headless,
+        # frames pass only while a command runs; with a window a few more
+        # go by between commands, so a little slower).
+        app.click("Tap")
     bpm = app.state()["bpm"]
-    assert 135 <= bpm <= 155, bpm
+    assert 135 <= bpm <= 160, bpm
     # The fourth tap starts playback a beat later, where a fifth would land.
     app.until(lambda s: s["playing"], frames=60, what="playback after the fourth tap")
     app.key("space")
@@ -70,7 +73,7 @@ def test_tapping_while_playing_only_changes_the_tempo(app):
     for _ in range(4):
         app.click("Tap")
     s = app.state()
-    assert s["playing"] and 135 <= s["bpm"] <= 155, s["bpm"]
+    assert s["playing"] and 135 <= s["bpm"] <= 160, s["bpm"]
     app.wait(60)
     assert app.state()["playing"]
     app.key("space")
