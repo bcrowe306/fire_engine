@@ -85,7 +85,9 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 	beats := song_beats(p) if settings.source == .Song else seq_beats(p, p.sequences[p.slot])
 	if beats <= 0 do return false
 	rate := e.host.graph.settings.sample_rate
-	x.frames = int(math.ceil((beats * 60 / p.bpm + max(settings.tail, 0)) * rate))
+	// (A song at its tempo lane's tempos; a sequence at its own.)
+	secs := song_seconds(p) if settings.source == .Song else beats * 60 / sequence_tempo(p, p.slot)
+	x.frames = int(math.ceil((secs + max(settings.tail, 0)) * rate))
 	x.passes = make([dynamic]Export_Pass)
 	x.files = make([dynamic]string)
 	stem :: proc(x: ^Export, dir, name: string, solo: Export_Solo) {

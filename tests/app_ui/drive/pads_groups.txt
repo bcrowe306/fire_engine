@@ -1,0 +1,18 @@
+# Track groups: the kick and hat grouped as Drums (a bus), the loop
+# apart; the mixer with the group open, then folded.
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+load 2 tests/app_ui/fixtures/loop.wav
+note 0 0 0.25 1
+note 1 0.5 0.25 0.8
+group 0 1 as Drums
+panel mixer
+play
+wait 20
+expect level bus 4 above -40
+screenshot groups_open
+group fold 1
+wait 5
+screenshot groups_folded

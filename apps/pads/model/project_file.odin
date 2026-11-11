@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 24 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges
+PROJECT_VERSION :: 25 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -509,6 +509,20 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_int(w, st.meter.den)
 		}
 	}
+	// v25: every slot's sidechain key (the slots in the order above).
+	key :: proc(w: ^fc.State_Writer, sl: Effect_Slot) {
+		fc.write_u8(w, u8(sl.key.kind))
+		fc.write_int(w, sl.key.index)
+		fc.write_f32(w, sl.key_hpf)
+		fc.write_bool(w, sl.listen)
+	}
+	for pad in p.pads do for sl in pad.inserts do key(w, sl)
+	for b in p.buses do for sl in b.slots do key(w, sl)
+	for sl in p.main.slots do key(w, sl)
+	for b in p.buses { // (and which buses are groups)
+		fc.write_bool(w, b.group)
+		fc.write_bool(w, b.folded)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -845,6 +859,22 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 				}
 			}
 			p.song = p.arrangements[p.arrangement].song
+		}
+		if version >= 25 {
+			key :: proc(r: ^fc.State_Reader, sl: ^Effect_Slot) {
+				sl.key.kind = Key_Kind(min(fc.read_u8(r), u8(max(Key_Kind))))
+				sl.key.index = clamp(fc.read_int(r), 0, PADS - 1)
+				if sl.key.kind == .Bus do sl.key.index = min(sl.key.index, BUSES - 1)
+				sl.key_hpf = clamp(fc.read_f32(r), 0, 2000)
+				sl.listen = fc.read_bool(r)
+			}
+			for &pad in p.pads do for &sl in pad.inserts do key(r, &sl)
+			for &b in p.buses do for &sl in b.slots do key(r, &sl)
+			for &sl in p.main.slots do key(r, &sl)
+			for &b in p.buses {
+				b.group = fc.read_bool(r)
+				b.folded = fc.read_bool(r)
+			}
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES

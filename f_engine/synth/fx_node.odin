@@ -49,7 +49,9 @@ effect_node_vtable := core.Node_VTable {
 	},
 }
 
-// Control thread. A node playing effect `e` at its defaults.
+// Control thread. A node playing effect `e` at its defaults. Added with
+// four inputs and two outputs, inputs 3 and 4 are the compressor's
+// sidechain key.
 effect_node_create :: proc(e: fx.Effect, allocator := context.allocator) -> (node: core.Node, n: ^Effect_Node) {
 	n = new(Effect_Node, allocator)
 	n.effect, n.allocator, n.bpm = e, allocator, 120
@@ -97,7 +99,10 @@ effect_node_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	if outs < 2 do return
 	p := effect_chain_params(n.values[:], fx.CHAIN_ORDER, n.bpm)
 	p.on = {n.effect}
-	fx.chain_render(&n.chain, &p, ctx.outputs[0][:f], ctx.outputs[1][:f], n.sample_rate)
+	// Inputs 3 and 4 (with four): the compressor's sidechain key.
+	key_l, key_r: []f32
+	if len(ctx.inputs) >= 4 do key_l, key_r = ctx.inputs[2][:f], ctx.inputs[3][:f]
+	fx.chain_render(&n.chain, &p, ctx.outputs[0][:f], ctx.outputs[1][:f], n.sample_rate, key_l, key_r)
 }
 
 // Fills `effect_node_infos` from `PARAMS` (after the effects' are added).

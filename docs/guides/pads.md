@@ -289,7 +289,14 @@ for other toggles.
   buses after it move up a letter). Click strips' names with **Shift** (a
   range) or **Cmd** (one more) to select several: then moving one's
   fader, pan or a send moves them all by as much, and mute, solo and the
-  output change them all (one undo step). From the top:
+  output change them all (one undo step). **Groups** are buses:
+  **Group Selected Pads** (**Cmd+G**, or a pad's right-click menu) puts
+  the selected pads on a new bus named for the group (its name opens to
+  type) and goes where the first of them went. The mixer shows each
+  group's pads together behind its tab (the group's name down it): click
+  the tab to fold its pads away or back, right-click it to rename or
+  **Ungroup** (the pads go where the group went, the bus goes). The
+  group's own strip is its bus's, with the other buses. From the top:
   - the pad's **EQ** curve (click it for the Effects tab, where the EQ is);
   - its two **inserts** (a bus and main have five slots);
   - its **sends**, one per bus (four show; with more buses they scroll):
@@ -324,6 +331,16 @@ for other toggles.
   times, feedback, mix and tone. They sound close, not identical. A
   plug-in that can't be found plays nothing and says so. A pad's volume
   is its fader, after its inserts; the volume lane of a sequence moves it.
+
+  A **Compressor** or **Gate** in a pad's insert or a bus slot has a
+  **Sidechain**: it can listen to another pad's or a bus's output (after
+  its fader) instead of what goes through it, as a bass ducking under the
+  kick. The list offers only sources that can't make a loop: any other
+  pad, or a bus the track doesn't feed (by its route, its sends or the
+  buses after them). **Key high-pass** filters the key first (0 Hz:
+  none), so a kick keys by its click, not its boom. **Listen** plays the
+  filtered key on the track instead, to set it by. Keyed, the compressor
+  only presses down: a quiet key lifts nothing.
 - **Performance effects** (in the Perform panel): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
@@ -988,6 +1005,8 @@ expect midi_key PAD KEY / expect struck PAD MIN   (it has sounded MIN or more ti
 insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
 plugin BUS SLOT ID PATH                      a CLAP plug-in in a bus slot
 plugin_pad PAD PATH ID                       pad PAD (0..) plays CLAP instrument ID (selected)
+group PAD... [as NAME] | group fold B | unfold B | ungroup B   pads (0..) under a new group bus (B: 1..)
+sidechain PAD SLOT pad N | bus B | off [listen] [hpf HZ]   pad PAD's insert SLOT (0..) keyed from pad N or bus B (0..)
 plugin_editor open|close / plugin_lane LANE PARAM   its window; lane LANE (1..8) moves parameter PARAM
 expect plugin loaded|failed|editor|no-editor
 edit_fx pad P S | bus B S | perf N           the slot the Effects tab edits
@@ -1074,6 +1093,8 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
+| `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
+| `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
 | `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a tempo point on the tempo lane, undo |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |

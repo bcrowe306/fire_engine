@@ -109,15 +109,25 @@ draw_mixer :: proc(user: rawptr) {
 	if im.BeginChild("##pads", {max(avail.x - buses_w - main_w - 16, STRIP_W), avail.y}, {}, {.HorizontalScrollbar}) {
 		h := im.GetContentRegionAvail().y
 		any := false
-		for _, i in m.project.pads do if pm.pad_used(&m.project, i) {
-			if any do im.SameLine()
-			any = true
+		p := &m.project
+		strip :: proc(a: ^App, i: int, h: f32, any: ^bool) {
+			if any^ do im.SameLine()
+			any^ = true
 			// Off to the side (scrolled away): only its room.
 			if !im.IsRectVisibleBySize({STRIP_W, h}) {
 				im.Dummy({STRIP_W, h})
-				continue
+				return
 			}
 			pad_strip(a, i, h)
+		}
+		// The pads in no group, then each group: its tab, and its pads
+		// (unless it is folded).
+		for _, i in p.pads do if pm.pad_used(p, i) && !in_group(p, i) do strip(a, i, h, &any)
+		for b in 1 ..= p.bus_count do if p.buses[b - 1].group {
+			if any do im.SameLine()
+			any = true
+			group_tab(a, b, h)
+			if !p.buses[b - 1].folded do for i in pm.group_members(p, b) do strip(a, i, h, &any)
 		}
 		if !any {
 			im.SetCursorPos({12, 12})
@@ -148,6 +158,66 @@ draw_mixer :: proc(user: rawptr) {
 	if im.BeginChild("##main", {main_w, avail.y}, {}, {.NoScrollbar}) do bus_strip(a, pm.BUSES, main_h)
 	im.EndChild()
 	draw_rename_bus(a)
+}
+
+// Whether pad `i` goes to a group.
+@(private)
+in_group :: proc(p: ^pm.Project, i: int) -> bool {
+	b := int(p.pads[i].bus)
+	return b >= 1 && b <= p.bus_count && p.buses[b - 1].group
+}
+
+// A group's tab in front of its pads: its name down it; click to fold or
+// unfold it, right-click for its menu (rename, ungroup).
+@(private)
+group_tab :: proc(a: ^App, b: int, h: f32) {
+	m := &a.m
+	p := &m.project
+	t := ui.theme()
+	g := &p.buses[b - 1]
+	w: f32 = 26
+	pos := im.GetCursorScreenPos()
+	im.PushIDInt(i32(5000 + b))
+	defer im.PopID()
+	if im.InvisibleButton("##group", {w, h}) do pm.set_group_folded(m, b, !g.folded)
+	ui.name(fmt.tprintf("group %s", pm.bus_name(p, b)))
+	hot := im.IsItemHovered()
+	if hot do im.SetTooltip("%s", fmt.ctprintf("%s: %d pads · click to %s · right-click: rename, ungroup", pm.bus_name(p, b), len(pm.group_members(p, b)), "unfold" if g.folded else "fold"))
+	if im.BeginPopupContextItem("##groupmenu") {
+		if im.MenuItem("Fold", nil, g.folded) do pm.set_group_folded(m, b, !g.folded)
+		if im.MenuItem("Rename…") do begin_rename_bus(a, b)
+		if im.MenuItem("Ungroup") do pm.ungroup(m, b)
+		im.EndPopup()
+	}
+	dl := im.GetWindowDrawList()
+	bg := ui.mix(t.raised, t.accent, 0.35 if hot else 0.22)
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
+	icon := ui.ICON_CHEVRON_RIGHT if g.folded else ui.ICON_CHEVRON_DOWN
+	im.DrawList_AddText(dl, {pos.x + 6, pos.y + 6}, ui.col(t.text), fmt.ctprintf("%s", icon))
+	// Its name, a letter a line.
+	y := pos.y + 30
+	lh := im.GetTextLineHeight()
+	for r in pm.bus_name(p, b) {
+		if y + lh > pos.y + h - 6 do break
+		im.DrawList_AddText(dl, {pos.x + 8, y}, ui.col(t.text), fmt.ctprintf("%r", r))
+		y += lh
+	}
+}
+
+// Groups the selected pads (or pad `i`, if it isn't among them) under a
+// new group bus, and opens its name to type.
+group_selected :: proc(a: ^App, i: int) {
+	sel := selected_pads(a)
+	if i not_in sel do sel = {i}
+	pads := make([dynamic]int, context.temp_allocator)
+	for k in 0 ..< pm.PADS do if k in sel && pm.pad_used(&a.m.project, k) do append(&pads, k)
+	if len(pads) == 0 do return
+	b := pm.group_pads(&a.m, pads[:])
+	if b == 0 {
+		ui.toast(&a.ws.toasts, .Error, "No bus left for a group")
+		return
+	}
+	begin_rename_bus(a, b)
 }
 
 // Renames bus `b` (1..BUSES): its dialog opens.

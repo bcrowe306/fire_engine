@@ -82,6 +82,10 @@ every_setting_saves :: proc(t: ^testing.T) {
 		if strings.contains(k, ".label[") do continue     // (text)
 		// Song steps past its length aren't kept, by design.
 		if strings.has_prefix(k, "song.steps[") && !(strings.has_prefix(k, "song.steps[0]") || strings.has_prefix(k, "song.steps[1]") || strings.has_prefix(k, "song.steps[2]") || strings.has_prefix(k, "song.steps[3]")) do continue
+		// Main isn't a group.
+		if k == "main.group" || k == "main.folded" do continue
+		// An instrument slot can't be keyed (its key isn't kept).
+		if strings.has_prefix(k, "pad.instrument.key") || k == "pad.instrument.listen" do continue
 		// Tempo points and markers past the song's count (2 or 3): the same.
 		if (strings.has_prefix(k, "song.tempo[") || strings.has_prefix(k, "song.markers[")) && !(strings.has_prefix(k, "song.tempo[0]") || strings.has_prefix(k, "song.tempo[1]") || strings.has_prefix(k, "song.markers[0]") || strings.has_prefix(k, "song.markers[1]")) do continue
 		// Not settings (where main goes; the arpeggiator's random seed), or

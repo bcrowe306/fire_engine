@@ -84,6 +84,8 @@ setup_actions :: proc(a: ^App) {
 	}
 	add(acts, {id = "play", label = "Play / Stop", icon = ui.ICON_PLAY, chord = i32(im.Key.Space), user = a,
 		run = proc(u: rawptr) { toggle_play((^App)(u)) }})
+	add(acts, {id = "group_pads", label = "Group Selected Pads", icon = ui.ICON_GROUP, chord = ui.MOD_CMD | i32(im.Key.G), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); group_selected(a, a.selected) }})
 	add(acts, {id = "next_marker", label = "Next Marker", icon = ui.ICON_SKIP_FORWARD, chord = ui.MOD_ALT | i32(im.Key.RightArrow), user = a,
 		run = proc(u: rawptr) { marker_step((^App)(u), false) }})
 	add(acts, {id = "prev_marker", label = "Previous Marker", icon = ui.ICON_SKIP_BACK, chord = ui.MOD_ALT | i32(im.Key.LeftArrow), user = a,
@@ -1020,6 +1022,47 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if t.kind == .Sequence do t.slot = t.index
 		if t.kind == .File && len(w) > 3 do t.path = absolute(strings.join(w[3:], " ", context.temp_allocator))
 		if !run_command(a, w[1], t) do return drive_fail(a, fmt.tprintf("command %s did not run on %v", w[1], t))
+		return true
+	case "group": // group PAD... [as NAME]: those pads (0..) under a new group bus / group fold B | unfold B | ungroup B (1..)
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "fold", "unfold":
+			pm.set_group_folded(&a.m, num(w, 2), w[1] == "fold")
+			return true
+		case "ungroup":
+			pm.ungroup(&a.m, num(w, 2))
+			return true
+		}
+		pads := make([dynamic]int, context.temp_allocator)
+		name := ""
+		for k := 1; k < len(w); k += 1 {
+			if w[k] == "as" {
+				name = strings.join(w[k + 1:], " ", context.temp_allocator)
+				break
+			}
+			append(&pads, num(w, k))
+		}
+		return pm.group_pads(&a.m, pads[:], name) > 0
+	case "sidechain": // sidechain PAD SLOT pad N | bus B | off [listen] [hpf HZ]: insert SLOT (0..) of pad PAD (0..) keyed from pad N (0..) or bus B (0..)
+		if len(w) < 4 do return false
+		pad, slot := num(w, 1), num(w, 2)
+		if pad < 0 || pad >= pm.PADS || slot < 0 || slot >= pm.PAD_INSERTS do return false
+		sl := a.m.project.pads[pad].inserts[slot]
+		switch w[3] {
+		case "pad": sl.key = {.Pad, num(w, 4)}
+		case "bus": sl.key = {.Bus, num(w, 4)}
+		case "off": sl.key = {}
+		case: return false
+		}
+		sl.listen = false
+		for k := 5; k < len(w); k += 1 {
+			if w[k] == "listen" do sl.listen = true
+			if w[k] == "hpf" && k + 1 < len(w) {
+				x, _ := strconv.parse_f32(w[k + 1])
+				sl.key_hpf = x
+			}
+		}
+		pm.set_insert(&a.m, pad, slot, sl, "Sidechain")
 		return true
 	case "plugin_pad": // plugin_pad PAD PATH ID: pad PAD (0..) plays plug-in ID of the CLAP file at PATH (from the working folder), selected
 		if len(w) < 4 do return false

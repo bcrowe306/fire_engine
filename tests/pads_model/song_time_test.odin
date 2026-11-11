@@ -1,6 +1,7 @@
 package test_pads_model
 
 import "core:math"
+import "core:path/filepath"
 import "core:testing"
 
 import app "app:core"
@@ -136,4 +137,27 @@ markers_and_the_loop_range_are_kept :: proc(t: ^testing.T) {
 	app.undo(&m.history)
 	app.undo(&m.history)
 	testing.expect(t, !m.project.song.loop_on)
+}
+
+@(test)
+an_export_lasts_as_long_as_the_song_plays :: proc(t: ^testing.T) {
+	r := song_rig(t, "song_export_length", 16, false)
+	defer rig_destroy(r)
+	m := &r.m
+	pm.tempo_point_add(m, {0, 120, false})
+	pm.tempo_point_add(m, {8, 60, false}) // 4 s, then 8 s
+	testing.expect(t, abs(pm.song_seconds(&m.project) - 12) < 1e-9)
+	x: pm.Export
+	path := fmt_path(r, "song.wav")
+	if !testing.expect(t, pm.export_begin(m, &x, {source = .Song, encoding = .Float32}, path)) do return
+	defer pm.export_destroy(&x)
+	testing.expect_value(t, x.frames, 12 * 48_000)
+	for !x.finished && !x.failed do pm.export_step(m, &x)
+	pm.export_finish(m, &x)
+}
+
+@(private)
+fmt_path :: proc(r: ^Rig, name: string) -> string {
+	p, _ := filepath.join({r.dir, name}, context.temp_allocator)
+	return p
 }

@@ -1744,7 +1744,9 @@ Control thread. Makes built-in table `which` (free with
 effect_node_create :: proc(e: fx.Effect, allocator: mem.Allocator = context.allocator) -> (node: core.Node, n: ^Effect_Node)
 ```
 
-Control thread. A node playing effect `e` at its defaults.
+Control thread. A node playing effect `e` at its defaults. Added with
+four inputs and two outputs, inputs 3 and 4 are the compressor's
+sidechain key.
 
 ### effect_node_params
 

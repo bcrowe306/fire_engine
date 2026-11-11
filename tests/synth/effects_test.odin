@@ -1,6 +1,7 @@
 package test_synth
 
 import "core:fmt"
+import "core:log"
 import "core:testing"
 
 import "fire:core"
@@ -182,4 +183,55 @@ effect_nodes :: proc(t: ^testing.T) {
 	worst: f32 = 0
 	for i in 2_400 ..< 9_600 do worst = max(worst, abs(out.channels[0][i] - input.channels[0][i]))
 	testing.expectf(t, worst < 1e-3, "reverb at no mix: the input as it was (%v)", worst)
+}
+
+// The compressor keyed from inputs 3 and 4: a key the same as its input
+// presses it no harder than no key; a loud key presses the input down; a
+// silent key leaves it at its bands' makeup (no lift).
+@(test)
+the_compressor_takes_a_sidechain_key :: proc(t: ^testing.T) {
+	N :: 24_000
+	tone := kit.buffer_make(2, N, SR, context.temp_allocator)
+	kit.sine(tone.channels[0], SR, 220, 0.25)
+	kit.sine(tone.channels[1], SR, 220, 0.25)
+	keyed :: proc(t: ^testing.T, tone: kit.Audio_Buffer, key: []f32) -> f64 {
+		in4 := kit.buffer_make(4, N, SR, context.temp_allocator)
+		for c in 0 ..< 2 do copy(in4.channels[c], tone.channels[c])
+		for c in 2 ..< 4 do copy(in4.channels[c], key)
+		n, _ := synth.effect_node_create(.Compressor)
+		defer core.node_destroy(&n)
+		out, rep := kit.render(&n, in4, kit.default_render_config(), context.temp_allocator)
+		kit.expect_clean_render(t, rep)
+		kit.render_report_destroy(&rep)
+		return kit.rms(out.channels[0][N / 2:])
+	}
+	plain: f64
+	{
+		n, _ := synth.effect_node_create(.Compressor)
+		defer core.node_destroy(&n)
+		out, rep := kit.render(&n, tone, kit.default_render_config(), context.temp_allocator)
+		kit.render_report_destroy(&rep)
+		plain = kit.rms(out.channels[0][N / 2:])
+	}
+	same := keyed(t, tone, tone.channels[0])
+	testing.expectf(t, same <= plain + 1e-4, "keyed from itself: no more than unkeyed (it only presses down) (%v, %v)", same, plain)
+	loud := make([]f32, N, context.temp_allocator)
+	kit.white_noise(loud, 3, 0.9)
+	quiet := make([]f32, N, context.temp_allocator)
+	pressed, lifted := keyed(t, tone, loud), keyed(t, tone, quiet)
+	log.infof("keyed compressor: loud key %v, silent key %v, unkeyed %v", pressed, lifted, plain)
+	testing.expectf(t, pressed < lifted * 0.5 && lifted < plain * 8, "a loud key presses it down; a silent one doesn't lift it past its makeup (%v, %v)", pressed, lifted)
+	// Block-size invariant, keyed.
+	in4 := kit.buffer_make(4, 9_600, SR, context.temp_allocator)
+	kit.sine(in4.channels[0], SR, 220, 0.25)
+	kit.sine(in4.channels[1], SR, 220, 0.25)
+	kit.white_noise(in4.channels[2], 4, 0.5)
+	kit.white_noise(in4.channels[3], 5, 0.5)
+	factory := kit.Node_Factory{create = proc(user: rawptr) -> core.Node {
+		n, _ := synth.effect_node_create(.Compressor)
+		return n
+	}}
+	cfg := kit.default_render_config()
+	patterns := kit.standard_block_patterns(cfg.max_block)
+	kit.expect_block_invariant(t, factory, in4, cfg, patterns[:], 1e-4, "keyed compressor")
 }

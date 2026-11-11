@@ -143,6 +143,7 @@ COMPRESSOR_DEFAULTS :: Compressor_Params {
 // squared).
 Compressor :: struct {
 	cross:   [2][2][4][2]f32, // [crossover][side][stage: low1, low2, high1, high2][state]
+	key_cross: [2][2][4][2]f32, // the same, splitting a sidechain key
 	upper, lower: [3][2]f32,  // each band's envelopes (mean squared), a side
 	gain:    [3]f32,
 	last_mix: f32,
@@ -161,8 +162,10 @@ crossover :: #force_inline proc "contextless" (st: ^[4][2]f32, x, g: f32) -> (lo
 	return
 }
 
-// [rt] Runs the compressor over `l` and `r` in place.
-compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, l, r: []f32, sample_rate: f64) #no_bounds_check {
+// [rt] Runs the compressor over `l` and `r` in place. With a key
+// (`key_l`, `key_r`, as long as `l`), each band's level is the key's band
+// instead of its own (a sidechain), and it only presses down.
+compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, l, r: []f32, sample_rate: f64, key_l: []f32 = nil, key_r: []f32 = nil) #no_bounds_check {
 	n := len(l)
 	if n == 0 do return
 	sr := f32(sample_rate)
@@ -195,6 +198,8 @@ compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, 
 	}
 	rms_k := 1 / (0.025 * sr)
 	x := [2][]f32{l, r}
+	keyed := len(key_l) >= n && len(key_r) >= n
+	kx := [2][]f32{key_l, key_r}
 	for i in 0 ..< n {
 		u := f32(i + 1) / f32(n)
 		mix := c.last_mix + (clamp(p.mix, 0, 1) - c.last_mix) * u
@@ -212,11 +217,26 @@ compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, 
 				parts[1] += parts[2]
 				parts[2] = 0
 			}
+			// What each band's level is read from: itself, or the key's band.
+			sense := parts
+			if keyed {
+				klo, krest := crossover(&c.key_cross[0][ch], kx[ch][i], g1)
+				kband, khi := crossover(&c.key_cross[1][ch], krest, g2)
+				sense = {klo, kband, khi}
+				if !use[0] {
+					sense[1] += sense[0]
+					sense[0] = 0
+				}
+				if !use[2] {
+					sense[1] += sense[2]
+					sense[2] = 0
+				}
+			}
 			out: f32 = 0
 			for k in 0 ..< 3 {
 				s := parts[k]
 				if (k == 0 && !use[0]) || (k == 2 && !use[2]) do continue
-				s2 := s * s
+				s2 := sense[k] * sense[k]
 				bk := b[k]
 				// The upper envelope (held at least at the threshold): above it, pressed down.
 				attack := s2 > c.upper[k][ch]
@@ -228,9 +248,10 @@ compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, 
 				c.lower[k][ch] = (s2 + c.lower[k][ch] * (bk.att_s if attack else bk.rel_s)) * (bk.att_k if attack else bk.rel_k)
 				c.lower[k][ch] = min(c.lower[k][ch], bk.lo_t)
 				lo_mult := math.pow(bk.lo_t / max(c.lower[k][ch], 1e-12), bk.lo_r)
+				if keyed do lo_mult = 1 // (keyed, it only presses down: a quiet key lifts nothing)
 				g := clamp(up_mult * lo_mult, 0, 32) * (c.gain[k] + (gains[k] - c.gain[k]) * u)
 				y := s * g
-				c.levels[k][0] += (s2 - c.levels[k][0]) * rms_k
+				c.levels[k][0] += (s * s - c.levels[k][0]) * rms_k
 				c.levels[k][1] += (y * y - c.levels[k][1]) * rms_k
 				out += y
 			}

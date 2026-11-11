@@ -705,6 +705,7 @@ A compressor's settings.
 ```odin
 Compressor :: struct {
 	cross: [2][2][4][2]f32,
+	key_cross: [2][2][4][2]f32,
 	upper: [3][2]f32,
 	lower: [3][2]f32,
 	gain: [3]f32,
@@ -721,6 +722,7 @@ squared).
 | Field | Description |
 |-------|-------------|
 | `cross` | [crossover][side][stage: low1, low2, high1, high2][state] |
+| `key_cross` | the same, splitting a sidechain key |
 | `upper` |  |
 | `lower` | each band's envelopes (mean squared), a side |
 | `gain` |  |
@@ -1023,10 +1025,11 @@ chain_reset :: proc "contextless"(c: ^Chain, e: Effect)
 ### chain_render
 
 ```odin
-chain_render :: proc "contextless"(c: ^Chain, p: ^Chain_Params, l: []f32, r: []f32, sample_rate: f64)
+chain_render :: proc "contextless"(c: ^Chain, p: ^Chain_Params, l: []f32, r: []f32, sample_rate: f64, key_l: []f32 = nil, key_r: []f32 = nil)
 ```
 
 **Realtime-safe** (callable on the audio thread). Runs the effects that are on over `l` and `r` in place, in order.
+A key (`key_l`, `key_r`) is the compressor's sidechain.
 
 ### line_make
 
@@ -1222,10 +1225,12 @@ filter_fx_render :: proc "contextless"(f: ^Filter_Fx, p: ^Filter_Fx_Params, l: [
 ### compressor_render
 
 ```odin
-compressor_render :: proc "contextless"(c: ^Compressor, p: ^Compressor_Params, l: []f32, r: []f32, sample_rate: f64)
+compressor_render :: proc "contextless"(c: ^Compressor, p: ^Compressor_Params, l: []f32, r: []f32, sample_rate: f64, key_l: []f32 = nil, key_r: []f32 = nil)
 ```
 
-**Realtime-safe** (callable on the audio thread). Runs the compressor over `l` and `r` in place.
+**Realtime-safe** (callable on the audio thread). Runs the compressor over `l` and `r` in place. With a key
+(`key_l`, `key_r`, as long as `l`), each band's level is the key's band
+instead of its own (a sidechain), and it only presses down.
 
 ### reverb_make
 

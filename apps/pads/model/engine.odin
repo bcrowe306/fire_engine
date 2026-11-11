@@ -695,7 +695,10 @@ engine_clear :: proc(e: ^Engine) {
 	for &n in e.nodes do if n.live do remove_pad_nodes(g, &n)
 	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
 	for b in e.mixer.buses {
-		for f in b.slots do if f.has do graph.remove_node(g, f.id)
+		for f in b.slots do if f.has {
+			graph.remove_node(g, f.id)
+			if f.key_filter != {} do graph.remove_node(g, f.key_filter)
+		}
 		for f in b.perf do if f.has do graph.remove_node(g, f.id)
 		graph.remove_node(g, b.input)
 		graph.remove_node(g, b.fader)

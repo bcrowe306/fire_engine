@@ -1,0 +1,24 @@
+# Sidechain: a loop through a compressor and a gate keyed from the kick
+# (its high-pass, Listen); the Effect pages.
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 2 tests/app_ui/fixtures/loop.wav
+set 2 mode 2
+note 0 0 0.25 1
+note 0 1 0.25 1
+note 0 2 0.25 1
+note 0 3 0.25 1
+note 2 0 4 1
+insert 2 0 compressor
+sidechain 2 0 pad 0 hpf 80
+edit_fx pad 2 0
+expect fx compressor
+play
+wait 20
+screenshot sidechain_compressor
+insert 2 1 gate
+sidechain 2 1 pad 0 listen
+edit_fx pad 2 1
+wait 20
+screenshot sidechain_gate_listen

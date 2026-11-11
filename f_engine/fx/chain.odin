@@ -110,7 +110,8 @@ chain_reset :: proc "contextless" (c: ^Chain, e: Effect) {
 }
 
 // [rt] Runs the effects that are on over `l` and `r` in place, in order.
-chain_render :: proc "contextless" (c: ^Chain, p: ^Chain_Params, l, r: []f32, sample_rate: f64) {
+// A key (`key_l`, `key_r`) is the compressor's sidechain.
+chain_render :: proc "contextless" (c: ^Chain, p: ^Chain_Params, l, r: []f32, sample_rate: f64, key_l: []f32 = nil, key_r: []f32 = nil) {
 	for e in p.on - c.was_on do chain_reset(c, e)
 	c.was_on = p.on
 	if p.on == {} do return
@@ -119,7 +120,7 @@ chain_render :: proc "contextless" (c: ^Chain, p: ^Chain_Params, l, r: []f32, sa
 		if e not_in p.on do continue
 		switch e {
 		case .Chorus:     chorus_render(&c.chorus, &p.chorus, l, r, sample_rate)
-		case .Compressor: compressor_render(&c.compressor, &p.compressor, l, r, sample_rate)
+		case .Compressor: compressor_render(&c.compressor, &p.compressor, l, r, sample_rate, key_l, key_r)
 		case .Delay:      delay_render(&c.delay, &p.delay, l, r, sample_rate)
 		case .Distortion: distortion_render(&c.distortion, &p.distortion, l, r, sample_rate)
 		case .Eq:         eq_render(&c.eq, &p.eq, l, r, sample_rate)

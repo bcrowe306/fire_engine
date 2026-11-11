@@ -100,6 +100,8 @@ draw_effect :: proc(user: rawptr) {
 		im.TextColored(transmute(im.Vec4)ui.theme().danger, "%s", fmt.ctprintf("Could not load %s", s.plugin_path))
 		return
 	}
+	sidechain := pm.keyable(s.kind) && (t.kind == .Pad || t.kind == .Bus)
+	if sidechain do draw_sidechain(a, t, s)
 	// The synth's effects: their own page (its choices on this line, then
 	// its picture and knobs).
 	if e, twin := pm.synth_twin(s.kind); twin {
@@ -108,7 +110,7 @@ draw_effect :: proc(user: rawptr) {
 		x0 := im.GetCursorScreenPos().x
 		avail := im.GetContentRegionAvail()
 		top := im.GetCursorScreenPos().y
-		if e != .Reverb do im.SameLine(0, 0) // (the reverb has no choices to put there)
+		if e != .Reverb && !sidechain do im.SameLine(0, 0) // (the reverb has no choices to put there; with a sidechain row, they go on a line of their own)
 		draw_synth_effect(a, e, x0, avail.x - im.GetStyle().ScrollbarSize, top + max(avail.y - 6, 240))
 		return
 	}
@@ -308,4 +310,72 @@ nearest_note :: proc(beats: f32) -> int {
 		best, d = k, abs(nv.beats - f64(beats))
 	}
 	return best
+}
+
+// A compressor's or gate's sidechain: what it listens to (any pad, or a
+// bus it doesn't feed), the key's high-pass, and Listen (the track hears
+// the key, to set it by).
+draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
+	m := &a.m
+	p := &m.project
+	name :: proc(p: ^pm.Project, k: pm.Key_Source) -> string {
+		switch k.kind {
+		case .None: return "None (itself)"
+		case .Pad:  return fmt.tprintf("Pad %s", pm.pad_label(k.index))
+		case .Bus:  return fmt.tprintf("Bus %s", pm.bus_index_name(p, k.index))
+		}
+		return ""
+	}
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Sidechain")
+	im.SameLine()
+	im.SetNextItemWidth(160)
+	if ui.combo("##sidechain", fmt.ctprintf("%s", name(p, s.key))) {
+		set :: proc(m: ^pm.Model, t: pm.Fx_Target, s: pm.Effect_Slot, k: pm.Key_Source) {
+			ns := s
+			ns.key = k
+			if k.kind == .None do ns.listen = false
+			pm.set_target_slot(m, t, ns, "Sidechain")
+		}
+		if im.Selectable("None (itself)", s.key.kind == .None) do set(m, t, s, {})
+		ui.name("key none")
+		im.SeparatorText("Pads")
+		for i in 0 ..< pm.PADS do if pm.pad_used(p, i) && pm.key_allowed(p, t, {.Pad, i}) {
+			k := pm.Key_Source{.Pad, i}
+			label := fmt.ctprintf("%s  %s###kp%d", pm.pad_label(i), pm.pad_name(&p.pads[i]), i)
+			if im.Selectable(label, s.key == k) do set(m, t, s, k)
+			ui.name(fmt.tprintf("key pad %s", pm.pad_label(i)))
+		}
+		im.SeparatorText("Buses")
+		for b in 0 ..< p.bus_count do if pm.key_allowed(p, t, {.Bus, b}) {
+			k := pm.Key_Source{.Bus, b}
+			if im.Selectable(fmt.ctprintf("%s###kb%d", pm.bus_index_name(p, b), b), s.key == k) do set(m, t, s, k)
+			ui.name(fmt.tprintf("key bus %d", b + 1))
+		}
+		im.EndCombo()
+	}
+	ui.name("sidechain")
+	if im.IsItemHovered() do im.SetTooltip("What it listens to: another pad, or a bus this track doesn't feed (after its fader)")
+	if s.key.kind == .None do return
+	im.SameLine(0, 12)
+	// (While dragged it shows its own value; the slot is set once, at the end: one step.)
+	@(static) dragging: bool
+	@(static) held: f64
+	hpf := held if dragging else f64(s.key_hpf)
+	e := ui.number_drag("key hpf", &hpf, 0, 2000, 10, 1, "Key high-pass %.0f Hz", 170)
+	if im.IsItemHovered() do im.SetTooltip("The key's high-pass (0 Hz: none): above the bass, a kick keys by its click")
+	dragging, held = e.active && !e.ended, hpf
+	if e.ended || (e.changed && !e.active) {
+		ns := s
+		ns.key_hpf = f32(hpf)
+		pm.set_target_slot(m, t, ns, "Key Filter")
+	}
+	im.SameLine(0, 12)
+	listen := s.listen
+	if ui.toggle("Listen", &listen) {
+		ns := s
+		ns.listen = listen
+		pm.set_target_slot(m, t, ns, "Listen to Key")
+	}
+	if im.IsItemHovered() do im.SetTooltip("The track plays the key (filtered) instead, while on")
 }

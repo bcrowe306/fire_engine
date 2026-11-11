@@ -166,6 +166,11 @@ register_commands :: proc(a: ^App) {
 		},
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Synth }})
+	add(c, {id = "pad.group", label = "Group Selected Pads", icon = ui.ICON_GROUP, kinds = {.Pad}, group = 2, keys = "Cmd+G",
+		run = proc(a: ^App, t: Target) { group_selected(a, t.index) }, enabled = pad_has})
+	add(c, {id = "bus.ungroup", label = "Ungroup", icon = ui.ICON_GROUP, kinds = {.Bus}, group = 1,
+		run = proc(a: ^App, t: Target) { pm.ungroup(&a.m, t.index + 1) },
+		enabled = proc(a: ^App, t: Target) -> bool { return t.index < pm.BUSES && a.m.project.buses[t.index].group }})
 	add(c, {id = "pad.copy", label = "Copy Pad", icon = ui.ICON_COPY, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { a.pad_clip, a.has_pad_clip = a.m.project.pads[t.index], true }, enabled = pad_has})
 	add(c, {id = "pad.paste", label = "Paste Pad", icon = ui.ICON_CLIPBOARD_PASTE, kinds = {.Pad}, group = 2,

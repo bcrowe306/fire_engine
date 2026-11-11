@@ -78,6 +78,67 @@ Effect_Slot :: struct {
 	plugin_id:   string, // .Plugin: which of its plug-ins
 	plugin_name: string,
 	state:       string, // .Plugin: its saved state (bytes, interned), put back when it loads
+	key:         Key_Source, // .Compressor, .Gate: what it listens to (none: itself)
+	key_hpf:     f32,  // Hz: the key's high-pass (0: none)
+	listen:      bool, // the track hears the key (filtered) instead, to set it by
+}
+
+// Where a sidechain key comes from: a pad's or a bus's output (after its
+// fader).
+Key_Source :: struct {
+	kind:  Key_Kind,
+	index: int, // the pad (0..), or the bus (0..BUSES-1)
+}
+
+// What a key is.
+Key_Kind :: enum u8 {
+	None,
+	Pad,
+	Bus,
+}
+
+// Whether a slot's effect can be keyed.
+keyable :: proc "contextless" (k: Effect_Kind) -> bool {
+	return k == .Compressor || k == .Gate
+}
+
+// Whether the slot `t` points at can be keyed from `src` without a loop:
+// another pad's output (never its own), or a bus its track doesn't feed
+// (by its route, its sends, or the buses after them).
+key_allowed :: proc(p: ^Project, t: Fx_Target, src: Key_Source) -> bool {
+	switch src.kind {
+	case .None: return true
+	case .Pad:
+		if src.index < 0 || src.index >= PADS do return false
+		return !(t.kind == .Pad && t.index == src.index) && (t.kind == .Pad || t.kind == .Bus)
+	case .Bus:
+		b := src.index + 1 // (1-based, as routes are)
+		if src.index < 0 || src.index >= p.bus_count do return false
+		#partial switch t.kind {
+		case .Pad:
+			pad := &p.pads[t.index]
+			if bus_reaches(p, int(pad.bus), b) do return false
+			for sd, k in pad.sends do if sd.level > 0 && bus_reaches(p, k + 1, b) do return false
+			return true
+		case .Bus:
+			if t.index == BUSES do return true // (main feeds nothing)
+			return !bus_reaches(p, t.index + 1, b)
+		}
+	}
+	return false
+}
+
+// Whether bus `from` (1-based; 0 = main) is bus `b` or goes through it.
+@(private)
+bus_reaches :: proc(p: ^Project, from, b: int) -> bool {
+	at := from
+	for _ in 0 ..= BUSES {
+		if at == 0 do return false
+		if at == b do return true
+		if at < 1 || at > BUSES do return false
+		at = int(p.buses[at - 1].dest)
+	}
+	return false
 }
 
 // The value a slot has for parameter `id`, or `default`.
@@ -160,6 +221,8 @@ Bus :: struct {
 	slots:  [BUS_SLOTS]Effect_Slot,
 	name:   [16]u8, // "" = "Bus A"...
 	dest:   u8,     // where it goes: 0 = main, 1..BUSES = another bus (never round to itself)
+	group:  bool,   // a group: the pads going to it show with it in the mixer
+	folded: bool,   // a group whose pads' strips are hidden
 }
 
 // The name of where sound goes: 0 = "Main", 1..BUSES = a bus (its own
