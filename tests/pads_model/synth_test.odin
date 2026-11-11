@@ -1,5 +1,6 @@
 package test_pads_model
 
+import "core:math"
 import "core:testing"
 
 import app "app:core"
@@ -75,4 +76,26 @@ a_synth_patch_saves_and_undoes :: proc(t: ^testing.T) {
 	testing.expect(t, after.synth == before.synth, "its patch whole")
 	testing.expect(t, r2.m.project.pads[0].synth.set == false, "a pad that never was a synth has none")
 	render(r2, 512)
+}
+
+// An armed synth taking any MIDI plays MIDI keys chromatically (not the
+// drum map); pitch bend moves it by its bend range (2 semitones).
+@(test)
+midi_plays_and_bends_an_armed_synth :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_midi")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	pm.set_synth_value(m, 0, synth.filter_param(1, .On), 0, "Filter")
+	pm.arm_track(m, 0, true)
+	render(r, 256)
+	app.host_midi_inject(&r.host, {0x90, 69, 110}) // A4
+	out := render(r, 24_000)
+	testing.expectf(t, kit.tone_amplitude(out[0][4800:], SR, 440) > 0.05, "A4 at 440 Hz (%v)", kit.tone_amplitude(out[0][4800:], SR, 440))
+	app.host_midi_inject(&r.host, {0xE0, 0x7F, 0x7F}) // bend fully up
+	out = render(r, 24_000)
+	up := 440 * math.pow(2, 2.0 / 12)
+	testing.expectf(t, kit.tone_amplitude(out[0][4800:], SR, up) > 0.05 && kit.tone_amplitude(out[0][4800:], SR, 440) < 0.01, "bent up 2 semitones (%v)", kit.tone_amplitude(out[0][4800:], SR, up))
+	app.host_midi_inject(&r.host, {0x80, 69, 0})
+	render(r, 48_000)
 }

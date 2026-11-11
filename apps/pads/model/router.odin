@@ -5,6 +5,7 @@ import "core:math"
 import "core:mem"
 
 import fc "fire:core"
+import "fire:synth"
 import pf "fire:perform"
 import "fire:rt"
 
@@ -169,6 +170,27 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 		#partial switch v in e.payload {
 		case fc.Midi_Raw:
 			status := v.bytes[0] & 0xF0
+			// Pitch bend, the mod wheel and channel pressure: to the synth
+			// the notes from there play, as its wheels and aftertouch.
+			if status == 0xE0 || status == 0xD0 || (status == 0xB0 && v.bytes[1] == 1) {
+				t := armed_listener(r, int(v.port), int((v.bytes[0] & 15) + 1))
+				if t < 0 || r.kinds[t] != .Synth do continue
+				param: fc.Param_Id
+				value: f64
+				switch status {
+				case 0xE0:
+					param = synth.global_param(.Pitch_Wheel)
+					value = (f64(int(v.bytes[2] & 0x7F) << 7 | int(v.bytes[1] & 0x7F)) - 8192) / 8192
+				case 0xD0:
+					param = synth.global_param(.Aftertouch)
+					value = f64(v.bytes[1] & 0x7F) / 127
+				case:
+					param = synth.global_param(.Mod_Wheel)
+					value = f64(v.bytes[2] & 0x7F) / 127
+				}
+				track_push(r, t, {e.offset, fc.Param_Value{param = param, value = clamp(value, -1, 1)}})
+				continue
+			}
 			if status != 0x90 && status != 0x80 do continue
 			key := v.bytes[1] & 0x7F
 			on := status == 0x90 && v.bytes[2] > 0
@@ -409,7 +431,8 @@ IN_ALL :: i16(-2)
 IN_NONE :: i16(-1)
 
 // [rt] The armed track that listens to input port `port` on channel `ch`
-// (1..16), or -1: the selected one first, else the lowest.
+// (1..16), or -1: one on that port first, else an armed synth taking any
+// port's MIDI (a synth is played by keys, not by the drum map).
 @(private)
 armed_listener :: proc "contextless" (r: ^Router, port, ch: int) -> int {
 	for i in 0 ..< PADS {
@@ -417,5 +440,6 @@ armed_listener :: proc "contextless" (r: ^Router, port, ch: int) -> int {
 		if c := r.in_channel[i]; c != 0 && int(c) != ch do continue
 		return i
 	}
+	for i in 0 ..< PADS do if r.armed[i] && r.kinds[i] == .Synth && r.in_port[i] == IN_ALL do return i
 	return -1
 }
