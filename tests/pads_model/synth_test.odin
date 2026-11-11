@@ -117,3 +117,33 @@ a_cutoff_lane_moves_a_synths_filter :: proc(t: ^testing.T) {
 	hi := f32(69 + 12 * math.log2(3200.0 / 440))
 	testing.expectf(t, key > lo + 2 && key < hi - 2, "between the points' keys (%v in %v..%v)", key, lo, hi)
 }
+
+// A sequenced note on a synth plays its pitch (as a keyboard-recorded
+// note has): pitch 7 is G3.
+@(test)
+a_sequenced_note_plays_its_pitch_on_a_synth :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_seq")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	pm.set_synth_value(m, 0, synth.filter_param(1, .On), 0, "Filter")
+	pm.add_note(m, 0, {start = 0, length = 2, pad = 0, pitch = 7, velocity = 0.9, probability = 1})
+	pm.play(&m.engine)
+	out := render(r, 24_000)
+	g3 := 261.63 * math.pow(2, 7.0 / 12)
+	testing.expectf(t, kit.tone_amplitude(out[0][4800:], SR, g3) > 0.05 && kit.tone_amplitude(out[0][4800:], SR, 261.63) < 0.01, "G3 (%v), not C3 (%v)", kit.tone_amplitude(out[0][4800:], SR, g3), kit.tone_amplitude(out[0][4800:], SR, 261.63))
+}
+
+// The piano roll's pitch on a sampler pad: an octave up plays it twice as
+// fast (its own 440 Hz at 880).
+@(test)
+a_sequenced_pitch_plays_on_a_sampler :: proc(t: ^testing.T) {
+	r := rig_make(t, "sampler_seq_pitch")
+	defer rig_destroy(r)
+	m := &r.m
+	testing.expect_value(t, pm.load_onto_pad(m, 0, tone(r, "a.wav", 440, 1)), fc.Error.None)
+	pm.add_note(m, 0, {start = 0, length = 1, pad = 0, pitch = 12, velocity = 0.9, probability = 1})
+	pm.play(&m.engine)
+	out := render(r, 12_000)
+	testing.expectf(t, kit.tone_amplitude(out[0][2400:], SR, 880) > 4 * kit.tone_amplitude(out[0][2400:], SR, 440), "an octave up (880 %v, 440 %v)", kit.tone_amplitude(out[0][2400:], SR, 880), kit.tone_amplitude(out[0][2400:], SR, 440))
+}

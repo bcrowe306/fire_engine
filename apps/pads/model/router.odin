@@ -214,8 +214,8 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 				fc.event_writer_push(&live, {e.offset, note(on, 0, pad_key(int(p)), vel)})
 				if on do intrinsics.atomic_add(&r.midi_in_hits[p], 1)
 			}
-		case fc.Note_On, fc.Note_Off:
-			sound(r, out, e) // the sequencer
+		case fc.Note_On, fc.Note_Off, fc.Note_Expression:
+			sound(r, out, e) // the sequencer (a note's pitch comes as its expression)
 		}
 	}
 
