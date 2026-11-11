@@ -49,11 +49,6 @@ Route :: struct {
 	bypass:  bool,
 }
 
-// Where a sound source of a patch comes from.
-Table_Ref :: struct {
-	table: ^Wavetable, // nil: silent
-}
-
 // The rest of a patch (see above). Its tables and sample belong to
 // whoever made the patch; they must outlive it.
 Patch :: struct {

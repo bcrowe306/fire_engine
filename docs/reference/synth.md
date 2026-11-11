@@ -159,7 +159,7 @@ from the one before (so a frame or pitch change is smooth).
 OSCS :: 3
 ```
 
-Counts of each block.
+Wavetable oscillators a synth has.
 
 ### FILTERS
 
@@ -167,11 +167,15 @@ Counts of each block.
 FILTERS :: 2
 ```
 
+Filters a voice has.
+
 ### ENVS
 
 ```odin
 ENVS :: 6
 ```
+
+Envelopes a voice has (the first is the amplifier's).
 
 ### LFOS
 
@@ -179,11 +183,15 @@ ENVS :: 6
 LFOS :: 8
 ```
 
+LFOs a voice has.
+
 ### MACROS
 
 ```odin
 MACROS :: 4
 ```
+
+Macro controls.
 
 ### PARAM_SLOTS
 
@@ -1230,20 +1238,6 @@ A route: `source` moves `dest` by `amount` (a share of its range, -1..1)
 through a curve (`power`, as envelope curves). Bipolar sources swing
 both ways about the middle; stereo routes move the right side the
 other way; bypassed routes do nothing.
-
-### Table_Ref
-
-```odin
-Table_Ref :: struct {
-	table: ^Wavetable,
-}
-```
-
-Where a sound source of a patch comes from.
-
-| Field | Description |
-|-------|-------------|
-| `table` | nil: silent |
 
 ### Patch
 

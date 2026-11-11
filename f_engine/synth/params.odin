@@ -60,11 +60,15 @@ Env_Field :: enum u16 {Delay, Attack, Hold, Decay, Sustain, Release, Attack_Powe
 // An LFO's parameters.
 Lfo_Field :: enum u16 {Mode, Rate, Hz, Tempo, Phase, Fade, Delay, Smooth, Smooth_Time, Stereo, Key_Transpose, Key_Tune}
 
-// Counts of each block.
+// Wavetable oscillators a synth has.
 OSCS :: 3
+// Filters a voice has.
 FILTERS :: 2
+// Envelopes a voice has (the first is the amplifier's).
 ENVS :: 6
+// LFOs a voice has.
 LFOS :: 8
+// Macro controls.
 MACROS :: 4
 
 // Where a source's sound goes.
