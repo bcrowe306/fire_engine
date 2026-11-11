@@ -28,6 +28,31 @@ defer synth.wavetable_destroy(t)
 
 ## Constants
 
+### OSC_MAX_UNISON
+
+```odin
+OSC_MAX_UNISON :: 16
+```
+
+The most unison voices an oscillator stacks.
+
+### OSC_DEFAULTS
+
+```odin
+OSC_DEFAULTS : Osc_Params : Osc_Params{frame = 0, level = 0.5, unison = 1, detune_cents = 40, detune_power = 1.5, blend = 0.8, stereo_spread = 1, phase = 0.5, random_phase = 1, warp_amount = 0.5, warp_phase = 0.5}
+```
+
+Default oscillator settings (as a new patch has them).
+
+### OSC_FADE_SECONDS
+
+```odin
+OSC_FADE_SECONDS :: 0.007
+```
+
+Seconds a wave buffer lasts before it is built again, crossfading
+from the one before (so a frame or pitch change is smooth).
+
 ### WAVE_SIZE
 
 ```odin
@@ -94,6 +119,207 @@ shapes and additive recipes; none is copied from anywhere.
 | `Sync_Saw` | a saw hard-synced from 1× to 8× its rate |
 | `Drawbars` | organ registrations, flute to full |
 
+### Unison_Stack
+
+```odin
+Unison_Stack :: enum u8 {
+	Normal,
+	Center_Drop_Octave,
+	Center_Drop_Octave_2,
+	Octave,
+	Octave_2,
+	Power_Chord,
+	Power_Chord_2,
+	Major_Chord,
+	Minor_Chord,
+	Harmonic_Series,
+	Odd_Harmonic_Series,
+}
+```
+
+How unison voices are tuned against each other: all around the note
+(Normal), or some an interval away.
+
+| Value | Description |
+|-------|-------------|
+| `Normal` |  |
+| `Center_Drop_Octave` | the centre an octave down |
+| `Center_Drop_Octave_2` | the centre two octaves down |
+| `Octave` | pairs alternate the note and an octave up |
+| `Octave_2` | the note, an octave and two up |
+| `Power_Chord` | the note, a fifth and an octave |
+| `Power_Chord_2` | ... up to two octaves |
+| `Major_Chord` |  |
+| `Minor_Chord` |  |
+| `Harmonic_Series` | pair n on harmonic n |
+| `Odd_Harmonic_Series` | pair n on odd harmonic 2n-1 |
+
+### Osc_Warp
+
+```odin
+Osc_Warp :: enum u8 {
+	None,
+	Sync,
+	Formant,
+	Quantize,
+	Bend,
+	Squeeze,
+	Pulse_Width,
+	Fm_A,
+	Fm_B,
+	Fm_Sample,
+	Rm_A,
+	Rm_B,
+	Rm_Sample,
+}
+```
+
+How an oscillator bends its phase (or its output) before reading the
+wave: the warp. FM and RM take another oscillator's output (A and B:
+the first and second other oscillators) or the sample oscillator's.
+
+| Value | Description |
+|-------|-------------|
+| `None` |  |
+| `Sync` | hard sync: the wave played 1/16 to 16 times a cycle |
+| `Formant` | sync, windowed by a half sine: a formant that moves |
+| `Quantize` | the phase stepped |
+| `Bend` | the phase bent by a cubic: the wave leans |
+| `Squeeze` | the first half squeezed, the second stretched |
+| `Pulse_Width` | the cycle played faster, then silent: a pulse of it |
+| `Fm_A` |  |
+| `Fm_B` |  |
+| `Fm_Sample` | phase modulated |
+| `Rm_A` |  |
+| `Rm_B` |  |
+| `Rm_Sample` | ring modulated |
+
+### Osc_Params
+
+```odin
+Osc_Params :: struct {
+	table: ^Wavetable,
+	frame: f32,
+	level: f32,
+	pan: f32,
+	unison: int,
+	detune_cents: f32,
+	detune_power: f32,
+	blend: f32,
+	stereo_spread: f32,
+	stack: Unison_Stack,
+	phase: f32,
+	random_phase: f32,
+	warp: Osc_Warp,
+	warp_amount: f32,
+	warp_spread: f32,
+	warp_phase: f32,
+}
+```
+
+What an oscillator plays for one render, with modulation applied and
+in its working units (see each).
+
+| Field | Description |
+|-------|-------------|
+| `table` |  |
+| `frame` | 0..1 across the table |
+| `level` | the output's amplitude, already squared from the level control |
+| `pan` | -1 (left) .. 1 (right) |
+| `unison` | 1 ..= OSC_MAX_UNISON |
+| `detune_cents` | the outermost voices' detune (range × detune) |
+| `detune_power` | -5..5: how the voices between are spread (0 evenly) |
+| `blend` | 0..1: the centre's level against the detuned voices' |
+| `stereo_spread` | 0 (mono) .. 1 (pairs fully left and right) |
+| `stack` |  |
+| `phase` | 0..1: a read offset |
+| `random_phase` | 0..1: how much each voice starts at a random phase |
+| `warp` |  |
+| `warp_amount` | 0..1 |
+| `warp_spread` | -0.5..0.5: the warp's amount across the unison voices |
+| `warp_phase` | 0..1 (0.5: none): where in the cycle the warp centres |
+
+### Osc_Shared
+
+```odin
+Osc_Shared :: struct {
+	fft: dsp.Real_Fft,
+	spectrum: [1024]complex64,
+}
+```
+
+What every oscillator of a synth shares: an FFT and its scratch (used
+one oscillator at a time, on the audio thread). Set up with
+`osc_shared_init`.
+
+### Osc_State
+
+```odin
+Osc_State :: struct {
+	phases: [8][2]u32,
+	inc_mult: [8][2]f32,
+	last_mult: [8][2]f32,
+	warp: [8]f32,
+	last_warp: [8]f32,
+	warp_phase: f32,
+	last_warp_phase: f32,
+	center: f32,
+	detuned: f32,
+	last_center: f32,
+	last_detuned: f32,
+	stereo: f32,
+	mono_mix: f32,
+	last_stereo: f32,
+	last_mono_mix: f32,
+	pan: [2]f32,
+	last_pan: [2]f32,
+	bufs: [2][2051]f32,
+	from: int,
+	to: int,
+	fade: int,
+	fade_len: int,
+	built_table: ^Wavetable,
+	built_frame: int,
+	built_harmonics: int,
+	rng: u32,
+	started: bool,
+}
+```
+
+One oscillator of one voice: its unison phases, its two wave buffers
+(the one it fades from and the one it fades to), and the values it
+glides from between renders. Plain data: zero it, then `osc_start`.
+
+| Field | Description |
+|-------|-------------|
+| `phases` |  |
+| `inc_mult` | each voice's pitch ratio (detune × stack) |
+| `last_mult` |  |
+| `warp` | each pair's warp value (see `warp_value`) |
+| `last_warp` |  |
+| `warp_phase` |  |
+| `last_warp_phase` |  |
+| `center` |  |
+| `detuned` |  |
+| `last_center` |  |
+| `last_detuned` |  |
+| `stereo` |  |
+| `mono_mix` |  |
+| `last_stereo` |  |
+| `last_mono_mix` |  |
+| `pan` |  |
+| `last_pan` |  |
+| `bufs` |  |
+| `from` |  |
+| `to` | which of `bufs` it fades from and to (equal: no fade) |
+| `fade` |  |
+| `fade_len` | samples into the fade, and its length |
+| `built_table` |  |
+| `built_frame` |  |
+| `built_harmonics` |  |
+| `rng` |  |
+| `started` |  |
+
 ### Wavetable
 
 ```odin
@@ -121,6 +347,46 @@ builtin_table :: proc(which: Builtin_Table, allocator: mem.Allocator = context.a
 
 Control thread. Makes built-in table `which` (free with
 `wavetable_destroy`).
+
+### osc_shared_init
+
+```odin
+osc_shared_init :: proc(sh: ^Osc_Shared, allocator: mem.Allocator = context.allocator) -> bool
+```
+
+Control thread. Sets up what oscillators share.
+
+### osc_shared_destroy
+
+```odin
+osc_shared_destroy :: proc(sh: ^Osc_Shared, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees what `osc_shared_init` made.
+
+### osc_start
+
+```odin
+osc_start :: proc "contextless"(s: ^Osc_State, p: ^Osc_Params, seed: u32)
+```
+
+**Realtime-safe** (callable on the audio thread). A note starts: the unison phases set (each at `p.phase`, moved
+by up to `p.random_phase` of a cycle at random), the glides reset.
+`seed` makes the random phases differ between voices.
+
+### osc_render
+
+```odin
+osc_render :: proc "contextless"(sh: ^Osc_Shared, s: ^Osc_State, p: ^Osc_Params, inc: []f32, mod: ^[2][]f32, out_l: []f32, out_r: []f32, raw: ^[2][]f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Renders `len(out_l)` samples of oscillator `s` playing `p`,
+writing (not adding) its stereo output (`raw`: before level and pan,
+for other oscillators' FM and RM; may be nil). `inc` is the note's
+pitch per sample in cycles (one value a sample: glide and pitch
+modulation are in it). `mod` is the FM or RM source, a channel each
+(nil without). Settings that changed since the last render glide to
+their new values across this one.
 
 ### wavetable_make
 
