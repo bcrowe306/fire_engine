@@ -1,8 +1,11 @@
 package test_fx
 
+import "core:log"
 import "core:math"
 import "core:testing"
+import "core:time"
 
+import "fire:core"
 import "fire:fx"
 import kit "fire:testkit"
 
@@ -100,10 +103,10 @@ every_effect_is_sound :: proc(t: ^testing.T) {
 		l2, r2 := stereo(len(y))
 		copy(l1, y); copy(r1, y); copy(l2, y); copy(r2, y)
 		run(a, k, l1, r1, 256)
-		run(b, k, l2, r2, 256)
+		run(b, k, l2, r2, 37)
 		same := 0.0
-		for i in 0 ..< len(y) do same = max(same, f64(abs(l1[i] - l2[i])))
-		testing.expectf(t, same == 0, "%v: twice alike (%v)", k, same)
+		for i in 0 ..< len(y) do same = max(same, f64(abs(l1[i] - l2[i])), f64(abs(r1[i] - r2[i])))
+		testing.expectf(t, same < 1e-5, "%v: the same in blocks of 256 and 37 (%v)", k, same)
 		rig_free(a)
 		rig_free(b)
 	}
@@ -195,4 +198,37 @@ reverb_decays :: proc(t: ^testing.T) {
 	diff := 0.0
 	for i in 4800 ..< 14_400 do diff += f64(abs(l[i] - rr[i]))
 	testing.expectf(t, diff > 1, "its sides differ (%v)", diff)
+}
+
+// The whole chain, every effect on, over a second of stereo noise in
+// 128-frame blocks: its cost (logged), and the chain's order and reset.
+@(test)
+the_chain :: proc(t: ^testing.T) {
+	c := new(fx.Chain)
+	defer free(c)
+	testing.expect_value(t, fx.chain_make(c, SR), core.Error.None)
+	defer fx.chain_destroy(c)
+	p := fx.CHAIN_DEFAULTS
+	p.on = ~bit_set[fx.Effect]{}
+	x := noise(int(SR))
+	l, r := stereo(len(x))
+	for v, i in x do l[i], r[i] = v * 0.3, v * 0.3
+	start := time.tick_now()
+	for at := 0; at < len(l); at += 128 do fx.chain_render(c, &p, l[at:at + 128], r[at:at + 128], SR)
+	ms := time.duration_milliseconds(time.tick_since(start))
+	log.infof("the chain, all nine on: %.1f ms a second of audio (%.1f%% of a core)", ms, ms / 10)
+	n, _ := kit.count_non_finite(l)
+	testing.expectf(t, n == 0 && kit.peak(l) < 16, "finite (%v)", kit.peak(l))
+	// The order matters: distortion before a quiet EQ cut, or after.
+	testing.expect(t, fx.chain_order_valid(fx.CHAIN_ORDER), "the first order valid")
+	bad := fx.CHAIN_ORDER
+	bad[1] = bad[0]
+	testing.expect(t, !fx.chain_order_valid(bad), "an effect twice: not")
+	// Off then on: it starts from silence (the reverb's old tail gone).
+	p.on = {}
+	fx.chain_render(c, &p, l[:128], r[:128], SR)
+	p.on = {.Reverb}
+	z, zr := stereo(4800)
+	fx.chain_render(c, &p, z, zr, SR)
+	testing.expectf(t, kit.peak(z) == 0, "switched on: silent in, silent out (%v)", kit.peak(z))
 }

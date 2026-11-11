@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import fc "fire:core"
+import "fire:fx"
 import "fire:perform"
 import "fire:sampler"
 import "fire:session"
@@ -19,7 +20,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 15 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths
+PROJECT_VERSION :: 16 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -378,6 +379,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u8(w, sy.sample.builtin)
 		fc.write_u64(w, u64(sy.sample.sample))
 		for &name in sy.macro_names do fc.write_string(w, strings.truncate_to_byte(string(name[:]), 0))
+		for e in sy.fx_order do fc.write_u8(w, u8(e)) // v16
 	}
 }
 
@@ -685,6 +687,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			for &name in sy.macro_names {
 				name = {}
 				copy(name[:len(name) - 1], fc.read_string(r))
+			}
+			if version >= 16 {
+				for &e in sy.fx_order do e = fx.Effect(fc.read_u8(r))
+				if !fx.chain_order_valid(sy.fx_order) do sy.fx_order = fx.CHAIN_ORDER
 			}
 		}
 	} else {

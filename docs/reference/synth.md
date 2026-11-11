@@ -152,7 +152,7 @@ Macro controls.
 ### PARAM_SLOTS
 
 ```odin
-PARAM_SLOTS :: LFO_BASE + LFOS * LFO_STRIDE
+PARAM_SLOTS :: FX_BASE + len(fx.Effect) * FX_STRIDE
 ```
 
 Ids span 1 ..< PARAM_SLOTS (with gaps between blocks).
@@ -265,6 +265,198 @@ shapes and additive recipes; none is copied from anywhere.
 | `Vowels` | a buzz through the formants of a, e, i, o, u |
 | `Sync_Saw` | a saw hard-synced from 1× to 8× its rate |
 | `Drawbars` | organ registrations, flute to full |
+
+### Chorus_Field
+
+```odin
+Chorus_Field :: enum u16 {
+	On,
+	Voices,
+	Sync,
+	Hz,
+	Tempo,
+	Feedback,
+	Wet,
+	Cutoff,
+	Spread,
+	Depth,
+	Delay_1,
+	Delay_2,
+}
+```
+
+The chorus's parameters.
+
+### Compressor_Field
+
+```odin
+Compressor_Field :: enum u16 {
+	On,
+	Bands,
+	Attack,
+	Release,
+	Mix,
+	Low_Upper,
+	Low_Lower,
+	Low_Upper_Ratio,
+	Low_Lower_Ratio,
+	Low_Gain,
+	Band_Upper,
+	Band_Lower,
+	Band_Upper_Ratio,
+	Band_Lower_Ratio,
+	Band_Gain,
+	High_Upper,
+	High_Lower,
+	High_Upper_Ratio,
+	High_Lower_Ratio,
+	High_Gain,
+}
+```
+
+The compressor's parameters (the bands: low, band, high).
+
+### Delay_Field
+
+```odin
+Delay_Field :: enum u16 {
+	On,
+	Style,
+	Sync,
+	Hz,
+	Tempo,
+	Hz_Right,
+	Tempo_Right,
+	Feedback,
+	Wet,
+	Cutoff,
+	Spread,
+}
+```
+
+The delay's parameters (`Hz` and `Tempo` the left side's, or both).
+
+### Distortion_Field
+
+```odin
+Distortion_Field :: enum u16 {
+	On,
+	Type,
+	Drive,
+	Mix,
+	Filter_Order,
+	Cutoff,
+	Resonance,
+	Blend,
+}
+```
+
+The distortion's parameters.
+
+### Eq_Field
+
+```odin
+Eq_Field :: enum u16 {
+	On,
+	Low_Mode,
+	Low_Cutoff,
+	Low_Gain,
+	Low_Resonance,
+	Band_Mode,
+	Band_Cutoff,
+	Band_Gain,
+	Band_Resonance,
+	High_Mode,
+	High_Cutoff,
+	High_Gain,
+	High_Resonance,
+}
+```
+
+The EQ's parameters (low, band, high).
+
+### Fx_Filter_Field
+
+```odin
+Fx_Filter_Field :: enum u16 {
+	On,
+	Model,
+	Style,
+	Cutoff,
+	Resonance,
+	Drive,
+	Blend,
+	Mix,
+	Gain,
+	Formant_X,
+	Formant_Y,
+	Formant_Transpose,
+	Formant_Resonance,
+	Formant_Spread,
+	Comb_Offset,
+}
+```
+
+The filter effect's parameters.
+
+### Flanger_Field
+
+```odin
+Flanger_Field :: enum u16 {
+	On,
+	Sync,
+	Hz,
+	Tempo,
+	Center,
+	Feedback,
+	Wet,
+	Depth,
+	Offset,
+}
+```
+
+The flanger's parameters.
+
+### Phaser_Field
+
+```odin
+Phaser_Field :: enum u16 {
+	On,
+	Sync,
+	Hz,
+	Tempo,
+	Feedback,
+	Wet,
+	Center,
+	Blend,
+	Depth,
+	Offset,
+}
+```
+
+The phaser's parameters.
+
+### Reverb_Field
+
+```odin
+Reverb_Field :: enum u16 {
+	On,
+	Wet,
+	Decay,
+	Size,
+	Delay,
+	Pre_Low,
+	Pre_High,
+	Low_Cutoff,
+	Low_Gain,
+	High_Cutoff,
+	High_Gain,
+	Chorus,
+	Chorus_Hz,
+}
+```
+
+The reverb's parameters.
 
 ### Env_Params
 
@@ -1029,10 +1221,11 @@ Patch :: struct {
 	shapes: [8]Lfo_Shape,
 	tables: [3]^Wavetable,
 	sample: ^Sample,
+	fx_order: [9]fx.Effect,
 	shape_tables: [8][2048]f32,
 	used_envs: bit_set[int],
 	used_lfos: bit_set[int],
-	values: [648]f32,
+	values: [988]f32,
 	has_values: bool,
 }
 ```
@@ -1047,6 +1240,7 @@ whoever made the patch; they must outlive it.
 | `shapes` |  |
 | `tables` |  |
 | `sample` |  |
+| `fx_order` | the effects' order (each once) |
 | `shape_tables` | Each LFO's shape rendered, and the envelopes and LFOs some route uses (filled by `patch_prepare`; the rest aren't run). |
 | `used_envs` |  |
 | `used_lfos` |  |
@@ -1181,7 +1375,7 @@ Synth :: struct {
 	allocator: mem.Allocator,
 	sample_rate: f64,
 	max_block: int,
-	values: [648]f32,
+	values: [988]f32,
 	patch: ^Patch,
 	old: ^Patch,
 	pending: Spsc_Queue($T=^Patch),
@@ -1194,9 +1388,13 @@ Synth :: struct {
 	any_held: bool,
 	shared: Osc_Shared,
 	os: [3][2]dsp.Oversampler,
+	os_direct: [3][2]dsp.Oversampler,
 	os_factor: int,
 	mix: [2][]f32,
-	scratch: [8][]f32,
+	direct: [2][]f32,
+	scratch: [10][]f32,
+	chain: fx.Chain,
+	fx_mod: [288]f32,
 	song_seconds: f64,
 	bpm: f64,
 	live: Synth_Live,
@@ -1225,9 +1423,13 @@ The node's state.
 | `any_held` |  |
 | `shared` |  |
 | `os` | 2×, 4×, 8×, a side each |
+| `os_direct` | the same, for what goes around the effects |
 | `os_factor` |  |
-| `mix` | the voices' sum at the voice rate |
+| `mix` | the voices' sum at the voice rate (into the effects) |
+| `direct` | and what goes around them |
 | `scratch` |  |
+| `chain` |  |
+| `fx_mod` | the effect parameters' modulation now |
 | `song_seconds` |  |
 | `bpm` |  |
 | `live` |  |
@@ -1261,6 +1463,32 @@ builtin_table :: proc(which: Builtin_Table, allocator: mem.Allocator = context.a
 
 Control thread. Makes built-in table `which` (free with
 `wavetable_destroy`).
+
+### effect_param
+
+```odin
+effect_param :: proc "contextless"(e: fx.Effect, f: T) -> core.Param_Id
+```
+
+The id of effect `e`'s parameter `f` (a field of its own enum).
+
+### is_effect_param
+
+```odin
+is_effect_param :: proc "contextless"(id: core.Param_Id) -> bool
+```
+
+Whether `id` is an effect's.
+
+### effect_chain_params
+
+```odin
+effect_chain_params :: proc "contextless"(values: []f32, order: [9]fx.Effect, bpm: f64) -> fx.Chain_Params
+```
+
+**Realtime-safe** (callable on the audio thread). The chain's settings from plain parameter values (by id, as a
+patch holds them), the effects in `order`, synced to `bpm`: what a
+synth with those values runs (less its modulation).
 
 ### env_gate_on
 
@@ -1497,8 +1725,8 @@ before handing it over).
 patch_default :: proc() -> (p: Patch)
 ```
 
-Control thread. A patch with triangle LFOs and no routes, tables or
-sample (give it tables to make sound).
+Control thread. A patch with triangle LFOs, the effects in their first
+order, and no routes, tables or sample (give it tables to make sound).
 
 ### patch_add_route
 
@@ -1667,6 +1895,14 @@ BUILTIN_NAMES: [Builtin_Table]string
 
 The names `builtin_table` gives its tables.
 
+### EFFECT_NAMES
+
+```odin
+EFFECT_NAMES: [fx.Effect]string
+```
+
+The names effects go by, in parameter names and on screen.
+
 ### PARAMS
 
 ```odin
@@ -1678,7 +1914,7 @@ Every parameter, in id order (filled when the program starts).
 ### PARAM_INDEX
 
 ```odin
-PARAM_INDEX: [648]i16
+PARAM_INDEX: [988]i16
 ```
 
 Each id's place in `PARAMS` (-1: no parameter has it).

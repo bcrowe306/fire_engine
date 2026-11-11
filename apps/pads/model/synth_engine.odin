@@ -2,6 +2,7 @@ package pads_model
 
 import app "app:core"
 import fc "fire:core"
+import "fire:fx"
 import "fire:graph"
 import "fire:synth"
 
@@ -93,7 +94,7 @@ synth_sample :: proc(e: ^Engine, src: Synth_Source) -> ^synth.Sample {
 
 // Brings synth pad `i`'s node up to date: the parameters that changed
 // (all of them when `fresh`), and a new patch when its routes, shapes,
-// tables or sample did.
+// tables, sample or effects order did.
 sync_synth :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: ^Pad, fresh: bool) {
 	g := e.host.graph
 	was, now := &n.built.synth, &pad.synth
@@ -106,7 +107,7 @@ sync_synth :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: ^Pad, fresh: bool) {
 		id := spec.id
 		if was.values[id] != now.values[id] do graph.set_param(g, n.voice, id, f64(now.values[id]))
 	}
-	if bulk || was.route_count != now.route_count || was.routes != now.routes || was.shapes != now.shapes || was.tables != now.tables || was.sample != now.sample {
+	if bulk || was.route_count != now.route_count || was.routes != now.routes || was.shapes != now.shapes || was.tables != now.tables || was.sample != now.sample || was.fx_order != now.fx_order {
 		p := synth.patch_default()
 		if bulk {
 			p.values = now.values
@@ -115,6 +116,7 @@ sync_synth :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: ^Pad, fresh: bool) {
 		p.route_count = now.route_count
 		p.routes = now.routes
 		p.shapes = now.shapes
+		p.fx_order = now.fx_order
 		for k in 0 ..< synth.OSCS do p.tables[k] = synth_table(e, now.tables[k])
 		p.sample = synth_sample(e, now.sample)
 		synth.synth_set_patch(n.synth, &p)
@@ -144,3 +146,11 @@ synth_pad_table :: proc(e: ^Engine, index: int, osc: int) -> ^synth.Wavetable {
 }
 
 _ :: fc.Param_Id
+
+// Synth pad `index`'s effects as they run (for drawing their sweeps and
+// meters; read while they play), or nil.
+synth_chain :: proc(e: ^Engine, index: int) -> ^fx.Chain {
+	n := &e.nodes[index]
+	if !n.live || n.synth == nil do return nil
+	return &n.synth.chain
+}

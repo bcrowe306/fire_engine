@@ -148,3 +148,41 @@ a_sequenced_pitch_plays_on_a_sampler :: proc(t: ^testing.T) {
 	out := render(r, 12_000)
 	testing.expectf(t, kit.tone_amplitude(out[0][2400:], SR, 880) > 4 * kit.tone_amplitude(out[0][2400:], SR, 440), "an octave up (880 %v, 440 %v)", kit.tone_amplitude(out[0][2400:], SR, 880), kit.tone_amplitude(out[0][2400:], SR, 440))
 }
+
+// A synth's effects: reordered (saved, undone), and on, they reach its
+// node: the reverb rings on after the note.
+@(test)
+a_synths_effects_reorder_and_sound :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_fx")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	pm.move_synth_effect(m, 0, .Reverb, 0)
+	testing.expect_value(t, m.project.pads[0].synth.fx_order[0], fx.Effect.Reverb)
+	testing.expect_value(t, m.project.pads[0].synth.fx_order[1], fx.Effect.Chorus)
+	testing.expect_value(t, app.undo_name(&m.history), "Reorder Effects")
+	pm.move_synth_effect(m, 0, .Chorus, 8)
+	testing.expect_value(t, m.project.pads[0].synth.fx_order[8], fx.Effect.Chorus)
+	testing.expect_value(t, m.project.pads[0].synth.fx_order[7], fx.Effect.Phaser)
+	app.undo(&m.history)
+	testing.expect_value(t, m.project.pads[0].synth.fx_order[1], fx.Effect.Chorus)
+	testing.expect(t, fx.chain_order_valid(m.project.pads[0].synth.fx_order), "each effect once")
+
+	pm.set_synth_value(m, 0, synth.filter_param(1, .On), 0, "Filter")
+	pm.set_synth_value(m, 0, synth.effect_param(.Reverb, synth.Reverb_Field.On), 1, "Reverb")
+	pm.set_synth_value(m, 0, synth.effect_param(.Reverb, synth.Reverb_Field.Wet), 0.6, "Reverb Mix")
+	pm.set_synth_value(m, 0, synth.effect_param(.Reverb, synth.Reverb_Field.Decay), 2, "Reverb Decay") // 4 s
+	render(r, 256)
+	testing.expect_value(t, r.m.engine.nodes[0].synth.patch.fx_order[0], fx.Effect.Reverb)
+	pm.hit(&m.engine, 0, true, 1)
+	render(r, 4800)
+	pm.hit(&m.engine, 0, false, 0)
+	out := render(r, 48_000)
+	testing.expectf(t, kit.rms(out[0][24_000:]) > 1e-3, "a tail half a second after the release (%v)", kit.rms(out[0][24_000:]))
+
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	r2 := rig_make(t, "synth_fx_load")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
+	testing.expect(t, r2.m.project.pads[0].synth == m.project.pads[0].synth, "the order and effects saved")
+}

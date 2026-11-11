@@ -123,7 +123,7 @@ env_param :: #force_inline proc "contextless" (n: int, f: Env_Field) -> core.Par
 lfo_param :: #force_inline proc "contextless" (n: int, f: Lfo_Field) -> core.Param_Id { return core.Param_Id(LFO_BASE + (n - 1) * LFO_STRIDE + int(f)) }
 
 // Ids span 1 ..< PARAM_SLOTS (with gaps between blocks).
-PARAM_SLOTS :: LFO_BASE + LFOS * LFO_STRIDE
+PARAM_SLOTS :: FX_BASE + len(fx.Effect) * FX_STRIDE
 
 // Every parameter, in id order (filled when the program starts).
 PARAMS: [dynamic]Param_Spec
@@ -155,10 +155,7 @@ param_curve :: #force_inline proc "contextless" (spec: ^Param_Spec, plain: f32) 
 build_params :: proc "contextless" () {
 	context = runtime.default_context()
 	for &i in PARAM_INDEX do i = -1
-	add :: proc(id: core.Param_Id, name: string, lo, hi, def: f32, curve := Param_Curve.Linear, poly := true, unit := core.Param_Unit.None) {
-		PARAM_INDEX[id] = i16(len(PARAMS))
-		append(&PARAMS, Param_Spec{id = id, name = name, min = lo, max = hi, default = def, curve = curve, poly = poly, unit = unit})
-	}
+	add :: param_add
 	g :: global_param
 	add(g(.Volume), "Volume", -60, 12, -6, poly = false, unit = .Decibels)
 	add(g(.Polyphony), "Polyphony", 1, 32, 8, .Indexed, false)
@@ -268,7 +265,14 @@ build_params :: proc "contextless" () {
 		add(l(n, .Key_Transpose), name(n, "Key Transpose"), -60, 36, -12, .Indexed)
 		add(l(n, .Key_Tune), name(n, "Key Tune"), -1, 1, 0)
 	}
+	build_fx_params()
 	for p in PARAMS do append(&node_params, core.Param_Info{id = p.id, name = p.name, unit = p.unit, min = f64(p.min), max = f64(p.max), default = f64(p.default), flags = {.Automatable}})
+}
+
+@(private)
+param_add :: proc(id: core.Param_Id, name: string, lo, hi, def: f32, curve := Param_Curve.Linear, poly := true, unit := core.Param_Unit.None) {
+	PARAM_INDEX[id] = i16(len(PARAMS))
+	append(&PARAMS, Param_Spec{id = id, name = name, min = lo, max = hi, default = def, curve = curve, poly = poly, unit = unit})
 }
 
 // The node's parameters, for hosts: every synth parameter, automatable.

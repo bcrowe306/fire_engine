@@ -15,6 +15,7 @@ import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
 import fc "fire:core"
+import "fire:fx"
 
 setup_actions :: proc(a: ^App) {
 	acts := &a.actions
@@ -622,6 +623,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) < 2 do return false
 		for t in Synth_Tab do if strings.to_lower(SYNTH_TAB_NAMES[t], context.temp_allocator) == w[1] {
 			a.synth_ui.tab, a.synth_ui.show = t, 2
+			return true
+		}
+		return false
+	case "synth_fx": // synth_fx NAME: the effect the Effects tab shows (chorus, compressor, delay, distortion, eq, filter, flanger, phaser, reverb)
+		if len(w) < 2 do return false
+		for e in fx.Effect do if strings.to_lower(fmt.tprint(e), context.temp_allocator) == w[1] {
+			a.synth_ui.effect = e
 			return true
 		}
 		return false

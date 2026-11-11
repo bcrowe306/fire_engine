@@ -53,7 +53,12 @@ Voice :: struct {
 	// Each step is rendered whole into `out` (on a grid from the note's
 	// start), and the mix drains it: so a block's size never moves a step.
 	out:         [2][CONTROL_FRAMES]f32,
+	direct:      [2][CONTROL_FRAMES]f32, // (what goes around the effects)
 	avail, read: int,
+	// The modulators' values at the last step (for the effects, which the
+	// newest voice moves).
+	last_envs:   [ENVS]f32,
+	last_lfos:   [LFOS][2]f32,
 	finished:    bool, // its amp envelope ended: free once `out` is drained
 }
 
@@ -93,9 +98,13 @@ Synth :: struct {
 	any_held:    bool,
 	shared:      Osc_Shared,
 	os:          [3][2]dsp.Oversampler, // 2×, 4×, 8×, a side each
+	os_direct:   [3][2]dsp.Oversampler, // the same, for what goes around the effects
 	os_factor:   int,
-	mix:         [2][]f32,   // the voices' sum at the voice rate
-	scratch:     [8][]f32,
+	mix:         [2][]f32,   // the voices' sum at the voice rate (into the effects)
+	direct:      [2][]f32,   // and what goes around them
+	scratch:     [10][]f32,
+	chain:       fx.Chain,
+	fx_mod:      [PARAM_SLOTS - FX_BASE]f32, // the effect parameters' modulation now
 	song_seconds: f64,
 	bpm:         f64,
 	live:        Synth_Live,
@@ -139,8 +148,11 @@ synth_free :: proc(s: ^Synth) {
 	a := s.allocator
 	osc_shared_destroy(&s.shared, a)
 	for &f in s.os do for &o in f do dsp.oversampler_destroy(&o, a)
+	for &f in s.os_direct do for &o in f do dsp.oversampler_destroy(&o, a)
 	for b in s.mix do delete(b, a)
+	for b in s.direct do delete(b, a)
 	for b in s.scratch do delete(b, a)
+	fx.chain_destroy(&s.chain, a)
 	for p in rt.spsc_pop(&s.pending) do free(p, a)
 	for p in rt.spsc_pop(&s.retired) do free(p, a)
 	if s.old != nil do free(s.old, a)
@@ -156,15 +168,23 @@ synth_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, allocator: mem.All
 	s.sample_rate, s.max_block = cfg.sample_rate, cfg.max_block
 	a := s.allocator
 	for b in s.mix do delete(b, a)
+	for b in s.direct do delete(b, a)
 	for b in s.scratch do delete(b, a)
-	n := cfg.max_block * 8
+	n := max(cfg.max_block * 8, CONTROL_FRAMES * 4)
 	for &b in s.mix do b = make([]f32, n, a)
+	for &b in s.direct do b = make([]f32, n, a)
 	for &b in s.scratch do b = make([]f32, n, a)
 	for &f, k in s.os do for &o in f {
 		dsp.oversampler_destroy(&o, a)
 		dsp.oversampler_init(&o, 2 << uint(k), cfg.max_block, a) or_return
 	}
+	for &f, k in s.os_direct do for &o in f {
+		dsp.oversampler_destroy(&o, a)
+		dsp.oversampler_init(&o, 2 << uint(k), cfg.max_block, a) or_return
+	}
 	s.os_factor = 0
+	fx.chain_destroy(&s.chain, a)
+	fx.chain_make(&s.chain, cfg.sample_rate, a) or_return
 	return .None
 }
 
@@ -501,11 +521,12 @@ render :: proc "contextless" (s: ^Synth, ctx: ^core.Process_Context, from, to: i
 	fac := factors[clamp(int(value(s, global_param(.Oversampling))), 0, 3)]
 	if fac != s.os_factor {
 		for &f in s.os do for &o in f do dsp.oversampler_reset(&o)
+		for &f in s.os_direct do for &o in f do dsp.oversampler_reset(&o)
 		s.os_factor = fac
 	}
 	vn := n * fac
 	sr := s.sample_rate * f64(fac)
-	for ch in 0 ..< 2 do for i in 0 ..< vn do s.mix[ch][i] = 0
+	for ch in 0 ..< 2 do for i in 0 ..< vn do s.mix[ch][i], s.direct[ch][i] = 0, 0
 	// Each voice's steps, drained into the mix.
 	for &v in s.voices {
 		if !v.on do continue
@@ -520,31 +541,45 @@ render :: proc "contextless" (s: ^Synth, ctx: ^core.Process_Context, from, to: i
 				v.avail, v.read = CONTROL_FRAMES, 0
 			}
 			k := min(v.avail, vn - at)
-			for ch in 0 ..< 2 do for i in 0 ..< k do s.mix[ch][at + i] += v.out[ch][v.read + i]
+			for ch in 0 ..< 2 do for i in 0 ..< k {
+				s.mix[ch][at + i] += v.out[ch][v.read + i]
+				s.direct[ch][at + i] += v.direct[ch][v.read + i]
+			}
 			v.read += k
 			v.avail -= k
 			at += k
 		}
 	}
-	// Down to the base rate, then the volume.
+	// Down to the base rate (both buses), through the effects, then the
+	// volume.
+	base := [2][]f32{s.scratch[0][:n], s.scratch[1][:n]}
+	around := [2][]f32{s.scratch[2][:n], s.scratch[3][:n]}
+	for ch in 0 ..< 2 {
+		if fac == 1 {
+			copy(base[ch], s.mix[ch][:n])
+			copy(around[ch], s.direct[ch][:n])
+		} else {
+			stage := 0 if fac == 2 else (1 if fac == 4 else 2)
+			dsp.oversampler_down(&s.os[stage][ch], s.mix[ch][:vn], base[ch])
+			dsp.oversampler_down(&s.os_direct[stage][ch], s.direct[ch][:vn], around[ch])
+		}
+	}
+	fx_modulate(s)
+	cp := chain_params(s)
+	fx.chain_render(&s.chain, &cp, base[0], base[1], s.sample_rate)
 	vol := math.pow(10, value(s, global_param(.Volume)) / 20)
 	outs := len(ctx.outputs)
 	peak := s.live.peak
-	for ch in 0 ..< min(outs, 2) {
-		out := ctx.outputs[ch][from:to]
-		if fac == 1 {
-			for i in 0 ..< n do out[i] = s.mix[ch][i] * vol
-		} else {
-			stage := 0 if fac == 2 else (1 if fac == 4 else 2)
-			dsp.oversampler_down(&s.os[stage][ch], s.mix[ch][:vn], out)
-			for &x in out do x *= vol
-		}
-		for x in out do peak[ch] = max(peak[ch], abs(x))
-	}
 	if outs == 1 { // one output: both sides, at half each
 		out := ctx.outputs[0][from:to]
-		if fac == 1 do for i in 0 ..< n do out[i] = (s.mix[0][i] + s.mix[1][i]) * 0.5 * vol
-		else do for &x in out do x *= 1 // (the left side, brought down above)
+		for i in 0 ..< n do out[i] = (base[0][i] + around[0][i] + base[1][i] + around[1][i]) * 0.5 * vol
+		for x in out do peak[0] = max(peak[0], abs(x))
+	} else {
+		for ch in 0 ..< 2 {
+			out := ctx.outputs[ch][from:to]
+			for i in 0 ..< n do out[i] = (base[ch][i] + around[ch][i]) * vol
+			for x in out do peak[ch] = max(peak[ch], abs(x))
+		}
 	}
 	for ch in 2 ..< outs do for i in from ..< to do ctx.outputs[ch][i] = 0
 	s.live.peak = peak
@@ -589,6 +624,7 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 		lfo_vals[i] = lfo_step(&v.lfos[i], &p, table, lfo_hz(&p, s.bpm, v.pitch), dt)
 	}
 	voice_mod(s, v, env_vals, lfo_vals)
+	v.last_envs, v.last_lfos = env_vals, lfo_vals
 	// The amp envelope, a sample at a time.
 	amp := s.scratch[6][:n]
 	{
@@ -604,7 +640,8 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 	f1 := [2][]f32{s.scratch[0][:n], s.scratch[1][:n]}
 	f2 := [2][]f32{s.scratch[2][:n], s.scratch[3][:n]}
 	dry := [2][]f32{s.scratch[4][:n], s.scratch[5][:n]}
-	for ch in 0 ..< 2 do for i in 0 ..< n do f1[ch][i], f2[ch][i], dry[ch][i] = 0, 0, 0
+	direct := [2][]f32{s.scratch[8][:n], s.scratch[9][:n]}
+	for ch in 0 ..< 2 do for i in 0 ..< n do f1[ch][i], f2[ch][i], dry[ch][i], direct[ch][i] = 0, 0, 0, 0
 	tmp := [2][]f32{s.scratch[7][:n], s.scratch[7][n:2 * n]}
 	inc_buf := s.scratch[7][2 * n:3 * n]
 	for k in 0 ..< OSCS {
@@ -636,14 +673,14 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 		}
 		raw := [2][]f32{v.raw[k][0][:n], v.raw[k][1][:n]}
 		osc_render(&s.shared, &v.oscs[k], &p, inc_buf, mod, tmp[0], tmp[1], &raw, sr)
-		route_source(s, Destination(int(value(s, osc_param(o, .Destination)))), tmp, f1, f2, dry, n)
+		route_source(s, Destination(int(value(s, osc_param(o, .Destination)))), tmp, f1, f2, dry, direct, n)
 	}
 	if value(s, sample_param(.On)) > 0 {
 		p := sample_params(s, v)
 		key := base
 		raw := [2][]f32{v.sample_raw[0][:n], v.sample_raw[1][:n]}
 		sample_osc_render(&v.sample, &p, key, tmp[0], tmp[1], &raw, sr)
-		route_source(s, Destination(int(value(s, sample_param(.Destination)))), tmp, f1, f2, dry, n)
+		route_source(s, Destination(int(value(s, sample_param(.Destination)))), tmp, f1, f2, dry, direct, n)
 	}
 	// The filters: filter 2 takes filter 1's output too when in series.
 	cut := s.scratch[7][3 * n:4 * n]
@@ -666,14 +703,19 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 		}
 	}
 	// The amp envelope and velocity.
-	for ch in 0 ..< 2 do for i in 0 ..< n do v.out[ch][i] = dry[ch][i] * amp[i] * vgain
+	for ch in 0 ..< 2 do for i in 0 ..< n {
+		g := amp[i] * vgain
+		v.out[ch][i] = dry[ch][i] * g
+		v.direct[ch][i] = direct[ch][i] * g
+	}
 	v.started = true
 	if env_done(&v.envs[0]) do v.finished = true
 }
 
-// [rt] Adds a source's sound where it goes (both filters: half to each).
+// [rt] Adds a source's sound where it goes: a filter or both, the
+// effects (`dry`) or around them (`direct`).
 @(private)
-route_source :: proc "contextless" (s: ^Synth, d: Destination, src, f1, f2, dry: [2][]f32, n: int) #no_bounds_check {
+route_source :: proc "contextless" (s: ^Synth, d: Destination, src, f1, f2, dry, direct: [2][]f32, n: int) #no_bounds_check {
 	for ch in 0 ..< 2 {
 		switch d {
 		case .Filter_1:     for i in 0 ..< n do f1[ch][i] += src[ch][i]
@@ -682,7 +724,8 @@ route_source :: proc "contextless" (s: ^Synth, d: Destination, src, f1, f2, dry:
 				f1[ch][i] += src[ch][i]
 				f2[ch][i] += src[ch][i]
 			}
-		case .Effects, .Direct: for i in 0 ..< n do dry[ch][i] += src[ch][i]
+		case .Effects: for i in 0 ..< n do dry[ch][i] += src[ch][i]
+		case .Direct:  for i in 0 ..< n do direct[ch][i] += src[ch][i]
 		}
 	}
 }
@@ -694,25 +737,55 @@ voice_mod :: proc "contextless" (s: ^Synth, v: ^Voice, envs: [ENVS]f32, lfos: [L
 	for &side in v.mod do for &x in side do x = 0
 	p := s.patch
 	if p == nil do return
-	for r in p.routes[:p.route_count] {
-		if r.bypass || r.source == .None do continue
+	for &r in p.routes[:p.route_count] {
+		if r.bypass || r.source == .None || is_effect_param(r.dest) do continue
 		spec := param_spec(r.dest)
 		if spec == nil do continue
 		idx := PARAM_INDEX[r.dest]
-		vals := source_value(s, v, r.source, envs, lfos)
-		span := spec.max - spec.min
-		for side in 0 ..< 2 {
-			x := vals[side]
-			if r.bipolar do x = x * 2 - 1
-			// The curve, kept symmetric for bipolar sources.
-			if r.power != 0 {
-				if r.bipolar do x = power_scale(abs(x), r.power) * (1 if x >= 0 else -1)
-				else do x = power_scale(x, r.power)
-			}
-			amt := r.amount * span
-			if r.stereo && side == 1 do amt = -amt
-			v.mod[side][idx] += x * amt
+		if int(idx) >= PARAM_COUNT_MAX do continue
+		m := route_amount(&r, spec, source_value(s, v, r.source, envs, lfos))
+		v.mod[0][idx] += m[0]
+		v.mod[1][idx] += m[1]
+	}
+}
+
+// [rt] How far a route moves its destination (left, right) for a
+// source's value.
+@(private)
+route_amount :: #force_inline proc "contextless" (r: ^Route, spec: ^Param_Spec, vals: [2]f32) -> (out: [2]f32) {
+	span := spec.max - spec.min
+	for side in 0 ..< 2 {
+		x := vals[side]
+		if r.bipolar do x = x * 2 - 1
+		// The curve, kept symmetric for bipolar sources.
+		if r.power != 0 {
+			if r.bipolar do x = power_scale(abs(x), r.power) * (1 if x >= 0 else -1)
+			else do x = power_scale(x, r.power)
 		}
+		amt := r.amount * span
+		if r.stereo && side == 1 do amt = -amt
+		out[side] = x * amt
+	}
+	return
+}
+
+// [rt] Works out the routes into the effects: the synth's sources and
+// the newest voice's (no voice: its envelopes and LFOs at 0).
+@(private)
+fx_modulate :: proc "contextless" (s: ^Synth) #no_bounds_check {
+	for &x in s.fx_mod do x = 0
+	p := s.patch
+	if p == nil do return
+	newest: ^Voice
+	for &v in s.voices do if v.on && !v.dying && (newest == nil || v.age > newest.age) do newest = &v
+	@(static) quiet: Voice
+	v := newest if newest != nil else &quiet
+	for &r in p.routes[:p.route_count] {
+		if r.bypass || r.source == .None || !is_effect_param(r.dest) do continue
+		spec := param_spec(r.dest)
+		if spec == nil do continue
+		m := route_amount(&r, spec, source_value(s, v, r.source, v.last_envs, v.last_lfos))
+		s.fx_mod[int(r.dest) - FX_BASE] += m[0]
 	}
 }
 

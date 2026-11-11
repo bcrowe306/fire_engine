@@ -102,3 +102,26 @@ def test_keyboard_mode_banks_and_recording(app):
     assert len(notes) == 1, notes
     assert notes[0]["pitch"] >= 16, notes  # bank B: 16 degrees up at least (a semitone a degree or more)
     app.cmd("mode pads")
+
+
+def test_the_effects_chain(app):
+    synth_pad(app)
+    tab(app, "Effects")
+    s = app.pad(0)["synth"]
+    assert s["effects"][0] == "Chorus" and s["effects"][8] == "Reverb", s["effects"]
+    # The reverb's switch: on, its page shown.
+    app.click("effect Reverb on", window="detail")
+    assert app.pad(0)["synth"]["params"]["Reverb On"] == 1
+    app.click("effect Reverb", window="detail")
+    app.expect_item("synth reverb view", window="detail")
+    # Dragged onto the chorus: first in the chain.
+    app.drag("effect Reverb", "effect Chorus", to_window="detail")
+    fx = app.pad(0)["synth"]["effects"]
+    assert fx[0] == "Reverb" and fx[1] == "Chorus", fx
+    assert app.state()["undo"] == "Reorder Effects"
+    app.cmd("hit 0")
+    app.wait(20)
+    app.screenshot("synth_effects")
+    app.cmd("release 0")
+    app.key("cmd+z")
+    assert app.pad(0)["synth"]["effects"][0] == "Chorus"

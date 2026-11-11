@@ -36,6 +36,10 @@ Synth_Ui :: struct {
 	lfo:      int,
 	point:    int, // the LFO point dragged (-1: none)
 	response: [synth.FILTERS]Filter_Curve,
+	effect:   fx.Effect, // the effect the Effects tab shows
+	comp_band: int,      // the compressor band its knobs set
+	eq_curve: Eq_Curve,
+	fx_filter_curve: Filter_Curve,
 }
 
 // The drag-and-drop payload a source chip carries: a `synth.Mod_Source`.
@@ -100,7 +104,13 @@ param_text :: proc(spec: ^synth.Param_Spec, plain: f32) -> string {
 	v := synth.param_curve(spec, plain)
 	name := spec.name
 	switch {
-	case strings.contains(name, "Cutoff"):        return fmt.tprintf("%.0f Hz", fx.key_to_hz(v))
+	case strings.contains(name, "Cutoff"), strings.contains(name, "Center"), strings.has_suffix(name, " Cut"):
+		return fmt.tprintf("%.0f Hz", fx.key_to_hz(v))
+	case strings.contains(name, "Chorus Delay"):  return fmt.tprintf("%.1f ms", v * 1000)
+	case strings.has_suffix(name, "Pre-Delay"):   return fmt.tprintf("%.0f ms", v * 1000)
+	case strings.has_suffix(name, "Reverb Decay"): return fmt.tprintf("%.2f s", v)
+	case strings.has_suffix(name, "Phaser Depth"): return fmt.tprintf("%.0f st", v)
+	case strings.has_suffix(name, "Chorus Voices"): return fmt.tprintf("%.0f", v * 2)
 	case spec.curve == .Quartic:                  return fmt.tprintf("%.1f ms", v * 1000) if v < 1 else fmt.tprintf("%.2f s", v)
 	case strings.contains(name, "Tempo"):
 		names := synth.LFO_TEMPO_NAMES
@@ -319,9 +329,7 @@ draw_synth_tabs :: proc(a: ^App) {
 				case .Env:     draw_synth_env(a)
 				case .Lfo:     draw_synth_lfo(a)
 				case .Mod:     draw_synth_mod(a)
-				case .Effects:
-					im.TextDisabled("The synth's own effects (chorus, compressor, delay, distortion, EQ, filter, flanger, phaser, reverb) come in the next milestone.")
-					im.TextDisabled("Until then, the track's inserts (the tabs after this one) process it.")
+				case .Effects: draw_synth_effects(a)
 				case .Macro:   draw_synth_macro(a)
 				case .Global:  draw_synth_global(a)
 				}

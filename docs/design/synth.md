@@ -163,6 +163,15 @@ The order is "playable first". Each milestone is tested, test-driven
 
    They are reorderable and modulatable. Each is also a standalone node,
    noted in `TODO.md` for use as Pads insert effects.
+
+   Done. `fx.Chain` runs them in the patch's order after the voices are
+   brought down to the base rate. Sources sent *Direct* go around it. Every
+   setting is a synth parameter (`effect_param(e, field)`, ids from 700).
+   Effect parameters are the synth's, not a voice's: global sources and
+   the newest voice's modulators move them. Delay, chorus and flanger
+   sweep on a 32-sample control grid of their own, so a block's size
+   never changes them. Cost at 48 kHz, every effect on: 6.7% of an
+   M-series core (`-o:speed`).
 3. **Spectral morphs and randoms.**
    - The eleven spectral morph modes: vocode, formant scale, harmonic
      stretch, inharmonic stretch, smear, random amplitudes, low-pass,

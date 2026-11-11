@@ -1,0 +1,44 @@
+# The synth's Effects tab: every effect's page, a note playing through the chain.
+size 1440 900
+synth 0
+select 0
+note 0 0 4 1
+note 0 4 4 1
+play
+synth_tab effects
+synth_param 0 700 1
+synth_param 0 732 1
+synth_param 0 764 1
+synth_param 0 796 1
+synth_param 0 828 1
+synth_param 0 860 1
+synth_param 0 892 1
+synth_param 0 924 1
+synth_param 0 956 1
+synth_fx chorus
+wait 20
+screenshot synth_fx_chorus
+synth_fx compressor
+wait 20
+screenshot synth_fx_compressor
+synth_fx delay
+wait 20
+screenshot synth_fx_delay
+synth_fx distortion
+wait 20
+screenshot synth_fx_distortion
+synth_fx eq
+wait 20
+screenshot synth_fx_eq
+synth_fx filter
+wait 20
+screenshot synth_fx_filter
+synth_fx flanger
+wait 20
+screenshot synth_fx_flanger
+synth_fx phaser
+wait 20
+screenshot synth_fx_phaser
+synth_fx reverb
+wait 20
+screenshot synth_fx_reverb

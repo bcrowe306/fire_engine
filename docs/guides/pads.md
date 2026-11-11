@@ -517,8 +517,19 @@ the newest note has it now. Drag the ring's end up or down for the amount
   offset and smoothing.
 - **Mod**: every source as a chip, and every modulation: its amount, curve,
   bipolar, stereo (the right side moved the other way) and on.
-- **Effects**: the synth's own effects come in the next milestone; until
-  then the track's inserts process it.
+- **Effects**: the synth's nine effects in a chain: chorus, compressor,
+  delay, distortion, EQ, filter, flanger, phaser and reverb. Each row has
+  a power button; drag a row up or down to move it in the chain. Click
+  one to see its page: its choices, a picture of what it does and its
+  knobs. The pictures are the EQ's and filter's responses (drag the
+  filter's handle for cutoff and resonance), a sine through the
+  distortion, the delay's echoes (left above, right below), the reverb's
+  tail, each compressor band's level in and out against its thresholds,
+  and the chorus, flanger and phaser sweeps, their dots moving as they
+  play. Delay, chorus, flanger and phaser rates are in Hz or follow the
+  tempo (straight, dotted, triplet). Every knob takes modulation: macros
+  and the wheels move it, and so do the newest note's envelopes and LFOs.
+  An oscillator sent to *Direct out* skips the effects.
 - **Macro**: four macro knobs (named as you like), their chips, and the
   keyboard's sources.
 - **Global**: poly, mono or legato; oversampling (1× to 8×); voice
@@ -857,7 +868,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
-| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling |
+| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone) |
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |

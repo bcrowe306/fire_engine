@@ -25,7 +25,10 @@ plan before it is built.
      cached per-voice values); lanes for every synth parameter (today the
      Pitch, Cutoff and Resonance lanes reach its transpose and filter 1).
   2. The nine effects (chorus, compressor, delay, distortion, EQ, filter,
-     flanger, phaser, reverb) in `fire:fx`, sounding as Vital's do.
+     flanger, phaser, reverb) in `fire:fx` — done: a reorderable chain,
+     every setting modulatable, the Effects tab with a picture each.
+     Still to do: profile the chain on ARM (6.7% of an M-series core with
+     all nine on; the chorus's eight delays are the likely hot spot).
   3. Spectral morphs, spectral unison, the four random modulators.
   4. The wavetable editor.
   5. Presets (our own format, a built-in bank).

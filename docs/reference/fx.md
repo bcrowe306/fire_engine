@@ -26,6 +26,22 @@ fx.distortion_render(&state, &p, left, right, sample_rate)
 
 ## Constants
 
+### CHAIN_ORDER
+
+```odin
+CHAIN_ORDER : [9]Effect : [len(Effect)]Effect{.Chorus, .Compressor, .Delay, .Distortion, .Eq, .Filter, .Flanger, .Phaser, .Reverb}
+```
+
+The order a chain starts in.
+
+### CHAIN_DEFAULTS
+
+```odin
+CHAIN_DEFAULTS : Chain_Params : Chain_Params{order = CHAIN_ORDER, chorus = CHORUS_DEFAULTS, compressor = COMPRESSOR_DEFAULTS, delay = DELAY_DEFAULTS, distortion = DISTORTION_DEFAULTS, eq = EQ_DEFAULTS, filter = {filter = FILTER_DEFAULTS}, flanger = FLANGER_DEFAULTS, phaser = PHASER_DEFAULTS, reverb = REVERB_DEFAULTS}
+```
+
+Every effect off, each at its defaults, in `CHAIN_ORDER`.
+
 ### TEMPO_RATIOS
 
 ```odin
@@ -58,6 +74,16 @@ DELAY_MAX_SECONDS :: 4.5
 ```
 
 The longest delay (seconds) a `Delay` made with `delay_make` holds.
+
+### FX_GRID
+
+```odin
+FX_GRID :: 32
+```
+
+Samples between the control points of the effects that sweep (delay,
+chorus, flanger): on a grid of their own, so a block's size never
+moves one.
 
 ### CHORUS_DEFAULTS
 
@@ -152,6 +178,63 @@ PHASER_STYLES : [2]string : [2]string{"Positive", "Negative"}
 Phaser styles (`Filter_Params.style` for the Phaser model).
 
 ## Types
+
+### Effect
+
+```odin
+Effect :: enum u8 {
+	Chorus,
+	Compressor,
+	Delay,
+	Distortion,
+	Eq,
+	Filter,
+	Flanger,
+	Phaser,
+	Reverb,
+}
+```
+
+The effects a chain has.
+
+### Chain_Params
+
+```odin
+Chain_Params :: struct {
+	order: [9]Effect,
+	on: bit_set[Effect],
+	chorus: Chorus_Params,
+	compressor: Compressor_Params,
+	delay: Delay_Params,
+	distortion: Distortion_Params,
+	eq: Eq_Params,
+	filter: Filter_Fx_Params,
+	flanger: Flanger_Params,
+	phaser: Phaser_Params,
+	reverb: Reverb_Params,
+}
+```
+
+A chain's settings: the order, which are on, and each one's own.
+
+### Chain
+
+```odin
+Chain :: struct {
+	chorus: Chorus,
+	compressor: Compressor,
+	delay: Delay,
+	distortion: Distortion,
+	eq: Eq,
+	filter: Filter_Fx,
+	flanger: Flanger,
+	phaser: Phaser,
+	reverb: Reverb,
+	was_on: bit_set[Effect],
+}
+```
+
+A chain's state: every effect's (made with `chain_make`).
 
 ### Line
 
@@ -315,13 +398,15 @@ Delay :: struct {
 	period: [2]f32,
 	freq: [2]f32,
 	poles: [2][4]f32,
-	last: [6]f32,
-	gain: f32,
+	from: [9]f32,
+	to: [9]f32,
+	tick: int,
 	set: bool,
 }
 ```
 
-A delay's state: its lines and filters, and what it glides from.
+A delay's state: its lines and filters, and its settings at the last
+two control points (`FX_GRID` samples apart), glided between.
 
 | Field | Description |
 |-------|-------------|
@@ -329,8 +414,9 @@ A delay's state: its lines and filters, and what it glides from.
 | `period` |  |
 | `freq` | the rate it is moving to the set one, smoothed |
 | `poles` |  |
-| `last` | wet, dry, feedback L, feedback R, low g, high g |
-| `gain` |  |
+| `from` |  |
+| `to` | wet, dry, feedback L, feedback R, low g, high g, gain, period L, period R |
+| `tick` | where it is between control points |
 | `set` |  |
 
 ### Chorus_Params
@@ -367,14 +453,27 @@ A chorus's settings.
 Chorus :: struct {
 	delays: [8]Delay,
 	phase: f32,
-	last_wet: f32,
-	last_dry: f32,
-	scratch: [2][8][256]f32,
+	hz: [8][2]f32,
+	from: [2]f32,
+	to: [2]f32,
+	tick: int,
+	scratch: [2][32]f32,
 	set: bool,
 }
 ```
 
 A chorus's state: a delay a side for each of its voices (two a pair).
+
+| Field | Description |
+|-------|-------------|
+| `delays` |  |
+| `phase` |  |
+| `hz` | each delay's rate since the last control point |
+| `from` |  |
+| `to` | wet, dry |
+| `tick` |  |
+| `scratch` |  |
+| `set` |  |
 
 ### Flanger_Params
 
@@ -406,10 +505,19 @@ A flanger's settings.
 Flanger :: struct {
 	delay: Delay,
 	phase: f32,
+	hz: [2]f32,
+	tick: int,
 }
 ```
 
 A flanger's state.
+
+| Field | Description |
+|-------|-------------|
+| `delay` |  |
+| `phase` |  |
+| `hz` | its delay's rate since the last control point |
+| `tick` |  |
 
 ### Phaser_Params
 
@@ -878,6 +986,46 @@ keep its feedback in a band, and its last output.
 | `last` | resonance, drive, peak 1, peak 3, peak 5 |
 
 ## Procedures
+
+### chain_make
+
+```odin
+chain_make :: proc(c: ^Chain, max_rate: f64, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. Makes the effects' lines for rates up to `max_rate`.
+
+### chain_destroy
+
+```odin
+chain_destroy :: proc(c: ^Chain, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a chain's lines.
+
+### chain_order_valid
+
+```odin
+chain_order_valid :: proc "contextless"(order: [9]Effect) -> bool
+```
+
+Whether `order` holds each effect once.
+
+### chain_reset
+
+```odin
+chain_reset :: proc "contextless"(c: ^Chain, e: Effect)
+```
+
+**Realtime-safe** (callable on the audio thread). Silences effect `e` (its lines cleared, its state as new).
+
+### chain_render
+
+```odin
+chain_render :: proc "contextless"(c: ^Chain, p: ^Chain_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the effects that are on over `l` and `r` in place, in order.
 
 ### line_make
 

@@ -1,6 +1,7 @@
 package synth
 
 import "fire:core"
+import "fire:fx"
 
 // What a synth plays besides its parameters: its routes, its LFO shapes,
 // its wavetables and sample. Made on the control thread and handed to
@@ -57,6 +58,7 @@ Patch :: struct {
 	shapes:      [LFOS]Lfo_Shape,
 	tables:      [OSCS]^Wavetable,
 	sample:      ^Sample,
+	fx_order:    [len(fx.Effect)]fx.Effect, // the effects' order (each once)
 	// Each LFO's shape rendered, and the envelopes and LFOs some route
 	// uses (filled by `patch_prepare`; the rest aren't run).
 	shape_tables: [LFOS][LFO_RESOLUTION]f32,
@@ -73,6 +75,7 @@ Patch :: struct {
 // before handing it over).
 patch_prepare :: proc(p: ^Patch) {
 	for i in 0 ..< LFOS do lfo_shape_render(&p.shapes[i], p.shape_tables[i][:])
+	if !fx.chain_order_valid(p.fx_order) do p.fx_order = fx.CHAIN_ORDER
 	p.used_envs, p.used_lfos = {0}, {}
 	for r in p.routes[:p.route_count] {
 		#partial switch r.source {
@@ -82,8 +85,8 @@ patch_prepare :: proc(p: ^Patch) {
 	}
 }
 
-// Control thread. A patch with triangle LFOs and no routes, tables or
-// sample (give it tables to make sound).
+// Control thread. A patch with triangle LFOs, the effects in their first
+// order, and no routes, tables or sample (give it tables to make sound).
 patch_default :: proc() -> (p: Patch) {
 	for i in 0 ..< LFOS do p.shapes[i] = lfo_preset(.Triangle)
 	patch_prepare(&p)

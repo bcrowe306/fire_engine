@@ -4,6 +4,7 @@ import "core:strings"
 
 import app "app:core"
 import fc "fire:core"
+import "fire:fx"
 import "fire:synth"
 
 // The synth device: a pad playing `fire:synth` (see docs/design/synth.md).
@@ -29,6 +30,7 @@ Synth_Patch :: struct {
 	tables:      [synth.OSCS]Synth_Source,
 	sample:      Synth_Source,
 	macro_names: [synth.MACROS][16]u8,
+	fx_order:    [len(fx.Effect)]fx.Effect, // the effects' order
 }
 
 // The patch a new synth starts with: every parameter at its default (a
@@ -42,6 +44,7 @@ default_synth_patch :: proc() -> (p: Synth_Patch) {
 	p.sample = {builtin = u8(synth.Builtin_Noise.White)}
 	names := [synth.MACROS]string{"Macro 1", "Macro 2", "Macro 3", "Macro 4"}
 	for &n, k in p.macro_names do copy(n[:], names[k])
+	p.fx_order = fx.CHAIN_ORDER
 	return
 }
 
@@ -151,6 +154,25 @@ set_synth_macro_name :: proc(m: ^Model, index: int, n: int, name: string) {
 	buf^ = {}
 	copy(buf[:len(buf) - 1], name)
 	set_pad(m, index, .Synth, "Rename Macro", pad)
+	app.seal(&m.history)
+}
+
+// Pad `index`'s effect `e` moved to place `to` in its chain (the rest
+// keep their order).
+move_synth_effect :: proc(m: ^Model, index: int, e: fx.Effect, to: int) {
+	pad := m.project.pads[index]
+	order := &pad.synth.fx_order
+	from := -1
+	for x, k in order do if x == e do from = k
+	t := clamp(to, 0, len(order) - 1)
+	if from < 0 || from == t do return
+	if from < t {
+		for k in from ..< t do order[k] = order[k + 1]
+	} else {
+		for k := from; k > t; k -= 1 do order[k] = order[k - 1]
+	}
+	order[t] = e
+	set_pad(m, index, .Synth, "Reorder Effects", pad)
 	app.seal(&m.history)
 }
 

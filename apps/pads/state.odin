@@ -7,6 +7,7 @@ import "core:strings"
 import app "app:core"
 import "app:ui"
 import pm "model"
+import "fire:fx"
 import "fire:synth"
 
 // What a test harness sees of the app (`state`, a drive command): the
@@ -92,6 +93,7 @@ State_Synth :: struct {
 	tables:  [synth.OSCS]string,
 	points:  [synth.LFOS]int,
 	voices:  int,
+	effects: [len(fx.Effect)]string, // in their order
 }
 
 State_Route :: struct {
@@ -314,6 +316,7 @@ state_json :: proc(a: ^App) -> string {
 			}
 			for &spec in synth.PARAMS do if sy.values[spec.id] != spec.default do x.params[spec.name] = synth.param_curve(&spec, sy.values[spec.id])
 			for k in 0 ..< synth.OSCS do x.tables[k] = pm.synth_source_name(m, sy.tables[k])
+			for e, k in sy.fx_order do x.effects[k] = synth.EFFECT_NAMES[e]
 			for k in 0 ..< synth.LFOS do x.points[k] = sy.shapes[k].count
 			if live, sounding := pm.synth_live(&m.engine, i); sounding do x.voices = int(live.voices)
 			sp.synth = x

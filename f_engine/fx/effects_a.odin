@@ -152,16 +152,22 @@ DELAY_DEFAULTS :: Delay_Params{style = .Stereo, wet = 0.3334, feedback = 0.5, hz
 // The longest delay (seconds) a `Delay` made with `delay_make` holds.
 DELAY_MAX_SECONDS :: 4.5
 
-// A delay's state: its lines and filters, and what it glides from.
+// A delay's state: its lines and filters, and its settings at the last
+// two control points (`FX_GRID` samples apart), glided between.
 Delay :: struct {
 	lines:    [2]Line,
 	period:   [2]f32,
 	freq:     [2]f32, // the rate it is moving to the set one, smoothed
 	poles:    [2][4]f32,
-	last:     [6]f32, // wet, dry, feedback L, feedback R, low g, high g
-	gain:     f32,
+	from, to: [9]f32, // wet, dry, feedback L, feedback R, low g, high g, gain, period L, period R
+	tick:     int,    // where it is between control points
 	set:      bool,
 }
+
+// Samples between the control points of the effects that sweep (delay,
+// chorus, flanger): on a grid of their own, so a block's size never
+// moves one.
+FX_GRID :: 32
 
 // Control thread. A delay for rates up to `max_rate` Hz.
 delay_make :: proc(d: ^Delay, max_rate: f64, allocator := context.allocator) -> core.Error {
@@ -179,13 +185,48 @@ delay_render :: proc "contextless" (d: ^Delay, p: ^Delay_Params, l, r: []f32, sa
 	n := len(l)
 	if n == 0 || len(d.lines[0].buf) == 0 do return
 	sr := f32(sample_rate)
+	x := [2][]f32{l, r}
+	for i in 0 ..< n {
+		if d.tick == 0 do delay_control(d, p, sr)
+		u := f32(d.tick + 1) * (1.0 / FX_GRID)
+		d.tick = (d.tick + 1) % FX_GRID
+		v: [9]f32
+		for k in 0 ..< 9 do v[k] = d.from[k] + (d.to[k] - d.from[k]) * u
+		in_ := [2]f32{x[0][i], x[1][i]}
+		read: [2]f32
+		for ch in 0 ..< 2 do read[ch] = line_read(&d.lines[ch], v[7 + ch])
+		w: [2]f32
+		switch p.style {
+		case .Mono, .Stereo:
+			for ch in 0 ..< 2 do w[ch] = clip_large(in_[ch] + read[ch] * v[2 + ch])
+		case .Mid_Ping_Pong:
+			for ch in 0 ..< 2 do w[1 - ch] = clip_large(in_[ch] + read[ch] * v[2 + ch]) // each side into the other
+		case .Ping_Pong:
+			mono := (in_[0] + in_[1]) * (1 / math.SQRT_TWO)
+			w[1] = clip_large(mono + read[0] * v[2]) // the left's into the right
+			w[0] = clip_large(read[1] * v[3])        // the right's back into the left
+		}
+		for ch in 0 ..< 2 {
+			st := &d.poles[ch]
+			lp := pole_tick(&st[0], &st[1], w[ch] * v[6], v[4])
+			hp := pole_tick(&st[2], &st[3], lp, v[5])
+			line_push(&d.lines[ch], lp - hp)
+			x[ch][i] = v[1] * in_[ch] + v[0] * read[ch]
+		}
+	}
+}
+
+// [rt] A delay's next control point: its time moved toward the set one
+// (a 20 ms half-life, then halfway again, so it never jumps), its mix,
+// feedback and filter.
+@(private)
+delay_control :: proc "contextless" (d: ^Delay, p: ^Delay_Params, sr: f32) {
 	target := p.hz
 	if p.style == .Mono do target[1] = target[0]
 	if !d.set {
 		d.freq = target
 	} else {
-		// The time moves to the set one with a 20 ms half-life (no jumps).
-		k := math.pow(f32(0.5), f32(n) / (0.02 * sr))
+		k := math.pow(f32(0.5), FX_GRID / (0.02 * sr))
 		for ch in 0 ..< 2 do d.freq[ch] = target[ch] + (d.freq[ch] - target[ch]) * k
 	}
 	wet, dry := equal_power(p.wet)
@@ -204,43 +245,11 @@ delay_render :: proc "contextless" (d: ^Delay, p: ^Delay_Params, l, r: []f32, sa
 	lo_hz := clamp(key_to_hz(p.cutoff + radius), 1, sr * 0.45)
 	hi_hz := clamp(key_to_hz(p.cutoff - radius), 1, sr * 0.45)
 	glo, ghi := pole_coefficient(lo_hz / sr), pole_coefficient(hi_hz / sr)
-	gain := hi_hz / lo_hz + 1
-	now := [6]f32{wet, dry, fbs[0], fbs[1], glo, ghi}
-	if !d.set {
-		d.last = now
-		d.period = periods
-		d.gain = gain
-	}
-	inv := 1 / f32(n)
-	x := [2][]f32{l, r}
-	for i in 0 ..< n {
-		u := f32(i + 1) * inv
-		v: [6]f32
-		for k in 0 ..< 6 do v[k] = d.last[k] + (now[k] - d.last[k]) * u
-		g := d.gain + (gain - d.gain) * u
-		in_ := [2]f32{x[0][i], x[1][i]}
-		read: [2]f32
-		for ch in 0 ..< 2 do read[ch] = line_read(&d.lines[ch], d.period[ch] + (periods[ch] - d.period[ch]) * u)
-		w: [2]f32
-		switch p.style {
-		case .Mono, .Stereo:
-			for ch in 0 ..< 2 do w[ch] = clip_large(in_[ch] + read[ch] * v[2 + ch])
-		case .Mid_Ping_Pong:
-			for ch in 0 ..< 2 do w[1 - ch] = clip_large(in_[ch] + read[ch] * v[2 + ch]) // each side into the other
-		case .Ping_Pong:
-			mono := (in_[0] + in_[1]) * (1 / math.SQRT_TWO)
-			w[1] = clip_large(mono + read[0] * v[2]) // the left's into the right
-			w[0] = clip_large(read[1] * v[3])        // the right's back into the left
-		}
-		for ch in 0 ..< 2 {
-			st := &d.poles[ch]
-			lp := pole_tick(&st[0], &st[1], w[ch] * g, v[4])
-			hp := pole_tick(&st[2], &st[3], lp, v[5])
-			line_push(&d.lines[ch], lp - hp)
-			x[ch][i] = v[1] * in_[ch] + v[0] * read[ch]
-		}
-	}
-	d.last, d.period, d.gain, d.set = now, periods, gain, true
+	now := [9]f32{wet, dry, fbs[0], fbs[1], glo, ghi, hi_hz / lo_hz + 1, periods[0], periods[1]}
+	d.from = d.to if d.set else now
+	d.to = now
+	d.period = periods
+	d.set = true
 }
 
 // --- Chorus --------------------------------------------------------------------------------------
@@ -268,8 +277,10 @@ CHORUS_DEFAULTS :: Chorus_Params{voices = 4, hz = 0.125, feedback = 0.4, wet = 0
 Chorus :: struct {
 	delays:   [CHORUS_PAIRS * 2]Delay,
 	phase:    f32,
-	last_wet, last_dry: f32,
-	scratch:  [2][CHORUS_PAIRS * 2][256]f32,
+	hz:       [CHORUS_PAIRS * 2][2]f32, // each delay's rate since the last control point
+	from, to: [2]f32,                   // wet, dry
+	tick:     int,
+	scratch:  [2][FX_GRID]f32,
 	set:      bool,
 }
 
@@ -290,51 +301,61 @@ chorus_destroy :: proc(c: ^Chorus, allocator := context.allocator) {
 chorus_render :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, l, r: []f32, sample_rate: f64) #no_bounds_check {
 	n := len(l)
 	if n == 0 || len(c.delays[0].lines[0].buf) == 0 do return
-	for at := 0; at < n; at += 256 do chorus_chunk(c, p, l[at:at + min(256, n - at)], r[at:at + min(256, n - at)], sample_rate)
+	sr := f32(sample_rate)
+	pairs := clamp(p.voices, 1, CHORUS_PAIRS)
+	for at := 0; at < n; {
+		if c.tick == 0 do chorus_control(c, p, sr)
+		m := min(FX_GRID - c.tick, n - at)
+		pl, pr := l[at:at + m], r[at:at + m]
+		out: [2][FX_GRID]f32
+		for k in 0 ..< pairs * 2 {
+			dp := Delay_Params{style = .Stereo, wet = 1, feedback = p.feedback, hz = c.hz[k], cutoff = p.cutoff, spread = p.spread}
+			a, b := c.scratch[0][:m], c.scratch[1][:m]
+			copy(a, pl)
+			copy(b, pr)
+			delay_render(&c.delays[k], &dp, a, b, sample_rate)
+			for i in 0 ..< m {
+				out[0][i] += a[i] * 0.5
+				out[1][i] += b[i] * 0.5
+			}
+		}
+		for i in 0 ..< m {
+			u := f32(c.tick + i + 1) * (1.0 / FX_GRID)
+			w := c.from[0] + (c.to[0] - c.from[0]) * u
+			dd := c.from[1] + (c.to[1] - c.from[1]) * u
+			pl[i] = dd * pl[i] + w * out[0][i]
+			pr[i] = dd * pr[i] + w * out[1][i]
+		}
+		c.tick = (c.tick + m) % FX_GRID
+		at += m
+	}
 }
 
+// [rt] A chorus's next control point: its sweep moved on, each delay's
+// time from it, the mix.
 @(private)
-chorus_chunk :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, l, r: []f32, sample_rate: f64) #no_bounds_check {
-	n := len(l)
-	c.phase += p.hz * f32(n) / f32(sample_rate)
+chorus_control :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, sr: f32) {
+	c.phase += p.hz * FX_GRID / sr
 	c.phase -= math.floor(c.phase)
 	pairs := clamp(p.voices, 1, CHORUS_PAIRS)
 	avg := (p.delay[0] + p.delay[1]) * 0.5
-	out: [2][256]f32
 	for k in 0 ..< pairs {
 		offset := f32(k) * 0.25 / f32(pairs)
 		t: f32 = f32(k) / f32(pairs - 1) if pairs > 1 else 0
 		for side in 0 ..< 2 { // the pair's two delays (the first and second times)
-			d := &c.delays[k * 2 + side]
 			base := p.delay[side] + (avg - p.delay[side]) * t
-			hz: [2]f32
 			for ch in 0 ..< 2 {
 				ph := c.phase + offset + (0.25 if ch == 1 else 0) + (0.5 if side == 1 else 0)
 				m := math.sin(ph * math.TAU) * 0.5 + 1
-				hz[ch] = 1 / max(m * p.depth * CHORUS_MAX_SWEEP + base, 0.00001)
-			}
-			dp := Delay_Params{style = .Stereo, wet = 1, feedback = p.feedback, hz = hz, cutoff = p.cutoff, spread = p.spread}
-			buf := &c.scratch[0][k * 2 + side]
-			buf2 := &c.scratch[1][k * 2 + side]
-			copy(buf[:n], l)
-			copy(buf2[:n], r)
-			delay_render(d, &dp, buf[:n], buf2[:n], sample_rate)
-			for i in 0 ..< n {
-				out[0][i] += buf[i] * 0.5
-				out[1][i] += buf2[i] * 0.5
+				c.hz[k * 2 + side][ch] = 1 / max(m * p.depth * CHORUS_MAX_SWEEP + base, 0.00001)
 			}
 		}
 	}
 	wet, dry := equal_power(p.wet)
-	if !c.set do c.last_wet, c.last_dry = wet, dry
-	for i in 0 ..< n {
-		u := f32(i + 1) / f32(n)
-		w := c.last_wet + (wet - c.last_wet) * u
-		dd := c.last_dry + (dry - c.last_dry) * u
-		l[i] = dd * l[i] + w * out[0][i]
-		r[i] = dd * r[i] + w * out[1][i]
-	}
-	c.last_wet, c.last_dry, c.set = wet, dry, true
+	now := [2]f32{wet, dry}
+	c.from = c.to if c.set else now
+	c.to = now
+	c.set = true
 }
 
 // --- Flanger -------------------------------------------------------------------------------------
@@ -356,6 +377,8 @@ FLANGER_DEFAULTS :: Flanger_Params{hz = 4, center = 64, feedback = 0.5, wet = 0.
 Flanger :: struct {
 	delay: Delay,
 	phase: f32,
+	hz:    [2]f32, // its delay's rate since the last control point
+	tick:  int,
 }
 
 // Control thread. A flanger for sample rates up to `max_rate`.
@@ -374,24 +397,26 @@ flanger_destroy :: proc(f: ^Flanger, allocator := context.allocator) {
 flanger_render :: proc "contextless" (f: ^Flanger, p: ^Flanger_Params, l, r: []f32, sample_rate: f64) #no_bounds_check {
 	n := len(l)
 	if n == 0 || len(f.delay.lines[0].buf) == 0 do return
-	for at := 0; at < n; at += 64 {
-		m := min(64, n - at)
-		f.phase += p.hz * f32(m) / f32(sample_rate)
-		f.phase -= math.floor(f.phase)
-		BUFFER :: 0.0005
-		hz: [2]f32
-		for ch in 0 ..< 2 {
-			ph := f.phase - p.offset / 2 + (p.offset if ch == 1 else 0)
-			ph -= math.floor(ph)
-			tri := 1 - abs(ph * 2 - 1) // 0..1..0
-			mod := p.depth * (tri * 2 - 1) + 1
-			delay := 1 / key_to_hz(p.center)
-			delay = (delay - BUFFER) * mod + BUFFER
-			hz[ch] = 1 / max(delay, 1.0 / 20_000)
+	BUFFER :: 0.0005
+	for at := 0; at < n; {
+		if f.tick == 0 {
+			f.phase += p.hz * FX_GRID / f32(sample_rate)
+			f.phase -= math.floor(f.phase)
+			for ch in 0 ..< 2 {
+				ph := f.phase - p.offset / 2 + (p.offset if ch == 1 else 0)
+				ph -= math.floor(ph)
+				tri := 1 - abs(ph * 2 - 1) // 0..1..0
+				mod := p.depth * (tri * 2 - 1) + 1
+				delay := 1 / key_to_hz(p.center)
+				delay = (delay - BUFFER) * mod + BUFFER
+				f.hz[ch] = 1 / max(delay, 1.0 / 20_000)
+			}
 		}
-		dp := Delay_Params{style = .Mono if hz[0] == hz[1] else .Stereo, wet = p.wet, feedback = p.feedback, hz = hz, cutoff = 68, spread = 1}
-		dp.style = .Stereo
+		m := min(FX_GRID - f.tick, n - at)
+		dp := Delay_Params{style = .Stereo, wet = p.wet, feedback = p.feedback, hz = f.hz, cutoff = 68, spread = 1}
 		delay_render(&f.delay, &dp, l[at:at + m], r[at:at + m], sample_rate)
+		f.tick = (f.tick + m) % FX_GRID
+		at += m
 	}
 }
 
