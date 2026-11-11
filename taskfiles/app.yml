@@ -19,7 +19,7 @@ vars:
   # there (./scripts/link.sh, which `task deps` runs); LINK=0 leaves it out,
   # LINK=1 insists on it.
   LINK:
-    sh: 'ls {{.ROOT_DIR}}/third_party/link/lib/*abl_link* > /dev/null 2>&1 && echo 1 || echo 0'
+    sh: 'for f in {{.ROOT_DIR}}/third_party/link/lib/*abl_link*; do if [ -e "$f" ]; then echo 1; exit 0; fi; done; echo 0'
   PADS_LINK: '-collection:padslink={{.ROOT_DIR}}/apps/pads/link/{{if eq .LINK "1"}}on{{else}}off{{end}}'
   OPT: '{{.OPT | default "speed"}}'
   # The Python `task deps` sets up (pytest for the e2e suite).

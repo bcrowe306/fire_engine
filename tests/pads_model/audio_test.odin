@@ -151,15 +151,16 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 
 @(test)
 audio_runs_hand_over_at_switches_and_song_steps :: proc(t: ^testing.T) {
-	p: pm.Project
-	pm.project_init(&p, "")
-	defer pm.project_destroy(&p)
+	p := new(pm.Project) // (too big for a Windows thread's stack)
+	defer free(p)
+	pm.project_init(p, "")
+	defer pm.project_destroy(p)
 	p.sequences[1].bars = 2
 	// A pattern: one run for ever.
-	cur, next := pm.audio_runs(pm.plan_pattern(&p, 0, 0), 9)
+	cur, next := pm.audio_runs(pm.plan_pattern(p, 0, 0), 9)
 	testing.expect(t, cur.valid && cur.slot == 0 && cur.start == 0 && cur.end == math.INF_F64 && !next.valid, "pattern")
 	// A switch at beat 8: sequence 1 until then, sequence 2 after, for ever.
-	sw := pm.plan_switch(&p, pm.plan_pattern(&p, 0, 0), 1, 8)
+	sw := pm.plan_switch(p, pm.plan_pattern(p, 0, 0), 1, 8)
 	cur, next = pm.audio_runs(sw, 5)
 	testing.expect(t, cur.slot == 0 && cur.end == 8 && next.slot == 1 && next.start == 8 && next.end == math.INF_F64, "switch")
 	later, _ := pm.audio_runs(sw, 30)
@@ -169,7 +170,7 @@ audio_runs_hand_over_at_switches_and_song_steps :: proc(t: ^testing.T) {
 	p.song.steps[0] = {slot = 0, repeats = 1}
 	p.song.steps[1] = {slot = 0, repeats = 1}
 	p.song.steps[2] = {slot = 1, repeats = 1}
-	song := pm.plan_song(&p, 0)
+	song := pm.plan_song(p, 0)
 	cur, next = pm.audio_runs(song, 1)
 	testing.expect(t, cur.slot == 0 && cur.start == 0 && cur.end == 8 && next.slot == 1 && next.start == 8 && next.end == 16, "song")
 	cur, next = pm.audio_runs(song, 10)
