@@ -77,7 +77,7 @@ formant_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutof
 		g0[k] = math.tan(min(key_to_hz(fs.last[k][0]) / sr, 0.499) * math.PI)
 		g1[k] = math.tan(min(key_to_hz(now[k][0]) / sr, 0.499) * math.PI)
 	}
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		src, dst := in_[ch], out[ch]
 		for i in 0 ..< n {
 			u := f32(i + 1) * inv
@@ -169,7 +169,7 @@ comb_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff: 
 	at := cs.at
 	period0 := clamp(sr / key_to_hz(cutoff[0]), min_period, max_period) if n > 0 else min_period
 	period1 := clamp(sr / key_to_hz(cutoff[n - 1]), min_period, max_period) if n > 0 else min_period
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		mem := &cs.memory[ch]
 		st := &cs.poles[ch]
 		src, dst := in_[ch], out[ch]
@@ -250,7 +250,7 @@ Phaser_State :: struct {
 // (band-passed around the cutoff). Mixed with the input: peaks, or with
 // style 1 (negative) notches.
 @(private)
-phaser_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff: []f32, in_, out: ^[2][]f32, sample_rate: f64) #no_bounds_check {
+phaser_filter_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff: []f32, in_, out: ^[2][]f32, sample_rate: f64) #no_bounds_check {
 	CLEAR :: 20.0
 	res := clamp(p.resonance, 0, 1)
 	drv := math.pow(10, clamp(p.drive_db, 0, 36) / 20)
@@ -266,7 +266,7 @@ phaser_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	sr := f32(sample_rate)
 	nyq := sr * 0.45
 	cr := coef_ramp(cutoff, sr, 1, nyq)
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		src, dst := in_[ch], out[ch]
 		st := &ps.stages[ch]
 		cl := &ps.clean[ch]
@@ -278,7 +278,13 @@ phaser_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 			lows := pole_tick(&cl[0], &cl[1], ps.feedback[ch], min(g * CLEAR, 0.9))
 			highs := pole_tick(&cl[2], &cl[3], lows, g * (1 / CLEAR))
 			state := v[0] * (lows - highs)
-			x := hard_tanh(v[1] * src[i] + invert * state)
+			x: f32
+			if p.clean { // (the phaser effect's: resonance saturated, the input not)
+				state = fast_tanh(state)
+				x = v[1] * src[i] + invert * state
+			} else {
+				x = hard_tanh(v[1] * src[i] + invert * state)
+			}
 			outs: [3]f32
 			for grp in 0 ..< 3 {
 				for k in 0 ..< 4 {

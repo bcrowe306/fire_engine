@@ -91,7 +91,7 @@ dirty_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff:
 	nyq := sr * 0.45
 	style := p.style
 	cr := coef_ramp(cutoff, sr, 1, nyq)
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		x, y := in_[ch], out[ch]
 		st := f.poles[ch][:]
 		for i in 0 ..< n {
@@ -218,7 +218,7 @@ ladder_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	sr := f32(sample_rate)
 	top := min(20_000, sr * 0.45)
 	cr := coef_ramp(cutoff, sr, 1, top)
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		x, y := in_[ch], out[ch]
 		st := f.poles[ch][:]
 		input := &f.extra[ch][0]
@@ -282,7 +282,7 @@ diode_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff:
 	nyq := sr * 0.45
 	hp_fb_g := pole_coefficient(DIODE_HIGH_PASS_HZ / sr)
 	cr := coef_ramp(cutoff, sr, 1, nyq)
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		x, y := in_[ch], out[ch]
 		st := f.poles[ch][:]
 		for i in 0 ..< n {
@@ -388,7 +388,7 @@ digital_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutof
 	inv := 1 / f32(max(n, 1))
 	sr := f32(sample_rate)
 	cr := coef_ramp(cutoff, sr, 0.001, sr, svf = true, shift = shift)
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		x, y := in_[ch], out[ch]
 		ic := f.poles[ch][:]
 		for i in 0 ..< n {

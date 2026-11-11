@@ -42,6 +42,20 @@ Filter_Params :: struct {
 	formant_resonance:     f32, // 0.3..1
 	formant_spread:        f32, // -1..1
 	comb_offset:           f32, // semitones the second comb sits above (0..84)
+	mono:                  bool, // the first side only (the second left as it is)
+	clean:                 bool, // Phaser: resonance through tanh, the input not clipped
+}
+
+// [rt] How many sides a render filters.
+@(private)
+sides :: #force_inline proc "contextless" (p: ^Filter_Params) -> int { return 1 if p.mono else 2 }
+
+// [rt] Filters one side, `buf`, in place (its cutoffs in `cutoff`).
+filter_render_side :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff: []f32, buf: []f32, sample_rate: f64) {
+	pp := p^
+	pp.mono = true
+	io := [2][]f32{buf, buf}
+	filter_render(f, &pp, cutoff, &io, &io, sample_rate)
 }
 
 // Default filter settings.
@@ -142,13 +156,13 @@ filter_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	case .Diode:          diode_render(f, p, cutoff, in_, out, sample_rate)
 	case .Formant:        formant_render(f, p, cutoff, in_, out, sample_rate)
 	case .Comb:           comb_render(f, p, cutoff, in_, out, sample_rate)
-	case .Phaser:         phaser_render(f, p, cutoff, in_, out, sample_rate)
+	case .Phaser:         phaser_filter_render(f, p, cutoff, in_, out, sample_rate)
 	}
 	f.set = true
 	// The mix: dry against filtered.
 	if p.mix < 1 {
 		m := clamp(p.mix, 0, 1)
-		for ch in 0 ..< 2 do for i in 0 ..< n do out[ch][i] = in_[ch][i] + (out[ch][i] - in_[ch][i]) * m
+		for ch in 0 ..< sides(p) do for i in 0 ..< n do out[ch][i] = in_[ch][i] + (out[ch][i] - in_[ch][i]) * m
 	}
 }
 
@@ -213,7 +227,7 @@ analog_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	style := p.style
 	if style == .Shelving do style = .Db12
 	cr := coef_ramp(cutoff, sr, 1, nyq)
-	for ch in 0 ..< 2 {
+	for ch in 0 ..< sides(p) {
 		x := in_[ch]
 		y := out[ch]
 		st := &f.poles[ch]

@@ -26,6 +26,87 @@ fx.distortion_render(&state, &p, left, right, sample_rate)
 
 ## Constants
 
+### TEMPO_RATIOS
+
+```odin
+TEMPO_RATIOS : [13]f32 : [13]f32{0, 1.0 / 128, 1.0 / 64, 1.0 / 32, 1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0 / 2, 1, 2, 4, 8, 16}
+```
+
+Tempo divisions effects sync to (an index), as cycles a beat: 0 is
+frozen, then 32 bars ... 1/64.
+
+### DISTORTION_DEFAULTS
+
+```odin
+DISTORTION_DEFAULTS : Distortion_Params : Distortion_Params{type = .Soft_Clip, mix = 1, cutoff = 80, resonance = 0.5}
+```
+
+Default distortion settings.
+
+### DELAY_DEFAULTS
+
+```odin
+DELAY_DEFAULTS : Delay_Params : Delay_Params{style = .Stereo, wet = 0.3334, feedback = 0.5, hz = {4, 4}, cutoff = 60, spread = 1}
+```
+
+Default delay settings: a repeat every quarter second.
+
+### DELAY_MAX_SECONDS
+
+```odin
+DELAY_MAX_SECONDS :: 4.5
+```
+
+The longest delay (seconds) a `Delay` made with `delay_make` holds.
+
+### CHORUS_DEFAULTS
+
+```odin
+CHORUS_DEFAULTS : Chorus_Params : Chorus_Params{voices = 4, hz = 0.125, feedback = 0.4, wet = 0.5, cutoff = 60, spread = 1, depth = 0.5, delay = {1.0 / 512, 1.0 / 128}}
+```
+
+Default chorus settings.
+
+### FLANGER_DEFAULTS
+
+```odin
+FLANGER_DEFAULTS : Flanger_Params : Flanger_Params{hz = 4, center = 64, feedback = 0.5, wet = 0.5, depth = 0.5, offset = 0.3333}
+```
+
+Default flanger settings.
+
+### PHASER_DEFAULTS
+
+```odin
+PHASER_DEFAULTS : Phaser_Params : Phaser_Params{hz = 0.125, feedback = 0.5, wet = 1, center = 80, blend = 1, depth = 24, offset = 0.3333}
+```
+
+Default phaser settings.
+
+### EQ_DEFAULTS
+
+```odin
+EQ_DEFAULTS : Eq_Params : Eq_Params{bands = {{cutoff = 40, resonance = 0.3163}, {cutoff = 80, resonance = 0.4473}, {cutoff = 100, resonance = 0.3163}}}
+```
+
+Default EQ settings (flat).
+
+### COMPRESSOR_DEFAULTS
+
+```odin
+COMPRESSOR_DEFAULTS : Compressor_Params : Compressor_Params{bands = .Three, band = {{upper_db = -28, lower_db = -35, upper_ratio = 0.9, lower_ratio = 0.8, gain_db = 16.3}, {upper_db = -25, lower_db = -36, upper_ratio = 0.857, lower_ratio = 0.8, gain_db = 11.7}, {upper_db = -30, lower_db = -35, upper_ratio = 1, lower_ratio = 0.8, gain_db = 16.3}}, attack = 0.5, release = 0.5, mix = 1}
+```
+
+Default compressor settings (squeezing and lifting all three bands).
+
+### REVERB_DEFAULTS
+
+```odin
+REVERB_DEFAULTS : Reverb_Params : Reverb_Params{wet = 0.25, decay = 1, size = 0.5, pre_low = 0, pre_high = 110, low_cutoff = 0, high_cutoff = 90, high_gain_db = -1, chorus = 0.05, chorus_hz = 0.25}
+```
+
+Default reverb settings.
+
 ### FILTER_DEFAULTS
 
 ```odin
@@ -71,6 +152,543 @@ PHASER_STYLES : [2]string : [2]string{"Positive", "Negative"}
 Phaser styles (`Filter_Params.style` for the Phaser model).
 
 ## Types
+
+### Line
+
+```odin
+Line :: struct {
+	buf: []f32,
+	mask: int,
+	at: int,
+}
+```
+
+A delay line a side (or a voice): written a sample at a time, read
+`past` samples back (2 or more), cubically between samples. Its length
+is a power of two. Made with `line_make`.
+
+| Field | Description |
+|-------|-------------|
+| `buf` |  |
+| `mask` |  |
+| `at` | where the next sample goes |
+
+### Sync
+
+```odin
+Sync :: enum u8 {
+	Free,
+	Tempo,
+	Dotted,
+	Triplet,
+}
+```
+
+How a rate is set: free (in Hz), or to the tempo (straight, dotted or
+triplet).
+
+### Distortion_Type
+
+```odin
+Distortion_Type :: enum u8 {
+	Soft_Clip,
+	Hard_Clip,
+	Linear_Fold,
+	Sine_Fold,
+	Bit_Crush,
+	Down_Sample,
+}
+```
+
+What a distortion does to the signal.
+
+| Value | Description |
+|-------|-------------|
+| `Soft_Clip` | tanh |
+| `Hard_Clip` | clipped at ±1 |
+| `Linear_Fold` | folded back in straight lines |
+| `Sine_Fold` | folded through a sine |
+| `Bit_Crush` | steps |
+| `Down_Sample` | held for longer, the lower the drive |
+
+### Filter_Order
+
+```odin
+Filter_Order :: enum u8 {
+	None,
+	Pre,
+	Post,
+}
+```
+
+Where a distortion's filter is.
+
+### Distortion_Params
+
+```odin
+Distortion_Params :: struct {
+	type: Distortion_Type,
+	drive_db: f32,
+	mix: f32,
+	order: Filter_Order,
+	cutoff: f32,
+	resonance: f32,
+	blend: f32,
+}
+```
+
+A distortion's settings.
+
+| Field | Description |
+|-------|-------------|
+| `type` |  |
+| `drive_db` | -30..30 |
+| `mix` | 0..1 |
+| `order` |  |
+| `cutoff` | a key |
+| `resonance` |  |
+| `blend` | 0 low .. 1 band .. 2 high |
+
+### Distortion
+
+```odin
+Distortion :: struct {
+	held: [2]f32,
+	count: [2]f32,
+	filter: Filter_State,
+	last_mix: f32,
+	set: bool,
+}
+```
+
+A distortion's state.
+
+### Delay_Style
+
+```odin
+Delay_Style :: enum u8 {
+	Mono,
+	Stereo,
+	Ping_Pong,
+	Mid_Ping_Pong,
+}
+```
+
+How a delay's two sides play.
+
+| Value | Description |
+|-------|-------------|
+| `Mono` | the same time both sides |
+| `Stereo` | a time each side |
+| `Ping_Pong` | the input summed, bouncing side to side |
+| `Mid_Ping_Pong` | each side's own, bouncing |
+
+### Delay_Params
+
+```odin
+Delay_Params :: struct {
+	style: Delay_Style,
+	wet: f32,
+	feedback: f32,
+	hz: [2]f32,
+	cutoff: f32,
+	spread: f32,
+}
+```
+
+A delay's settings.
+
+| Field | Description |
+|-------|-------------|
+| `style` |  |
+| `wet` | 0..1 |
+| `feedback` | -1..1 |
+| `hz` | repeats a second, left and right (from its time or the tempo) |
+| `cutoff` | a key: the centre of the feedback's band |
+| `spread` | 0..1: how wide that band is (0: a narrow band, 1: eight octaves) |
+
+### Delay
+
+```odin
+Delay :: struct {
+	lines: [2]Line,
+	period: [2]f32,
+	freq: [2]f32,
+	poles: [2][4]f32,
+	last: [6]f32,
+	gain: f32,
+	set: bool,
+}
+```
+
+A delay's state: its lines and filters, and what it glides from.
+
+| Field | Description |
+|-------|-------------|
+| `lines` |  |
+| `period` |  |
+| `freq` | the rate it is moving to the set one, smoothed |
+| `poles` |  |
+| `last` | wet, dry, feedback L, feedback R, low g, high g |
+| `gain` |  |
+| `set` |  |
+
+### Chorus_Params
+
+```odin
+Chorus_Params :: struct {
+	voices: int,
+	hz: f32,
+	feedback: f32,
+	wet: f32,
+	cutoff: f32,
+	spread: f32,
+	depth: f32,
+	delay: [2]f32,
+}
+```
+
+A chorus's settings.
+
+| Field | Description |
+|-------|-------------|
+| `voices` | pairs of delays: 1..4 |
+| `hz` | the modulation's rate |
+| `feedback` | -0.95..0.95 |
+| `wet` |  |
+| `cutoff` | a key |
+| `spread` | 0..1 |
+| `depth` | 0..1 (up to 30 ms of sweep) |
+| `delay` | seconds: the two delays each pair is spread between |
+
+### Chorus
+
+```odin
+Chorus :: struct {
+	delays: [8]Delay,
+	phase: f32,
+	last_wet: f32,
+	last_dry: f32,
+	scratch: [2][8][256]f32,
+	set: bool,
+}
+```
+
+A chorus's state: a delay a side for each of its voices (two a pair).
+
+### Flanger_Params
+
+```odin
+Flanger_Params :: struct {
+	hz: f32,
+	center: f32,
+	feedback: f32,
+	wet: f32,
+	depth: f32,
+	offset: f32,
+}
+```
+
+A flanger's settings.
+
+| Field | Description |
+|-------|-------------|
+| `hz` | its sweep's rate |
+| `center` | a key: the comb's centre (its delay's pitch) |
+| `feedback` | -1..1 |
+| `wet` | 0..0.5 (0.5: as much flanged as dry) |
+| `depth` | 0..1 |
+| `offset` | 0..1: the right side's sweep ahead of the left's |
+
+### Flanger
+
+```odin
+Flanger :: struct {
+	delay: Delay,
+	phase: f32,
+}
+```
+
+A flanger's state.
+
+### Phaser_Params
+
+```odin
+Phaser_Params :: struct {
+	hz: f32,
+	feedback: f32,
+	wet: f32,
+	center: f32,
+	blend: f32,
+	depth: f32,
+	offset: f32,
+}
+```
+
+A phaser's settings.
+
+| Field | Description |
+|-------|-------------|
+| `hz` | its sweep's rate |
+| `feedback` | 0..1 |
+| `wet` | 0..1 |
+| `center` | a key |
+| `blend` | 0..2: one, three or five peaks |
+| `depth` | semitones the sweep reaches either way (0..48) |
+| `offset` | 0..1: the sides' sweeps apart |
+
+### Phaser
+
+```odin
+Phaser :: struct {
+	filters: [2]Filter_State,
+	phase: f32,
+	last_mix: f32,
+	set: bool,
+}
+```
+
+A phaser's state.
+
+### Eq_Mode
+
+```odin
+Eq_Mode :: enum u8 {
+	Shelf,
+	Cut,
+}
+```
+
+What an EQ band is.
+
+| Value | Description |
+|-------|-------------|
+| `Shelf` | the low and high bands: a shelf; the middle one: a bell |
+| `Cut` | the low band: a high-pass; the middle: a notch; the high: a low-pass |
+
+### Eq_Band
+
+```odin
+Eq_Band :: struct {
+	mode: Eq_Mode,
+	cutoff: f32,
+	gain_db: f32,
+	resonance: f32,
+}
+```
+
+An EQ band's settings.
+
+| Field | Description |
+|-------|-------------|
+| `mode` |  |
+| `cutoff` | a key |
+| `gain_db` | -15..15 (a shelf's or bell's) |
+| `resonance` | 0..1 |
+
+### Eq_Params
+
+```odin
+Eq_Params :: struct {
+	bands: [3]Eq_Band,
+}
+```
+
+An EQ's settings: three bands, low to high.
+
+### Eq
+
+```odin
+Eq :: struct {
+	filters: [3]Filter_State,
+}
+```
+
+An EQ's state.
+
+### Filter_Fx_Params
+
+```odin
+Filter_Fx_Params :: struct {
+	filter: Filter_Params,
+}
+```
+
+The filter effect's settings: any filter model, its mix included.
+
+### Filter_Fx
+
+```odin
+Filter_Fx :: struct {
+	filter: Filter_State,
+}
+```
+
+The filter effect's state.
+
+### Compressor_Bands
+
+```odin
+Compressor_Bands :: enum u8 {
+	Three,
+	Low_Band,
+	Band_High,
+	One,
+}
+```
+
+Which bands a compressor splits into.
+
+| Value | Description |
+|-------|-------------|
+| `Three` | low (under 120 Hz), band, high (over 2.5 kHz) |
+| `Low_Band` | low and the rest |
+| `Band_High` | up to 2.5 kHz, and above |
+| `One` | all as one |
+
+### Compressor_Band
+
+```odin
+Compressor_Band :: struct {
+	upper_db: f32,
+	lower_db: f32,
+	upper_ratio: f32,
+	lower_ratio: f32,
+	gain_db: f32,
+}
+```
+
+One band's settings: above the upper threshold it is pressed down by
+the upper ratio; below the lower threshold it is raised (a positive
+ratio) or pushed further down (negative); then its gain.
+
+| Field | Description |
+|-------|-------------|
+| `upper_db` |  |
+| `lower_db` | -80..0 |
+| `upper_ratio` | 0..1 |
+| `lower_ratio` | -1..1 |
+| `gain_db` | -30..30 |
+
+### Compressor_Params
+
+```odin
+Compressor_Params :: struct {
+	bands: Compressor_Bands,
+	band: [3]Compressor_Band,
+	attack: f32,
+	release: f32,
+	mix: f32,
+}
+```
+
+A compressor's settings.
+
+| Field | Description |
+|-------|-------------|
+| `bands` |  |
+| `band` | low, band, high |
+| `attack` | 0..1 (each band's own times, scaled by e^(8x-4)) |
+| `release` | 0..1 |
+| `mix` |  |
+
+### Compressor
+
+```odin
+Compressor :: struct {
+	cross: [2][2][4][2]f32,
+	upper: [3][2]f32,
+	lower: [3][2]f32,
+	gain: [3]f32,
+	last_mix: f32,
+	levels: [3][2]f32,
+	set: bool,
+}
+```
+
+A compressor's state: its crossovers, each band's levels, and the
+levels for a meter (`levels`: each band's input and output, mean
+squared).
+
+| Field | Description |
+|-------|-------------|
+| `cross` | [crossover][side][stage: low1, low2, high1, high2][state] |
+| `upper` |  |
+| `lower` | each band's envelopes (mean squared), a side |
+| `gain` |  |
+| `last_mix` |  |
+| `levels` | [band][in, out] |
+| `set` |  |
+
+### Reverb_Params
+
+```odin
+Reverb_Params :: struct {
+	wet: f32,
+	decay: f32,
+	size: f32,
+	delay: f32,
+	pre_low: f32,
+	pre_high: f32,
+	low_cutoff: f32,
+	low_gain_db: f32,
+	high_cutoff: f32,
+	high_gain_db: f32,
+	chorus: f32,
+	chorus_hz: f32,
+}
+```
+
+A reverb's settings.
+
+| Field | Description |
+|-------|-------------|
+| `wet` | 0..1 |
+| `decay` | seconds (0.1..100) |
+| `size` | 0..1 |
+| `delay` | seconds of pre-delay (0..0.3) |
+| `pre_low` | a key: the input's high-pass |
+| `pre_high` | a key: the input's low-pass |
+| `low_cutoff` |  |
+| `low_gain_db` | the tail's low shelf (key, -6..0 dB) |
+| `high_cutoff` |  |
+| `high_gain_db` | the tail's high shelf |
+| `chorus` | 0..1: how much the tail's delays wander |
+| `chorus_hz` |  |
+
+### Reverb
+
+```odin
+Reverb :: struct {
+	feedback: [16]Line,
+	allpass: [16]Line,
+	pre: Line,
+	pre_r: Line,
+	pre_filters: [2][4]f32,
+	shelves: [16][4]f32,
+	decays: [16]f32,
+	chorus_phase: f32,
+	last: [8]f32,
+	set: bool,
+	scale: f32,
+}
+```
+
+A reverb's state.
+
+| Field | Description |
+|-------|-------------|
+| `feedback` |  |
+| `allpass` |  |
+| `pre` | the pre-delay (stereo, interleaved as two lines) |
+| `pre_r` |  |
+| `pre_filters` | a side: the high-pass's and low-pass's poles |
+| `shelves` |  |
+| `decays` |  |
+| `chorus_phase` |  |
+| `last` | wet, dry, chorus, pre delay, low amp, high amp, low g, high g |
+| `set` |  |
+| `scale` | its delays' lengths against 44.1 kHz |
 
 ### Filter_Model
 
@@ -145,6 +763,8 @@ Filter_Params :: struct {
 	formant_resonance: f32,
 	formant_spread: f32,
 	comb_offset: f32,
+	mono: bool,
+	clean: bool,
 }
 ```
 
@@ -166,6 +786,8 @@ What a filter does for one render (modulated, in its working units).
 | `formant_resonance` | 0.3..1 |
 | `formant_spread` | -1..1 |
 | `comb_offset` | semitones the second comb sits above (0..84) |
+| `mono` | the first side only (the second left as it is) |
+| `clean` | Phaser: resonance through tanh, the input not clipped |
 
 ### Filter_State
 
@@ -256,6 +878,242 @@ keep its feedback in a band, and its last output.
 | `last` | resonance, drive, peak 1, peak 3, peak 5 |
 
 ## Procedures
+
+### line_make
+
+```odin
+line_make :: proc(frames: int, allocator: mem.Allocator = context.allocator) -> (l: Line, err: core.Error)
+```
+
+Control thread. A delay line holding at least `frames` samples.
+
+### line_destroy
+
+```odin
+line_destroy :: proc(l: ^Line, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a delay line.
+
+### line_max
+
+```odin
+line_max :: proc "contextless"(l: ^Line) -> f32
+```
+
+The longest delay a line can be read at (samples).
+
+### line_clear
+
+```odin
+line_clear :: proc "contextless"(l: ^Line)
+```
+
+**Realtime-safe** (callable on the audio thread). Clears a line.
+
+### line_push
+
+```odin
+line_push :: proc "contextless"(l: ^Line, x: f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Writes the next sample.
+
+### line_read
+
+```odin
+line_read :: proc "contextless"(l: ^Line, past: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The sample `past` samples back from the last written (2 ..
+line_max), with a Catmull-Rom cubic between samples.
+
+### equal_power
+
+```odin
+equal_power :: proc "contextless"(t: f32) -> (wet: f32, dry: f32)
+```
+
+**Realtime-safe** (callable on the audio thread). Equal-power fade: the wet gain at `t` (0..1) and the dry gain.
+
+### clip_large
+
+```odin
+clip_large :: proc "contextless"(x: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). A soft-knee clip of large values (straight to ±8 × 0.66, then
+tanh): what a feedback loop is held by.
+
+### sync_hz
+
+```odin
+sync_hz :: proc "contextless"(sync: Sync, hz: f32, tempo: int, bpm: f64) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). A rate in Hz: `hz` free, else tempo division `tempo` at `bpm`.
+
+### distortion_render
+
+```odin
+distortion_render :: proc "contextless"(d: ^Distortion, p: ^Distortion_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Distorts `l` and `r` in place (the filter before or after, then
+mixed with the dry signal).
+
+### delay_make
+
+```odin
+delay_make :: proc(d: ^Delay, max_rate: f64, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. A delay for rates up to `max_rate` Hz.
+
+### delay_destroy
+
+```odin
+delay_destroy :: proc(d: ^Delay, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a delay's lines.
+
+### delay_render
+
+```odin
+delay_render :: proc "contextless"(d: ^Delay, p: ^Delay_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the delay over `l` and `r` in place.
+
+### chorus_make
+
+```odin
+chorus_make :: proc(c: ^Chorus, max_rate: f64, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. A chorus for sample rates up to `max_rate`.
+
+### chorus_destroy
+
+```odin
+chorus_destroy :: proc(c: ^Chorus, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a chorus's lines.
+
+### chorus_render
+
+```odin
+chorus_render :: proc "contextless"(c: ^Chorus, p: ^Chorus_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the chorus over `l` and `r` in place: each voice a pair of
+delays swept by a sine (the sides a quarter cycle apart, the pairs
+spread across it), their times spread between the two set, summed.
+
+### flanger_make
+
+```odin
+flanger_make :: proc(f: ^Flanger, max_rate: f64, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. A flanger for sample rates up to `max_rate`.
+
+### flanger_destroy
+
+```odin
+flanger_destroy :: proc(f: ^Flanger, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a flanger's lines.
+
+### flanger_render
+
+```odin
+flanger_render :: proc "contextless"(f: ^Flanger, p: ^Flanger_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the flanger over `l` and `r` in place: a short delay (its
+pitch the centre) swept by a triangle, fed back.
+
+### phaser_render
+
+```odin
+phaser_render :: proc "contextless"(ph: ^Phaser, p: ^Phaser_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the phaser over `l` and `r` in place: the phaser filter, its
+centre swept by a triangle (the sides apart by the offset), mixed.
+
+### eq_filter
+
+```odin
+eq_filter :: proc "contextless"(band: int, b: Eq_Band) -> Filter_Params
+```
+
+**Realtime-safe** (callable on the audio thread). The filter an EQ band is.
+
+### eq_render
+
+```odin
+eq_render :: proc "contextless"(e: ^Eq, p: ^Eq_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the EQ over `l` and `r` in place.
+
+### filter_fx_render
+
+```odin
+filter_fx_render :: proc "contextless"(f: ^Filter_Fx, p: ^Filter_Fx_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the filter effect over `l` and `r` in place.
+
+### compressor_render
+
+```odin
+compressor_render :: proc "contextless"(c: ^Compressor, p: ^Compressor_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the compressor over `l` and `r` in place.
+
+### reverb_make
+
+```odin
+reverb_make :: proc(rv: ^Reverb, max_rate: f64, allocator: mem.Allocator = context.allocator) -> core.Error
+```
+
+Control thread. A reverb for sample rates up to `max_rate`.
+
+### reverb_destroy
+
+```odin
+reverb_destroy :: proc(rv: ^Reverb, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a reverb's lines.
+
+### reverb_render
+
+```odin
+reverb_render :: proc "contextless"(rv: ^Reverb, p: ^Reverb_Params, l: []f32, r: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Runs the reverb over `l` and `r` in place: the input band-passed,
+diffused through an all-pass per line, into sixteen delays that feed
+each other (an orthogonal mix: a quarter of all, less half the line's
+row and column of the 4 × 4), shelved and decayed so the tail falls 60 dB in
+the decay time; their lengths scaled by the size and wandering with
+the chorus; out through a pre-delay, the lines alternating sides.
+
+### filter_render_side
+
+```odin
+filter_render_side :: proc "contextless"(f: ^Filter_State, p: ^Filter_Params, cutoff: []f32, buf: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Filters one side, `buf`, in place (its cutoffs in `cutoff`).
 
 ### key_to_hz
 
