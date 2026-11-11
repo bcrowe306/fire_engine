@@ -374,7 +374,11 @@ Arrangements :: struct {
 
 @(private)
 arrangements_of :: proc(p: ^Project) -> (a: Arrangements) {
-	a.list, a.count, a.current, a.song = p.arrangements, p.arrangement_count, p.arrangement, p.song
+	// (One assignment each: a tuple of these large arrays costs LLVM minutes at -o:speed.)
+	a.list = p.arrangements
+	a.song = p.song
+	a.count = p.arrangement_count
+	a.current = p.arrangement
 	a.list[a.current].song = p.song // the one being edited, kept
 	return
 }
@@ -385,7 +389,10 @@ put_arrangements :: proc(m: ^Model, name: string, new: Arrangements) {
 	app.set_value(&m.history, name, {app.Id(ARRANGEMENT_KEY), 0}, old, new, proc(ctx: rawptr, key: app.Key, v: Arrangements) {
 		m := (^Model)(ctx)
 		p := &m.project
-		p.arrangements, p.arrangement_count, p.arrangement, p.song = v.list, v.count, v.current, v.song
+		p.arrangements = v.list
+		p.song = v.song
+		p.arrangement_count = v.count
+		p.arrangement = v.current
 		m.engine.seq_dirty = true
 	})
 	app.seal(&m.history)
