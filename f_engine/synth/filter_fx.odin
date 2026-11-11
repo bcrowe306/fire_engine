@@ -72,16 +72,20 @@ formant_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutof
 	n := len(cutoff)
 	inv := 1 / f32(max(n, 1))
 	sr := f32(sample_rate)
+	g0, g1: [4]f32
+	for k in 0 ..< 4 {
+		g0[k] = math.tan(min(key_to_hz(fs.last[k][0]) / sr, 0.499) * math.PI)
+		g1[k] = math.tan(min(key_to_hz(now[k][0]) / sr, 0.499) * math.PI)
+	}
 	for ch in 0 ..< 2 {
 		src, dst := in_[ch], out[ch]
 		for i in 0 ..< n {
 			u := f32(i + 1) * inv
 			acc: f32 = 0
 			for k in 0 ..< 4 {
-				key := fs.last[k][0] + (now[k][0] - fs.last[k][0]) * u
 				damp := fs.last[k][1] + (now[k][1] - fs.last[k][1]) * u
 				gain := fs.last[k][2] + (now[k][2] - fs.last[k][2]) * u
-				g := math.tan(min(key_to_hz(key) / sr, 0.499) * math.PI)
+				g := g0[k] + (g1[k] - g0[k]) * u
 				acc += hard_tanh(svf_step(fs.ic[ch][k][:], src[i], g, damp, {0, 1, 0})) * gain
 			}
 			dst[i] = acc
@@ -98,8 +102,9 @@ hz_key :: proc "contextless" (hz: f32) -> f32 {
 
 // --- Comb ----------------------------------------------------------------------------------------
 
-// Samples of delay a comb can hold (a side): enough for a 6 Hz comb at 48 kHz.
-COMB_SIZE :: 8192
+// Samples of delay a comb can hold (a side): enough for the lowest
+// cutoff (key 8, 13.75 Hz) at 48 kHz.
+COMB_SIZE :: 4096
 
 // Comb styles (`Filter_Params.style` for the Comb model): feedback (comb,
 // a positive flange, a negative flange) by filter (a low/high blend, or a
@@ -162,6 +167,8 @@ comb_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff: 
 	min_period: f32 = 4 if feedback_style == 2 else 2
 	max_period := f32(COMB_SIZE - 5)
 	at := cs.at
+	period0 := clamp(sr / key_to_hz(cutoff[0]), min_period, max_period) if n > 0 else min_period
+	period1 := clamp(sr / key_to_hz(cutoff[n - 1]), min_period, max_period) if n > 0 else min_period
 	for ch in 0 ..< 2 {
 		mem := &cs.memory[ch]
 		st := &cs.poles[ch]
@@ -171,7 +178,7 @@ comb_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff: 
 			u := f32(i + 1) * inv
 			v: [6]f32
 			for k in 0 ..< 6 do v[k] = l[k] + (now[k] - l[k]) * u
-			period := clamp(sr / key_to_hz(cutoff[i]), min_period, max_period)
+			period := period0 + (period1 - period0) * f32(i) / f32(max(n - 1, 1))
 			if feedback_style == 2 do period *= 0.5
 			if feedback_style == 1 do period *= 0.5
 			read := comb_read(mem, at, period)
@@ -258,6 +265,7 @@ phaser_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	inv := 1 / f32(max(n, 1))
 	sr := f32(sample_rate)
 	nyq := sr * 0.45
+	cr := coef_ramp(cutoff, sr, 1, nyq)
 	for ch in 0 ..< 2 {
 		src, dst := in_[ch], out[ch]
 		st := &ps.stages[ch]
@@ -266,7 +274,7 @@ phaser_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 			u := f32(i + 1) * inv
 			v: [5]f32
 			for k in 0 ..< 5 do v[k] = l[k] + (now[k] - l[k]) * u
-			g := pole_coefficient(clamp(key_to_hz(cutoff[i]), 1, nyq) / sr)
+			g := cr.g0 + cr.dg * f32(i)
 			lows := pole_tick(&cl[0], &cl[1], ps.feedback[ch], min(g * CLEAR, 0.9))
 			highs := pole_tick(&cl[2], &cl[3], lows, g * (1 / CLEAR))
 			state := v[0] * (lows - highs)

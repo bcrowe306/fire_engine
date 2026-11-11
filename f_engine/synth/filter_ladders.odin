@@ -90,14 +90,14 @@ dirty_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff:
 	sr := f32(sample_rate)
 	nyq := sr * 0.45
 	style := p.style
+	cr := coef_ramp(cutoff, sr, 1, nyq)
 	for ch in 0 ..< 2 {
 		x, y := in_[ch], out[ch]
 		st := f.poles[ch][:]
 		for i in 0 ..< n {
 			u := f32(i + 1) * inv
 			lerp :: #force_inline proc "contextless" (a, b, u: f32) -> f32 { return a + (b - a) * u }
-			hz := clamp(key_to_hz(cutoff[i]), 1, nyq)
-			g := pole_coefficient(hz / sr)
+			g := cr.g0 + cr.dg * f32(i)
 			g2 := g * g
 			res_in := clamp(lerp(l.resonance, c.resonance, u) / max(1, 2 * g * 0.25 + 0.97), 0, 1)
 			res := DIRTY_MIN_RESONANCE + (DIRTY_MAX_RESONANCE - DIRTY_MIN_RESONANCE) * res_in + lerp(l.extra[0], c.extra[0], u)
@@ -217,6 +217,7 @@ ladder_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	inv := 1 / f32(max(n, 1))
 	sr := f32(sample_rate)
 	top := min(20_000, sr * 0.45)
+	cr := coef_ramp(cutoff, sr, 1, top)
 	for ch in 0 ..< 2 {
 		x, y := in_[ch], out[ch]
 		st := f.poles[ch][:]
@@ -224,8 +225,7 @@ ladder_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 		for i in 0 ..< n {
 			u := f32(i + 1) * inv
 			lerp :: #force_inline proc "contextless" (a, b, u: f32) -> f32 { return a + (b - a) * u }
-			hz := clamp(key_to_hz(cutoff[i]), 1, top)
-			g := pole_coefficient(hz / sr)
+			g := cr.g0 + cr.dg * f32(i)
 			g1 := g * LADDER_TUNING
 			g2 := g1 * g1
 			g3 := g1 * g2
@@ -281,14 +281,14 @@ diode_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff:
 	sr := f32(sample_rate)
 	nyq := sr * 0.45
 	hp_fb_g := pole_coefficient(DIODE_HIGH_PASS_HZ / sr)
+	cr := coef_ramp(cutoff, sr, 1, nyq)
 	for ch in 0 ..< 2 {
 		x, y := in_[ch], out[ch]
 		st := f.poles[ch][:]
 		for i in 0 ..< n {
 			u := f32(i + 1) * inv
 			lerp :: #force_inline proc "contextless" (a, b, u: f32) -> f32 { return a + (b - a) * u }
-			hz := clamp(key_to_hz(cutoff[i]), 1, nyq)
-			g := pole_coefficient(hz / sr)
+			g := cr.g0 + cr.dg * f32(i)
 			// The high-pass before it.
 			hg := g * lerp(l.extra[0], c.extra[0], u)
 			hfb_mult := 2 * hg - hg * hg - 1
@@ -387,14 +387,14 @@ digital_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutof
 	n := len(cutoff)
 	inv := 1 / f32(max(n, 1))
 	sr := f32(sample_rate)
+	cr := coef_ramp(cutoff, sr, 0.001, sr, svf = true, shift = shift)
 	for ch in 0 ..< 2 {
 		x, y := in_[ch], out[ch]
 		ic := f.poles[ch][:]
 		for i in 0 ..< n {
 			u := f32(i + 1) * inv
 			lerp :: #force_inline proc "contextless" (a, b, u: f32) -> f32 { return a + (b - a) * u }
-			ratio := min(key_to_hz(max(cutoff[i], 0) + shift) / sr, 0.499)
-			g := math.tan(ratio * math.PI)
+			g := cr.g0 + cr.dg * f32(i)
 			k := lerp(l.resonance, c.resonance, u)
 			lo, bd, hi := lerp(l.low, c.low, u), lerp(l.band, c.band, u), lerp(l.high, c.high, u)
 			b1 := [3]f32{hi, bd - k * hi, lo - hi} // the low, band and high as a mix of input, band, low

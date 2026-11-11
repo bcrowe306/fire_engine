@@ -152,17 +152,19 @@ oversampler_up :: proc "contextless" (o: ^Oversampler, input: []f32) -> []f32 #n
 	return src
 }
 
-// [rt] Downsamples the high-rate `input` (factor × len(output) frames, as
-// `oversampler_up` returned) into `output`.
+// [rt] Downsamples the high-rate `input` (factor × len(output) frames: what
+// `oversampler_up` returned, or audio made at the high rate) into `output`.
 oversampler_down :: proc "contextless" (o: ^Oversampler, input: []f32, output: []f32) #no_bounds_check {
 	src := input
-	// The alignment delay, at the top rate.
+	// The alignment delay, at the top rate (into the top buffer: the
+	// input may be it, as `oversampler_up` returned, or any other).
 	if o.pad_frames > 0 {
-		for &x in o.buffers[o.stages - 1][:len(src)] {
+		top := o.buffers[o.stages - 1][:len(src)]
+		for x, i in src {
 			delay_line_write(&o.pad, x)
-			x = delay_line_read(&o.pad, f64(o.pad_frames), .None)
+			top[i] = delay_line_read(&o.pad, f64(o.pad_frames), .None)
 		}
-		src = o.buffers[o.stages - 1][:len(src)]
+		src = top
 	}
 	for i := o.stages - 1; i >= 0; i -= 1 {
 		h := &o.down[i]

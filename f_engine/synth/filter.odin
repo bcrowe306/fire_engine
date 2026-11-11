@@ -98,6 +98,26 @@ pole_tick :: #force_inline proc "contextless" (state, out: ^f32, x, g: f32) -> f
 	return out^
 }
 
+// [rt] A one-pole coefficient across a render: its value at the first
+// and last cutoffs (clamped to lo..hi Hz), the rest glided between (the
+// cutoffs ramp straight within a render, so this is as good as working
+// each out, at a fraction of the cost).
+@(private)
+Coef_Ramp :: struct {g0, dg: f32}
+
+@(private)
+coef_ramp :: #force_inline proc "contextless" (cutoff: []f32, sr, lo, hi: f32, svf := false, shift: f32 = 0) -> Coef_Ramp {
+	n := len(cutoff)
+	if n == 0 do return {}
+	at :: #force_inline proc "contextless" (key, sr, lo, hi: f32, svf: bool) -> f32 {
+		hz := clamp(key_to_hz(key), lo, hi)
+		return math.tan(min(hz / sr, 0.499) * math.PI) if svf else pole_coefficient(hz / sr)
+	}
+	a := at(cutoff[0] + shift, sr, lo, hi, svf)
+	b := at(cutoff[n - 1] + shift, sr, lo, hi, svf)
+	return {a, (b - a) / f32(max(n - 1, 1))}
+}
+
 // [rt] The key a frequency is (key 69 is 440 Hz).
 key_to_hz :: #force_inline proc "contextless" (key: f32) -> f32 {
 	return 440 * math.pow(2, (key - 69) / 12)
@@ -192,6 +212,7 @@ analog_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 	nyq := f32(sample_rate) * 0.45
 	style := p.style
 	if style == .Shelving do style = .Db12
+	cr := coef_ramp(cutoff, sr, 1, nyq)
 	for ch in 0 ..< 2 {
 		x := in_[ch]
 		y := out[ch]
@@ -205,8 +226,7 @@ analog_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params, cutoff
 			lo := l.low + (c.low - l.low) * u
 			bd := l.band + (c.band - l.band) * u
 			hi := l.high + (c.high - l.high) * u
-			hz := clamp(key_to_hz(cutoff[i]), 1, nyq)
-			g := pole_coefficient(hz / sr)
+			g := cr.g0 + cr.dg * f32(i)
 			g2 := 2 * g
 			res = res / max(1, g2 * 0.09 + 0.97) // (tuned so it peaks alike at every cutoff)
 			fb_mult := g2 - g * g - 1

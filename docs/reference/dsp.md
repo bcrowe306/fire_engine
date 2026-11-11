@@ -3117,8 +3117,8 @@ returns it (factor × len(input) frames, valid until the next call).
 oversampler_down :: proc "contextless"(o: ^Oversampler, input: []f32, output: []f32)
 ```
 
-**Realtime-safe** (callable on the audio thread). Downsamples the high-rate `input` (factor × len(output) frames, as
-`oversampler_up` returned) into `output`.
+**Realtime-safe** (callable on the audio thread). Downsamples the high-rate `input` (factor × len(output) frames: what
+`oversampler_up` returned, or audio made at the high rate) into `output`.
 
 ### pan_create
 

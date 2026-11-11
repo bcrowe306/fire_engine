@@ -48,10 +48,11 @@ left, bottom right, top left, top right).
 ### COMB_SIZE
 
 ```odin
-COMB_SIZE :: 8192
+COMB_SIZE :: 4096
 ```
 
-Samples of delay a comb can hold (a side): enough for a 6 Hz comb at 48 kHz.
+Samples of delay a comb can hold (a side): enough for the lowest
+cutoff (key 8, 13.75 Hz) at 48 kHz.
 
 ### COMB_STYLES
 
@@ -152,6 +153,54 @@ OSC_FADE_SECONDS :: 0.007
 Seconds a wave buffer lasts before it is built again, crossfading
 from the one before (so a frame or pitch change is smooth).
 
+### OSCS
+
+```odin
+OSCS :: 3
+```
+
+Counts of each block.
+
+### FILTERS
+
+```odin
+FILTERS :: 2
+```
+
+### ENVS
+
+```odin
+ENVS :: 6
+```
+
+### LFOS
+
+```odin
+LFOS :: 8
+```
+
+### MACROS
+
+```odin
+MACROS :: 4
+```
+
+### PARAM_SLOTS
+
+```odin
+PARAM_SLOTS :: LFO_BASE + LFOS * LFO_STRIDE
+```
+
+Ids span 1 ..< PARAM_SLOTS (with gaps between blocks).
+
+### MAX_ROUTES
+
+```odin
+MAX_ROUTES :: 64
+```
+
+The most modulation routes a patch has.
+
 ### SAMPLE_LEVELS
 
 ```odin
@@ -160,6 +209,24 @@ SAMPLE_LEVELS :: 8
 
 Halvings of a `Sample` kept, each half the length of the one before,
 for playing fast without aliasing.
+
+### MAX_VOICES
+
+```odin
+MAX_VOICES :: 36
+```
+
+Voices the node has: the most polyphony allows, and a few more for
+those fading out after being stolen.
+
+### CONTROL_FRAMES
+
+```odin
+CONTROL_FRAMES :: 32
+```
+
+Frames (at the voice rate) between modulation steps: envelopes, LFOs
+and routes are worked out this often, their effects glided between.
 
 ### WAVE_SIZE
 
@@ -372,7 +439,7 @@ settings it glides from.
 
 ```odin
 Comb_State :: struct {
-	memory: [2][8192]f32,
+	memory: [2][4096]f32,
 	at: int,
 	poles: [2][4]f32,
 	last: [6]f32,
@@ -805,6 +872,408 @@ glides from between renders. Plain data: zero it, then `osc_start`.
 | `rng` |  |
 | `started` |  |
 
+### Global_Field
+
+```odin
+Global_Field :: enum u16 {
+	Volume,
+	Polyphony,
+	Mono,
+	Glide,
+	Glide_Slope,
+	Glide_Octave,
+	Glide_Always,
+	Bend_Range,
+	Velocity_Track,
+	Transpose,
+	Tune,
+	Oversampling,
+	Priority,
+	Macro_1,
+	Macro_2,
+	Macro_3,
+	Macro_4,
+	Pitch_Wheel,
+	Mod_Wheel,
+	Aftertouch,
+}
+```
+
+The global parameters.
+
+| Value | Description |
+|-------|-------------|
+| `Volume` | dB |
+| `Polyphony` | voices 1..32 |
+| `Mono` | 0 poly, 1 mono (retriggers), 2 legato (glides, no retrigger) |
+| `Glide` | seconds (quartic curve) |
+| `Glide_Slope` | -8..8: the glide's curve |
+| `Glide_Octave` | 0/1: a glide takes longer the further it goes |
+| `Glide_Always` | 0/1: glide on every note, not only overlapping ones |
+| `Bend_Range` | semitones |
+| `Velocity_Track` | 0..1: how much velocity sets the level |
+| `Transpose` | semitones, whole |
+| `Tune` | -1..1 semitone |
+| `Oversampling` | 0 1×, 1 2×, 2 4×, 3 8× |
+| `Priority` | a `Voice_Priority` |
+| `Macro_1` |  |
+| `Macro_2` |  |
+| `Macro_3` |  |
+| `Macro_4` | 0..1 |
+| `Pitch_Wheel` | -1..1 (set by MIDI) |
+| `Mod_Wheel` | 0..1 (set by MIDI) |
+| `Aftertouch` | 0..1 (set by MIDI) |
+
+### Osc_Field
+
+```odin
+Osc_Field :: enum u16 {
+	On,
+	Table,
+	Frame,
+	Level,
+	Pan,
+	Transpose,
+	Tune,
+	Keytrack,
+	Unison,
+	Detune,
+	Detune_Power,
+	Detune_Range,
+	Blend,
+	Stereo_Spread,
+	Stack,
+	Phase,
+	Random_Phase,
+	Warp,
+	Warp_Amount,
+	Warp_Spread,
+	Warp_Phase,
+	Destination,
+}
+```
+
+An oscillator's parameters.
+
+### Sample_Field
+
+```odin
+Sample_Field :: enum u16 {
+	On,
+	Sample,
+	Level,
+	Pan,
+	Transpose,
+	Tune,
+	Keytrack,
+	Loop,
+	Bounce,
+	Random_Phase,
+	Destination,
+}
+```
+
+The sample oscillator's parameters.
+
+### Filter_Field
+
+```odin
+Filter_Field :: enum u16 {
+	On,
+	Model,
+	Style,
+	Cutoff,
+	Resonance,
+	Drive,
+	Blend,
+	Mix,
+	Keytrack,
+	Gain,
+	Formant_X,
+	Formant_Y,
+	Formant_Transpose,
+	Formant_Resonance,
+	Formant_Spread,
+	Comb_Offset,
+	From_Filter,
+}
+```
+
+A filter's parameters.
+
+| Value | Description |
+|-------|-------------|
+| `On` |  |
+| `Model` |  |
+| `Style` |  |
+| `Cutoff` |  |
+| `Resonance` |  |
+| `Drive` |  |
+| `Blend` |  |
+| `Mix` |  |
+| `Keytrack` |  |
+| `Gain` |  |
+| `Formant_X` |  |
+| `Formant_Y` |  |
+| `Formant_Transpose` |  |
+| `Formant_Resonance` |  |
+| `Formant_Spread` |  |
+| `Comb_Offset` |  |
+| `From_Filter` | filter 2 only: filter 1's output into it (in series) |
+
+### Env_Field
+
+```odin
+Env_Field :: enum u16 {
+	Delay,
+	Attack,
+	Hold,
+	Decay,
+	Sustain,
+	Release,
+	Attack_Power,
+	Decay_Power,
+	Release_Power,
+}
+```
+
+An envelope's parameters.
+
+### Lfo_Field
+
+```odin
+Lfo_Field :: enum u16 {
+	Mode,
+	Rate,
+	Hz,
+	Tempo,
+	Phase,
+	Fade,
+	Delay,
+	Smooth,
+	Smooth_Time,
+	Stereo,
+	Key_Transpose,
+	Key_Tune,
+}
+```
+
+An LFO's parameters.
+
+### Destination
+
+```odin
+Destination :: enum u8 {
+	Filter_1,
+	Filter_2,
+	Both_Filters,
+	Effects,
+	Direct,
+}
+```
+
+Where a source's sound goes.
+
+### Voice_Priority
+
+```odin
+Voice_Priority :: enum u8 {
+	Newest,
+	Oldest,
+	Highest,
+	Lowest,
+	Round_Robin,
+}
+```
+
+How a voice is chosen when every voice plays.
+
+### Param_Curve
+
+```odin
+Param_Curve :: enum u8 {
+	Linear,
+	Quadratic,
+	Quartic,
+	Exponential,
+	Indexed,
+}
+```
+
+How a parameter's plain value becomes the value the sound uses.
+
+| Value | Description |
+|-------|-------------|
+| `Linear` |  |
+| `Quadratic` | squared (levels, unison detune) |
+| `Quartic` | to the fourth (envelope and glide times, in seconds) |
+| `Exponential` | 2 to the power (LFO rates in Hz, smoothing in seconds) |
+| `Indexed` | a choice: rounded |
+
+### Param_Spec
+
+```odin
+Param_Spec :: struct {
+	id: core.Param_Id,
+	name: string,
+	min: f32,
+	max: f32,
+	default: f32,
+	curve: Param_Curve,
+	unit: core.Param_Unit,
+	poly: bool,
+}
+```
+
+A parameter: its id, name, plain range and default, and curve.
+
+| Field | Description |
+|-------|-------------|
+| `id` |  |
+| `name` |  |
+| `min` |  |
+| `max` |  |
+| `default` |  |
+| `curve` |  |
+| `unit` |  |
+| `poly` | modulatable per voice (else only by global sources) |
+
+### Mod_Source
+
+```odin
+Mod_Source :: enum u8 {
+	None,
+	Env_1,
+	Env_2,
+	Env_3,
+	Env_4,
+	Env_5,
+	Env_6,
+	Lfo_1,
+	Lfo_2,
+	Lfo_3,
+	Lfo_4,
+	Lfo_5,
+	Lfo_6,
+	Lfo_7,
+	Lfo_8,
+	Random_1,
+	Random_2,
+	Random_3,
+	Random_4,
+	Macro_1,
+	Macro_2,
+	Macro_3,
+	Macro_4,
+	Velocity,
+	Note,
+	Note_In_Octave,
+	Aftertouch,
+	Mod_Wheel,
+	Pitch_Wheel,
+	Stereo,
+	Random,
+}
+```
+
+A modulation source.
+
+| Value | Description |
+|-------|-------------|
+| `None` |  |
+| `Env_1` |  |
+| `Env_2` |  |
+| `Env_3` |  |
+| `Env_4` |  |
+| `Env_5` |  |
+| `Env_6` |  |
+| `Lfo_1` |  |
+| `Lfo_2` |  |
+| `Lfo_3` |  |
+| `Lfo_4` |  |
+| `Lfo_5` |  |
+| `Lfo_6` |  |
+| `Lfo_7` |  |
+| `Lfo_8` |  |
+| `Random_1` |  |
+| `Random_2` |  |
+| `Random_3` |  |
+| `Random_4` | (milestone 3: silent until then) |
+| `Macro_1` |  |
+| `Macro_2` |  |
+| `Macro_3` |  |
+| `Macro_4` |  |
+| `Velocity` | the note's, 0..1 |
+| `Note` | the key, 0 (C-2) .. 1 (G8) |
+| `Note_In_Octave` | 0 at C, rising to 1 at the next C |
+| `Aftertouch` |  |
+| `Mod_Wheel` |  |
+| `Pitch_Wheel` | -1..1 |
+| `Stereo` | 1 on the left, -1 on the right (offsets the sides) |
+| `Random` | a value per note, 0..1 |
+
+### Route
+
+```odin
+Route :: struct {
+	source: Mod_Source,
+	dest: core.Param_Id,
+	amount: f32,
+	power: f32,
+	bipolar: bool,
+	stereo: bool,
+	bypass: bool,
+}
+```
+
+A route: `source` moves `dest` by `amount` (a share of its range, -1..1)
+through a curve (`power`, as envelope curves). Bipolar sources swing
+both ways about the middle; stereo routes move the right side the
+other way; bypassed routes do nothing.
+
+### Table_Ref
+
+```odin
+Table_Ref :: struct {
+	table: ^Wavetable,
+}
+```
+
+Where a sound source of a patch comes from.
+
+| Field | Description |
+|-------|-------------|
+| `table` | nil: silent |
+
+### Patch
+
+```odin
+Patch :: struct {
+	routes: [64]Route,
+	route_count: int,
+	shapes: [8]Lfo_Shape,
+	tables: [3]^Wavetable,
+	sample: ^Sample,
+	shape_tables: [8][2048]f32,
+	used_envs: bit_set[int],
+	used_lfos: bit_set[int],
+}
+```
+
+The rest of a patch (see above). Its tables and sample belong to
+whoever made the patch; they must outlive it.
+
+| Field | Description |
+|-------|-------------|
+| `routes` |  |
+| `route_count` |  |
+| `shapes` |  |
+| `tables` |  |
+| `sample` |  |
+| `shape_tables` | Each LFO's shape rendered, and the envelopes and LFOs some route uses (filled by `patch_prepare`; the rest aren't run). |
+| `used_envs` |  |
+| `used_lfos` |  |
+
 ### Sample
 
 ```odin
@@ -894,6 +1363,93 @@ The sample oscillator of one voice. Zero it, then `sample_osc_start`.
 | `pan` |  |
 | `last_pan` |  |
 | `started` |  |
+
+### Synth_Live
+
+```odin
+Synth_Live :: struct {
+	sounding: bool,
+	voices: i32,
+	envs: [6]f32,
+	env_stage: [6]i32,
+	lfos: [8]f32,
+	lfo_phase: [8]f32,
+	frames: [3]f32,
+	cutoffs: [2]f32,
+	peak: [2]f32,
+}
+```
+
+What the newest voice is doing, for a UI to draw (written by the audio
+thread, read by any; each value is atomic on its own).
+
+| Field | Description |
+|-------|-------------|
+| `sounding` |  |
+| `voices` |  |
+| `envs` |  |
+| `env_stage` |  |
+| `lfos` |  |
+| `lfo_phase` |  |
+| `frames` | each oscillator's frame position now (0..1) |
+| `cutoffs` |  |
+| `peak` | the output's peak since the last read |
+
+### Synth
+
+```odin
+Synth :: struct {
+	allocator: mem.Allocator,
+	sample_rate: f64,
+	max_block: int,
+	values: [648]f32,
+	patch: ^Patch,
+	old: ^Patch,
+	pending: Spsc_Queue($T=^Patch),
+	retired: Spsc_Queue($T=^Patch),
+	voices: [36]Voice,
+	clock: u64,
+	rng: u32,
+	held: [128]bool,
+	last_key: f32,
+	any_held: bool,
+	shared: Osc_Shared,
+	os: [3][2]dsp.Oversampler,
+	os_factor: int,
+	mix: [2][]f32,
+	scratch: [8][]f32,
+	song_seconds: f64,
+	bpm: f64,
+	live: Synth_Live,
+}
+```
+
+The node's state.
+
+| Field | Description |
+|-------|-------------|
+| `allocator` |  |
+| `sample_rate` |  |
+| `max_block` |  |
+| `values` | each parameter's plain value (by id) |
+| `patch` |  |
+| `old` |  |
+| `pending` |  |
+| `retired` |  |
+| `voices` |  |
+| `clock` |  |
+| `rng` |  |
+| `held` | keys held (mono: the note to fall back to) |
+| `last_key` | the last note's key (where a glide starts) |
+| `any_held` |  |
+| `shared` |  |
+| `os` | 2×, 4×, 8×, a side each |
+| `os_factor` |  |
+| `mix` | the voices' sum at the voice rate |
+| `scratch` |  |
+| `song_seconds` |  |
+| `bpm` |  |
+| `live` |  |
 
 ### Wavetable
 
@@ -1089,6 +1645,105 @@ modulation are in it). `mod` is the FM or RM source, a channel each
 (nil without). Settings that changed since the last render glide to
 their new values across this one.
 
+### global_param
+
+```odin
+global_param :: proc "contextless"(f: Global_Field) -> core.Param_Id
+```
+
+The id of global parameter `f`.
+
+### osc_param
+
+```odin
+osc_param :: proc "contextless"(n: int, f: Osc_Field) -> core.Param_Id
+```
+
+The id of oscillator `n`'s (1..3) parameter `f`.
+
+### sample_param
+
+```odin
+sample_param :: proc "contextless"(f: Sample_Field) -> core.Param_Id
+```
+
+The id of the sample oscillator's parameter `f`.
+
+### filter_param
+
+```odin
+filter_param :: proc "contextless"(n: int, f: Filter_Field) -> core.Param_Id
+```
+
+The id of filter `n`'s (1..2) parameter `f`.
+
+### env_param
+
+```odin
+env_param :: proc "contextless"(n: int, f: Env_Field) -> core.Param_Id
+```
+
+The id of envelope `n`'s (1..6) parameter `f`.
+
+### lfo_param
+
+```odin
+lfo_param :: proc "contextless"(n: int, f: Lfo_Field) -> core.Param_Id
+```
+
+The id of LFO `n`'s (1..8) parameter `f`.
+
+### param_spec
+
+```odin
+param_spec :: proc "contextless"(id: core.Param_Id) -> ^Param_Spec
+```
+
+The parameter with id `id`, or nil.
+
+### param_curve
+
+```odin
+param_curve :: proc "contextless"(spec: ^Param_Spec, plain: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). A plain value (modulation in it) put through its curve.
+
+### mod_source_poly
+
+```odin
+mod_source_poly :: proc "contextless"(s: Mod_Source) -> bool
+```
+
+Whether a source belongs to a voice (envelopes, voice LFOs, the note)
+rather than to the whole synth.
+
+### patch_prepare
+
+```odin
+patch_prepare :: proc(p: ^Patch)
+```
+
+Control thread. Renders a patch's LFO shapes (call after changing them,
+before handing it over).
+
+### patch_default
+
+```odin
+patch_default :: proc() -> (p: Patch)
+```
+
+Control thread. A patch with triangle LFOs and no routes, tables or
+sample (give it tables to make sound).
+
+### patch_add_route
+
+```odin
+patch_add_route :: proc(p: ^Patch, r: Route) -> bool
+```
+
+Adds a route to `p` (false if it has as many as it can).
+
 ### sample_make
 
 ```odin
@@ -1131,6 +1786,43 @@ sample_osc_render :: proc "contextless"(o: ^Sample_Osc, p: ^Sample_Params, note:
 **Realtime-safe** (callable on the audio thread). Renders the sample oscillator: `note` is the note's pitch as a
 key (fractional, glide in it) at the render's end; it writes (not adds)
 its stereo output, and `raw` (before level and pan; may be nil).
+
+### synth_create
+
+```odin
+synth_create :: proc(allocator: mem.Allocator = context.allocator) -> (node: core.Node, s: ^Synth)
+```
+
+Control thread. Makes a synth node (stereo out) with every parameter at
+its default and no patch (silent until `synth_set_patch`).
+
+### synth_set_patch
+
+```odin
+synth_set_patch :: proc(s: ^Synth, p: ^Patch) -> bool
+```
+
+Control thread. Hands the node `p` (copied): its routes, LFO shapes,
+tables and sample take over at the next block. The tables and sample
+must stay alive until the node has let the patch go (see
+`synth_collect`).
+
+### synth_collect
+
+```odin
+synth_collect :: proc(s: ^Synth) -> int
+```
+
+Control thread. Frees the patches the node has let go; returns how
+many (their tables and sample may be freed once all are).
+
+### synth_live
+
+```odin
+synth_live :: proc "contextless"(s: ^Synth) -> Synth_Live
+```
+
+The newest voice, as `Synth_Live` (a copy).
 
 ### wavetable_make
 
@@ -1200,6 +1892,22 @@ BUILTIN_NAMES: [Builtin_Table]string
 ```
 
 The names `builtin_table` gives its tables.
+
+### PARAMS
+
+```odin
+PARAMS: [dynamic]Param_Spec
+```
+
+Every parameter, in id order (filled when the program starts).
+
+### PARAM_INDEX
+
+```odin
+PARAM_INDEX: [648]i16
+```
+
+Each id's place in `PARAMS` (-1: no parameter has it).
 
 ### BUILTIN_NOISE_NAMES
 
