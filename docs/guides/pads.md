@@ -389,7 +389,12 @@ Along the bottom of the window:
 - its load, a bar that warms as it fills, and the dropouts since start;
 - MIDI in and out lights;
 - the track selected, in its colour;
-- at the right, the newest message (click it for the recent ones).
+- the delay compensation (**PDC**), when effects add latency: every
+  track is delayed to line up with the slowest (a strip's own is in the
+  tooltip under its inserts);
+- at the right, the newest message (click it for the recent ones, and
+  to open the log file: every message also goes into `pads.log` in the
+  settings folder, the one before kept as `pads.log.1` past 1 MB).
 
 **Moving between pads**: the arrow keys move the selection, Left and
 Right to the previous and next pad, Up and Down to the pad above and
@@ -683,8 +688,10 @@ icons whose colour shows their state.
   taps only change the tempo; a pause of 2 s starts again). The **time signature** (4/4, 3/4, 6/8... or
   any beats and unit) sets a bar's length: sequences' bars, the grid's
   bars, the metronome's accent, exports.
-- The **metronome**: on/off, and (the arrow) its level, **Only while
-  recording** (and counting in), and the count-in.
+- The **metronome**: on/off, and (the arrow) its level, its sound
+  (**Beep**, **Wood**, **Stick**, **Cowbell**), **Accent the bar** (the
+  bar's first beat higher), **Only while recording** (and counting in),
+  and the count-in. Saved with the project.
 - **Play modes** (at the toolbar's right): the pads as pads, as a
   keyboard of the selected pad, or as it at 16 velocities — as in the
   Perform panel.
@@ -814,6 +821,10 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
   project starts a new undo history; **Edit > History** lists its steps,
   newest first, with any undone ones above. Choose one to go back to
   just after it, or forward to an undone one.
+- **Templates**: **File > Save as Template…** keeps a copy of the
+  project, its samples with it, in the settings folder's `Templates`.
+  **File > New from Template** starts a new, untitled project from one
+  (asking first if there are changes).
 - **Autosave** (Settings, every minute to start with) keeps a backup of
   unsaved changes beside the project, in its folder's `.autosave/`; the
   project itself stays as last saved. If Pads stops without closing (a

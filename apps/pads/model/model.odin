@@ -13,6 +13,7 @@ import "core:strings"
 
 import app "app:core"
 import fc "fire:core"
+import "fire:dsp"
 import "fire:sampler"
 import "fire:stretch"
 
@@ -290,6 +291,8 @@ Transport :: struct {
 	loop:      bool, // a sequence (or the song) loops; off, it plays once and stops
 	count_in:  int,  // bars of click before recording starts (0..2)
 	metro_db:  f32,  // the metronome's level
+	click:     dsp.Click_Sound, // the metronome's sound
+	no_accent: bool, // the bar's first beat clicks as the others
 	metro_rec_only: bool, // it clicks only while recording (and counting in)
 	time_sig:  Time_Sig,
 	quantize:  Input_Quantize,

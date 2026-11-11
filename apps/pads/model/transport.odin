@@ -11,6 +11,8 @@ Transport_Field :: enum {
 	Count_In,
 	Metro_Level,
 	Metro_Rec_Only,
+	Metro_Sound,
+	Metro_Accent,
 	Time_Sig,
 	Quantize,
 	Quantize_Strength,

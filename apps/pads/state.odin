@@ -31,6 +31,7 @@ State :: struct {
 	count_in:   int,
 	time_sig:   string, // "3/4"
 	metro_db:   f32,
+	metro_click: int, // the metronome's sound (0 beep .. 3 cowbell)
 	metro_rec_only: bool,
 	quantize:   struct { on: bool, grid: string, strength, swing: f32 },
 	timeline:   f64, // the playhead on the timeline (negative counting in)
@@ -259,6 +260,7 @@ state_json :: proc(a: ^App) -> string {
 	s.recording = a.capture.armed
 	tr := p.transport
 	s.loop, s.count_in, s.metro_db, s.metro_rec_only = tr.loop, tr.count_in, tr.metro_db, tr.metro_rec_only
+	s.metro_click = int(tr.click)
 	s.time_sig = fmt.tprintf("%d/%d", tr.time_sig.num, tr.time_sig.den)
 	s.quantize = {tr.quantize.on, string(pm.GRID_NAMES[tr.quantize.grid]), tr.quantize.strength, tr.quantize.swing}
 	tl, _ := pm.timeline_beat(&m.engine)

@@ -400,6 +400,23 @@ METRONOME_PARAM_COUNT_IN : core.Param_Id : core.Param_Id(3)
 Parameter id of the `Metronome`'s count-in switch: 1 clicks the beats
 before the timeline's beat 0 (a count-in) even while it is off (default 0).
 
+### METRONOME_PARAM_SOUND
+
+```odin
+METRONOME_PARAM_SOUND : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of the `Metronome`'s sound: a `Click_Sound` (default Beep).
+
+### METRONOME_PARAM_ACCENT
+
+```odin
+METRONOME_PARAM_ACCENT : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the `Metronome`'s accent: 1 sounds the bar's first beat
+higher (default), 0 every beat alike.
+
 ### MOD_PARAM_RATE_HZ
 
 ```odin
@@ -1615,6 +1632,26 @@ RMS since the last `meter_read`, for level meters. Read from any thread.
 | `sum` | atomic: f64 bits, Σ x² since the last read |
 | `count` | atomic: frames since the last read |
 
+### Click_Sound
+
+```odin
+Click_Sound :: enum u8 {
+	Beep,
+	Wood,
+	Stick,
+	Cowbell,
+}
+```
+
+What a metronome clicks with.
+
+| Value | Description |
+|-------|-------------|
+| `Beep` | a sine (1 kHz; the accent a fifth up) |
+| `Wood` | a woodblock: two inharmonic partials, short |
+| `Stick` | a rim click: a noise burst over a high ping, very short |
+| `Cowbell` | two detuned partials (587 and 845 Hz), ringing longer |
+
 ### Metronome_Settings
 
 ```odin
@@ -1646,6 +1683,12 @@ Metronome :: struct {
 	level: f64,
 	on: bool,
 	count_in: bool,
+	sound: Click_Sound,
+	accent: bool,
+	phase2: f64,
+	step2: f64,
+	noise: u32,
+	hp: f32,
 }
 ```
 
@@ -1666,6 +1709,12 @@ the beats before beat 0 click even while it is off.
 | `level` | linear |
 | `on` |  |
 | `count_in` | click before beat 0 even while off |
+| `sound` |  |
+| `accent` |  |
+| `phase2` | a second partial's (Wood, Cowbell) |
+| `step2` |  |
+| `noise` | Stick's noise |
+| `hp` | its high-pass state |
 
 ### Modulation
 
@@ -3830,7 +3879,7 @@ Parameter table of the `Limiter` node, as returned by `node_params`. Read-only.
 ### metronome_params
 
 ```odin
-metronome_params: [3]core.Param_Info
+metronome_params: [5]core.Param_Info
 ```
 
 Parameter table of the `Metronome` node. Read-only.

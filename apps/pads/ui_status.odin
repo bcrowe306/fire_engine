@@ -7,6 +7,7 @@ import app "app:core"
 import "app:ui"
 import pm "model"
 import im "deps:imgui"
+import sdl "deps:sdl3"
 
 // The status bar along the bottom of the window: the audio engine (its
 // device, rate and buffer, running or not, dropouts), how hard it works,
@@ -75,6 +76,13 @@ draw_statusbar :: proc(user: rawptr) {
 		im.SameLine(0, 6)
 		text(fmt.tprintf("CPU %.0f%%", st.load * 100))
 	}
+	// Delay compensation: how far the output lags (plug-ins' latency).
+	if lat := pm.total_latency(&a.m.engine); lat > 0 {
+		im.SameLine(0, 12)
+		text(fmt.tprintf("PDC %.1f ms", f64(lat) * 1000 / max(f.sample_rate, 1)))
+		ui.name("status latency")
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("The effects' latency, made up so every track lines up: %d frames", lat))
+	}
 	if h.xruns > 0 {
 		im.SameLine(0, 12)
 		im.AlignTextToFramePadding()
@@ -117,6 +125,10 @@ draw_statusbar :: proc(user: rawptr) {
 		if im.IsItemClicked() do im.OpenPopup("##log")
 		if im.BeginPopup("##log") {
 			im.TextDisabled("Messages")
+			if a.ws.toasts.log_path != "" {
+				im.SameLine()
+				if im.SmallButton("Open the log file") do _ = sdl.OpenURL(fmt.ctprintf("file://%s", a.ws.toasts.log_path))
+			}
 			im.Separator()
 			for k := len(log) - 1; k >= max(len(log) - 30, 0); k -= 1 {
 				x := log[k]

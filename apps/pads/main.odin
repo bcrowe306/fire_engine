@@ -85,6 +85,7 @@ App :: struct {
 	wte:       Wave_Editor,  // the wavetable editor's window
 	presets:   Preset_Ui,    // the synth's Save Preset dialog
 	leave:     Leave_State,
+	template:  Template_Ui, // the Save as Template dialog
 	status:    Status_State, // the status bar's lights and load  // leaving a project with changes: the prompt; a crash's backup to offer
 	devices:   Devices_Ui,   // the Devices panel
 	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
@@ -151,6 +152,10 @@ main :: proc() {
 	a.prefs = prefs
 	// The settings first: the device, the look, the last project.
 	settings_load(a)
+	{ // Every message to a log file as well (the one before kept beside it).
+		lp, _ := filepath.join({settings_folder(a), "pads.log"})
+		ui.log_open(&a.ws.toasts, lp)
+	}
 	defer settings_destroy(&a.settings)
 	recent_load(a)
 	if project == "" && a.settings.open_last && len(a.proj.recent) > 0 do project = a.proj.recent[0]
@@ -302,6 +307,7 @@ frame :: proc(a: ^App) {
 	draw_wave_editor(a)
 	draw_preset_save(a)
 	draw_leave(a)
+	draw_template_save(a)
 	draw_export(a)
 	draw_settings(a)
 	draw_rename_project(a)

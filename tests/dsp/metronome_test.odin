@@ -82,3 +82,34 @@ metronome_is_silent_when_stopped_or_off_and_block_invariant :: proc(t: ^testing.
 		{kit.Fixed_Blocks{512}, kit.Fixed_Blocks{1}, kit.Random_Blocks{seed = 7, min = 0, max = 512}})
 	_ = math.PI
 }
+
+// Each sound: clean, a click on every beat, gone well before the next
+// (the cowbell rings longest); with the accent off, every beat alike.
+@(test)
+metronome_sounds_and_accent :: proc(t: ^testing.T) {
+	for sound in dsp.Click_Sound {
+		cfg := kit.default_render_config()
+		cfg.tail_frames = 48_000 * 2 // 4 beats
+		cfg.out_channels = 1
+		cfg.events = {{0, core.Param_Value{dsp.METRONOME_PARAM_SOUND, f64(sound)}}}
+		node := make_metronome(nil)
+		out, r := kit.render(&node, kit.buffer_make(0, 0, 48_000, context.temp_allocator), cfg, context.temp_allocator)
+		kit.expect_clean_render(t, r)
+		core.node_destroy(&node)
+		x := out.channels[0]
+		starts := click_starts(x)
+		testing.expectf(t, len(starts) == 4, "%v: a click a beat (%v)", sound, starts)
+		testing.expectf(t, kit.peak(x[:2400]) > 0.1, "%v: heard (%v)", sound, kit.peak(x[:2400]))
+		testing.expectf(t, kit.peak(x[16_000:24_000]) < 1e-3, "%v: gone before the next beat", sound)
+	}
+	cfg := kit.default_render_config()
+	cfg.tail_frames = 48_000 * 2
+	cfg.out_channels = 1
+	cfg.events = {{0, core.Param_Value{dsp.METRONOME_PARAM_ACCENT, 0}}}
+	node := make_metronome(nil)
+	defer core.node_destroy(&node)
+	out, _ := kit.render(&node, kit.buffer_make(0, 0, 48_000, context.temp_allocator), cfg, context.temp_allocator)
+	x := out.channels[0]
+	a, b := crossings(x[:480]), crossings(x[24_000:][:480])
+	testing.expectf(t, abs(a - b) <= 1, "no accent: the bar's first beat as the others (%d, %d crossings)", a, b)
+}

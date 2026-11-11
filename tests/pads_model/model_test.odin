@@ -5,6 +5,7 @@ import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:fmt"
+import "core:strings"
 import "core:testing"
 import "core:time"
 
@@ -419,4 +420,28 @@ midi_files_export_and_import :: proc(t: ^testing.T) {
 	m.project.song.steps[0] = {slot = 0, repeats = 2}
 	m.project.song.steps[1] = {slot = 4, repeats = 1}
 	testing.expect_value(t, pm.export_midi(m, path, -1), 9)
+}
+
+// A template: a copy of the project (its samples with it), the project
+// itself unchanged; a new project from it is the same, in its own folder.
+@(test)
+templates_copy_a_project :: proc(t: ^testing.T) {
+	r := rig_make(t, "template")
+	defer rig_destroy(r)
+	m := &r.m
+	testing.expect_value(t, pm.load_onto_pad(m, 0, tone(r, "a.wav", 440, 0.2)), fc.Error.None)
+	m.project.bpm = 133
+	dir_before := m.project.dir
+	tpl, _ := filepath.join({r.dir, "Templates", "Beat.pads"}, context.temp_allocator)
+	testing.expect_value(t, pm.model_save_copy(m, tpl), fc.Error.None)
+	testing.expect_value(t, m.project.dir, dir_before)
+	testing.expect(t, pm.model_dirty(m), "the project's own changes still unsaved")
+	to, _ := filepath.join({r.dir, "New.pads"}, context.temp_allocator)
+	r2 := rig_make(t, "template_new")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_new_from(&r2.m, tpl, to), fc.Error.None)
+	p := &r2.m.project
+	testing.expect(t, p.bpm == 133 && p.dir == to && pm.pad_used(p, 0), "the same project, in its own folder")
+	s := pm.pad_sample(&r2.m, 0)
+	testing.expect(t, s != nil && strings.has_prefix(s.path, to), "its sample there too")
 }

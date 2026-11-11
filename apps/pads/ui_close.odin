@@ -18,7 +18,7 @@ import im "deps:imgui"
 // without closing, and it offers the backup.
 
 // What leaving waits on.
-Leave_Action :: enum u8 {None, Quit, New, Open_Dialog, Open}
+Leave_Action :: enum u8 {None, Quit, New, New_From, Open_Dialog, Open}
 
 // The prompt's state.
 Leave_State :: struct {
@@ -55,6 +55,9 @@ leave_go :: proc(a: ^App) {
 	case .New:
 		pm.model_discard_backup(a.m.project.dir)
 		new_project(a)
+	case .New_From:
+		pm.model_discard_backup(a.m.project.dir)
+		new_from_template(a, st.path)
 	case .Open_Dialog:
 		project_dialog(a, .Open)
 	case .Open:
@@ -171,5 +174,80 @@ autosave_frame :: proc(a: ^App) {
 	if every > 0 && pm.model_dirty(&a.m) && time.tick_since(st.last_backup) > every && !st.exporting {
 		pm.model_save_backup(&a.m)
 		st.last_backup = time.tick_now()
+	}
+}
+
+// --- templates ---------------------------------------------------------------------------------
+
+// Where the user's project templates are (each a project folder).
+templates_folder :: proc(a: ^App) -> string {
+	p, _ := filepath.join({settings_folder(a), "Templates"}, context.temp_allocator)
+	return p
+}
+
+// The templates there are: their names and folders (temporary allocator).
+template_list :: proc(a: ^App) -> (names, dirs: []string) {
+	ns := make([dynamic]string, context.temp_allocator)
+	ds := make([dynamic]string, context.temp_allocator)
+	h, err := os.open(templates_folder(a))
+	if err != nil do return
+	defer os.close(h)
+	infos, _ := os.read_dir(h, -1, context.temp_allocator)
+	for fi in infos do if fi.type == .Directory && strings.has_suffix(fi.name, ".pads") {
+		append(&ns, strings.trim_suffix(fi.name, ".pads"))
+		d, _ := filepath.join({templates_folder(a), fi.name}, context.temp_allocator)
+		append(&ds, d)
+	}
+	return ns[:], ds[:]
+}
+
+// A new, untitled project made from the template in folder `dir`.
+new_from_template :: proc(a: ^App, dir: string) {
+	to, _ := os.make_directory_temp("", "Untitled.pads", context.temp_allocator)
+	if pm.model_new_from(&a.m, dir, to) != .None {
+		ui.toast(&a.ws.toasts, .Error, "Could not start from that template")
+		return
+	}
+	a.proj.untitled = true
+	a.selected, a.bank, a.fx = 0, 0, {}
+	a.seq.selected = -1
+	view_restore(a)
+	session_mark(a)
+	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A new project from %s", strings.trim_suffix(filepath.base(dir), ".pads")))
+}
+
+// The Save as Template dialog's state.
+Template_Ui :: struct {
+	open: bool,
+	name: [64]u8,
+}
+
+// Save as Template: its name, then the project copied into the templates.
+draw_template_save :: proc(a: ^App) {
+	st := &a.template
+	if !st.open do return
+	im.OpenPopup("Save as Template")
+	if im.BeginPopupModal("Save as Template", &st.open, {.AlwaysAutoResize}) {
+		im.TextDisabled("New projects can start from it (File > New from Template)")
+		im.SetNextItemWidth(280)
+		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
+		enter := im.InputText("##tplname", cstring(&st.name[0]), len(st.name), {.EnterReturnsTrue})
+		ui.name("template name")
+		name := strings.trim_space(strings.truncate_to_byte(string(st.name[:]), 0))
+		if (im.Button("Save") || enter) && name != "" {
+			dir, _ := filepath.join({templates_folder(a), strings.concatenate({pm.safe_name(name), ".pads"}, context.temp_allocator)}, context.temp_allocator)
+			os.remove_all(dir) // (the same name: replaced)
+			if pm.model_save_copy(&a.m, dir) == .None do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the template %s", name))
+			else do ui.toast(&a.ws.toasts, .Error, "Could not save the template")
+			st.open = false
+			im.CloseCurrentPopup()
+		}
+		ui.name("save template")
+		im.SameLine()
+		if im.Button("Cancel") {
+			st.open = false
+			im.CloseCurrentPopup()
+		}
+		im.EndPopup()
 	}
 }

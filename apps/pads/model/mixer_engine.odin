@@ -514,6 +514,23 @@ perf_effective :: proc(p: ^Project, k: int, live: f32) -> (s: Effect_Slot, mix: 
 	return
 }
 
+// The latency (frames) pad `index`'s inserts add (a plug-in's, a
+// look-ahead's): what the graph delays the other tracks by to line them up.
+track_latency :: proc(e: ^Engine, index: int) -> int {
+	g := e.host.graph
+	total := 0
+	for f in e.mixer.strips[index].inserts do if f.has {
+		if n := graph.get_node(g, f.id); n != nil do total += fc.node_latency(n)
+	}
+	return total
+}
+
+// The latency (frames) the whole graph has after compensation (its output
+// behind its input).
+total_latency :: proc(e: ^Engine) -> int {
+	return graph.latency(e.host.graph)
+}
+
 // The synth effect slot `t` plays, as it runs (for drawing its sweeps
 // and meters; read while it plays), or nil.
 slot_chain :: proc(e: ^Engine, t: Fx_Target) -> ^fx.Chain {

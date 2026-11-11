@@ -1,6 +1,7 @@
 package ui
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:time"
 import "core:unicode"
@@ -223,6 +224,7 @@ Toast_Kind :: enum u8 {
 Toasts :: struct {
 	items: [dynamic]Toast,
 	log:   [dynamic]Log_Entry, // every toast's message, the newest last (the last `LOG_KEEP`)
+	log_path: string, // a file every message is appended to as well ("" none: see `log_open`)
 }
 
 // A message as the log keeps it.
@@ -266,6 +268,25 @@ log_add :: proc(ts: ^Toasts, kind: Toast_Kind, text: string) {
 		ordered_remove(&ts.log, 0)
 	}
 	append(&ts.log, Log_Entry{kind, strings.clone(text), time.now()})
+	if ts.log_path != "" {
+		kinds := [Toast_Kind]string{.Info = "info", .Success = "ok", .Warning = "warning", .Error = "error"}
+		line := fmt.tprintf("%v %s %s\n", time.now(), kinds[kind], text)
+		if f, err := os.open(ts.log_path, {.Write, .Create, .Append}, {.Read_User, .Write_User}); err == nil {
+			_, _ = os.write_string(f, line)
+			os.close(f)
+		}
+	}
+}
+
+// Writes every message to the file at `path` as well (owned by the
+// caller), the one before it kept as `path.1` once it passes 1 MB.
+log_open :: proc(ts: ^Toasts, path: string) {
+	ts.log_path = path
+	if fi, err := os.stat(path, context.temp_allocator); err == nil && fi.size > 1 << 20 {
+		old := strings.concatenate({path, ".1"}, context.temp_allocator)
+		os.remove(old)
+		os.rename(path, old)
+	}
 }
 
 // Frees every toast.

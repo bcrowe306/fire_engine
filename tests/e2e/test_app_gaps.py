@@ -75,3 +75,17 @@ def test_new_pads_get_their_own_colours(app, fixtures):
         app.cmd(f"load {k} {os.path.join(fixtures, 'kick.wav')}")
     colours = {p["color"] for p in app.state()["pads"]}
     assert len(colours) == 3, colours
+
+
+def test_metronome_sound_and_templates(app, fixtures):
+    app.click("Metronome settings", window="##toolbar")
+    app.click("metronome sound", at=(0.9, 0.5))  # Cowbell
+    assert app.state()["metro_click"] == 3
+    app.key("escape")
+    # A template saved, then a new project from it: its pad with it.
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.cmd("template save Kick Start")
+    app.click("File")
+    app.click("New from Template")
+    app.click("Kick Start")
+    assert app.pad(0)["name"] == "kick" and app.state()["metro_click"] == 3

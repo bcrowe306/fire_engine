@@ -51,6 +51,8 @@ Engine :: struct {
 	count_click_on: bool, // what the metronome node has
 	metro_on:  bool, // what the metronome node has
 	metro_db:  f32,  // its level, as sent
+	metro_click: dsp.Click_Sound, // its sound and accent, as sent
+	metro_accent, metro_click_sent: bool,
 	recording: bool, // the capture is armed (the metronome may click only then)
 	sig:       Time_Sig, // the meter the clock has
 	resend:    bool, // send every pad's parameters again (automation moved them)
@@ -370,6 +372,11 @@ sync_sequencer :: proc(e: ^Engine) {
 	if e.count_click_on != e.count_in_click {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_COUNT_IN, 1 if e.count_in_click else 0)
 		e.count_click_on = e.count_in_click
+	}
+	if e.metro_click != tr.click || e.metro_accent != !tr.no_accent || !e.metro_click_sent {
+		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_SOUND, f64(tr.click))
+		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_ACCENT, 0 if tr.no_accent else 1)
+		e.metro_click, e.metro_accent, e.metro_click_sent = tr.click, !tr.no_accent, true
 	}
 	if e.metro_db != tr.metro_db {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_LEVEL_DB, f64(tr.metro_db))

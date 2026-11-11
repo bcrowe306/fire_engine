@@ -57,6 +57,10 @@ plan before it is built.
   - Plug-in delay compensation shown, and a metronome sound choice.
   - The message log written to a file (the status bar keeps the last
     200 only).
+- **Release 0.1.0-dev** — plan: docs/design/release-0.1.md.
+- **Signing** (after 0.1.0-dev): macOS Developer ID signing and
+  notarization of the .app/.dmg; Windows code signing of the installer and
+  Pads.exe. 0.1.0-dev ships unsigned.
 - **Effects from the synth as inserts** — done: the synth's effects
   replaced their twins in inserts and performance effects (old projects
   converted to the nearest settings).

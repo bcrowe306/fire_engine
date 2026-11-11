@@ -170,6 +170,11 @@ draw_menu :: proc(user: rawptr) {
 	a := (^App)(user)
 	if im.BeginMenu("File") {
 		ui.menu_action(&a.actions, "new")
+		names, dirs := template_list(a)
+		if im.BeginMenu("New from Template", len(names) > 0) {
+			for n, k in names do if im.MenuItem(fmt.ctprintf("%s", n)) do leave(a, .New_From, dirs[k])
+			im.EndMenu()
+		}
 		ui.menu_action(&a.actions, "open")
 		if im.BeginMenu("Open Recent", len(a.proj.recent) > 0) {
 			for r in a.proj.recent do if im.MenuItem(fmt.ctprintf("%s", filepath.base(r))) do leave(a, .Open, r)
@@ -177,6 +182,10 @@ draw_menu :: proc(user: rawptr) {
 		}
 		ui.menu_action(&a.actions, "save")
 		ui.menu_action(&a.actions, "save_as")
+		if im.MenuItem("Save as Template…") {
+			a.template = {open = true}
+			copy(a.template.name[:63], project_name(a))
+		}
 		ui.menu_action(&a.actions, "rename_project")
 		im.Separator()
 		ui.menu_action(&a.actions, "import")
@@ -609,6 +618,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			a.seq.param = lp
 			break
 		}
+		return true
+	case "template": // template save NAME | template new NAME: save the project as a template, or a new project from one
+		if len(w) < 3 do return false
+		name := strings.join(w[2:], " ", context.temp_allocator)
+		dir, _ := filepath.join({templates_folder(a), strings.concatenate({pm.safe_name(name), ".pads"}, context.temp_allocator)}, context.temp_allocator)
+		if w[1] == "save" do return pm.model_save_copy(&a.m, dir) == .None
+		new_from_template(a, dir)
 		return true
 	case "export_midi": // export_midi SLOT|song PATH: a sequence (1..) or the song as a MIDI file
 		if len(w) < 3 do return false

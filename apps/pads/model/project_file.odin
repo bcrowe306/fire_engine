@@ -7,6 +7,7 @@ import "core:time"
 
 import app "app:core"
 import fc "fire:core"
+import "fire:dsp"
 import "fire:fx"
 import "fire:perform"
 import "fire:sampler"
@@ -21,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 21 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch
+PROJECT_VERSION :: 22 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -55,6 +56,56 @@ model_save_as :: proc(m: ^Model, dir: string) -> fc.Error {
 	p.dir = intern(p, dir)
 	mark_all_sources_stale(&m.engine)
 	return model_save(m)
+}
+
+// Saves a copy of the project into folder `dir` (a template, say): its
+// samples copied there; the project itself, its folder and whether it
+// has unsaved changes stay as they are.
+model_save_copy :: proc(m: ^Model, dir: string) -> fc.Error {
+	p := &m.project
+	samples, _ := filepath.join({dir, "samples"}, context.temp_allocator)
+	if os.make_directory_all(samples) != nil && !os.is_dir(samples) do return .Device_Error
+	old_paths := make([]string, len(p.samples.items), context.temp_allocator)
+	for &it, k in p.samples.items {
+		s := &it.value
+		old_paths[k] = s.path
+		dest, _ := filepath.join({samples, filepath.base(s.path)}, context.temp_allocator)
+		data, err := os.read_entire_file(s.path, context.temp_allocator)
+		if err != nil do continue // (a sample missing: left out)
+		if os.write_entire_file(dest, data) != nil do return .Device_Error
+		s.path = strings.clone(dest, context.temp_allocator)
+	}
+	old_dir := p.dir
+	p.dir = dir
+	path, _ := filepath.join({dir, PROJECT_FILE}, context.temp_allocator)
+	err := session.save({}, path, project_chunks(p))
+	p.dir = old_dir
+	for &it, k in p.samples.items do it.value.path = old_paths[k]
+	return err
+}
+
+// Copies project folder `from` (a template) to a new folder `to` and
+// loads it: a new project like it (its undo history empty).
+model_new_from :: proc(m: ^Model, from, to: string) -> fc.Error {
+	samples_from, _ := filepath.join({from, "samples"}, context.temp_allocator)
+	samples_to, _ := filepath.join({to, "samples"}, context.temp_allocator)
+	if os.make_directory_all(samples_to) != nil && !os.is_dir(samples_to) do return .Device_Error
+	if h, err := os.open(samples_from); err == nil {
+		infos, _ := os.read_dir(h, -1, context.temp_allocator)
+		os.close(h)
+		for fi in infos {
+			src, _ := filepath.join({samples_from, fi.name}, context.temp_allocator)
+			dst, _ := filepath.join({samples_to, fi.name}, context.temp_allocator)
+			data, rerr := os.read_entire_file(src, context.temp_allocator)
+			if rerr == nil do _ = os.write_entire_file(dst, data)
+		}
+	}
+	src, _ := filepath.join({from, PROJECT_FILE}, context.temp_allocator)
+	dst, _ := filepath.join({to, PROJECT_FILE}, context.temp_allocator)
+	data, rerr := os.read_entire_file(src, context.temp_allocator)
+	if rerr != nil do return .Device_Error
+	if os.write_entire_file(dst, data) != nil do return .Device_Error
+	return model_load(m, to)
 }
 
 // Moves the project's folder to `dir` (a rename): its samples go with it.
@@ -415,6 +466,8 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_int(w, v.selected)
 	fc.write_int(w, v.seq_bank)
 	fc.write_bool(w, v.seq_keys) // v21
+	fc.write_u8(w, u8(p.transport.click)) // v22
+	fc.write_bool(w, p.transport.no_accent)
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -706,6 +759,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			v.selected = clamp(fc.read_int(r), 0, PADS - 1)
 			v.seq_bank = clamp(fc.read_int(r), 0, 3)
 			if version >= 21 do v.seq_keys = fc.read_bool(r)
+			if version >= 22 {
+				p.transport.click = dsp.Click_Sound(min(fc.read_u8(r), u8(max(dsp.Click_Sound))))
+				p.transport.no_accent = fc.read_bool(r)
+			}
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES

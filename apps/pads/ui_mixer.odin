@@ -768,6 +768,11 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 			failed := pm.slot_failed(&m.engine, i, -1, k)
 			slot_row(a, {.Pad, i, k}, s, failed)
 		}
+		// What its inserts delay it by (the others are delayed to match).
+		if lat := pm.track_latency(&m.engine, i); lat > 0 {
+			rate := a.host.format.sample_rate if a.host.format.sample_rate > 0 else 48_000
+			if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Its effects add %d frames (%.1f ms); the other tracks are delayed to match", lat, f64(lat) * 1000 / rate))
+		}
 		// A send to each bus in use: SEND_ROWS show, the rest scroll.
 		n := m.project.bus_count
 		if n <= SEND_ROWS {

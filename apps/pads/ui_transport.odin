@@ -6,6 +6,7 @@ import "core:math"
 import app "app:core"
 import "app:ui"
 import pm "model"
+import "fire:dsp"
 import im "deps:imgui"
 
 // The transport toolbar's state: the tap tempo, and how wide its controls
@@ -251,6 +252,21 @@ draw_toolbar :: proc(user: rawptr) {
 			pm.set_transport(m, .Metro_Level, "Metronome Level", n)
 		}
 		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+		snd := int(tr.click)
+		if ui.segmented("metro_sound", {"Beep", "Wood", "Stick", "Cowbell"}, &snd) {
+			n := tr
+			n.click = dsp.Click_Sound(snd)
+			pm.set_transport(m, .Metro_Sound, "Metronome Sound", n)
+			app.seal(&m.history)
+		}
+		ui.name("metronome sound")
+		acc := !tr.no_accent
+		if ui.toggle("Accent the bar", &acc) {
+			n := tr
+			n.no_accent = !acc
+			pm.set_transport(m, .Metro_Accent, "Metronome Accent", n)
+			app.seal(&m.history)
+		}
 		ro := tr.metro_rec_only
 		if ui.toggle("Only while recording", &ro) {
 			n := tr

@@ -75,6 +75,8 @@ preset_save :: proc(m: ^Model, index: int, dir: string, name: string) -> (path: 
 }
 
 // A name made safe as a file name (no separators or reserved marks).
+safe_name :: proc(name: string) -> string { return safe_file_name(name) }
+
 @(private)
 safe_file_name :: proc(name: string) -> string {
 	b := strings.builder_make(context.temp_allocator)
