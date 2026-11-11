@@ -7,6 +7,7 @@ import "core:strings"
 import app "app:core"
 import "app:ui"
 import pm "model"
+import "fire:synth"
 
 // What a test harness sees of the app (`state`, a drive command): the
 // pads, the sequencer, the mixer, the browser and the preview, the
@@ -81,6 +82,23 @@ State :: struct {
 	errors:     int, // drive lines that failed so far
 }
 
+// A synth pad's patch, for tests: its routes, the parameters off their
+// defaults (by name, curved values), its wavetables, its LFO shapes'
+// point counts, the voices sounding.
+State_Synth :: struct {
+	routes:  [dynamic]State_Route,
+	params:  map[string]f32,
+	tables:  [synth.OSCS]string,
+	points:  [synth.LFOS]int,
+	voices:  int,
+}
+
+State_Route :: struct {
+	source, dest: string,
+	amount:       f32,
+	bipolar:      bool,
+}
+
 // A slicer pad's slices (each start, level, pitch) and how they play.
 State_Slicer :: struct {
 	starts:   []i64,
@@ -116,6 +134,7 @@ State_Pad :: struct {
 	playhead: i64, // the frame it plays now (-1: silent)
 	kind:    string, // "Sampler", "Slicer" or "Audio"
 	slicer:  State_Slicer, // a slicer's slices
+	synth:   State_Synth,  // a synth's patch
 	input:   string,
 	monitor: bool,
 	armed:   bool,
@@ -277,6 +296,19 @@ state_json :: proc(a: ^App) -> string {
 		sp.playhead = f if ok else -1
 		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), audio_in_text(a, i), pad.monitor, pm.track_armed(m, i)
 		sp.midi_in = midi_in_text(a, i)
+		if pad.kind == .Synth {
+			sy := &pad.synth
+			x := State_Synth{routes = make([dynamic]State_Route, context.temp_allocator), params = make(map[string]f32, allocator = context.temp_allocator)}
+			for r in sy.routes[:sy.route_count] {
+				spec := synth.param_spec(r.dest)
+				append(&x.routes, State_Route{source = mod_name(a, r.source), dest = spec.name if spec != nil else "?", amount = r.amount, bipolar = r.bipolar})
+			}
+			for &spec in synth.PARAMS do if sy.values[spec.id] != spec.default do x.params[spec.name] = synth.param_curve(&spec, sy.values[spec.id])
+			for k in 0 ..< synth.OSCS do x.tables[k] = pm.synth_source_name(m, sy.tables[k])
+			for k in 0 ..< synth.LFOS do x.points[k] = sy.shapes[k].count
+			if live, sounding := pm.synth_live(&m.engine, i); sounding do x.voices = int(live.voices)
+			sp.synth = x
+		}
 		if pad.kind == .Slicer {
 			sl := pad.slicer
 			x := State_Slicer{base = int(sl.base), mono = sl.mono, gate = sl.gate, thru = sl.thru, by = enum_name(sl.by), selected = a.slicer_ui.selected}

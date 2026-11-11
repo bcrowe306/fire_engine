@@ -1,0 +1,81 @@
+"""The synth device, used by mouse: a pad made a synth from its menu and
+played; a source chip dragged onto a knob (a route), its ring's handle
+dragged for the amount and right-clicked away; the envelope's handles
+and the LFO's points drawn; a wavetable chosen; the voice modes."""
+
+
+def synth_pad(app, pad="pad A1"):
+    app.click(pad, window="detail", right=True)
+    app.click("Synth")
+    p = app.pad(0)
+    assert p["kind"] == "Synth", p["kind"]
+    return p
+
+
+def tab(app, name):
+    app.cmd(f"synth_tab {name.lower()}")
+    app.wait(4)
+
+
+def test_a_pad_becomes_a_synth_and_plays(app):
+    synth_pad(app)
+    for name in ("Osc", "Filter", "Env", "LFO", "Mod", "Effects", "Macro", "Global"):
+        app.expect_item(name, window="detail")
+    app.cmd("hit 0")
+    p = app.until(lambda s: any(x["index"] == 0 and x["synth"]["voices"] == 1 for x in s["pads"]), what="a voice sounding")
+    app.screenshot("synth_osc")
+    app.cmd("release 0")
+    app.until(lambda s: any(x["index"] == 0 and x["synth"]["voices"] == 0 for x in s["pads"]), frames=300, what="the voice ending")
+
+
+def test_drag_a_source_onto_a_knob(app):
+    synth_pad(app)
+    tab(app, "Filter")
+    app.drag("mod LFO 1", "Cutoff", to_window="detail")
+    routes = app.pad(0)["synth"]["routes"]
+    assert len(routes) == 1 and routes[0]["source"] == "LFO 1" and routes[0]["dest"] == "Filter 1 Cutoff", routes
+    assert abs(routes[0]["amount"] - 0.25) < 1e-6
+    assert app.state()["undo"] == "Add Modulation"
+    app.screenshot("synth_ring")
+    # The ring's handle: up for more.
+    app.drag_by("Cutoff mod 1", 0, -20, window="detail")
+    amt = app.pad(0)["synth"]["routes"][0]["amount"]
+    assert amt > 0.35, amt
+    # Right-click: gone.
+    app.click("Cutoff mod 1", window="detail", right=True)
+    assert app.pad(0)["synth"]["routes"] == []
+    app.key("cmd+z")
+    assert len(app.pad(0)["synth"]["routes"]) == 1
+
+
+def test_the_envelope_and_lfo_editors(app):
+    synth_pad(app)
+    tab(app, "Env")
+    # The attack's peak handle: dragged right, a longer attack.
+    before = app.pad(0)["synth"]["params"].get("Env 1 Attack", 0.0005)
+    x0, y0, x1, y1 = [i for i in app.items("synth envelope", "detail") if i["label"] == "synth envelope"][0]["rect"]
+    ax = x0 + 10 + 2  # (a near-zero attack: its peak at the left, at the top)
+    app.cmd(f"drag {ax} {y0 + 10} {ax + (x1 - x0) * 0.08} {y0 + 10} 12")
+    app.wait(3)
+    after = app.pad(0)["synth"]["params"].get("Env 1 Attack", 0)
+    assert after > before * 10, (before, after)
+    assert app.state()["undo"] == "Shape Envelope"
+    tab(app, "LFO")
+    n = app.pad(0)["synth"]["points"][0]
+    app.click("synth lfo shape", window="detail", double=True, at=(0.25, 0.3))
+    assert app.pad(0)["synth"]["points"][0] == n + 1
+    app.screenshot("synth_lfo")
+
+
+def test_choose_a_wavetable_and_voice_modes(app):
+    synth_pad(app)
+    tab(app, "Osc")
+    app.click("wavetable", window="detail")
+    app.click("Vowels")
+    assert app.pad(0)["synth"]["tables"][0] == "Vowels"
+    tab(app, "Global")
+    app.click("Legato", window="detail")
+    assert app.pad(0)["synth"]["params"]["Voice Mode"] == 2
+    app.click("4×", window="detail")
+    assert app.pad(0)["synth"]["params"]["Oversampling"] == 2
+    app.screenshot("synth_global")

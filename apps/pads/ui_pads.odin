@@ -58,6 +58,7 @@ draw_pads :: proc(user: rawptr) {
 			drop_zones = !has,
 		}
 		if has && a.pad_waves && !audio do face.peaks = pad_peaks(a, index)
+		if pad.kind == .Synth do face.middle = ui.ICON_AUDIO_WAVEFORM + " synth"
 		if pad.kind == .Slicer do face.middle = fmt.tprintf("%s %d slices", ui.ICON_SCISSORS, pad.slicer.count) if pad.sample != 0 else ui.ICON_SCISSORS + " slicer"
 
 		switch a.play_mode {
@@ -69,7 +70,7 @@ draw_pads :: proc(user: rawptr) {
 			face.name = ui.note_name(60 + ps[0])
 			if len(ps) > 1 do face.name = fmt.tprintf("%s %s", face.name, CHORD_SUFFIX[a.keys.chord])
 			face.middle = fmt.tprintf("%+d st", ps[0])
-			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0, false, false, nil
+			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0 || target.kind == .Synth, false, false, nil
 			if (ps[0] - a.keys.root) %% 12 == 0 do face.selected = true // the roots stand out
 			if target.kind == .Slicer { // its slices, a pad each
 				face.name = fmt.tprintf("Slice %d", k + 1)
@@ -81,7 +82,7 @@ draw_pads :: proc(user: rawptr) {
 			target := &p.pads[a.selected]
 			face.name = fmt.tprintf("%d", int(pm.velocity_of_pad(k) * 127 + 0.5))
 			face.middle = "velocity"
-			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0, false, false, nil
+			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0 || target.kind == .Synth, false, false, nil
 		}
 		hit := ui.pad("pad", face, {side, side})
 		if hit.pressed do press(a, index, hit.velocity)

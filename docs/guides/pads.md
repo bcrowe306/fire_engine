@@ -470,6 +470,57 @@ In the piano roll a slicer has a row per slice ("Slice 3 D3"). In
 pads, slice 1 on the bottom-left pad. A sequencer note's pitch chooses its
 slice, and so does a MIDI note's key.
 
+## Synths
+
+A pad can be a **synth**: a wavetable synthesizer (`fire:synth`; the
+design is in [docs/design/synth.md](/design/synth/)). Right-click a pad and
+choose **Synth** (again to make it a sampler; its patch is kept). It plays
+chromatically: a pad hit plays C3, the piano roll and Keyboard mode play
+its pitches, and an armed track's MIDI plays it.
+
+Its device has eight tabs; on the tab bar's line (or just under it) are
+the **sources**: E1–E6 (envelopes), L1–L8 (LFOs), M1–M4 (macros), velocity,
+key, aftertouch, mod wheel, pitch bend and random. **Drag a source onto any
+knob** on any tab to modulate it: the knob gets a ring in the source's
+colour from its value to where the source takes it, and a dot shows where
+the newest note has it now. Drag the ring's end up or down for the amount
+(Shift: fine); right-click it to take the modulation away.
+
+- **Osc**: oscillators A, B and C and the sample oscillator. Each has an on
+  switch, a wavetable (built in, or any sound dropped on its view: cut
+  into frames of 2048 samples), where it goes (filter 1, filter 2, both,
+  or past the filters), and key tracking. The view shows the table's
+  frames stacked back in perspective, the one playing in the pad's
+  colour. Knobs: level, pan, frame, transpose, tune, phase, random phase;
+  unison voices (up to 16), detune, blend, stereo spread, the detune's
+  curve and range; the warp's amount. The unison stack (chords,
+  harmonics, octaves) and the warp (sync, formant, quantize, bend,
+  squeeze, pulse width, FM and RM from the other oscillators or the
+  sample) are chosen beside them, with the warp's spread and phase.
+- **Filter**: two filters side by side: analog, dirty, ladder, digital,
+  diode, formant, comb or phaser, each with its styles. The response is
+  measured from the filter itself and drawn; drag its handle for cutoff
+  and resonance. The link button puts filter 1 into filter 2.
+- **Env**: six envelopes, the first the amplifier's: delay, attack, hold,
+  decay, sustain, release, and the curves of the attack, decay and
+  release. Drag the curve's corners, or a segment up and down to bend it.
+- **LFO**: eight LFOs, each a shape you draw: drag points, double-click to
+  add one, right-click to take one away, drag a segment up and down to
+  bend it (or pick a preset). Mode (trigger, sync, envelope, sustain
+  envelope, loop point, loop hold), rate (in seconds, to the tempo,
+  dotted, triplet, or the note's pitch), phase, fade-in, delay, stereo
+  offset and smoothing.
+- **Mod**: every source as a chip, and every modulation: its amount, curve,
+  bipolar, stereo (the right side moved the other way) and on.
+- **Effects**: the synth's own effects come in the next milestone; until
+  then the track's inserts process it.
+- **Macro**: four macro knobs (named as you like), their chips, and the
+  keyboard's sources.
+- **Global**: poly, mono or legato; oversampling (1× to 8×); voice
+  priority; always glide, glide by octaves; volume, voices, glide time
+  and curve, bend range, velocity tracking, transpose, tune; and the
+  output as an oscilloscope and a spectrum.
+
 ## The transport
 
 The toolbar under the menus, centred, always showing. Its buttons are
@@ -801,6 +852,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
+| `test_synth.py` | a pad made a synth from its menu and played; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling |
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |

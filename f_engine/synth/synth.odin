@@ -98,7 +98,14 @@ Synth :: struct {
 	song_seconds: f64,
 	bpm:         f64,
 	live:        Synth_Live,
+	// The output's last `SCOPE_FRAMES` (its two sides summed), for a UI's
+	// oscilloscope and spectrum; `scope_at` is where the next goes.
+	scope:       [SCOPE_FRAMES]f32,
+	scope_at:    int,
 }
+
+// Frames of output a synth keeps for drawing.
+SCOPE_FRAMES :: 2048
 
 @(private)
 synth_vtable := core.Node_VTable {
@@ -184,6 +191,15 @@ synth_collect :: proc(s: ^Synth) -> int {
 		n += 1
 	}
 	return n
+}
+
+// The output's last `len(out)` frames (at most SCOPE_FRAMES), oldest
+// first: a copy for drawing (read while it plays, so a frame or two may
+// be from the block being written).
+synth_scope :: proc "contextless" (s: ^Synth, out: []f32) {
+	n := min(len(out), SCOPE_FRAMES)
+	at := s.scope_at
+	for k in 0 ..< n do out[k] = s.scope[(at - n + k + SCOPE_FRAMES) % SCOPE_FRAMES]
 }
 
 // The newest voice, as `Synth_Live` (a copy).
@@ -531,6 +547,12 @@ render :: proc "contextless" (s: ^Synth, ctx: ^core.Process_Context, from, to: i
 	}
 	for ch in 2 ..< outs do for i in from ..< to do ctx.outputs[ch][i] = 0
 	s.live.peak = peak
+	if outs > 0 do for i in 0 ..< n {
+		x := ctx.outputs[0][from + i]
+		if outs > 1 do x = (x + ctx.outputs[1][from + i]) * 0.5
+		s.scope[s.scope_at] = x
+		s.scope_at = (s.scope_at + 1) % SCOPE_FRAMES
+	}
 	live_update(s)
 }
 

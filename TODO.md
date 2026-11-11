@@ -18,9 +18,12 @@ plan before it is built.
   with Vital's features, written anew (Vital is a reference only, as JUCE
   is; none of its name, presets or wavetables ship). Tabs: Osc, Filter,
   Env, LFO, Mod, Effects, Macro, Global.
-  1. A playable voice: 3 wavetable oscs + sample osc, unison, warp modes,
-     2 filters (8 models), 6 envelopes, 8 LFOs, matrix (drag to assign),
-     macros, voices, glide, oversampling, live visuals.
+  1. A playable voice — done: 3 wavetable oscs + sample osc, unison, warp
+     modes, 2 filters (8 models), 6 envelopes, 8 LFOs, matrix (drag to
+     assign), macros, voices, glide, oversampling, live visuals. Still to
+     do: get the 8-voice budget under 25% of the ARM core (SIMD unison,
+     cached per-voice values); MIDI pitch bend, mod wheel and aftertouch
+     into its parameters; automation lanes for its parameters.
   2. The nine effects (chorus, compressor, delay, distortion, EQ, filter,
      flanger, phaser, reverb) in `fire:fx`, sounding as Vital's do.
   3. Spectral morphs, spectral unison, the four random modulators.

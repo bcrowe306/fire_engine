@@ -46,6 +46,16 @@ knob_width :: proc(label: cstring, size: f32 = KNOB_SIZE) -> f32 {
 	return max(size, im.CalcTextSize(shown_label(label)).x)
 }
 
+// Where `knob(label, ...)` drawn at `pos` has its centre and outer radius
+// (for drawing on it: modulation rings).
+knob_geometry :: proc(label: cstring, pos: im.Vec2, size: f32 = KNOB_SIZE) -> (center: im.Vec2, radius: f32) {
+	w := knob_width(label, size)
+	return {pos.x + w / 2, pos.y + im.GetTextLineHeight() + 4 + size / 2}, size / 2 - 3
+}
+
+// The angles a knob's arc runs between (7:30 to 4:30).
+KNOB_ARC :: [2]f32{math.PI * 0.75, math.PI * 2.25}
+
 // A rotary knob: drag up and down (Shift for fine), scroll, double-click
 // to reset to `default`. Shows `format` of the value under it, and the
 // label above. With `log_scale` (min_v > 0) it turns in ratios: times and
@@ -53,7 +63,7 @@ knob_width :: proc(label: cstring, size: f32 = KNOB_SIZE) -> f32 {
 // of the formatted value (a note value's name, say). With `step` > 0 it
 // lands only on multiples of it (whole semitones: 1); a drag still moves
 // smoothly underneath, and each wheel notch is a step.
-knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false, shown_value: cstring = nil, step: f32 = 0) -> (e: Edit) {
+knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false, shown_value: cstring = nil, step: f32 = 0, overlap := false) -> (e: Edit) {
 	im.PushID(label)
 	defer im.PopID()
 	t := current
@@ -69,7 +79,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	im.DrawList_AddText(dl, {pos.x + (w - ls.x) / 2, pos.y}, col(t.text_dim), shown)
 
 	im.SetCursorScreenPos({pos.x + (w - size) / 2, pos.y + label_h + 4})
-	im.InvisibleButton("##knob", {size, size})
+	im.InvisibleButton("##knob", {size, size}, {.MouseButtonLeft, .AllowOverlap} if overlap else {.MouseButtonLeft})
 	name(string(shown))
 	frac: f32
 	if log_scale && min_v > 0 && max_v > min_v {

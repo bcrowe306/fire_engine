@@ -236,6 +236,14 @@ CONTROL_FRAMES :: 32
 Frames (at the voice rate) between modulation steps: envelopes, LFOs
 and routes are worked out this often, their effects glided between.
 
+### SCOPE_FRAMES
+
+```odin
+SCOPE_FRAMES :: 2048
+```
+
+Frames of output a synth keeps for drawing.
+
 ### WAVE_SIZE
 
 ```odin
@@ -1419,6 +1427,8 @@ Synth :: struct {
 	song_seconds: f64,
 	bpm: f64,
 	live: Synth_Live,
+	scope: [2048]f32,
+	scope_at: int,
 }
 ```
 
@@ -1448,6 +1458,8 @@ The node's state.
 | `song_seconds` |  |
 | `bpm` |  |
 | `live` |  |
+| `scope` | The output's last `SCOPE_FRAMES` (its two sides summed), for a UI's oscilloscope and spectrum; `scope_at` is where the next goes. |
+| `scope_at` |  |
 
 ### Wavetable
 
@@ -1813,6 +1825,16 @@ synth_collect :: proc(s: ^Synth) -> int
 
 Control thread. Frees the patches the node has let go; returns how
 many (their tables and sample may be freed once all are).
+
+### synth_scope
+
+```odin
+synth_scope :: proc "contextless"(s: ^Synth, out: []f32)
+```
+
+The output's last `len(out)` frames (at most SCOPE_FRAMES), oldest
+first: a copy for drawing (read while it plays, so a frame or two may
+be from the block being written).
 
 ### synth_live
 

@@ -81,6 +81,7 @@ App :: struct {
 	plugins:  Plugin_Scan,  // the CLAP plug-ins found
 	io:       Track_Io,     // arming, and the MIDI activity lights
 	slicer_ui: Slicer_State, // the slicer page's selected slice
+	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
 	seq:      Seq_State,
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
@@ -329,7 +330,7 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 	case .Pads:
 		a.selected = index
 		g^ = {on = true, pad = index}
-		if a.m.project.pads[index].sample != 0 do pm.hit(&a.m.engine, index, true, velocity)
+		if pad := a.m.project.pads[index]; pad.sample != 0 || pad.kind == .Synth do pm.hit(&a.m.engine, index, true, velocity) // (a synth needs no sample)
 	case .Keyboard:
 		pitches: [4]int
 		ps := pm.keyboard_pitches(a.keys, k, &pitches)

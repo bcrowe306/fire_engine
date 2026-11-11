@@ -129,6 +129,14 @@ synth_live :: proc(e: ^Engine, index: int) -> (synth.Synth_Live, bool) {
 	return synth.synth_live(n.synth), true
 }
 
+// Synth pad `index`'s latest output, for drawing (false if it has none).
+synth_scope :: proc(e: ^Engine, index: int, out: []f32) -> bool {
+	n := &e.nodes[index]
+	if !n.live || n.synth == nil do return false
+	synth.synth_scope(n.synth, out)
+	return true
+}
+
 // The wavetable oscillator `osc` (0-based) of pad `index` plays, for
 // drawing (nil if none).
 synth_pad_table :: proc(e: ^Engine, index: int, osc: int) -> ^synth.Wavetable {

@@ -206,7 +206,7 @@ device_tabs :: proc(a: ^App) {
 		i := tr.index
 		pad := &m.project.pads[i]
 		name := pm.pad_name(pad) if pm.pad_used(&m.project, i) else ""
-		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, pm.pad_label(i), " " if name != "" else "", name, "Audio" if pad.kind == .Audio else ("Slicer" if pad.kind == .Slicer else "Sampler"))
+		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else ui.ICON_LAYOUT_GRID, pm.pad_label(i), " " if name != "" else "", name, pad_device_name(pad.kind))
 		tab(st, instr, {.Instrument, 0})
 		item_menu(a, pad_target(i), "##instmenu")
 		tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0})
@@ -232,7 +232,10 @@ device_content :: proc(a: ^App) {
 	pm.watch_slot(&m.engine, {}) // the effect in front is watched (below)
 	switch st.device.kind {
 	case .Instrument:
-		if tr.kind == .Pad do draw_sampler_tabs(a)
+		if tr.kind == .Pad {
+			if a.m.project.pads[tr.index].kind == .Synth do draw_synth_tabs(a)
+			else do draw_sampler_tabs(a)
+		}
 	case .Eq:
 		if tr.kind == .Pad do draw_pad_eq(a)
 	case .Slot:
@@ -265,6 +268,17 @@ device_content :: proc(a: ^App) {
 			ui.name(fmt.tprintf("add %s", pm.EFFECT_NAMES[k]))
 		}
 	}
+}
+
+// What a pad's device is called (its instrument tab says).
+pad_device_name :: proc(k: pm.Pad_Kind) -> string {
+	switch k {
+	case .Sampler: return "Sampler"
+	case .Audio:   return "Audio"
+	case .Slicer:  return "Slicer"
+	case .Synth:   return "Synth"
+	}
+	return ""
 }
 
 // The sampler's own tabs (Sample, Env, Filter, Pitch, LFO, Global), inside

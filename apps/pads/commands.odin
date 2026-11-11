@@ -158,6 +158,14 @@ register_commands :: proc(a: ^App) {
 		},
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Slicer }})
+	add(c, {id = "pad.synth", label = "Synth", icon = ui.ICON_AUDIO_WAVEFORM, kinds = {.Pad}, group = 1,
+		run = proc(a: ^App, t: Target) {
+			if a.m.project.pads[t.index].kind == .Synth do pm.set_pad_kind(&a.m, t.index, .Sampler)
+			else do pm.make_synth(&a.m, t.index)
+			a.selected = t.index
+		},
+		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
+		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Synth }})
 	add(c, {id = "pad.copy", label = "Copy Pad", icon = ui.ICON_COPY, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { a.pad_clip, a.has_pad_clip = a.m.project.pads[t.index], true }, enabled = pad_has})
 	add(c, {id = "pad.paste", label = "Paste Pad", icon = ui.ICON_CLIPBOARD_PASTE, kinds = {.Pad}, group = 2,

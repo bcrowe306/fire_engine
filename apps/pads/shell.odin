@@ -607,6 +607,24 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		pm.slice_pad(&a.m, i, by)
 		return true
+	case "synth": // synth PAD: the pad a synth
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		pm.make_synth(&a.m, i)
+		return true
+	case "synth_param": // synth_param PAD ID VALUE: a synth parameter's plain value
+		i := num(w, 1)
+		if !pad_ok(i) || len(w) < 4 do return false
+		pm.set_synth_value(&a.m, i, fc.Param_Id(num(w, 2)), numf(w, 3), "Set")
+		app.seal(&a.m.history)
+		return true
+	case "synth_tab": // synth_tab osc|filter|env|lfo|mod|effects|macro|global
+		if len(w) < 2 do return false
+		for t in Synth_Tab do if strings.to_lower(SYNTH_TAB_NAMES[t], context.temp_allocator) == w[1] {
+			a.synth_ui.tab, a.synth_ui.show = t, 2
+			return true
+		}
+		return false
 	case "slices_seq": // slices_seq PAD: a sequence of its slices (the next empty slot)
 		i := num(w, 1)
 		if !pad_ok(i) do return false
