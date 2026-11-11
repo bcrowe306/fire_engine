@@ -9,6 +9,7 @@ import pm "model"
 import im "deps:imgui"
 import fc "fire:core"
 import "fire:dsp"
+import "fire:fx"
 import "fire:synth"
 
 // The synth's editors that draw: its filters' responses, its envelopes
@@ -19,7 +20,7 @@ import "fire:synth"
 // A filter's response, measured (an impulse through the real filter) and
 // kept until its settings change.
 Filter_Curve :: struct {
-	params: synth.Filter_Params,
+	params: fx.Filter_Params,
 	sr:     f64,
 	db:     [RESPONSE_POINTS]f32,
 	set:    bool,
@@ -32,7 +33,7 @@ PHASER_STYLE_NAMES := []string{"Peaks", "Notches"}
 FILTER_STYLE_NAMES := []string{"12 dB", "24 dB", "Notch / pass swap", "Dual notch / band", "Band / peak / notch", "Shelving"}
 
 // The styles a model has (their names).
-filter_style_names :: proc(model: synth.Filter_Model) -> []string {
+filter_style_names :: proc(model: fx.Filter_Model) -> []string {
 	#partial switch model {
 	case .Formant: return FORMANT_STYLE_NAMES
 	case .Comb:    return COMB_STYLE_NAMES
@@ -45,11 +46,11 @@ filter_style_names :: proc(model: synth.Filter_Model) -> []string {
 
 // [control] The response of a filter with `p` (an impulse, 4096 samples,
 // its spectrum read at the plot's points).
-measure_filter :: proc(c: ^Filter_Curve, p: synth.Filter_Params, sr: f64) {
+measure_filter :: proc(c: ^Filter_Curve, p: fx.Filter_Params, sr: f64) {
 	if c.set && c.params == p && c.sr == sr do return
 	c.params, c.sr, c.set = p, sr, true
 	N :: 4096
-	f := new(synth.Filter_State, context.temp_allocator)
+	f := new(fx.Filter_State, context.temp_allocator)
 	x := make([]f32, N, context.temp_allocator)
 	y := make([]f32, N, context.temp_allocator)
 	r := make([]f32, N, context.temp_allocator)
@@ -60,7 +61,7 @@ measure_filter :: proc(c: ^Filter_Curve, p: synth.Filter_Params, sr: f64) {
 	for at := 0; at < N; at += 64 {
 		in_ := [2][]f32{x[at:at + 64], x[at:at + 64]}
 		out := [2][]f32{y[at:at + 64], r[at:at + 64]}
-		synth.filter_render(f, &pp, keys, &in_, &out, sr)
+		fx.filter_render(f, &pp, keys, &in_, &out, sr)
 	}
 	fft: dsp.Real_Fft
 	dsp.real_fft_init(&fft, N, allocator = context.temp_allocator)
@@ -91,7 +92,7 @@ draw_synth_filter :: proc(a: ^App) {
 		synth_toggle(a, fmt.ctprintf("Filter %d", n), f(n, .On))
 		im.SameLine(0, 10)
 		synth_choice(a, f(n, .Model), FILTER_MODEL_NAMES, 84, "##model")
-		model := synth.Filter_Model(int(pm.synth_value(m, i, f(n, .Model))))
+		model := fx.Filter_Model(int(pm.synth_value(m, i, f(n, .Model))))
 		im.SameLine(0, 6)
 		synth_choice(a, f(n, .Style), filter_style_names(model), 110, "##style")
 		if n == 2 {
@@ -113,7 +114,7 @@ draw_synth_filter :: proc(a: ^App) {
 		if !on do color = ui.mix(ui.PLOT_BG, color, 0.4)
 		curves := []ui.Plot_Curve{{db = c.db[:], color = color, fill = true, width = 2.5}}
 		h := max(avail.y - im.GetTextLineHeight() * 2 - ui.KNOB_SIZE - 60, 80)
-		handle := [2]f32{ui.freq_x(synth.key_to_hz(p.cutoff)), p.resonance * 24}
+		handle := [2]f32{ui.freq_x(fx.key_to_hz(p.cutoff)), p.resonance * 24}
 		e := ui.response_plot("synth filter response", curves, &handle, {w, h})
 		if e.changed {
 			hz := ui.x_freq(handle[0])
@@ -141,13 +142,13 @@ draw_synth_filter :: proc(a: ^App) {
 }
 
 // Filter `n`'s settings as they stand (no modulation), for its picture.
-filter_ui_params :: proc(a: ^App, n: int) -> synth.Filter_Params {
+filter_ui_params :: proc(a: ^App, n: int) -> fx.Filter_Params {
 	m := &a.m
 	i := a.selected
 	f :: synth.filter_param
 	v :: proc(m: ^pm.Model, i: int, id: fc.Param_Id) -> f32 { return synth.param_curve(synth.param_spec(id), pm.synth_value(m, i, id)) }
 	return {
-		model = synth.Filter_Model(int(v(m, i, f(n, .Model)))), style = synth.Filter_Style(int(v(m, i, f(n, .Style)))),
+		model = fx.Filter_Model(int(v(m, i, f(n, .Model)))), style = fx.Filter_Style(int(v(m, i, f(n, .Style)))),
 		cutoff = v(m, i, f(n, .Cutoff)), resonance = v(m, i, f(n, .Resonance)), drive_db = v(m, i, f(n, .Drive)),
 		blend = v(m, i, f(n, .Blend)), mix = v(m, i, f(n, .Mix)), gain_db = v(m, i, f(n, .Gain)),
 		formant_x = v(m, i, f(n, .Formant_X)), formant_y = v(m, i, f(n, .Formant_Y)),

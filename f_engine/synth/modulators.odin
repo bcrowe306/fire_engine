@@ -1,5 +1,7 @@
 package synth
 
+import "fire:fx"
+
 import "core:math"
 
 // The synth's modulators: envelopes and LFOs (each voice has its own),
@@ -257,7 +259,7 @@ lfo_hz :: proc "contextless" (p: ^Lfo_Params, bpm: f64, note: f32) -> f32 {
 	case .Tempo:    return ratios[clamp(p.tempo, 0, 12)] * bps
 	case .Dotted:   return ratios[clamp(p.tempo, 0, 12)] * bps * 2.0 / 3
 	case .Triplet:  return ratios[clamp(p.tempo, 0, 12)] * bps * 1.5
-	case .Keytrack: return key_to_hz(note + p.key_transpose + p.key_tune)
+	case .Keytrack: return fx.key_to_hz(note + p.key_transpose + p.key_tune)
 	}
 	return p.hz
 }

@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:math"
 
 import "fire:core"
+import "fire:fx"
 
 // The synth's parameters. Each block (the oscillators, the filters, the
 // envelopes, the LFOs) has its fields at fixed ids, so a parameter's id
@@ -221,7 +222,7 @@ build_params :: proc "contextless" () {
 		f :: proc(n: int, x: Filter_Field) -> core.Param_Id { return filter_param(n, x) }
 		name :: proc(n: int, s: string) -> string { return fmt.aprintf("Filter %d %s", n, s) }
 		add(f(n, .On), name(n, "On"), 0, 1, 1 if n == 1 else 0, .Indexed, false)
-		add(f(n, .Model), name(n, "Model"), 0, f32(len(Filter_Model) - 1), 0, .Indexed, false)
+		add(f(n, .Model), name(n, "Model"), 0, f32(len(fx.Filter_Model) - 1), 0, .Indexed, false)
 		add(f(n, .Style), name(n, "Style"), 0, 5, 0, .Indexed, false)
 		add(f(n, .Cutoff), name(n, "Cutoff"), 8, 136, 60)
 		add(f(n, .Resonance), name(n, "Resonance"), 0, 1, 0.5)

@@ -1,15 +1,17 @@
-package test_synth
+package test_fx
 
 import "core:math"
 import "core:testing"
 
-import "fire:synth"
+import "fire:fx"
 import kit "fire:testkit"
+
+SR :: 48_000.0
 
 // Runs `x` (mono, both sides) through a filter at a steady cutoff key,
 // in blocks of `block`; returns the left side (temporary allocator).
-run_filter :: proc(p: synth.Filter_Params, x: []f32, key: f32, block := 128) -> []f32 {
-	f := new(synth.Filter_State, context.temp_allocator)
+run_filter :: proc(p: fx.Filter_Params, x: []f32, key: f32, block := 128) -> []f32 {
+	f := new(fx.Filter_State, context.temp_allocator)
 	pp := p
 	l := make([]f32, len(x), context.temp_allocator)
 	r := make([]f32, len(x), context.temp_allocator)
@@ -19,7 +21,7 @@ run_filter :: proc(p: synth.Filter_Params, x: []f32, key: f32, block := 128) -> 
 		n := min(block, len(x) - at)
 		in_ := [2][]f32{x[at:at + n], x[at:at + n]}
 		out := [2][]f32{l[at:at + n], r[at:at + n]}
-		synth.filter_render(f, &pp, keys[:n], &in_, &out, SR)
+		fx.filter_render(f, &pp, keys[:n], &in_, &out, SR)
 	}
 	return l
 }
@@ -41,7 +43,7 @@ noise :: proc(frames: int) -> []f32 {
 }
 
 // The level a sine at `hz` comes out at (its amplitude in, 0.5).
-gain_at :: proc(p: synth.Filter_Params, hz: f64, key: f32) -> f64 {
+gain_at :: proc(p: fx.Filter_Params, hz: f64, key: f32) -> f64 {
 	y := run_filter(p, sine(hz, 24_000, 0.25), key)
 	return kit.tone_amplitude(y[12_000:], SR, hz) / 0.25
 }
@@ -49,7 +51,7 @@ gain_at :: proc(p: synth.Filter_Params, hz: f64, key: f32) -> f64 {
 // The key for a frequency (69: 440 Hz).
 key_of :: proc(hz: f64) -> f32 { return f32(69 + 12 * math.log2(hz / 440)) }
 
-POLE_MODELS :: [?]synth.Filter_Model{.Analog, .Dirty, .Ladder, .Digital, .Diode}
+POLE_MODELS :: [?]fx.Filter_Model{.Analog, .Dirty, .Ladder, .Digital, .Diode}
 
 // Every model, every style, at full resonance and drive on loud noise:
 // finite and bounded.
@@ -57,11 +59,11 @@ POLE_MODELS :: [?]synth.Filter_Model{.Analog, .Dirty, .Ladder, .Digital, .Diode}
 every_filter_stays_finite :: proc(t: ^testing.T) {
 	x := noise(24_000)
 	for &v in x do v *= 3
-	for model in synth.Filter_Model {
+	for model in fx.Filter_Model {
 		for style in 0 ..< 6 {
-			p := synth.FILTER_DEFAULTS
+			p := fx.FILTER_DEFAULTS
 			p.model = model
-			p.style = synth.Filter_Style(style)
+			p.style = fx.Filter_Style(style)
 			p.resonance = 1
 			p.drive_db = 20
 			p.blend = 1
@@ -80,8 +82,8 @@ every_filter_stays_finite :: proc(t: ^testing.T) {
 @(test)
 low_and_high_pass :: proc(t: ^testing.T) {
 	for model in POLE_MODELS {
-		for style in ([]synth.Filter_Style{.Db12, .Db24}) {
-			p := synth.FILTER_DEFAULTS
+		for style in ([]fx.Filter_Style{.Db12, .Db24}) {
+			p := fx.FILTER_DEFAULTS
 			p.model, p.style, p.resonance = model, style, 0
 			key := key_of(1000)
 			if model != .Diode { // (the diode's blend moves its high-pass, not low to high)
@@ -104,7 +106,7 @@ low_and_high_pass :: proc(t: ^testing.T) {
 @(test)
 resonance_peaks_at_the_cutoff :: proc(t: ^testing.T) {
 	for model in POLE_MODELS {
-		p := synth.FILTER_DEFAULTS
+		p := fx.FILTER_DEFAULTS
 		p.model, p.blend = model, 0
 		key := key_of(800)
 		p.resonance = 0
@@ -120,7 +122,7 @@ resonance_peaks_at_the_cutoff :: proc(t: ^testing.T) {
 // first formant (250 Hz) is the loudest of the two.
 @(test)
 formants_follow_the_vowel :: proc(t: ^testing.T) {
-	p := synth.FILTER_DEFAULTS
+	p := fx.FILTER_DEFAULTS
 	p.model = .Formant
 	p.formant_x, p.formant_y = 0, 0 // A
 	a600, a1500 := gain_at(p, 600, 60), gain_at(p, 1500, 60)
@@ -134,8 +136,8 @@ formants_follow_the_vowel :: proc(t: ^testing.T) {
 // harmonics, gaps between.
 @(test)
 the_comb_rings_on_its_harmonics :: proc(t: ^testing.T) {
-	p := synth.FILTER_DEFAULTS
-	p.model, p.style, p.resonance, p.blend = .Comb, synth.Filter_Style(0), 0.95, 1
+	p := fx.FILTER_DEFAULTS
+	p.model, p.style, p.resonance, p.blend = .Comb, fx.Filter_Style(0), 0.95, 1
 	key := key_of(200)
 	tooth, gap := gain_at(p, 400, key), gain_at(p, 500, key)
 	testing.expectf(t, tooth > 3 * gap, "a tooth at 400 Hz, a gap at 500 (%v, %v)", tooth, gap)
@@ -146,7 +148,7 @@ the_comb_rings_on_its_harmonics :: proc(t: ^testing.T) {
 // points cancel).
 @(test)
 the_phaser_notches :: proc(t: ^testing.T) {
-	p := synth.FILTER_DEFAULTS
+	p := fx.FILTER_DEFAULTS
 	p.model, p.resonance, p.blend = .Phaser, 0, 0
 	key := key_of(1000)
 	lows, mid := gain_at(p, 50, key), gain_at(p, 1000, key)
@@ -161,7 +163,7 @@ the_phaser_notches :: proc(t: ^testing.T) {
 // Shelving (Digital): the blend low lifts the lows by the gain.
 @(test)
 the_digital_shelf :: proc(t: ^testing.T) {
-	p := synth.FILTER_DEFAULTS
+	p := fx.FILTER_DEFAULTS
 	p.model, p.style, p.blend, p.gain_db = .Digital, .Shelving, 0, 12
 	key := key_of(1000)
 	lo, hi := gain_at(p, 80, key), gain_at(p, 10_000, key)
@@ -172,8 +174,8 @@ the_digital_shelf :: proc(t: ^testing.T) {
 @(test)
 filters_are_block_size_invariant :: proc(t: ^testing.T) {
 	x := noise(8000)
-	for model in synth.Filter_Model {
-		p := synth.FILTER_DEFAULTS
+	for model in fx.Filter_Model {
+		p := fx.FILTER_DEFAULTS
 		p.model = model
 		p.resonance = 0.7
 		a := run_filter(p, x, 70, 256)

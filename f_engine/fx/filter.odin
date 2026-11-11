@@ -1,4 +1,4 @@
-package synth
+package fx
 
 import "core:math"
 

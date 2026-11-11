@@ -10,6 +10,7 @@ import pm "model"
 import im "deps:imgui"
 import fc "fire:core"
 import "fire:dsp"
+import "fire:fx"
 import "fire:synth"
 
 // The synth device's page: its own tabs (Osc, Filter, Env, LFO, Mod,
@@ -99,7 +100,7 @@ param_text :: proc(spec: ^synth.Param_Spec, plain: f32) -> string {
 	v := synth.param_curve(spec, plain)
 	name := spec.name
 	switch {
-	case strings.contains(name, "Cutoff"):        return fmt.tprintf("%.0f Hz", synth.key_to_hz(v))
+	case strings.contains(name, "Cutoff"):        return fmt.tprintf("%.0f Hz", fx.key_to_hz(v))
 	case spec.curve == .Quartic:                  return fmt.tprintf("%.1f ms", v * 1000) if v < 1 else fmt.tprintf("%.2f s", v)
 	case strings.contains(name, "Tempo"):
 		names := synth.LFO_TEMPO_NAMES

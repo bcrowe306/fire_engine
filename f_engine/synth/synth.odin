@@ -5,6 +5,7 @@ import "core:math"
 import "core:mem"
 
 import "fire:core"
+import "fire:fx"
 import "fire:dsp"
 import "fire:rt"
 
@@ -40,7 +41,7 @@ Voice :: struct {
 	glide_pos, glide_len: f32, // 0..1 through the glide, and its length in seconds
 	oscs:        [OSCS]Osc_State,
 	sample:      Sample_Osc,
-	filters:     [FILTERS]Filter_State,
+	filters:     [FILTERS]fx.Filter_State,
 	envs:        [ENVS]Env_State,
 	lfos:        [LFOS]Lfo_State,
 	mod:         [2][PARAM_COUNT_MAX]f32, // each parameter's modulation now, a side
@@ -476,10 +477,10 @@ sample_params :: proc "contextless" (s: ^Synth, v: ^Voice) -> Sample_Params {
 }
 
 @(private)
-filter_params :: proc "contextless" (s: ^Synth, v: ^Voice, n: int) -> Filter_Params {
+filter_params :: proc "contextless" (s: ^Synth, v: ^Voice, n: int) -> fx.Filter_Params {
 	f :: filter_param
 	return {
-		model = Filter_Model(int(value(s, f(n, .Model)))), style = Filter_Style(int(value(s, f(n, .Style)))),
+		model = fx.Filter_Model(int(value(s, f(n, .Model)))), style = fx.Filter_Style(int(value(s, f(n, .Style)))),
 		cutoff = vvalue(s, v, f(n, .Cutoff)), resonance = vvalue(s, v, f(n, .Resonance)), drive_db = vvalue(s, v, f(n, .Drive)),
 		blend = vvalue(s, v, f(n, .Blend)), mix = vvalue(s, v, f(n, .Mix)), gain_db = vvalue(s, v, f(n, .Gain)),
 		formant_x = vvalue(s, v, f(n, .Formant_X)), formant_y = vvalue(s, v, f(n, .Formant_Y)),
@@ -612,7 +613,7 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 		p := osc_params(s, v, o)
 		key := base + vvalue(s, v, osc_param(o, .Transpose)) + vvalue(s, v, osc_param(o, .Tune))
 		if value(s, osc_param(o, .Keytrack)) <= 0 do key = key - v.pitch + 60
-		inc := key_to_hz(key) / f32(sr)
+		inc := fx.key_to_hz(key) / f32(sr)
 		if !v.started do v.last_inc[k] = inc
 		for i in 0 ..< n do inc_buf[i] = v.last_inc[k] + (inc - v.last_inc[k]) * f32(i + 1) / f32(n)
 		v.last_inc[k] = inc
@@ -656,7 +657,7 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 			if !v.started do v.last_cut[k] = c
 			for i in 0 ..< n do cut[i] = v.last_cut[k] + (c - v.last_cut[k]) * f32(i + 1) / f32(n)
 			v.last_cut[k] = c
-			filter_render(&v.filters[k], &p, cut, &buf, &buf, sr)
+			fx.filter_render(&v.filters[k], &p, cut, &buf, &buf, sr)
 		}
 		if k == 0 && serial {
 			for ch in 0 ..< 2 do for i in 0 ..< n do f2[ch][i] += buf[ch][i]

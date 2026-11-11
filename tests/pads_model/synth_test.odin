@@ -5,6 +5,7 @@ import "core:testing"
 
 import app "app:core"
 import fc "fire:core"
+import "fire:fx"
 import "fire:synth"
 import kit "fire:testkit"
 import pm "../../apps/pads/model"
@@ -49,7 +50,7 @@ a_synth_patch_saves_and_undoes :: proc(t: ^testing.T) {
 	m := &r.m
 	pm.make_synth(m, 3)
 	pm.set_synth_value(m, 3, synth.osc_param(1, .Unison), 7, "Unison")
-	pm.set_synth_value(m, 3, synth.filter_param(1, .Model), f32(synth.Filter_Model.Ladder), "Model")
+	pm.set_synth_value(m, 3, synth.filter_param(1, .Model), f32(fx.Filter_Model.Ladder), "Model")
 	k := pm.add_synth_route(m, 3, {source = .Lfo_2, dest = synth.filter_param(1, .Cutoff), amount = 0.3, bipolar = true})
 	testing.expect_value(t, k, 0)
 	testing.expect_value(t, pm.add_synth_route(m, 3, {source = .Lfo_2, dest = synth.filter_param(1, .Cutoff), amount = 0.5}), 0) // (the same pair: changed, not added)
