@@ -53,6 +53,15 @@ OSC_FADE_SECONDS :: 0.007
 Seconds a wave buffer lasts before it is built again, crossfading
 from the one before (so a frame or pitch change is smooth).
 
+### SAMPLE_LEVELS
+
+```odin
+SAMPLE_LEVELS :: 8
+```
+
+Halvings of a `Sample` kept, each half the length of the one before,
+for playing fast without aliasing.
+
 ### WAVE_SIZE
 
 ```odin
@@ -320,6 +329,96 @@ glides from between renders. Plain data: zero it, then `osc_start`.
 | `rng` |  |
 | `started` |  |
 
+### Sample
+
+```odin
+Sample :: struct {
+	name: string,
+	rate: f64,
+	frames: int,
+	levels: [8][2][]f32,
+	count: int,
+}
+```
+
+A sound the sample oscillator plays: one or two channels at `rate`,
+with copies at half, a quarter ... of the length (each low-passed
+first), so that played above its own rate it reads the copy whose
+rate the pitch needs. Made with `sample_make`; read-only once made.
+
+| Field | Description |
+|-------|-------------|
+| `name` |  |
+| `rate` |  |
+| `frames` |  |
+| `levels` | [level][channel]; a mono sample's right is its left |
+| `count` | levels made |
+
+### Builtin_Noise
+
+```odin
+Builtin_Noise :: enum u8 {
+	White,
+	Pink,
+	Brown,
+}
+```
+
+Noise colours the sample oscillator has built in (a second of each,
+generated).
+
+### Sample_Params
+
+```odin
+Sample_Params :: struct {
+	sample: ^Sample,
+	keytrack: bool,
+	transpose: f32,
+	level: f32,
+	pan: f32,
+	loop: bool,
+	bounce: bool,
+	random_phase: bool,
+}
+```
+
+What the sample oscillator plays for one render.
+
+| Field | Description |
+|-------|-------------|
+| `sample` |  |
+| `keytrack` | the note sets its rate (C3, 60, plays it as recorded); off, it plays at its own rate |
+| `transpose` | semitones |
+| `level` | amplitude (already squared) |
+| `pan` |  |
+| `loop` |  |
+| `bounce` | with loop: forwards, then backwards, and again |
+| `random_phase` | a note starts it somewhere at random |
+
+### Sample_Osc
+
+```odin
+Sample_Osc :: struct {
+	pos: f64,
+	backward: bool,
+	done: bool,
+	pan: [2]f32,
+	last_pan: [2]f32,
+	started: bool,
+}
+```
+
+The sample oscillator of one voice. Zero it, then `sample_osc_start`.
+
+| Field | Description |
+|-------|-------------|
+| `pos` | where it reads, in frames of the sample |
+| `backward` | bouncing back |
+| `done` | played to its end (not looping) |
+| `pan` |  |
+| `last_pan` |  |
+| `started` |  |
+
 ### Wavetable
 
 ```odin
@@ -387,6 +486,49 @@ pitch per sample in cycles (one value a sample: glide and pitch
 modulation are in it). `mod` is the FM or RM source, a channel each
 (nil without). Settings that changed since the last render glide to
 their new values across this one.
+
+### sample_make
+
+```odin
+sample_make :: proc(name: string, channels: [][]f32, rate: f64, allocator: mem.Allocator = context.allocator) -> (s: ^Sample, err: core.Error)
+```
+
+Control thread. A sample from `channels` (one or two, equal length)
+at `rate`. Free with `sample_destroy`.
+
+### sample_destroy
+
+```odin
+sample_destroy :: proc(s: ^Sample, allocator: mem.Allocator = context.allocator)
+```
+
+Control thread. Frees a sample from `sample_make`.
+
+### builtin_noise
+
+```odin
+builtin_noise :: proc(which: Builtin_Noise, allocator: mem.Allocator = context.allocator) -> (^Sample, core.Error)
+```
+
+Control thread. Built-in noise `which`: a second at 44.1 kHz, peak 0.9.
+
+### sample_osc_start
+
+```odin
+sample_osc_start :: proc "contextless"(o: ^Sample_Osc, p: ^Sample_Params, seed: u32)
+```
+
+**Realtime-safe** (callable on the audio thread). A note starts it (at its start, or at random).
+
+### sample_osc_render
+
+```odin
+sample_osc_render :: proc "contextless"(o: ^Sample_Osc, p: ^Sample_Params, note: f32, out_l: []f32, out_r: []f32, raw: ^[2][]f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Renders the sample oscillator: `note` is the note's pitch as a
+key (fractional, glide in it) at the render's end; it writes (not adds)
+its stereo output, and `raw` (before level and pan; may be nil).
 
 ### wavetable_make
 
@@ -456,4 +598,12 @@ BUILTIN_NAMES: [Builtin_Table]string
 ```
 
 The names `builtin_table` gives its tables.
+
+### BUILTIN_NOISE_NAMES
+
+```odin
+BUILTIN_NOISE_NAMES: [Builtin_Noise]string
+```
+
+The names `builtin_noise` gives its samples.
 
