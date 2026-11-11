@@ -163,7 +163,10 @@ SAMPLER_PARAM_DECAY :: core.Param_Id(2)
 SAMPLER_PARAM_SUSTAIN :: core.Param_Id(3)
 // Parameter id of the amp envelope's release, in seconds (0.005..20, default 0.2).
 SAMPLER_PARAM_RELEASE :: core.Param_Id(4)
-// Parameter id of the velocity sensitivity, in percent (0..100, default 80).
+// Parameter id of the velocity sensitivity, in percent (0..100, default 40):
+// 0 plays every note as loud; up to 50 the level follows velocity more and
+// more (50: in proportion); above 50 more than in proportion (the curve
+// steepens: 100 is velocity cubed). See `velocity_gain`.
 SAMPLER_PARAM_VELOCITY :: core.Param_Id(5)
 // Parameter id of the output gain, in dB (−60..12, default 0).
 SAMPLER_PARAM_GAIN_DB :: core.Param_Id(6)
@@ -176,7 +179,7 @@ sampler_params := [?]core.Param_Info {
 	{id = SAMPLER_PARAM_DECAY, name = "Decay", min = 0.005, max = 10, default = 1, flags = {.Automatable}},
 	{id = SAMPLER_PARAM_SUSTAIN, name = "Sustain", unit = .Percent, min = 0, max = 100, default = 100, flags = {.Automatable}},
 	{id = SAMPLER_PARAM_RELEASE, name = "Release", min = 0.005, max = 20, default = 0.2, flags = {.Automatable}},
-	{id = SAMPLER_PARAM_VELOCITY, name = "Velocity", unit = .Percent, min = 0, max = 100, default = 80, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_VELOCITY, name = "Velocity", unit = .Percent, min = 0, max = 100, default = 40, flags = {.Automatable}},
 	{id = SAMPLER_PARAM_GAIN_DB, name = "Gain", unit = .Decibels, min = -60, max = 12, default = 0, smoothing = .Linear, smoothing_ms = 20, flags = {.Automatable}},
 	{id = SAMPLER_PARAM_TRANSPOSE, name = "Transpose", unit = .Semitones, min = -48, max = 48, default = 0, flags = {.Automatable, .Stepped}},
 	// The voice's filter, pitch, LFOs and routes (modulation.odin).
@@ -443,6 +446,19 @@ same :: #force_inline proc "contextless" (v: ^Sampler_Voice, id: core.Note_Id, c
 	return v.channel == channel && v.key == key
 }
 
+// The level a note of `velocity` (0..1) plays at, for sensitivity `sens`
+// (0..1): 1 at 0; up to 0.5 a blend towards `velocity` itself (0.5:
+// `velocity`); above, `velocity` raised to a power from 1 to 3, so soft
+// notes are softer still.
+velocity_gain :: proc "contextless" (velocity, sens: f64) -> f64 {
+	v := clamp(velocity, 0, 1)
+	if sens <= 0.5 {
+		k := sens * 2
+		return 1 - k + k * v
+	}
+	return math.pow(v, 1 + (min(sens, 1) - 0.5) * 4)
+}
+
 // [rt] Starts a voice for every zone of the current map that matches.
 @(private)
 note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
@@ -452,10 +468,9 @@ note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
 		if ev.key < z.key_lo || ev.key > z.key_hi || ev.velocity < z.vel_lo || ev.velocity > z.vel_hi do continue
 		v := &s.voices[pick_voice(s)]
 		s.clock += 1
-		sens := s.params[SAMPLER_PARAM_VELOCITY - 1] * 0.01
 		v^ = {
 			on = true, map_ = m, zone = &z, id = ev.id, channel = ev.channel, key = ev.key, started = s.clock,
-			velocity = (1 - sens + sens * f64(ev.velocity)) * math.pow(10, z.gain_db / 20),
+			velocity = velocity_gain(f64(ev.velocity), s.params[SAMPLER_PARAM_VELOCITY - 1] * 0.01) * math.pow(10, z.gain_db / 20),
 			pos = z.start, phase = f64(z.start), mono = v.mono, stereo = v.stereo, volume = 1, pan = 0.5 + 0.5 * z.pan, held = true, ended = -1,
 		}
 		if s.settings.quality != .Cubic {

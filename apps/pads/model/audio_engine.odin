@@ -73,6 +73,7 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 // Takes everything a pad has out of the graph.
 @(private)
 remove_pad_nodes :: proc(g: ^graph.Graph, n: ^Pad_Nodes) {
+	if n.track_in != {} do graph.remove_node(g, n.track_in)
 	graph.remove_node(g, n.voice)
 	graph.remove_node(g, n.eq)
 	graph.remove_node(g, n.auto_voice)

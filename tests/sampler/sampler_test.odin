@@ -400,3 +400,20 @@ the_playhead_follows_the_newest_voice :: proc(t: ^testing.T) {
 	_, ok = sampler.sampler_playhead(s)
 	testing.expect(t, !ok, "past the end: none")
 }
+
+// Velocity sensitivity: 0 every note as loud, 50% in proportion, 100%
+// velocity cubed (soft notes softer still); each step in between steeper.
+@(test)
+velocity_sensitivity_curve :: proc(t: ^testing.T) {
+	testing.expect_value(t, sampler.velocity_gain(0.25, 0), 1)
+	testing.expect_value(t, sampler.velocity_gain(0.25, 0.5), 0.25)
+	testing.expect(t, abs(sampler.velocity_gain(0.5, 1) - 0.125) < 1e-12, "cubed")
+	testing.expect(t, abs(sampler.velocity_gain(0.5, 0.4) - 0.6) < 1e-12, "40%: 0.2 + 0.8 v (the old 80%)")
+	prev := 2.0
+	for s := 0.0; s <= 1.0001; s += 0.1 {
+		g := sampler.velocity_gain(0.5, s)
+		testing.expectf(t, g <= prev + 1e-12, "steeper with sensitivity (%v at %v)", g, s)
+		prev = g
+		testing.expect_value(t, sampler.velocity_gain(1, s), 1) // full velocity: full level
+	}
+}

@@ -87,6 +87,7 @@ Pad_Nodes :: struct {
 	handle:  ^sampler.Sampler,
 	built:   Pad, // the pad as the engine has it
 	zone_src: ^stream.Source, // what its zone plays (its sample, or its warp's rendering)
+	track_in: graph.Node_Id,  // its own stream from the router (see `Track_In`)
 	warp_scale: f64, // how much longer that is than its sample (1: not warped)
 	fader:   graph.Node_Id, // its volume: after its inserts (the mixer wires it)
 	// Automation of the current sequence: a player into the sampler, one
@@ -215,6 +216,8 @@ sync :: proc(e: ^Engine) {
 		e.router.groups[i] = pad.choke
 		e.router.modes[i] = pad.mode
 		e.router.midi_out[i] = pad.midi_out
+		e.router.kinds[i] = pad.kind
+		e.router.slicers[i] = {base = pad.slicer.base, mono = pad.slicer.mono}
 		midi_ports_of(e, i, pad)
 		audio := pad.kind == .Audio
 		want := src != nil || audio
@@ -246,7 +249,12 @@ sync :: proc(e: ^Engine) {
 				continue
 			}
 			n.voice, n.eq, n.fader, n.live = sid, eid, fid, true
-			graph.connect_events(g, e.router_id, sid)
+			// The router, through the track's own stream, into its device.
+			if tid, terr := graph.add_node(g, track_in_create(e.router, i), 0, 0); terr == .None {
+				n.track_in = tid
+				graph.connect_events(g, e.router_id, tid)
+				graph.connect_events(g, tid, sid)
+			}
 			vnode, vp, _ := clip.automation_player_create({timeline = e.timeline})
 			enode, ep, _ := clip.automation_player_create({timeline = e.timeline})
 			fnode, fp, _ := clip.automation_player_create({timeline = e.timeline})
@@ -277,7 +285,7 @@ sync :: proc(e: ^Engine) {
 		// (A warped pad plays its rendering, once ready: its positions scaled.)
 		zsrc, scale := warp_source(e, pad, src)
 		if zone_changed(n.built, pad) || zsrc != n.zone_src {
-			m, err := sampler.sample_map_create({zone_of(pad, i, zsrc, scale)})
+			m, err := sampler.sample_map_create(slicer_zones(pad, zsrc, scale) if pad.kind == .Slicer else []sampler.Sample_Zone{zone_of(pad, i, zsrc, scale)})
 			if err == .None {
 				sampler.sampler_set_map(n.handle, m)
 				sampler.sample_map_release(m)
@@ -570,7 +578,7 @@ position :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 // Whether the sample map must be rebuilt to go from `a` to `b`.
 @(private)
 zone_changed :: proc(a, b: Pad) -> bool {
-	return a.sample != b.sample || a.start != b.start || a.end != b.end || a.mode != b.mode ||
+	return a.sample != b.sample || a.start != b.start || a.end != b.end || a.mode != b.mode || a.kind != b.kind || a.slicer != b.slicer ||
 		a.loop_start != b.loop_start || a.loop_end != b.loop_end || a.loop_mode != b.loop_mode ||
 		a.crossfade != b.crossfade || a.reverse != b.reverse || a.pan != b.pan ||
 		a.fade_in != b.fade_in || a.fade_out != b.fade_out
@@ -652,6 +660,7 @@ voice_params :: proc(pad: Pad) -> (out: [len(sampler.sampler_params)]f64) {
 	v := pad.voice
 	put :: proc(out: ^[len(sampler.sampler_params)]f64, id: fc.Param_Id, x: f64) { out[id - 1] = x }
 	put(&out, sampler.SAMPLER_PARAM_ATTACK, f64(pad.attack))
+	put(&out, sampler.SAMPLER_PARAM_VELOCITY, f64(v.velocity) * 100)
 	put(&out, sampler.SAMPLER_PARAM_DECAY, f64(v.decay))
 	put(&out, sampler.SAMPLER_PARAM_SUSTAIN, f64(v.sustain) * 100)
 	put(&out, sampler.SAMPLER_PARAM_RELEASE, f64(pad.release))
@@ -813,4 +822,44 @@ input_channels :: proc(e: ^Engine) -> int {
 input_level :: proc(e: ^Engine, k: int) -> (peak, rms: [2]f32) {
 	if k < 0 || k >= MAX_INPUTS / 2 || e.input_meters[k].meter == nil do return
 	return dsp.meter_read(e.input_meters[k].meter)
+}
+
+// The zones a slicer plays from `src` (`scale` times as long as its
+// sample: a warp's rendering): one a slice, on key base + k, from its start
+// to the next one's (or, thru, to the region's end), each faded in and
+// out; none yet: the whole region on its base key. Temporary allocator.
+slicer_zones :: proc(pad: Pad, src: ^stream.Source, scale := 1.0) -> []sampler.Sample_Zone {
+	sl := pad.slicer
+	frames := i64(0)
+	rate := 48_000.0
+	if src != nil {
+		info := stream.source_info(src)
+		frames, rate = i64(f64(info.frames) / scale), info.sample_rate
+	}
+	lo := pad.start
+	hi := pad.end if pad.end > 0 else frames
+	at :: proc(x: i64, scale: f64) -> i64 { return i64(math.round(f64(x) * scale)) }
+	ms :: proc(m: f32, rate: f64) -> i64 { return i64(f64(m) * rate / 1000) }
+	zones := make([dynamic]sampler.Sample_Zone, context.temp_allocator)
+	n := sl.count
+	if n == 0 {
+		append(&zones, sampler.Sample_Zone{source = src, root_key = sl.base, key_lo = sl.base, key_hi = sl.base, exact_keys = true, start = at(lo, scale), end = at(hi, scale), one_shot = !sl.gate})
+		return zones[:]
+	}
+	for k in 0 ..< n {
+		s := sl.slices[k]
+		a := max(s.start, lo)
+		b := hi if sl.thru || k + 1 == n else min(sl.slices[k + 1].start, hi)
+		if b <= a do b = min(a + 1, hi)
+		key := u8(clamp(int(sl.base) + k, 0, 127))
+		length := at(b - a, scale)
+		append(&zones, sampler.Sample_Zone{
+			source = src, root_key = key, key_lo = key, key_hi = key, exact_keys = true,
+			start = at(a, scale), end = at(b, scale), one_shot = !sl.gate,
+			fade_in = min(at(ms(sl.fade_in_ms, rate), scale), length / 2),
+			fade_out = min(at(ms(sl.fade_out_ms, rate), scale), length / 2),
+			gain_db = f64(s.gain_db), tune_cents = f64(s.pitch) * 100, pan = f64(s.pan), reverse = s.reverse,
+		})
+	}
+	return zones[:]
 }

@@ -352,7 +352,10 @@ Parameter id of the amp envelope's release, in seconds (0.005..20, default 0.2).
 SAMPLER_PARAM_VELOCITY : core.Param_Id : core.Param_Id(5)
 ```
 
-Parameter id of the velocity sensitivity, in percent (0..100, default 80).
+Parameter id of the velocity sensitivity, in percent (0..100, default 40):
+0 plays every note as loud; up to 50 the level follows velocity more and
+more (50: in proportion); above 50 more than in proportion (the curve
+steepens: 100 is velocity cubed). See `velocity_gain`.
 
 ### SAMPLER_PARAM_GAIN_DB
 
@@ -735,6 +738,17 @@ sampler_set_map :: proc(s: ^Sampler, m: ^Sample_Map) -> core.Error
 Control thread. Plays `m` from the next block (nil: silence). Notes
 already sounding finish on the old map, which is released once they
 have. The sampler takes its own reference.
+
+### velocity_gain
+
+```odin
+velocity_gain :: proc "contextless"(velocity: f64, sens: f64) -> f64
+```
+
+The level a note of `velocity` (0..1) plays at, for sensitivity `sens`
+(0..1): 1 at 0; up to 0.5 a blend towards `velocity` itself (0.5:
+`velocity`); above, `velocity` raised to a power from 1 to 3, so soft
+notes are softer still.
 
 ### sampler_playhead
 

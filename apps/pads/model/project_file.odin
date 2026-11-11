@@ -18,7 +18,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 13 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel
+PROJECT_VERSION :: 14 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -317,6 +317,29 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u8(w, pad.input.channel)
 		fc.write_bool(w, pad.input.stereo)
 	}
+	// v14: each pad's slicer and velocity sensitivity.
+	for pad in p.pads {
+		sl := pad.slicer
+		fc.write_f32(w, pad.voice.velocity)
+		fc.write_u8(w, sl.base)
+		fc.write_bool(w, sl.mono)
+		fc.write_bool(w, sl.thru)
+		fc.write_bool(w, sl.gate)
+		fc.write_f32(w, sl.fade_in_ms)
+		fc.write_f32(w, sl.fade_out_ms)
+		fc.write_u8(w, u8(sl.by))
+		fc.write_f32(w, sl.sensitivity)
+		fc.write_u8(w, u8(sl.grain))
+		fc.write_int(w, sl.parts)
+		fc.write_int(w, sl.count)
+		for s in sl.slices[:sl.count] {
+			fc.write_i64(w, s.start)
+			fc.write_f32(w, s.gain_db)
+			fc.write_f32(w, s.pitch)
+			fc.write_f32(w, s.pan)
+			fc.write_bool(w, s.reverse)
+		}
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -559,6 +582,28 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			pad.midi_out.port = intern(p, fc.read_string(r))
 			pad.input.channel = min(fc.read_u8(r), 63)
 			pad.input.stereo = fc.read_bool(r)
+		}
+		if version >= 14 do for &pad in p.pads {
+			sl := &pad.slicer
+			pad.voice.velocity = clamp(fc.read_f32(r), 0, 1)
+			sl.base = min(fc.read_u8(r), 127)
+			sl.mono = fc.read_bool(r)
+			sl.thru = fc.read_bool(r)
+			sl.gate = fc.read_bool(r)
+			sl.fade_in_ms = clamp(fc.read_f32(r), 0, 1000)
+			sl.fade_out_ms = clamp(fc.read_f32(r), 0, 1000)
+			sl.by = Slice_By(min(fc.read_u8(r), u8(max(Slice_By))))
+			sl.sensitivity = clamp(fc.read_f32(r), 0, 1)
+			sl.grain = stretch.Warp_Grain(min(fc.read_u8(r), u8(max(stretch.Warp_Grain))))
+			sl.parts = clamp(fc.read_int(r), 1, MAX_SLICER_SLICES)
+			sl.count = clamp(fc.read_int(r), 0, MAX_SLICER_SLICES)
+			for &s in sl.slices[:sl.count] {
+				s.start = max(fc.read_i64(r), 0)
+				s.gain_db = clamp(fc.read_f32(r), -60, 12)
+				s.pitch = clamp(fc.read_f32(r), -48, 48)
+				s.pan = clamp(fc.read_f32(r), -1, 1)
+				s.reverse = fc.read_bool(r)
+			}
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES

@@ -1,6 +1,7 @@
 package pads_model
 
 import "base:intrinsics"
+import "core:math"
 import "core:mem"
 
 import fc "fire:core"
@@ -73,6 +74,13 @@ Router :: struct {
 	in_port:  [PADS]i16, // each pad's MIDI in: IN_ALL (the drum map), IN_NONE, or an input port's index
 	in_channel: [PADS]u8, // 0 = any, 1..16
 	armed:    [PADS]bool, // armed tracks: their own MIDI input plays them (and records)
+	kinds:    [PADS]Pad_Kind, // each track's device
+	slicers:  [PADS]Slicer_Play, // a slicer track's base note, mono, gate
+	// Audio thread: each track's events this block (its device reads them
+	// through its `Track_In` node), and a slicer's sequencer note waiting
+	// for its pitch (which slice) in the expression after it.
+	tracks:   [PADS]Track_Events,
+	waiting:  [PADS]struct { id: fc.Note_Id, velocity: f32, offset: u32, set: bool },
 	midi_in_hits:  [PADS]u32, // atomic: MIDI notes that played each pad (activity lights)
 	midi_out_hits: [PADS]u32, // atomic: MIDI notes each pad sent
 	// Audio thread.
@@ -134,9 +142,10 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 	if out == nil do return
 	for s in rt.spsc_pop(&r.settings) do router_set(r, s, out)
 	// Asked to silence everything: every voice of every pad, at once.
+	for &t in r.tracks do t.count = 0
 	if want := intrinsics.atomic_load(&r.silence); want != r.silenced {
 		r.silenced = want
-		fc.event_writer_push(out, {0, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
+		for i in 0 ..< PADS do track_push(r, i, {0, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
 		r.holding = {}
 	}
 	beat: f64
@@ -200,6 +209,52 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 		events = fc.event_writer_events(&fx)
 	}
 	for e in events do sound(r, out, e)
+	// A slicer's sequencer note that came without a pitch: its first slice.
+	for &w, i in r.waiting do if w.set {
+		slice_on(r, i, w.offset, w.id, 0, w.velocity)
+		w.set = false
+	}
+}
+
+// Events a track's device can be sent in one block.
+TRACK_EVENTS :: 96
+
+// One track's events for its device this block.
+Track_Events :: struct {
+	events: [TRACK_EVENTS]fc.Event,
+	count:  int,
+}
+
+// What the router needs of a slicer track.
+Slicer_Play :: struct {
+	base: u8,   // the key of its first slice
+	mono: bool, // a slice cuts off the one before
+}
+
+// [rt] Event `e` for track `i`'s device (dropped when its block is full).
+@(private)
+track_push :: proc "contextless" (r: ^Router, i: int, e: fc.Event) {
+	if i < 0 || i >= PADS do return
+	t := &r.tracks[i]
+	if t.count >= TRACK_EVENTS do return
+	t.events[t.count] = e
+	t.count += 1
+}
+
+// [rt] Slice `slice` of slicer track `i` starts (note `id`; mono: the one
+// before stops).
+@(private)
+slice_on :: proc "contextless" (r: ^Router, i: int, offset: u32, id: fc.Note_Id, slice: int, velocity: f32) {
+	s := r.slicers[i]
+	if s.mono do track_push(r, i, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
+	key := u8(clamp(int(s.base) + slice, 0, 127))
+	track_push(r, i, {offset, fc.Note_On{id = id, key = key, velocity = velocity}})
+}
+
+// [rt] The key slice `slice` of slicer track `i` plays on.
+@(private)
+slice_key :: proc "contextless" (r: ^Router, i: int, slice: int) -> u8 {
+	return u8(clamp(int(r.slicers[i].base) + slice, 0, 127))
 }
 
 @(private)
@@ -231,25 +286,38 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 			if !strike(r, out, e.offset, i) do return
 			id := r.next_id
 			r.next_id += 1
-			if r.keys_id[v.key] != 0 do fc.event_writer_push(out, {e.offset, fc.Note_Off{id = r.keys_id[v.key], key = pad_key(i)}})
+			if r.keys_id[v.key] != 0 do track_push(r, i, {e.offset, fc.Note_Off{id = r.keys_id[v.key], key = pad_key(i)}})
 			r.keys_id[v.key] = id
-			fc.event_writer_push(out, {e.offset, fc.Note_On{id = id, key = pad_key(i), velocity = v.velocity}})
-			fc.event_writer_push(out, {e.offset, fc.Note_Expression{id = id, key = pad_key(i), kind = .Tuning, value = f64(int(v.key) - KEYS_CENTER)}})
+			if r.kinds[i] == .Slicer { // the key's distance from C3: which slice
+				slice_on(r, i, e.offset, id, int(v.key) - KEYS_CENTER, v.velocity)
+			} else {
+				track_push(r, i, {e.offset, fc.Note_On{id = id, key = pad_key(i), velocity = v.velocity}})
+				track_push(r, i, {e.offset, fc.Note_Expression{id = id, key = pad_key(i), kind = .Tuning, value = f64(int(v.key) - KEYS_CENTER)}})
+			}
 			midi_send(r, out, e.offset, i, true, v.velocity)
 			return
 		}
 		i := pad_of_key(v.key)
 		if i < 0 do return
 		if !strike(r, out, e.offset, i) do return
-		x := v
-		x.channel = 0
-		fc.event_writer_push(out, {e.offset, x})
+		if r.kinds[i] == .Slicer {
+			if v.id == fc.NOTE_ID_ANY {
+				slice_on(r, i, e.offset, fc.NOTE_ID_ANY, 0, v.velocity) // the pad hit: its first slice
+			} else { // the sequencer's: which slice comes in its pitch, next
+				if r.waiting[i].set do slice_on(r, i, r.waiting[i].offset, r.waiting[i].id, 0, r.waiting[i].velocity)
+				r.waiting[i] = {v.id, v.velocity, e.offset, true}
+			}
+		} else {
+			x := v
+			x.channel = 0
+			track_push(r, i, {e.offset, x})
+		}
 		midi_send(r, out, e.offset, i, true, v.velocity)
 	case fc.Note_Off:
 		if v.channel == KEYS_CHANNEL {
 			i := int(r.keys_pad[v.key])
 			if id := r.keys_id[v.key]; id != 0 {
-				if r.modes[i] == .Gate || r.modes[i] == .Loop do fc.event_writer_push(out, {e.offset, fc.Note_Off{id = id, key = pad_key(i)}})
+				if r.modes[i] == .Gate || r.modes[i] == .Loop || r.kinds[i] == .Slicer do track_push(r, i, {e.offset, fc.Note_Off{id = id, key = pad_key(i)}})
 				r.keys_id[v.key] = 0
 			}
 			midi_send(r, out, e.offset, i, false, 0)
@@ -259,11 +327,38 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 		if i < 0 do return
 		x := v
 		x.channel = 0
-		// One-shot and Hold pads play on (the sampler ignores the
-		// note-off of a one-shot zone; Hold stops on its next hit).
-		if r.modes[i] != .Hold do fc.event_writer_push(out, {e.offset, x})
+		if r.kinds[i] == .Slicer {
+			// (A note-off before its pitch came: it starts first.)
+			if r.waiting[i].set && r.waiting[i].id == v.id {
+				slice_on(r, i, r.waiting[i].offset, v.id, 0, r.waiting[i].velocity)
+				r.waiting[i].set = false
+			}
+			if v.id == fc.NOTE_ID_ANY do x.key = slice_key(r, i, 0)
+			track_push(r, i, {e.offset, x}) // (a slice that doesn't gate plays on: its zone is one-shot)
+		} else if r.modes[i] != .Hold {
+			// One-shot and Hold pads play on (the sampler ignores the
+			// note-off of a one-shot zone; Hold stops on its next hit).
+			track_push(r, i, {e.offset, x})
+		}
 		midi_send(r, out, e.offset, i, false, 0)
-	case fc.Note_Choke, fc.Note_Expression, fc.Param_Value, fc.Param_Ramp, fc.Midi_Raw:
+	case fc.Note_Expression:
+		i := pad_of_key(v.key)
+		// A slicer's waiting note: its pitch is which slice.
+		if i >= 0 && r.kinds[i] == .Slicer && v.kind == .Tuning && r.waiting[i].set && r.waiting[i].id == v.id {
+			w := r.waiting[i]
+			slice_on(r, i, w.offset, w.id, int(math.round(v.value)), w.velocity)
+			r.waiting[i].set = false
+			return
+		}
+		if i >= 0 && r.kinds[i] == .Slicer && v.kind == .Tuning do return // (pitch picks the slice, not the tuning)
+		track_push(r, i, e)
+	case fc.Note_Choke:
+		if v.key == fc.NOTE_KEY_ALL {
+			for k in 0 ..< PADS do track_push(r, k, e)
+		} else {
+			track_push(r, pad_of_key(v.key), {e.offset, fc.Note_Choke{id = v.id, key = fc.NOTE_KEY_ALL}})
+		}
+	case fc.Param_Value, fc.Param_Ramp, fc.Midi_Raw:
 		fc.event_writer_push(out, e)
 	}
 }
@@ -273,13 +368,13 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 @(private)
 strike :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, offset: u32, i: int) -> bool {
 	if r.modes[i] == .Hold && r.holding[i] {
-		fc.event_writer_push(out, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = pad_key(i)}})
+		track_push(r, i, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
 		r.holding[i] = false
 		return false
 	}
 	if g := r.groups[i]; g != 0 {
 		for other in 0 ..< PADS do if other != i && r.groups[other] == g {
-			fc.event_writer_push(out, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = pad_key(other)}})
+			track_push(r, other, {offset, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
 			r.holding[other] = false
 		}
 	}

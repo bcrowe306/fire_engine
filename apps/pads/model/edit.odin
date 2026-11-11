@@ -73,6 +73,7 @@ Pad_Field :: enum {
 	Midi_Out,
 	Voice, // a field of the voice (see `set_voice`)
 	Warp,
+	Slicer, // a slicer's slices or settings (see `set_slicer`)
 }
 
 // Changes one setting of pad `index`'s voice, undoably: `key` names the

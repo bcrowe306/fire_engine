@@ -14,6 +14,7 @@ import "core:strings"
 import app "app:core"
 import fc "fire:core"
 import "fire:sampler"
+import "fire:stretch"
 
 // Pads in a bank, and banks.
 PADS_PER_BANK :: 16
@@ -37,8 +38,55 @@ Pad_Mode :: enum u8 {
 // What a pad is: a sampler (it plays its sample when hit), or an audio
 // track (it records takes from an input and plays them with the sequence).
 Pad_Kind :: enum u8 {
-	Sampler,
-	Audio,
+	Sampler, // plays its sample (its region), pitched by key
+	Audio,   // records its input into clips and plays them
+	Slicer,  // its sample sliced in place, a slice on each key from its base note
+}
+
+// Slices a slicer can have.
+MAX_SLICER_SLICES :: 64
+
+// One slice of a slicer: where it starts (it ends where the next does, or
+// at the region's end), and its own level, pitch, pan and direction.
+Slice :: struct {
+	start:   i64, // in the sample's frames
+	gain_db: f32,
+	pitch:   f32, // semitones
+	pan:     f32, // -1..1
+	reverse: bool,
+}
+
+// How a slicer was last sliced (what Re-slice does again).
+Slice_By :: enum u8 {
+	Transients, // at the hits (`sensitivity`)
+	Beats,      // on a grid of its own tempo (`grain`)
+	Equal,      // into `parts` equal slices
+	Manual,     // by hand
+}
+
+// A slicer: its sample sliced in place (the pad's region, split at each
+// slice's start), slice k playing on key `base` + k. Mono: a slice cuts the
+// one before off; thru: a slice plays on past its end to the region's end;
+// gate: a slice stops when its key is let go (else it plays to its end).
+// Every slice fades in and out by `fade_in_ms` and `fade_out_ms`.
+Slicer :: struct {
+	slices:      [MAX_SLICER_SLICES]Slice,
+	count:       int,
+	base:        u8, // the key of slice 1 (C3 = 60)
+	mono:        bool,
+	thru:        bool,
+	gate:        bool,
+	fade_in_ms:  f32,
+	fade_out_ms: f32,
+	by:          Slice_By,
+	sensitivity: f32, // .Transients: 0..1
+	grain:       stretch.Warp_Grain, // .Beats: 1/4, 1/8, 1/16 (Transients: a bar)
+	parts:       int, // .Equal
+}
+
+// A new slicer's settings (no slices yet).
+default_slicer :: proc() -> Slicer {
+	return {base = 60, fade_in_ms = 0.5, fade_out_ms = 3, sensitivity = 0.5, grain = .Sixteenth, parts = 16}
 }
 
 // The inputs an audio pad records.
@@ -74,6 +122,7 @@ Clip :: struct {
 // routes, and how many notes it plays at once. A plain value (part of a Pad).
 Voice :: struct {
 	decay, sustain: f32, // the amp envelope's (seconds; 0..1)
+	velocity: f32, // velocity sensitivity, 0..1 (0: all as loud; 0.5: in proportion; more: steeper)
 	filter:   sampler.Voice_Filter,
 	steep:    bool, // 24 dB (else 12)
 	cutoff:   f32,  // Hz
@@ -114,6 +163,7 @@ Route :: struct {
 // from LFO 2), 8 notes.
 default_voice :: proc() -> (v: Voice) {
 	v.decay, v.sustain = 1, 1
+	v.velocity = 0.4
 	v.cutoff = 20_000
 	v.filter_adsr = {0.001, 0.5, 0, 0.2}
 	v.pitch_adsr = {0.001, 0.3, 0, 0.2}
@@ -161,6 +211,7 @@ Pad :: struct {
 	monitor:    bool,        // an armed audio pad plays its input through its strip
 	voice:      Voice,       // a sampler pad's voice (envelopes, filter, pitch, LFOs)
 	warp:       Warp,        // following the tempo (see `Warp`)
+	slicer:     Slicer,      // a slicer's slices and settings (kept when it is a sampler again)
 }
 
 // A sample the project holds: a file in its folder.
@@ -230,7 +281,7 @@ default_transport :: proc() -> Transport {
 
 // The default pad: one-shot, full volume, centred.
 default_pad :: proc() -> Pad {
-	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}}
+	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}, slicer = default_slicer()}
 }
 
 // Prepares an empty project in `dir`.
@@ -269,7 +320,7 @@ intern :: proc(p: ^Project, s: string) -> string {
 // pad.
 pad_used :: proc(p: ^Project, index: int) -> bool {
 	pad := &p.pads[index]
-	return pad.sample != 0 || pad.kind == .Audio
+	return pad.sample != 0 || pad.kind == .Audio || pad.kind == .Slicer
 }
 
 // A pad's name.
