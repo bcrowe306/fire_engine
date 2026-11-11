@@ -20,7 +20,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 17 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables
+PROJECT_VERSION :: 18 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -129,26 +129,7 @@ project_chunks :: proc(p: ^Project) -> []session.App_Chunk {
 		})
 	}, p)
 	chunk(&out, proc(w: ^fc.State_Writer, p: ^Project) {
-		app.store_save(w, WAVETABLES_TAG, 1, &p.wave_docs, proc(w: ^fc.State_Writer, d: ^Wave_Doc) {
-			fc.write_string(w, strings.truncate_to_byte(string(d.name[:]), 0))
-			fc.write_u64(w, u64(d.sample))
-			fc.write_u8(w, u8(d.doc.blend))
-			fc.write_int(w, d.doc.count)
-			for &k in d.doc.keys[:clamp(d.doc.count, 0, synth.TABLE_KEYS)] {
-				fc.write_int(w, k.position)
-				fc.write_u8(w, u8(k.source))
-				for v in k.draw do fc.write_f32(w, v)
-				fc.write_int(w, k.point_count)
-				for q in 0 ..< synth.LINE_POINTS {
-					fc.write_f32(w, k.points[q][0])
-					fc.write_f32(w, k.points[q][1])
-					fc.write_f32(w, k.powers[q])
-				}
-				for v in k.levels do fc.write_f32(w, v)
-				for v in k.phases do fc.write_f32(w, v)
-				fc.write_f32(w, k.audio_at)
-			}
-		})
+		app.store_save(w, WAVETABLES_TAG, 1, &p.wave_docs, write_wave_doc)
 	}, p)
 	chunk(&out, write_project, p)
 	return out[:]
@@ -369,40 +350,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		sy := &pad.synth
 		fc.write_bool(w, sy.set)
 		if !sy.set do continue
-		// Parameters as id and value, so ones added later read as their defaults.
-		fc.write_int(w, len(synth.PARAMS))
-		for spec in synth.PARAMS {
-			fc.write_u32(w, u32(spec.id))
-			fc.write_f32(w, sy.values[spec.id])
-		}
-		fc.write_int(w, sy.route_count)
-		for r in sy.routes[:sy.route_count] {
-			fc.write_u8(w, u8(r.source))
-			fc.write_u32(w, u32(r.dest))
-			fc.write_f32(w, r.amount)
-			fc.write_f32(w, r.power)
-			fc.write_bool(w, r.bipolar)
-			fc.write_bool(w, r.stereo)
-			fc.write_bool(w, r.bypass)
-		}
-		for sh in sy.shapes {
-			fc.write_int(w, sh.count)
-			fc.write_bool(w, sh.smooth)
-			for k in 0 ..< sh.count {
-				fc.write_f32(w, sh.points[k][0])
-				fc.write_f32(w, sh.points[k][1])
-				fc.write_f32(w, sh.powers[k])
-			}
-		}
-		for t in sy.tables {
-			fc.write_u8(w, t.builtin)
-			fc.write_u64(w, u64(t.sample))
-			fc.write_u64(w, u64(t.table)) // v17
-		}
-		fc.write_u8(w, sy.sample.builtin)
-		fc.write_u64(w, u64(sy.sample.sample))
-		for &name in sy.macro_names do fc.write_string(w, strings.truncate_to_byte(string(name[:]), 0))
-		for e in sy.fx_order do fc.write_u8(w, u8(e)) // v16
+		write_synth_patch(w, sy)
 	}
 }
 
@@ -415,25 +363,7 @@ project_read :: proc(p: ^Project, l: session.Loaded) -> fc.Error {
 	}
 	if c, ok := session.find_extra(l, WAVETABLES_TAG); ok {
 		app.store_load({c.tag, c.version, c.data}, &p.wave_docs, proc(r: ^fc.State_Reader, version: u32, d: ^Wave_Doc) -> bool {
-			copy(d.name[:len(d.name) - 1], fc.read_string(r))
-			d.sample = app.Id(fc.read_u64(r))
-			d.doc.blend = synth.Table_Blend(min(fc.read_u8(r), u8(max(synth.Table_Blend))))
-			d.doc.count = clamp(fc.read_int(r), 1, synth.TABLE_KEYS)
-			for &k in d.doc.keys[:d.doc.count] {
-				k.position = clamp(fc.read_int(r), 0, synth.WAVE_FRAMES - 1)
-				k.source = synth.Key_Source(min(fc.read_u8(r), u8(max(synth.Key_Source))))
-				for &v in k.draw do v = clamp(fc.read_f32(r), -1, 1)
-				k.point_count = clamp(fc.read_int(r), 1, synth.LINE_POINTS)
-				for q in 0 ..< synth.LINE_POINTS {
-					k.points[q] = {clamp(fc.read_f32(r), 0, 1), clamp(fc.read_f32(r), -1, 1)}
-					k.powers[q] = clamp(fc.read_f32(r), -20, 20)
-				}
-				for &v in k.levels do v = clamp(fc.read_f32(r), 0, 1)
-				for &v in k.phases do v = clamp(fc.read_f32(r), 0, 1)
-				k.audio_at = clamp(fc.read_f32(r), 0, 1)
-			}
-			wave_gen += 1
-			d.gen = wave_gen
+			read_wave_doc(r, d)
 			return true
 		}) or_return
 	}
@@ -696,52 +626,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		if version >= 15 do for &pad in p.pads {
 			if !fc.read_bool(r) do continue
 			sy := &pad.synth
-			sy^ = default_synth_patch()
-			n := clamp(fc.read_int(r), 0, synth.PARAM_SLOTS)
-			for _ in 0 ..< n {
-				id := fc.Param_Id(fc.read_u32(r))
-				v := fc.read_f32(r)
-				if spec := synth.param_spec(id); spec != nil do sy.values[id] = clamp(v, spec.min, spec.max)
-			}
-			sy.route_count = clamp(fc.read_int(r), 0, synth.MAX_ROUTES)
-			for &x in sy.routes[:sy.route_count] {
-				x.source = synth.Mod_Source(min(fc.read_u8(r), u8(max(synth.Mod_Source))))
-				x.dest = fc.Param_Id(fc.read_u32(r))
-				if synth.param_spec(x.dest) == nil do x.source = .None
-				x.amount = clamp(fc.read_f32(r), -1, 1)
-				x.power = clamp(fc.read_f32(r), -20, 20)
-				x.bipolar = fc.read_bool(r)
-				x.stereo = fc.read_bool(r)
-				x.bypass = fc.read_bool(r)
-			}
-			for &sh in sy.shapes {
-				sh = {}
-				sh.count = clamp(fc.read_int(r), 0, synth.LFO_MAX_POINTS)
-				sh.smooth = fc.read_bool(r)
-				for k in 0 ..< sh.count {
-					sh.points[k] = {clamp(fc.read_f32(r), 0, 1), clamp(fc.read_f32(r), 0, 1)}
-					sh.powers[k] = clamp(fc.read_f32(r), -20, 20)
-				}
-			}
-			read_source :: proc(r: ^fc.State_Reader, p: ^Project) -> (s: Synth_Source) {
-				s.builtin = fc.read_u8(r)
-				s.sample = app.Id(fc.read_u64(r))
-				if s.sample != 0 && app.store_get(&p.samples, s.sample) == nil do s.sample = 0
-				return
-			}
-			for &t in sy.tables {
-				t = read_source(r, p)
-				if version >= 17 do t.table = app.Id(fc.read_u64(r))
-			}
-			sy.sample = read_source(r, p)
-			for &name in sy.macro_names {
-				name = {}
-				copy(name[:len(name) - 1], fc.read_string(r))
-			}
-			if version >= 16 {
-				for &e in sy.fx_order do e = fx.Effect(fc.read_u8(r))
-				if !fx.chain_order_valid(sy.fx_order) do sy.fx_order = fx.CHAIN_ORDER
-			}
+			read_synth_patch(r, version, p, sy)
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES
@@ -837,4 +722,148 @@ read_voice :: proc(r: ^fc.State_Reader) -> (v: Voice) {
 		adsr[3] = clamp(adsr[3], 0.005, 20)
 	}
 	return
+}
+
+// Writes a synth patch (all but whether it is set), as projects and
+// presets hold it.
+@(private)
+write_synth_patch :: proc(w: ^fc.State_Writer, sy: ^Synth_Patch) {
+	// Parameters as id and value, so ones added later read as their defaults.
+	fc.write_int(w, len(synth.PARAMS))
+	for spec in synth.PARAMS {
+		fc.write_u32(w, u32(spec.id))
+		fc.write_f32(w, sy.values[spec.id])
+	}
+	fc.write_int(w, sy.route_count)
+	for r in sy.routes[:sy.route_count] {
+		fc.write_u8(w, u8(r.source))
+		fc.write_u32(w, u32(r.dest))
+		fc.write_f32(w, r.amount)
+		fc.write_f32(w, r.power)
+		fc.write_bool(w, r.bipolar)
+		fc.write_bool(w, r.stereo)
+		fc.write_bool(w, r.bypass)
+	}
+	for sh in sy.shapes {
+		fc.write_int(w, sh.count)
+		fc.write_bool(w, sh.smooth)
+		for k in 0 ..< sh.count {
+			fc.write_f32(w, sh.points[k][0])
+			fc.write_f32(w, sh.points[k][1])
+			fc.write_f32(w, sh.powers[k])
+		}
+	}
+	for t in sy.tables {
+		fc.write_u8(w, t.builtin)
+		fc.write_u64(w, u64(t.sample))
+		fc.write_u64(w, u64(t.table)) // v17
+	}
+	fc.write_u8(w, sy.sample.builtin)
+	fc.write_u64(w, u64(sy.sample.sample))
+	for &name in sy.macro_names do fc.write_string(w, strings.truncate_to_byte(string(name[:]), 0))
+	for e in sy.fx_order do fc.write_u8(w, u8(e)) // v16
+	fc.write_string(w, strings.truncate_to_byte(string(sy.preset[:]), 0)) // v18
+}
+
+// Reads a synth patch as `write_synth_patch` wrote it at project version
+// `version` (its samples checked against `p`'s; none without one).
+@(private)
+read_synth_patch :: proc(r: ^fc.State_Reader, version: u32, p: ^Project, sy: ^Synth_Patch) {
+	sy^ = default_synth_patch()
+	n := clamp(fc.read_int(r), 0, synth.PARAM_SLOTS)
+	for _ in 0 ..< n {
+		id := fc.Param_Id(fc.read_u32(r))
+		v := fc.read_f32(r)
+		if spec := synth.param_spec(id); spec != nil do sy.values[id] = clamp(v, spec.min, spec.max)
+	}
+	sy.route_count = clamp(fc.read_int(r), 0, synth.MAX_ROUTES)
+	for &x in sy.routes[:sy.route_count] {
+		x.source = synth.Mod_Source(min(fc.read_u8(r), u8(max(synth.Mod_Source))))
+		x.dest = fc.Param_Id(fc.read_u32(r))
+		if synth.param_spec(x.dest) == nil do x.source = .None
+		x.amount = clamp(fc.read_f32(r), -1, 1)
+		x.power = clamp(fc.read_f32(r), -20, 20)
+		x.bipolar = fc.read_bool(r)
+		x.stereo = fc.read_bool(r)
+		x.bypass = fc.read_bool(r)
+	}
+	for &sh in sy.shapes {
+		sh = {}
+		sh.count = clamp(fc.read_int(r), 0, synth.LFO_MAX_POINTS)
+		sh.smooth = fc.read_bool(r)
+		for k in 0 ..< sh.count {
+			sh.points[k] = {clamp(fc.read_f32(r), 0, 1), clamp(fc.read_f32(r), 0, 1)}
+			sh.powers[k] = clamp(fc.read_f32(r), -20, 20)
+		}
+	}
+	read_source :: proc(r: ^fc.State_Reader, p: ^Project) -> (s: Synth_Source) {
+		s.builtin = fc.read_u8(r)
+		s.sample = app.Id(fc.read_u64(r))
+		if s.sample != 0 && (p == nil || app.store_get(&p.samples, s.sample) == nil) do s.sample = 0
+		return
+	}
+	for &t in sy.tables {
+		t = read_source(r, p)
+		if version >= 17 do t.table = app.Id(fc.read_u64(r))
+	}
+	sy.sample = read_source(r, p)
+	for &name in sy.macro_names {
+		name = {}
+		copy(name[:len(name) - 1], fc.read_string(r))
+	}
+	if version >= 16 {
+		for &e in sy.fx_order do e = fx.Effect(fc.read_u8(r))
+		if !fx.chain_order_valid(sy.fx_order) do sy.fx_order = fx.CHAIN_ORDER
+	}
+	if version >= 18 {
+		sy.preset = {}
+		copy(sy.preset[:len(sy.preset) - 1], fc.read_string(r))
+	}
+}
+
+// Writes a project wavetable (as projects and presets hold it).
+@(private)
+write_wave_doc :: proc(w: ^fc.State_Writer, d: ^Wave_Doc) {
+	fc.write_string(w, strings.truncate_to_byte(string(d.name[:]), 0))
+	fc.write_u64(w, u64(d.sample))
+	fc.write_u8(w, u8(d.doc.blend))
+	fc.write_int(w, d.doc.count)
+	for &k in d.doc.keys[:clamp(d.doc.count, 0, synth.TABLE_KEYS)] {
+		fc.write_int(w, k.position)
+		fc.write_u8(w, u8(k.source))
+		for v in k.draw do fc.write_f32(w, v)
+		fc.write_int(w, k.point_count)
+		for q in 0 ..< synth.LINE_POINTS {
+			fc.write_f32(w, k.points[q][0])
+			fc.write_f32(w, k.points[q][1])
+			fc.write_f32(w, k.powers[q])
+		}
+		for v in k.levels do fc.write_f32(w, v)
+		for v in k.phases do fc.write_f32(w, v)
+		fc.write_f32(w, k.audio_at)
+	}
+}
+
+// Reads a project wavetable as `write_wave_doc` wrote it.
+@(private)
+read_wave_doc :: proc(r: ^fc.State_Reader, d: ^Wave_Doc) {
+	copy(d.name[:len(d.name) - 1], fc.read_string(r))
+	d.sample = app.Id(fc.read_u64(r))
+	d.doc.blend = synth.Table_Blend(min(fc.read_u8(r), u8(max(synth.Table_Blend))))
+	d.doc.count = clamp(fc.read_int(r), 1, synth.TABLE_KEYS)
+	for &k in d.doc.keys[:d.doc.count] {
+		k.position = clamp(fc.read_int(r), 0, synth.WAVE_FRAMES - 1)
+		k.source = synth.Key_Source(min(fc.read_u8(r), u8(max(synth.Key_Source))))
+		for &v in k.draw do v = clamp(fc.read_f32(r), -1, 1)
+		k.point_count = clamp(fc.read_int(r), 1, synth.LINE_POINTS)
+		for q in 0 ..< synth.LINE_POINTS {
+			k.points[q] = {clamp(fc.read_f32(r), 0, 1), clamp(fc.read_f32(r), -1, 1)}
+			k.powers[q] = clamp(fc.read_f32(r), -20, 20)
+		}
+		for &v in k.levels do v = clamp(fc.read_f32(r), 0, 1)
+		for &v in k.phases do v = clamp(fc.read_f32(r), 0, 1)
+		k.audio_at = clamp(fc.read_f32(r), 0, 1)
+	}
+	wave_gen += 1
+	d.gen = wave_gen
 }

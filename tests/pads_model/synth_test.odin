@@ -1,6 +1,7 @@
 package test_pads_model
 
 import "core:math"
+import "core:path/filepath"
 import "core:testing"
 import "core:time"
 
@@ -231,4 +232,63 @@ a_projects_wavetable_plays_and_saves :: proc(t: ^testing.T) {
 	got := app.store_get(&r2.m.project.wave_docs, id)
 	testing.expect(t, got != nil && got.doc == app.store_get(&m.project.wave_docs, id).doc, "the table saved whole")
 	testing.expect_value(t, r2.m.project.pads[0].synth.tables[0].table, id)
+}
+
+// Every built-in preset loads (one undo step, its name on the pad) and
+// sounds: finite, audible.
+@(test)
+the_built_in_presets_play :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_presets")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	for p, k in pm.BUILTIN_PRESETS {
+		pm.preset_apply_builtin(m, 0, k)
+		testing.expect_value(t, pm.synth_preset_name(m, 0), p.name)
+		testing.expect_value(t, app.undo_name(&m.history), "Load Preset")
+		render(r, 256)
+		pm.hit(&m.engine, 0, true, 1)
+		out := render(r, 24_000)
+		pm.hit(&m.engine, 0, false, 0)
+		render(r, 96_000) // (its tail out)
+		n, _ := kit.count_non_finite(out[0])
+		testing.expectf(t, n == 0 && kit.peak(out[0]) < 4, "%s: finite (%v)", p.name, kit.peak(out[0]))
+		testing.expectf(t, kit.rms(out[0][12_000:]) > 1e-3, "%s: audible (%v)", p.name, kit.rms(out[0][12_000:]))
+	}
+}
+
+// A preset saved and loaded on another project: the patch whole, its own
+// wavetable with it; listed in its folder; loading it is undone in one.
+@(test)
+a_preset_saves_and_loads :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_preset_save")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.make_synth(m, 0)
+	pm.preset_apply_builtin(m, 0, 7) // Warm Pad
+	testing.expect_value(t, pm.synth_preset_name(m, 0), "Warm Pad")
+	id := pm.new_wave_doc(m, 0, 1)
+	d := app.store_get(&m.project.wave_docs, id)^
+	d.doc.keys[0].levels[3] = 0.7
+	pm.set_wave_doc(m, id, d, "Harmonic Level")
+	dir, _ := filepath.join({m.project.dir, "presets"}, context.temp_allocator)
+	path, err := pm.preset_save(m, 0, dir, "My Pad / 2")
+	testing.expect_value(t, err, fc.Error.None)
+	testing.expect_value(t, pm.synth_preset_name(m, 0), "My Pad / 2")
+	names := pm.preset_list(dir)
+	testing.expectf(t, len(names) == 1 && names[0] == "My Pad - 2", "listed (%v)", names)
+
+	r2 := rig_make(t, "synth_preset_load")
+	defer rig_destroy(r2)
+	pm.make_synth(&r2.m, 5)
+	pr, rerr := pm.preset_read(path)
+	testing.expect_value(t, rerr, fc.Error.None)
+	pm.preset_apply(&r2.m, 5, &pr)
+	a, b := m.project.pads[0].synth, r2.m.project.pads[5].synth
+	testing.expect(t, a.values == b.values && a.routes == b.routes && a.fx_order == b.fx_order && a.tables[0] == b.tables[0], "the patch whole")
+	got := app.store_get(&r2.m.project.wave_docs, b.tables[1].table)
+	testing.expect(t, got != nil && got.doc == d.doc, "its wavetable with it")
+	app.undo(&r2.m.history)
+	testing.expect(t, app.store_len(&r2.m.project.wave_docs) == 0 && r2.m.project.pads[5].synth.preset[0] == 0, "undone in one")
+	render(r2, 512)
 }

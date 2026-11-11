@@ -198,6 +198,11 @@ The order is "playable first". Each milestone is tested, test-driven
    app.
 5. **Presets** in our own format, with a browser and a built-in bank.
 
+   Done. A `.fsyn` file holds one chunk: the patch, written as projects
+   write it, then each oscillator's own wavetable when it has one. The
+   bank is twelve presets built in code. The browser is the preset bar
+   beside the device tabs.
+
 Later (in `TODO.md`): MPE (per-note bend, slide and lift as sources) and
 microtuning (.scl/.kbm/.tun files).
 

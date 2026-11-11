@@ -32,6 +32,7 @@ Synth_Patch :: struct {
 	sample:      Synth_Source,
 	macro_names: [synth.MACROS][16]u8,
 	fx_order:    [len(fx.Effect)]fx.Effect, // the effects' order
+	preset:      [32]u8, // the preset it came from ("" none, or changed since: see `synth_preset_name`)
 }
 
 // The patch a new synth starts with: every parameter at its default (a

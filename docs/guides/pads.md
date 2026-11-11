@@ -484,12 +484,20 @@ and channel pressure included. The Pitch, Cutoff and Resonance lanes reach
 its transpose and filter 1.
 
 Its device has eight tabs; on the tab bar's line (or just under it) are
-the **sources**: E1–E6 (envelopes), L1–L8 (LFOs), M1–M4 (macros), velocity,
+the **sources**: E1–E6 (envelopes), L1–L8 (LFOs), R1–R4 (random), M1–M4 (macros), velocity,
 key, aftertouch, mod wheel, pitch bend and random. **Drag a source onto any
 knob** on any tab to modulate it: the knob gets a ring in the source's
 colour from its value to where the source takes it, and a dot shows where
 the newest note has it now. Drag the ring's end up or down for the amount
 (Shift: fine); right-click it to take the modulation away.
+
+**Presets** sit on the line of the device's tabs, at its right. The menu
+lists yours first, then the built-in bank by kind (basic, lead, keys,
+bass, pad, FX). The arrows step to the preset before or after, and the
+disk saves the sound as one of yours. Yours are kept in the settings
+folder under `Presets/Synth`, one `.fsyn` file each, and carry any of
+the project's own wavetables they play (an audio keyframe's sound stays
+behind). Loading a preset is one undo step.
 
 - **Osc**: oscillators A, B and C and the sample oscillator. Each has an on
   switch, a wavetable (built in, or any sound dropped on its view: cut
@@ -907,7 +915,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
-| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone) |
+| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |

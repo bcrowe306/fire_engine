@@ -175,3 +175,31 @@ def test_the_wavetable_editor(app):
     app.screenshot("wavetable_editor")
     app.key("cmd+z")
     assert len(app.state()["wavetable"]["positions"]) == 2
+
+
+def test_presets(app):
+    synth_pad(app)
+    assert app.pad(0)["synth"]["preset"] == ""
+    app.click("preset after", window="detail")
+    assert app.pad(0)["synth"]["preset"] == "Init"
+    app.click("preset after", window="detail")
+    assert app.pad(0)["synth"]["preset"] == "Supersaw Lead"
+    assert app.pad(0)["synth"]["params"]["Osc 1 Unison"] == 7
+    assert app.state()["undo"] == "Load Preset"
+    # From the menu: a pad.
+    app.click("preset", window="detail")
+    app.click("Warm Pad")
+    assert app.pad(0)["synth"]["preset"] == "Warm Pad"
+    # Saved as one of yours (in the test's own settings folder), then found in the menu.
+    app.click("save preset", window="detail")
+    app.click("preset name")
+    app.key("cmd+a")
+    app.type("My Pad")
+    app.click("save")
+    assert app.pad(0)["synth"]["preset"] == "My Pad"
+    app.click("preset before", window="detail")
+    assert app.pad(0)["synth"]["preset"] == "Noise Sweep"  # (the last built-in, before yours)
+    app.click("preset", window="detail")
+    app.click("My Pad")
+    assert app.pad(0)["synth"]["preset"] == "My Pad" and app.pad(0)["synth"]["tables"][1] == "Vowels"
+    app.screenshot("synth_presets")

@@ -118,8 +118,12 @@ draw_detail :: proc(user: rawptr) {
 		}
 	}
 	t := ui.theme()
-	// Along the top, where a panel's tab would be: the track's devices.
+	// Along the top, where a panel's tab would be: the track's devices
+	// (and a synth's presets, at the line's right).
+	line := im.GetCursorScreenPos()
+	line_right := line.x + im.GetContentRegionAvail().x
 	device_tabs(a)
+	if st.track.kind == .Pad && st.device.kind == .Instrument && a.m.project.pads[st.track.index].kind == .Synth do draw_preset_bar(a, line_right, line.y)
 	avail := im.GetContentRegionAvail()
 	// The pads: a square grid as tall as the panel, unless dragged wider or narrower.
 	header := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y * 2

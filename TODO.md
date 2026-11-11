@@ -14,7 +14,7 @@ plan before it is built.
   from a base note; the sampler's voice (envelopes, filter, pitch, LFOs),
   warp; mono/poly, thru, gate; fades; per-slice volume; velocity
   sensitivity (Ableton Simpler's Slice mode is the reference for feel).
-- **Synth** — in progress (plan: docs/design/synth.md). A wavetable synth
+- **Synth** — the five milestones done (plan: docs/design/synth.md); what is left of each is noted under it. A wavetable synth
   with Vital's features, written anew (Vital is a reference only, as JUCE
   is; none of its name, presets or wavetables ship). Tabs: Osc, Filter,
   Env, LFO, Mod, Effects, Macro, Global.
@@ -36,7 +36,9 @@ plan before it is built.
      rebuilds, 128 KB an oscillator a voice.
   4. The wavetable editor — done: drawn, line, harmonic and audio
      keyframes, crossfade or spectral blends, a window over the app.
-  5. Presets (our own format, a built-in bank).
+  5. Presets (our own format, a built-in bank) — done: .fsyn files in
+     the settings folder, twelve built in, the preset bar. Later: more of
+     the bank; tags and search; an audio keyframe's sound carried along.
   - Later: MPE (per-note bend, slide, lift) and microtuning (.scl/.kbm/.tun).
 - **Effects from the synth as inserts** — the nine `fire:fx` effects
   (milestone 2 above) offered in Pads' insert and bus effect slots too,

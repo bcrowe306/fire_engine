@@ -82,6 +82,7 @@ App :: struct {
 	io:       Track_Io,     // arming, and the MIDI activity lights
 	slicer_ui: Slicer_State, // the slicer page's selected slice
 	wte:       Wave_Editor,  // the wavetable editor's window
+	presets:   Preset_Ui,    // the synth's Save Preset dialog
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
 	seq:      Seq_State,
 	capture:  pm.Capture,
@@ -280,6 +281,7 @@ frame :: proc(a: ^App) {
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
+	draw_preset_save(a)
 	draw_export(a)
 	draw_settings(a)
 	draw_rename_project(a)
