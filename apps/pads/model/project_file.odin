@@ -21,7 +21,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 20 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written)
+PROJECT_VERSION :: 21 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -414,6 +414,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_int(w, v.bank)
 	fc.write_int(w, v.selected)
 	fc.write_int(w, v.seq_bank)
+	fc.write_bool(w, v.seq_keys) // v21
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -704,6 +705,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			v.bank = clamp(fc.read_int(r), 0, PADS / PADS_PER_BANK - 1)
 			v.selected = clamp(fc.read_int(r), 0, PADS - 1)
 			v.seq_bank = clamp(fc.read_int(r), 0, 3)
+			if version >= 21 do v.seq_keys = fc.read_bool(r)
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES

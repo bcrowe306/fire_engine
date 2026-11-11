@@ -238,6 +238,7 @@ View_State :: struct {
 	bank:      int,
 	selected:  int,
 	seq_bank:  int,
+	seq_keys:  bool, // the pad keys play the sequence pads
 }
 
 // A project.

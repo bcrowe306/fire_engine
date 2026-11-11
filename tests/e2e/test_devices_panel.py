@@ -2,7 +2,8 @@
 (an effect into the first empty insert, an instrument made the pad's, a
 synth preset loaded), double-clicked for the selected pad, found by
 typing. And the Perform panel's sequence pads: launched, held (back to
-the one before when let go), their banks, the pad keys playing them."""
+the one before when let go), their banks, the pad keys playing them
+(Keys on)."""
 
 import os
 
@@ -63,3 +64,11 @@ def test_sequence_pads_launch_and_hold(app, fixtures):
     assert app.state()["seq_bank"] == 1
     app.expect_item("launch 17", window="perform")
     app.screenshot("sequence_pads")
+    # Keys on: the pad keys play the sequence pads (bank A: z is 1, x is 2).
+    app.click("sequence bank", window="perform", at=(0.125, 0.5))
+    app.click("launch mode", window="perform", at=(0.25, 0.5))  # Launch again
+    app.click("sequence keys", window="perform")
+    app.key("z")
+    assert app.state()["slot"] == 1
+    app.key("x")
+    assert app.state()["slot"] == 2

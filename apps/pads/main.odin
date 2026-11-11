@@ -294,10 +294,9 @@ frame :: proc(a: ^App) {
 	// Which editor has the keyboard: the one drawn focused this frame says
 	// so (a hidden one keeps none).
 	a.seq.focused, a.song_ui.focused = false, false
-	a.perf.keys_here = false // (the Perform panel says so again if drawn in front)
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
-	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank}
+	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys}
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
@@ -436,7 +435,7 @@ PAD_KEYS := [16]im.Key{.Z, .X, .C, .V, .A, .S, .D, .F, .Q, .W, .E, .R, ._1, ._2,
 play_keys :: proc(a: ^App) {
 	io := im.GetIO()
 	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt do return
-	if a.perf.keys_here { // the Perform panel in front: its sequence pads
+	if a.perf.seq_keys { // the sequence pads' Keys switch: the keys play them
 		for k, i in PAD_KEYS {
 			slot := a.perf.seq_bank * pm.PADS_PER_BANK + i
 			if im.IsKeyPressed(k, false) do seq_pad_press(a, slot, true)
@@ -504,7 +503,7 @@ handle_drops :: proc(a: ^App) {
 // Puts the app as the project was left (after opening one).
 view_restore :: proc(a: ^App) {
 	v := a.m.project.view
-	a.play_mode, a.keys, a.bank, a.selected, a.perf.seq_bank = v.play_mode, v.keys, v.bank, v.selected, v.seq_bank
+	a.play_mode, a.keys, a.bank, a.selected, a.perf.seq_bank, a.perf.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_bank, v.seq_keys
 }
 
 // Draws `frames` frames back to back and prints the CPU time per frame.

@@ -21,7 +21,7 @@ send 2 2 -6 pre           # the loop into bus B, pre-fader
 expect undo Pre-fader Send
 insert 0 0 lowpass
 fx_param 2 600            # its cutoff
-expect fx lowpass
+expect fx filter
 busfx 0 0 reverb
 busfx 4 0 compressor
 panel mixer

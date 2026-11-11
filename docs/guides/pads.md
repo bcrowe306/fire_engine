@@ -265,8 +265,8 @@ for other toggles.
   pad is lit and runs a bar along its foot; a queued one blinks with the
   beat and counts down; Shift-click only shows a sequence. **+ New** goes
   to the next empty one; right-click a pad for the sequence's commands.
-  While the Perform panel is in front, the computer's pad keys play the
-  bank of sequence pads shown. Each pad draws its sequence's notes small
+  With **Keys** on (the keyboard button by the banks), the computer's pad
+  keys play the bank of sequence pads shown instead of the pads. Each pad draws its sequence's notes small
   (its rows bottom to top, its bars across), as do the song's steps. A sequence's own tempo
   takes over where it does. Below, how the pads play — **Pads**, each its
   own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:

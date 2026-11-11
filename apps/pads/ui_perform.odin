@@ -20,7 +20,7 @@ Perf_State :: struct {
 	holding: bool, // a sequence pad is held in Hold
 	held_seq: int, // which
 	held_from: int, // the sequence playing before it (to go back to)
-	keys_here: bool, // the Perform panel is in front: the pad keys play sequence pads
+	seq_keys: bool, // the pad keys play the sequence pads shown (the Keys switch)
 }
 
 // Step lengths, as the UI shows them.
@@ -347,8 +347,8 @@ intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
 // Sequence pads in banks of 16 (A to D: 64 sequences), as the pads are:
 // press one to launch it at the switch point set (it blinks while
 // queued), or (Hold) to play it only while held, the one before coming
-// back when let go. With the Perform panel in front the computer's pad
-// keys play the bank shown.
+// back when let go. With Keys on, the computer's pad keys play the bank
+// shown.
 draw_launcher :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
@@ -363,6 +363,9 @@ draw_launcher :: proc(a: ^App) {
 	im.SameLine(0, 10)
 	if ui.segmented("seq_bank", {"A", "B", "C", "D"}, &st.seq_bank) {}
 	ui.name("sequence bank")
+	im.SameLine(0, 8)
+	if ui.icon_button(ui.ICON_KEYBOARD, "Keys: the computer's pad keys play these sequence pads (not the pads)", on = st.seq_keys) do st.seq_keys = !st.seq_keys
+	ui.name("sequence keys")
 	ui.flow(150, 14)
 	hold := 1 if p.launch_hold else 0
 	if ui.segmented("launch_mode", {"Launch", "Hold"}, &hold) do pm.set_launch_hold(m, hold == 1)
@@ -435,8 +438,6 @@ draw_launcher :: proc(a: ^App) {
 	}
 	im.SetCursorScreenPos({origin.x, origin.y + 4 * (size + gap) + im.GetFrameHeight() + 4})
 	im.Dummy({1, 1})
-	// The keys play these while this panel is in front.
-	st.keys_here = im.IsWindowFocused({.RootWindow, .ChildWindows})
 }
 
 // A sequence pad pressed (or its key): launched, or (Hold) played while
