@@ -41,6 +41,7 @@ Osc_Field :: enum u16 {
 	On, Table, Frame, Level, Pan, Transpose, Tune, Keytrack,
 	Unison, Detune, Detune_Power, Detune_Range, Blend, Stereo_Spread, Stack,
 	Phase, Random_Phase, Warp, Warp_Amount, Warp_Spread, Warp_Phase, Destination,
+	Spectral_Morph, Spectral_Amount,
 }
 
 // The sample oscillator's parameters.
@@ -210,6 +211,8 @@ build_params :: proc "contextless" () {
 		add(o(n, .Warp_Spread), name(n, "Warp Spread"), -0.5, 0.5, 0)
 		add(o(n, .Warp_Phase), name(n, "Warp Phase"), 0, 1, 0.5)
 		add(o(n, .Destination), name(n, "Destination"), 0, f32(len(Destination) - 1), 0, .Indexed, false)
+		add(o(n, .Spectral_Morph), name(n, "Spectral Morph"), 0, f32(len(Spectral_Morph) - 1), 0, .Indexed, false)
+		add(o(n, .Spectral_Amount), name(n, "Morph Amount"), 0, 1, 0.5)
 	}
 	{
 		s :: sample_param

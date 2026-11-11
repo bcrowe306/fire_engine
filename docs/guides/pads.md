@@ -502,6 +502,14 @@ the newest note has it now. Drag the ring's end up or down for the amount
   harmonics, octaves) and the warp (sync, formant, quantize, bend,
   squeeze, pulse width, FM and RM from the other oscillators or the
   sample) are chosen beside them, with the warp's spread and phase.
+  **Morph** (beside Key track) changes the frame's harmonics before they
+  become a wave, so it never aliases. The modes are vocode, formant
+  scale, harmonic stretch, inharmonic stretch, smear, random amplitudes,
+  low-pass, high-pass, phase disperse, Shepard tone (to the octave up)
+  and skew (the higher harmonics read from further along the table).
+  The **Morph** knob sets how far. Formant scale, the two stretches and
+  skew do nothing at 50%; the others do nothing at 0. The view draws
+  the playing frame as morphed.
 - **Filter**: two filters side by side: analog, dirty, ladder, digital,
   diode, formant, comb or phaser, each with its styles. The response is
   measured from the filter itself and drawn; drag its handle for cutoff

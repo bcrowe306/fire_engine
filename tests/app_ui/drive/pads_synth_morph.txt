@@ -1,0 +1,19 @@
+# The synth's spectral morphs on the Osc tab: the lit frame as morphed.
+size 1440 900
+synth 0
+select 0
+synth_tab osc
+wait 5
+screenshot synth_morph_none
+synth_param 0 122 10
+synth_param 0 123 1
+wait 5
+screenshot synth_morph_shepard
+synth_param 0 122 2
+synth_param 0 123 0.9
+wait 5
+screenshot synth_morph_formant
+synth_param 0 122 9
+synth_param 0 123 0.6
+wait 5
+screenshot synth_morph_disperse

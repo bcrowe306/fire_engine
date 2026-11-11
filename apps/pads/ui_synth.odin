@@ -394,6 +394,7 @@ mini_chip :: proc(a: ^App, s: synth.Mod_Source) {
 
 DESTINATION_NAMES := []string{"Filter 1", "Filter 2", "Both filters", "Effects", "Direct out"}
 WARP_NAMES := []string{"None", "Sync", "Formant", "Quantize", "Bend", "Squeeze", "Pulse width", "FM from A", "FM from B", "FM from sample", "RM from A", "RM from B", "RM from sample"}
+MORPH_NAMES := []string{"None", "Vocode", "Formant scale", "Harmonic stretch", "Inharmonic stretch", "Smear", "Random amplitudes", "Low-pass", "High-pass", "Phase disperse", "Shepard tone", "Skew"}
 STACK_NAMES := []string{"Normal", "Centre −1 oct", "Centre −2 oct", "Octave", "2 octaves", "Power chord", "Power chord 2", "Major chord", "Minor chord", "Harmonics", "Odd harmonics"}
 
 // The Osc tab: which source (A, B, C, the sample), its on switch, its
@@ -424,6 +425,9 @@ draw_synth_osc :: proc(a: ^App) {
 		synth_choice(a, synth.osc_param(o, .Destination), DESTINATION_NAMES, 110, "##dest")
 		ui.flow(100, 14)
 		synth_toggle(a, "Key track##osc", synth.osc_param(o, .Keytrack))
+		ui.flow(190, 14)
+		synth_choice(a, synth.osc_param(o, .Spectral_Morph), MORPH_NAMES, 190, "##morph", "Morph: ")
+		ui.name("spectral morph")
 	} else {
 		synth_toggle(a, "On##smp", synth.sample_param(.On))
 		im.SameLine(0, 14)
@@ -456,9 +460,9 @@ draw_synth_osc :: proc(a: ^App) {
 	w := avail.x - view_w - 14 - im.GetStyle().ScrollbarSize
 	if st.osc < 3 {
 		col := pos.x + view_w + 14
-		synth_choice(a, synth.osc_param(o, .Stack), STACK_NAMES, 150, "##stack", "Unison: ")
-		wrap_in(col, w, 150, 8)
-		synth_choice(a, synth.osc_param(o, .Warp), WARP_NAMES, 150, "##warp", "Warp: ")
+		synth_choice(a, synth.osc_param(o, .Stack), STACK_NAMES, 128, "##stack", "Unison: ")
+		wrap_in(col, w, 128, 8)
+		synth_choice(a, synth.osc_param(o, .Warp), WARP_NAMES, 128, "##warp", "Warp: ")
 		wrap_in(col, w, 90, 8)
 		synth_drag(a, synth.osc_param(o, .Warp_Spread), "Spread %+.0f%%", 100, 90)
 		wrap_in(col, w, 90, 6)
@@ -466,7 +470,7 @@ draw_synth_osc :: proc(a: ^App) {
 		im.SetCursorScreenPos({pos.x + view_w + 14, im.GetCursorScreenPos().y + 6})
 		synth_knob_row(a, w, {{"Level", synth.osc_param(o, .Level)}, {"Pan", synth.osc_param(o, .Pan)}, {"Frame", synth.osc_param(o, .Frame)}, {"Transpose", synth.osc_param(o, .Transpose)}, {"Tune", synth.osc_param(o, .Tune)}, {"Phase", synth.osc_param(o, .Phase)}, {"Random", synth.osc_param(o, .Random_Phase)}})
 		im.SetCursorScreenPos({pos.x + view_w + 14, im.GetCursorScreenPos().y + 4})
-		synth_knob_row(a, w, {{"Voices", synth.osc_param(o, .Unison)}, {"Detune", synth.osc_param(o, .Detune)}, {"Blend", synth.osc_param(o, .Blend)}, {"Stereo", synth.osc_param(o, .Stereo_Spread)}, {"Curve", synth.osc_param(o, .Detune_Power)}, {"Range", synth.osc_param(o, .Detune_Range)}, {"Warp", synth.osc_param(o, .Warp_Amount)}})
+		synth_knob_row(a, w, {{"Voices", synth.osc_param(o, .Unison)}, {"Detune", synth.osc_param(o, .Detune)}, {"Blend", synth.osc_param(o, .Blend)}, {"Stereo", synth.osc_param(o, .Stereo_Spread)}, {"Curve", synth.osc_param(o, .Detune_Power)}, {"Range", synth.osc_param(o, .Detune_Range)}, {"Warp", synth.osc_param(o, .Warp_Amount)}, {"Morph", synth.osc_param(o, .Spectral_Amount)}})
 	} else {
 		synth_knob_row(a, w, {{"Level", synth.sample_param(.Level)}, {"Pan", synth.sample_param(.Pan)}, {"Transpose", synth.sample_param(.Transpose)}, {"Tune", synth.sample_param(.Tune)}})
 		im.SetCursorScreenPos({pos.x + view_w + 14, im.GetCursorScreenPos().y + 4})
@@ -525,7 +529,23 @@ draw_table_view :: proc(a: ^App, osc: int, size: im.Vec2) {
 		draw_frame(dl, tab.waves[f][:], ox, oy, w, h * 0.9, c, 1)
 	}
 	d := f32(now) / f32(max(tab.frames - 1, 1))
-	draw_frame(dl, tab.waves[now][:], pos.x + pad + d * depth * 0.6, pos.y + pad + h + (1 - d) * depth, w, h * 0.9, color, 2)
+	lit := tab.waves[now][:]
+	// Morphed: the frame as the morph makes it (its first 256 harmonics).
+	morph := synth.Spectral_Morph(int(math.round(pm.synth_value(m, i, synth.osc_param(osc + 1, .Spectral_Morph)))))
+	if morph != .None {
+		fft: dsp.Real_Fft
+		if dsp.real_fft_init(&fft, synth.WAVE_SIZE, allocator = context.temp_allocator) == .None {
+			spec := make([]complex64, synth.WAVE_BINS, context.temp_allocator)
+			buf := make([]f32, synth.WAVE_SIZE + synth.WAVE_PAD, context.temp_allocator)
+			amount := pm.synth_value(m, i, synth.osc_param(osc + 1, .Spectral_Amount))
+			synth.wave_build(&fft, tab, now, 256, spec, buf, morph, amount)
+			peak: f32 = 1
+			for x in buf do peak = max(peak, abs(x))
+			for &x in buf do x /= peak
+			lit = buf[1:synth.WAVE_SIZE + 1]
+		}
+	}
+	draw_frame(dl, lit, pos.x + pad + d * depth * 0.6, pos.y + pad + h + (1 - d) * depth, w, h * 0.9, color, 2)
 	im.DrawList_AddText(dl, {pos.x + 8, pos.y + size.y - im.GetTextLineHeight() - 6}, ui.col(t.text_dim), fmt.ctprintf("%s · frame %d of %d", tab.name, now + 1, tab.frames))
 }
 

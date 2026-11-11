@@ -82,6 +82,8 @@ Osc_Params :: struct {
 	warp_amount:   f32,          // 0..1
 	warp_spread:   f32,          // -0.5..0.5: the warp's amount across the unison voices
 	warp_phase:    f32,          // 0..1 (0.5: none): where in the cycle the warp centres
+	morph:         Spectral_Morph,
+	morph_amount:  f32,          // 0..1 (see `Spectral_Morph`)
 }
 
 // Default oscillator settings (as a new patch has them).
@@ -131,6 +133,8 @@ Osc_State :: struct {
 	fade, fade_len: int, // samples into the fade, and its length
 	built_table: ^Wavetable,
 	built_frame, built_harmonics: int,
+	built_morph: Spectral_Morph,
+	built_amount: f32,
 	rng:         u32,
 	started:     bool,
 }
@@ -301,14 +305,17 @@ osc_build :: proc "contextless" (sh: ^Osc_Shared, s: ^Osc_State, p: ^Osc_Params,
 	if p.warp == .Sync || p.warp == .Formant do pitch *= f64(s.warp[0])
 	h := wave_harmonics(pitch, sample_rate)
 	frame := wave_frame_at(p.table, p.frame)
-	if s.started && p.table == s.built_table && frame == s.built_frame && h == s.built_harmonics {
+	amount := math.round(clamp(p.morph_amount, 0, 1) * 1024) / 1024 // (steps too small to hear make no new buffer)
+	if p.morph == .None do amount = 0
+	if s.started && p.table == s.built_table && frame == s.built_frame && h == s.built_harmonics && p.morph == s.built_morph && amount == s.built_amount {
 		s.from = s.to
 		return
 	}
 	next := 1 - s.to
-	wave_build(&sh.fft, p.table, frame, h, sh.spectrum[:], s.bufs[next][:])
+	wave_build(&sh.fft, p.table, frame, h, sh.spectrum[:], s.bufs[next][:], p.morph, amount)
 	s.from, s.to = s.to, next
 	s.built_table, s.built_frame, s.built_harmonics = p.table, frame, h
+	s.built_morph, s.built_amount = p.morph, amount
 }
 
 // [rt] Samples `a ..< b` of a render of `n`: every unison voice's phase

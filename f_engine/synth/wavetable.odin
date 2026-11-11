@@ -130,19 +130,16 @@ wave_harmonics :: proc "contextless" (phase_inc: f64, sample_rate: f64) -> int {
 }
 
 // [rt] Builds a wave buffer from frame `frame` of `t` keeping harmonics
-// 1 ..= `harmonics` (and DC): `out` is `WAVE_SIZE + WAVE_PAD` samples, the
-// wave at out[1 ..= WAVE_SIZE] with its ends wrapped around it. `spectrum`
-// is `WAVE_BINS` of scratch. With no table, the buffer is silent.
-wave_build :: proc "contextless" (fft: ^dsp.Real_Fft, t: ^Wavetable, frame: int, harmonics: int, spectrum: []complex64, out: []f32) #no_bounds_check {
+// 1 ..= `harmonics` (and DC), morphed by `morph` at `amount` (see
+// `Spectral_Morph`): `out` is `WAVE_SIZE + WAVE_PAD` samples, the wave at
+// out[1 ..= WAVE_SIZE] with its ends wrapped around it. `spectrum` is
+// `WAVE_BINS` of scratch. With no table, the buffer is silent.
+wave_build :: proc "contextless" (fft: ^dsp.Real_Fft, t: ^Wavetable, frame: int, harmonics: int, spectrum: []complex64, out: []f32, morph := Spectral_Morph.None, amount: f32 = 0) #no_bounds_check {
 	if t == nil || t.frames == 0 {
 		for &v in out[:WAVE_SIZE + WAVE_PAD] do v = 0
 		return
 	}
-	src := &t.spectra[clamp(frame, 0, t.frames - 1)]
-	h := clamp(harmonics, 0, WAVE_BINS - 1)
-	spectrum[0] = complex(real(src[0]), 0) // DC kept, Nyquist dropped
-	for k in 1 ..= h do spectrum[k] = src[k]
-	for k in h + 1 ..< WAVE_BINS do spectrum[k] = 0
+	spectral_build(t, clamp(frame, 0, t.frames - 1), clamp(harmonics, 0, WAVE_BINS - 1), morph, amount, spectrum[:WAVE_BINS])
 	dsp.real_fft_inverse(fft, spectrum[:WAVE_BINS], out[1:WAVE_SIZE + 1])
 	out[0] = out[WAVE_SIZE]
 	out[WAVE_SIZE + 1] = out[1]

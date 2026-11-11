@@ -819,6 +819,8 @@ Osc_Params :: struct {
 	warp_amount: f32,
 	warp_spread: f32,
 	warp_phase: f32,
+	morph: Spectral_Morph,
+	morph_amount: f32,
 }
 ```
 
@@ -843,6 +845,8 @@ in its working units (see each).
 | `warp_amount` | 0..1 |
 | `warp_spread` | -0.5..0.5: the warp's amount across the unison voices |
 | `warp_phase` | 0..1 (0.5: none): where in the cycle the warp centres |
+| `morph` |  |
+| `morph_amount` | 0..1 (see `Spectral_Morph`) |
 
 ### Osc_Shared
 
@@ -886,6 +890,8 @@ Osc_State :: struct {
 	built_table: ^Wavetable,
 	built_frame: int,
 	built_harmonics: int,
+	built_morph: Spectral_Morph,
+	built_amount: f32,
 	rng: u32,
 	started: bool,
 }
@@ -922,6 +928,8 @@ glides from between renders. Plain data: zero it, then `osc_start`.
 | `built_table` |  |
 | `built_frame` |  |
 | `built_harmonics` |  |
+| `built_morph` |  |
+| `built_amount` |  |
 | `rng` |  |
 | `started` |  |
 
@@ -1003,6 +1011,8 @@ Osc_Field :: enum u16 {
 	Warp_Spread,
 	Warp_Phase,
 	Destination,
+	Spectral_Morph,
+	Spectral_Amount,
 }
 ```
 
@@ -1427,6 +1437,42 @@ The sample oscillator of one voice. Zero it, then `sample_osc_start`.
 | `pan` |  |
 | `last_pan` |  |
 | `started` |  |
+
+### Spectral_Morph
+
+```odin
+Spectral_Morph :: enum u8 {
+	None,
+	Vocode,
+	Formant_Scale,
+	Harmonic_Stretch,
+	Inharmonic_Stretch,
+	Smear,
+	Random_Amplitudes,
+	Low_Pass,
+	High_Pass,
+	Phase_Disperse,
+	Shepard_Tone,
+	Skew,
+}
+```
+
+How an oscillator morphs its frame's spectrum.
+
+| Value | Description |
+|-------|-------------|
+| `None` |  |
+| `Vocode` | the frame's spectral envelope over every harmonic: a buzz through its formants |
+| `Formant_Scale` | the spectrum's shape drawn in (down) or out (up), the harmonics where they are |
+| `Harmonic_Stretch` | harmonic k moved to k^p: a bell or a squash, still harmonic |
+| `Inharmonic_Stretch` | partials spread as a stiff string's are (wider apart going up), or squeezed |
+| `Smear` | each harmonic's level carried up into the ones above it |
+| `Random_Amplitudes` | each harmonic's level scattered (the same scatter each time) |
+| `Low_Pass` | harmonics above a cutoff gone (the cutoff falls as the amount rises) |
+| `High_Pass` | harmonics below a cutoff gone |
+| `Phase_Disperse` | each harmonic's phase turned by the square of its number: a chirp |
+| `Shepard_Tone` | crossfaded to itself an octave up (1: the octave) |
+| `Skew` | each harmonic read from a frame further along the table (or back), the higher the further |
 
 ### Synth_Live
 
@@ -1898,6 +1944,16 @@ sample_osc_render :: proc "contextless"(o: ^Sample_Osc, p: ^Sample_Params, note:
 key (fractional, glide in it) at the render's end; it writes (not adds)
 its stereo output, and `raw` (before level and pan; may be nil).
 
+### spectral_build
+
+```odin
+spectral_build :: proc "contextless"(t: ^Wavetable, frame: int, h: int, morph: Spectral_Morph, amount: f32, out: []complex64)
+```
+
+**Realtime-safe** (callable on the audio thread). Writes into `out` (`WAVE_BINS`) the spectrum of frame `frame` of
+`t`, harmonics 1 ..= `h` morphed by `morph` at `amount` (and DC kept,
+the rest zero).
+
 ### synth_create
 
 ```odin
@@ -1987,13 +2043,14 @@ so a higher rate doesn't add harmonics nobody hears.
 ### wave_build
 
 ```odin
-wave_build :: proc "contextless"(fft: ^dsp.Real_Fft, t: ^Wavetable, frame: int, harmonics: int, spectrum: []complex64, out: []f32)
+wave_build :: proc "contextless"(fft: ^dsp.Real_Fft, t: ^Wavetable, frame: int, harmonics: int, spectrum: []complex64, out: []f32, morph: Spectral_Morph = Spectral_Morph.None, amount: f32 = 0)
 ```
 
 **Realtime-safe** (callable on the audio thread). Builds a wave buffer from frame `frame` of `t` keeping harmonics
-1 ..= `harmonics` (and DC): `out` is `WAVE_SIZE + WAVE_PAD` samples, the
-wave at out[1 ..= WAVE_SIZE] with its ends wrapped around it. `spectrum`
-is `WAVE_BINS` of scratch. With no table, the buffer is silent.
+1 ..= `harmonics` (and DC), morphed by `morph` at `amount` (see
+`Spectral_Morph`): `out` is `WAVE_SIZE + WAVE_PAD` samples, the wave at
+out[1 ..= WAVE_SIZE] with its ends wrapped around it. `spectrum` is
+`WAVE_BINS` of scratch. With no table, the buffer is silent.
 
 ### wave_read
 

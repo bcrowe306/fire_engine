@@ -502,6 +502,7 @@ osc_params :: proc "contextless" (s: ^Synth, v: ^Voice, n: int, side := 0) -> Os
 		stack = Unison_Stack(int(value(s, o(n, .Stack)))), phase = vvalue(s, v, o(n, .Phase)), random_phase = vvalue(s, v, o(n, .Random_Phase)),
 		warp = Osc_Warp(int(value(s, o(n, .Warp)))), warp_amount = vvalue(s, v, o(n, .Warp_Amount), side),
 		warp_spread = vvalue(s, v, o(n, .Warp_Spread)), warp_phase = vvalue(s, v, o(n, .Warp_Phase)),
+		morph = Spectral_Morph(int(value(s, o(n, .Spectral_Morph)))), morph_amount = vvalue(s, v, o(n, .Spectral_Amount), side),
 	}
 }
 

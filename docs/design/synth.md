@@ -179,6 +179,13 @@ The order is "playable first". Each milestone is tested, test-driven
    - Spectral unison.
    - The four random modulators: perlin, sample and hold, sine
      interpolated, Lorenz attractor.
+
+   Done, except spectral unison. The morphs (`spectral_build`) act on a
+   frame's harmonics as `wave_build` makes its wave, so they never alias.
+   A buffer is only rebuilt when the morph or its amount moves by at
+   least 1/1024. Spectral unison (a buffer for each unison pair) is left
+   for later: it costs 8 times the rebuilds, and 128 KB an oscillator for
+   each voice.
 4. **The wavetable editor**: drawn waves, line shapes, audio slicing, and
    frequency and phase edits.
 5. **Presets** in our own format, with a browser and a built-in bank.

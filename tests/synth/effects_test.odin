@@ -121,3 +121,21 @@ randoms_on_a_voice :: proc(t: ^testing.T) {
 	for k in 0 ..< 12 do apart = max(apart, abs(c[k] - d[k]))
 	testing.expectf(t, apart > 0.1 * hi, "free: each its own (%v)", apart)
 }
+
+// A morph in the voice: the low-pass morph at full leaves a saw its
+// fundamental only; the Shepard morph at full plays it an octave up.
+@(test)
+morphs_in_a_voice :: proc(t: ^testing.T) {
+	play :: proc(t: ^testing.T, m: synth.Spectral_Morph, amount: f32) -> []f32 {
+		r := rig_synth()
+		defer rig_synth_free(r)
+		set_param(r, synth.osc_param(1, .Spectral_Morph), f32(m))
+		set_param(r, synth.osc_param(1, .Spectral_Amount), amount)
+		out := play_synth(t, r, {on(0, 57)}, 24_000)
+		return out.channels[0][4800:]
+	}
+	lp := play(t, .Low_Pass, 1)
+	testing.expectf(t, kit.tone_amplitude(lp, SR, 220) > 0.05 && kit.tone_amplitude(lp, SR, 440) < 0.01 * kit.tone_amplitude(lp, SR, 220), "low-pass: 220 Hz alone (%v, %v)", kit.tone_amplitude(lp, SR, 220), kit.tone_amplitude(lp, SR, 440))
+	sh := play(t, .Shepard_Tone, 1)
+	testing.expectf(t, kit.tone_amplitude(sh, SR, 220) < 0.01 && kit.tone_amplitude(sh, SR, 440) > 0.05, "Shepard: an octave up (%v at 220, %v at 440)", kit.tone_amplitude(sh, SR, 220), kit.tone_amplitude(sh, SR, 440))
+}
