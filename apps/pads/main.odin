@@ -106,6 +106,7 @@ App :: struct {
 	fx:       pm.Fx_Target, // the effect slot the Effects tab edits
 	plugin_choice: Plugin_Choice,
 	editors:  [dynamic]Plugin_Editor, // plug-ins' own windows open
+	about:    About_State,
 	plugin_pad: Plugin_Pad_Ui,
 	proj:     Project_State,
 	detail:   Detail_State,
@@ -138,6 +139,9 @@ main :: proc() {
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
 		case "--prefs":    prefs = next(&i)
 		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
+		case "--version":
+			fmt.println("Pads", version_text())
+			os.exit(0)
 		case:
 			fmt.eprintln("pads: unknown option", os.args[i])
 			os.exit(2)
@@ -312,6 +316,7 @@ frame :: proc(a: ^App) {
 	draw_preset_save(a)
 	draw_leave(a)
 	draw_template_save(a)
+	draw_about(a)
 	draw_export(a)
 	draw_settings(a)
 	draw_rename_project(a)

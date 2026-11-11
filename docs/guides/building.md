@@ -128,3 +128,26 @@ odin build apps/ui_tests -collection:fire=f_engine -collection:app=app -collecti
 `odin test` package because macOS allows windows only on the main thread.
 See [the application layer](/guides/app-layer/) for drive scripts and
 screenshots.
+
+## Releases
+
+Pads' packages are made by `scripts/release/`, each on its own system
+(the cloud test machines do Linux, ARM and Windows), into
+`.build/release`:
+
+```bash
+task release:macos     # Pads.app in Pads-<version>-macos-arm64.dmg (dmgbuild, from task deps)
+task release:linux     # Pads-<version>-linux-<arch>.AppImage and pads_<version>_<arch>.deb
+task release:windows   # Pads-<version>-windows-x86_64-setup.exe (Inno Setup) and a .zip
+task release:icons     # the icons, from apps/pads/assets/icon_source.jpeg (macOS; committed)
+```
+
+Each is built optimized, with debug info (crash reports name lines),
+stamped with its version (`PADS_VERSION` in `apps/pads/version.odin`),
+commit and date (`pads --version`, Help > About Pads), and carries the
+licences of Pads and what it is built from. The AppImage needs
+appimagetool (`~/tools/appimagetool-<arch>.AppImage`, or
+`$APPIMAGETOOL`); the installer needs Inno Setup 6's `ISCC.exe` (or
+`$ISCC`). The packages are unsigned for now: on macOS the app has an
+ad-hoc signature (Apple silicon runs nothing unsigned), and the first
+open is right-click > Open. Release notes: `docs/release-notes.md`.

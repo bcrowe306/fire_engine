@@ -1,0 +1,29 @@
+# Packages of Pads for a release (scripts/release/), each on its own system:
+# task release:macos (a .app in a .dmg; dmgbuild), task release:linux (an
+# AppImage and a .deb), task release:windows (an Inno Setup installer and a
+# zip). They land in .build/release. Unsigned for now (see docs/design/release-0.1.md).
+version: '3'
+
+tasks:
+  icons:
+    desc: 'Make Pads icons from apps/pads/assets/icon_source.jpeg (macOS; the results are committed).'
+    cmds:
+      - bash ./scripts/release/icons.sh
+
+  macos:
+    desc: 'Pads.app and its .dmg (needs dmgbuild in .deps/venv: task deps).'
+    platforms: [darwin]
+    cmds:
+      - bash ./scripts/release/macos.sh
+
+  linux:
+    desc: 'Pads AppImage and .deb for this machine (x86-64 or ARM64; needs appimagetool in ~/tools or $APPIMAGETOOL).'
+    platforms: [linux]
+    cmds:
+      - bash ./scripts/release/linux.sh
+
+  windows:
+    desc: 'Pads installer (Inno Setup) and zip.'
+    platforms: [windows]
+    cmds:
+      - bash ./scripts/release/windows.sh

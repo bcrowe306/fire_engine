@@ -37,6 +37,7 @@ State :: struct {
 	timeline:   f64, // the playhead on the timeline (negative counting in)
 	position:   string, // as the toolbar shows it: bar.beat.sixteenth
 	recording:  bool,
+	version:    string, // Pads' version ("0.1.0-dev")
 	song_mode:  bool,
 	song_steps: int,
 	song:       [dynamic]int, // each step's sequence (1-based)
@@ -272,6 +273,7 @@ state_json :: proc(a: ^App) -> string {
 	s.timeline = tl
 	bar, bt, six := pm.position_of(p, tl if tl < 0 else s.beat)
 	s.position = fmt.tprintf("%d.%d.%d", bar, bt, six)
+	s.version = PADS_VERSION
 	s.song_mode, s.song_steps = p.song_mode, p.song.count
 	s.song = make([dynamic]int, context.temp_allocator)
 	for st in p.song.steps[:p.song.count] do append(&s.song, int(st.slot) + 1)

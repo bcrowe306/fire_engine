@@ -89,3 +89,14 @@ def test_metronome_sound_and_templates(app, fixtures):
     app.click("New from Template")
     app.click("Kick Start")
     assert app.pad(0)["name"] == "kick" and app.state()["metro_click"] == 3
+
+
+def test_about_box_shows_the_version(app):
+    app.click("Help")
+    app.click("menu about")
+    app.wait(3)
+    app.expect_item("copy version")
+    assert app.state()["version"].startswith("0.1.0-dev"), app.state()["version"]
+    app.click("about close")
+    app.wait(3)
+    app.expect_no_item("copy version")

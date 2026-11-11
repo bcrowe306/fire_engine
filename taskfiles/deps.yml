@@ -79,6 +79,7 @@ tasks:
       - cmake --build {{.DEPS}}/build/imgui --config Release --parallel {{numCPU}}
       - touch {{.DEPS}}/build/imgui/.probe_v1
       - '{{.PYTHON}} -m pip install --quiet pytest==8.3.5'  # for the e2e harness (tests/e2e)
+      - '{{if eq OS "darwin"}}{{.PYTHON}} -m pip install --quiet dmgbuild==1.6.7{{else}}true{{end}}'  # macOS: task release:macos's disk image
 
   clean:
     desc: Remove fetched sources, build trees and the built libraries.

@@ -238,6 +238,11 @@ draw_menu :: proc(user: rawptr) {
 		ui.menu_action(&a.actions, "reset_layout")
 		im.EndMenu()
 	}
+	if im.BeginMenu("Help") {
+		if im.MenuItem("About Pads") do a.about.open = true
+		ui.name("menu about")
+		im.EndMenu()
+	}
 }
 
 setup_workspace :: proc(a: ^App) {

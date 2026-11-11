@@ -22,6 +22,11 @@ vars:
     sh: 'for f in {{.ROOT_DIR}}/third_party/link/lib/*abl_link*; do if [ -e "$f" ]; then echo 1; exit 0; fi; done; echo 0'
   PADS_LINK: '-collection:padslink={{.ROOT_DIR}}/apps/pads/link/{{if eq .LINK "1"}}on{{else}}off{{end}}'
   OPT: '{{.OPT | default "speed"}}'
+  # What the build is: its commit (and the day), in the About box and --version.
+  PADS_COMMIT:
+    sh: 'git -C "{{.ROOT_DIR}}" rev-parse --short=7 HEAD 2>/dev/null || echo unknown'
+  PADS_DATE:
+    sh: 'date +%Y-%m-%d'
   # The Python `task deps` sets up (pytest for the e2e suite).
   E2E_PYTHON: '{{if eq OS "windows"}}{{.ROOT_DIR}}/.deps/venv/Scripts/python.exe{{else}}{{.ROOT_DIR}}/.deps/venv/bin/python{{end}}'
 
@@ -43,7 +48,7 @@ tasks:
       - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}{{.LINK}}"'
     cmds:
       - mkdir -p {{.OUT}}
-      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} -define:PADS_COMMIT={{.PADS_COMMIT}} -define:PADS_DATE={{.PADS_DATE}} -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
       - echo {{.OPT}}{{.LINK}} > {{.OUT}}/pads.opt
 
   gallery:
