@@ -15,6 +15,7 @@ import "fire:synth"
 State :: struct {
 	selected:   int,
 	bank:       int,
+	keyboard:   [16]string, // Keyboard mode: the note each pad of the grid plays ("": none)
 	play_mode:  string,
 	detail_tab: string, // the sampler's tab in front, or "EQ", or "Effect"
 	track:      string, // what the bottom panel shows: "pad 1", "bus 1" (5: main), "perf 1"
@@ -158,6 +159,7 @@ State_Sequence :: struct {
 State_Note :: struct {
 	start: f64,
 	pad:   int,
+	pitch: int,
 	muted: bool,
 }
 
@@ -205,6 +207,13 @@ state_json :: proc(a: ^App) -> string {
 	p := &m.project
 	s: State
 	s.selected, s.bank = a.selected, a.bank
+	if a.play_mode == .Keyboard {
+		for k in 0 ..< pm.PADS_PER_BANK {
+			ps: [4]int
+			notes := keyboard_notes(a, k, &ps)
+			s.keyboard[k] = fmt.tprintf("%s", ui.note_name(60 + notes[0])) if keyboard_in_range(notes) else ""
+		}
+	}
 	s.play_mode = enum_name(a.play_mode)
 	switch a.detail.device.kind {
 	case .Instrument: s.detail_tab = enum_name(a.detail.tab)
@@ -248,7 +257,7 @@ state_json :: proc(a: ^App) -> string {
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
 	s.note_list = make([dynamic]State_Note, context.temp_allocator)
 	for n in seq.notes {
-		append(&s.note_list, State_Note{start = n.start, pad = int(n.pad), muted = n.muted})
+		append(&s.note_list, State_Note{start = n.start, pad = int(n.pad), pitch = int(n.pitch), muted = n.muted})
 		if n.muted do s.muted_notes += 1
 	}
 	s.launch = enum_name(p.switch_at)

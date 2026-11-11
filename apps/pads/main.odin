@@ -333,11 +333,8 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 		if pad := a.m.project.pads[index]; pad.sample != 0 || pad.kind == .Synth do pm.hit(&a.m.engine, index, true, velocity) // (a synth needs no sample)
 	case .Keyboard:
 		pitches: [4]int
-		ps := pm.keyboard_pitches(a.keys, k, &pitches)
-		if a.m.project.pads[a.selected].kind == .Slicer { // a slicer: pad k plays slice k
-			pitches[0] = k
-			ps = pitches[:1]
-		}
+		ps := keyboard_notes(a, k, &pitches)
+		if !keyboard_in_range(ps) do break // (past what a pad can be pitched to: silent)
 		g^ = {on = true, pad = a.selected, keyboard = true, count = len(ps)}
 		for p, i in ps {
 			g.pitches[i] = i8(clamp(p, -48, 48))
@@ -349,6 +346,24 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 	}
 	a.lit[a.bank * pm.PADS_PER_BANK + k] = 0.18
 	a.held[index] = true
+}
+
+// The pitches (from the target pad's own) pad `k` of the grid plays in
+// Keyboard mode: the scale's degrees from the bank's start (bank A the
+// first 16 from the root, B the next 16...), or for a slicer its slice.
+keyboard_notes :: proc(a: ^App, k: int, out: ^[4]int) -> []int {
+	degree := a.bank * pm.PADS_PER_BANK + k
+	if a.m.project.pads[a.selected].kind == .Slicer {
+		out[0] = degree
+		return out[:1]
+	}
+	return pm.keyboard_pitches(a.keys, degree, out)
+}
+
+// Whether every pitch can be played (within four octaves either way).
+keyboard_in_range :: proc(ps: []int) -> bool {
+	for p in ps do if p < -48 || p > 48 do return false
+	return len(ps) > 0
 }
 
 // Releases pad `index` (what its press played).

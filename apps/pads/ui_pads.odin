@@ -22,6 +22,7 @@ draw_pads :: proc(user: rawptr) {
 
 	bank := a.bank
 	if ui.segmented("banks", {"A", "B", "C", "D", "E", "F", "G", "H"}, &bank) do a.bank = bank
+	if im.IsItemHovered() && a.play_mode == .Keyboard do im.SetTooltip("In Keyboard mode each bank plays the next 16 notes of the scale")
 	im.Spacing()
 
 	avail := im.GetContentRegionAvail()
@@ -66,18 +67,19 @@ draw_pads :: proc(user: rawptr) {
 		case .Keyboard: // the notes of the scale, on the selected pad
 			target := &p.pads[a.selected]
 			pitches: [4]int
-			ps := pm.keyboard_pitches(a.keys, k, &pitches)
+			ps := keyboard_notes(a, k, &pitches)
 			face.name = ui.note_name(60 + ps[0])
 			if len(ps) > 1 do face.name = fmt.tprintf("%s %s", face.name, CHORD_SUFFIX[a.keys.chord])
 			face.middle = fmt.tprintf("%+d st", ps[0])
 			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0 || target.kind == .Synth, false, false, nil
 			if (ps[0] - a.keys.root) %% 12 == 0 do face.selected = true // the roots stand out
 			if target.kind == .Slicer { // its slices, a pad each
-				face.name = fmt.tprintf("Slice %d", k + 1)
-				face.middle = ui.note_name(int(target.slicer.base) + k)
-				face.has_sound = k < int(target.slicer.count)
+				face.name = fmt.tprintf("Slice %d", ps[0] + 1)
+				face.middle = ui.note_name(int(target.slicer.base) + ps[0])
+				face.has_sound = ps[0] < int(target.slicer.count)
 				face.selected = false
 			}
+			if !keyboard_in_range(ps) do face.name, face.middle, face.has_sound, face.selected = "", "", false, false
 		case .Velocity:
 			target := &p.pads[a.selected]
 			face.name = fmt.tprintf("%d", int(pm.velocity_of_pad(k) * 127 + 0.5))

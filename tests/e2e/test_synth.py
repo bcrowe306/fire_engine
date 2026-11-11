@@ -79,3 +79,26 @@ def test_choose_a_wavetable_and_voice_modes(app):
     app.click("4×", window="detail")
     assert app.pad(0)["synth"]["params"]["Oversampling"] == 2
     app.screenshot("synth_global")
+
+
+def test_keyboard_mode_banks_and_recording(app):
+    synth_pad(app)
+    app.cmd("mode keys")
+    app.wait(3)
+    a = app.state()["keyboard"]
+    assert a[0] != "" and a[15] != "", a
+    app.click("B", window="detail")
+    b = app.state()["keyboard"]
+    assert b[0] != a[0] and b[0] not in a, (a, b)  # the next 16 notes
+    # A computer key plays the bank's note, and it records at that pitch.
+    app.cmd("rec")
+    app.cmd("play")
+    app.wait(10)
+    app.key("z")  # the bottom-left pad
+    app.wait(20)
+    app.cmd("stop")
+    app.wait(5)
+    notes = app.state()["note_list"]
+    assert len(notes) == 1, notes
+    assert notes[0]["pitch"] >= 16, notes  # bank B: 16 degrees up at least (a semitone a degree or more)
+    app.cmd("mode pads")
