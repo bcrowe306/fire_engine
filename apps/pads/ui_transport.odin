@@ -14,6 +14,8 @@ Transport_State :: struct {
 	taps:  pm.Tap_Tempo,
 	clock: f64, // seconds of frames (what taps are timed by: frames, so a script's are steady)
 	tapped: f64, // when Tap was last pressed (for its flash)
+	stopped_at: f64, // when Stop was last pressed (a second press soon after silences everything)
+	silences: int,   // times Stop silenced everything (for tests)
 	width: f32,
 }
 
@@ -48,9 +50,15 @@ draw_toolbar :: proc(user: rawptr) {
 		if !playing do pm.play(e)
 	}
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_SQUARE, "Stop (Space)", size = big) {
+	if ui.icon_button(ui.ICON_SQUARE, "Stop (Space); press twice to silence every sound", size = big) {
+		// Pressed again soon after (or while stopped): every voice stops too.
+		if !playing || st.clock - st.stopped_at < 0.6 {
+			pm.silence_all(e)
+			st.silences += 1
+		}
 		pm.stop(e)
 		pm.capture_arm(m, &a.capture, false)
+		st.stopped_at = st.clock
 	}
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record (Cmd+R)", on = a.capture.armed, color = t.danger, size = big) do toggle_record(a)

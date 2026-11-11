@@ -48,7 +48,7 @@ def test_the_timeline_plays_from_a_bar(app, fixtures):
     assert s["playing"] and s["song_mode"]
     app.until(lambda s: s["song_step"] == 2, what="the second step playing")
     app.screenshot("song_playing")
-    app.click("Stop (Space)")
+    app.click("Stop (Space); press twice to silence every sound")
     app.click("song timeline", window="song", at=(0.1, 0.5))
     assert app.state()["song_selected"] == 1
 

@@ -146,6 +146,7 @@ Pad :: struct {
 	input:      Audio_Input, // an audio pad's
 	monitor:    bool,        // an armed audio pad plays its input through its strip
 	voice:      Voice,       // a sampler pad's voice (envelopes, filter, pitch, LFOs)
+	warp:       Warp,        // following the tempo (see `Warp`)
 }
 
 // A sample the project holds: a file in its folder.
@@ -168,7 +169,8 @@ Project :: struct {
 	slot:    int, // the current sequence: what plays and is edited
 	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key N plays pad N (A1 = 0, H16 = 127)
 	perform: Perform, // the arpeggiator and note repeat (`set_perform`)
-	buses:   [BUSES]Bus,
+	buses:   [BUSES]Bus, // the first `bus_count` are in use
+	bus_count: int,
 	main:    Bus,
 	perf_fx: [PERF_FX]Effect_Slot, // the performance effects (on while held)
 	perf_intensity: [PERF_FX]f32, // how hard each plays (0..1) unless its press says
@@ -225,6 +227,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	for &pad in p.pads do pad = default_pad()
 	for &s in p.sequences do s = default_sequence()
 	p.perf_fx = default_perf_fx()
+	p.bus_count = DEFAULT_BUSES
 	p.arrangement_count = 1
 	copy(p.arrangements[0].name[:], "Song")
 	for &x in p.perf_intensity do x = 1

@@ -29,6 +29,14 @@ NOTE_ID_ANY : Note_Id : Note_Id(-1)
 
 Wildcard `Note_Id`: the event is not tied to a specific note instance.
 
+### NOTE_KEY_ALL
+
+```odin
+NOTE_KEY_ALL : u8 : u8(255)
+```
+
+A `Note_Choke` key that silences every note, on every channel.
+
 ### CHUNK_HEADER_SIZE
 
 ```odin
@@ -128,13 +136,14 @@ Note_Choke :: struct {
 Silences a note at once (a fade of a few milliseconds), even one that
 would play to its end whatever the note-off (a one-shot drum): for choke
 groups, where one sound cuts another (an open hi-hat cut by the closed
-one). Matches as `Note_Off` does.
+one). Matches as `Note_Off` does; with key NOTE_KEY_ALL it silences
+every note, whatever its id or channel (all sound off: a panic).
 
 | Field | Description |
 |-------|-------------|
 | `id` | note instance, or NOTE_ID_ANY |
 | `channel` | 0..15 |
-| `key` | 0..127 |
+| `key` | 0..127, or NOTE_KEY_ALL |
 
 ### Note_Expression_Kind
 

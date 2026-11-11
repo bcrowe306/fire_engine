@@ -79,6 +79,8 @@ Router :: struct {
 	keys_id:  [128]fc.Note_Id,
 	next_id:  fc.Note_Id,
 	played:   u64, // atomic: hits played (for tests and meters)
+	silence:  u32, // atomic: raised to silence every voice (`silence_all`)
+	silenced: u32, // audio thread: the last `silence` acted on
 	struck:   [PADS]u32, // atomic: times each pad has sounded (the UI lights pads when these move)
 }
 
@@ -122,6 +124,12 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 	out := ctx.events_out
 	if out == nil do return
 	for s in rt.spsc_pop(&r.settings) do router_set(r, s, out)
+	// Asked to silence everything: every voice of every pad, at once.
+	if want := intrinsics.atomic_load(&r.silence); want != r.silenced {
+		r.silenced = want
+		fc.event_writer_push(out, {0, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
+		r.holding = {}
+	}
 	beat: f64
 	playing := false
 	if tl := fc.transport_timeline(ctx.transport, r.timeline); tl != nil do beat, playing = f64(tl.position), tl.playing

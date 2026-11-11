@@ -147,13 +147,28 @@ for other toggles.
     put out behind their curve too. A device's knobs spread evenly
     across its width; frequency knobs turn in ratios.
   - **Global**: sampler or audio track, name and colour (click it for the
-    swatches and picker), choke group (a pad cuts the others in its
-    group), volume, pan, transpose, fine tune, how many notes it plays at
+    swatches and picker), volume, pan, transpose, fine tune, how many notes it plays at
     once, Clear Pad. An audio pad shows only Sample, Effects and Global.
 - **Sample** (bottom tab): how the pad plays — **One-shot** to the end,
   **Gate** while held, **Loop** loops while held, **Hold** loops until hit
-  again; reverse; a loop's direction and crossfade — over the waveform,
-  on black. Drag **S** and **E** (by
+  again; reverse; its **choke group** (a hit stops the others playing in
+  its group: open and closed hi-hats; the pads show theirs as a badge,
+  `C2`); a loop's direction and crossfade. Under that, **Warp**: on, the
+  sample follows the tempo at its own pitch, made longer or shorter
+  rather than played faster or slower. Pick how in its dropdown —
+  **Beats** (cut at its hits, or on a 1/16, 1/8 or 1/4 grid of its own
+  beats, each piece played as it was and moved to its new time: drums
+  and loops, attacks exact; **Fill gaps** loops a piece's tail when
+  slower instead of leaving silence), **Tones** (a spectral stretch of the
+  whole: voices, bass, pads), **Complex** (the spectral stretch started
+  again at each strong hit: full mixes, attacks kept crisp) or
+  **Re-pitch** (faster or slower, the pitch with it). Its own tempo is
+  guessed from its length (a whole number of beats; drag or type it, or
+  the wand guesses again); its beats are drawn over the waveform (bars
+  numbered). The warped sound is rendered in the background into the
+  project's `warped/` folder, kept there for the next time, and played
+  once ready (it shows "Rendering..." until then, the ratio after). All
+  this over the waveform, on black. Drag **S** and **E** (by
   their tags or their lines) to set the region the pad plays, **L** for the
   loop; drag the squares under the tags in from the region's ends to fade
   it in and out (a ramp shows each fade; the fades are the pad's, so the
@@ -166,7 +181,8 @@ for other toggles.
   - **Chop** — at the transients (with a sensitivity) or into equal parts,
     onto consecutive pads, each playing its slice of the same file;
   - **Stretch to beats** — time-stretch the region to N beats at the
-    project tempo, pitch unchanged;
+    project tempo, pitch unchanged, as a new file (Warp does it without
+    touching the sample);
   - record (the circle) — record the audio input onto the pad.
 
 - **Sequence** (middle tab): the sequencer, editing the sequence the
@@ -197,7 +213,10 @@ for other toggles.
   themselves, Cmd+C copies and Cmd+V pastes them (into any sequence; at
   the selection's bar, or where the grid's menu was opened). Cmd+A
   selects every note shown. Right-click a note for its commands and the
-  selection's.
+  selection's. Drop a sample from the browser on a row (its name or
+  along it: the row lights) to load it onto that row's pad. Drag the bar
+  between the grid and the lane below to make the lane taller or
+  shorter.
   Click a row's name to select its pad (its strip and devices follow) and
   every note in its row, and to hear it (the **headphones** turn that
   off); right-click it for the pad's commands (**Rename…**, colour, mute,
@@ -241,22 +260,31 @@ for other toggles.
   (the next note you play plays the selected pad), and **MIDI out** (the
   pad's hits also go out as a note on a channel).
 - **Mixer** (middle tab): a channel strip, as in Logic, for every pad
-  with a sound (all banks; it scrolls sideways), then buses A–D and main
-  pinned on the right. From the top:
+  with a sound (all banks; it scrolls sideways), then the buses (four to
+  start with, up to 16: the **+** adds one; they scroll when many) and
+  main, pinned on the right. Right-click a bus's name to **Rename…** (or
+  double-click it) or **Delete Bus** (what went to it goes to main; the
+  buses after it move up a letter). Click strips' names with **Shift** (a
+  range) or **Cmd** (one more) to select several: then moving one's
+  fader, pan or a send moves them all by as much, and mute, solo and the
+  output change them all (one undo step). From the top:
   - the pad's **EQ** curve (click it for the Effects tab, where the EQ is);
   - its two **inserts** (a bus and main have five slots);
-  - its four **sends**, one per bus: drag a send up and down for its
+  - its **sends**, one per bus (four show; with more buses they scroll):
+    drag a send up and down for its
     level (Shift for fine), double-click to turn it on at 0 dB or off,
     right-click for **Pre-fader** (it then ignores the fader, and shows
     `pre`, its knob in yellow). A muted pad sends nothing;
-  - its **output**: Main or a bus (click to choose);
   - **pan** (drag; double-click centres);
   - two readouts: the fader's level, and the loudest peak since you last
     clicked it (red above 0 dB);
   - the **fader** (Logic's taper: finer near 0 dB; double-click for 0 dB)
     beside the stereo meter and its dB scale;
-  - **M**ute and **S**olo, and the name on the pad's colour (click to
-    select the pad).
+  - **M**ute and **S**olo;
+  - its **output**, right above its name: Main or a bus (click to
+    choose). A bus's output is Main or another bus (one that would bring
+    it back round to itself can't be picked);
+  - the name on the pad's colour (click to select the pad).
 
   Click a slot to edit it in the **Effects** tab: what it holds
   (filters, dynamics, saturation, bit-crusher, delay, reverb, chorus,
@@ -382,13 +410,18 @@ from before audio pads opens with every pad a sampler.
 The toolbar under the menus, centred, always showing. Its buttons are
 icons whose colour shows their state.
 
-- **Play** (green while playing) and **Stop**, or Space for both.
+- **Play** (green while playing) and **Stop**, or Space for both. Press
+  **Stop** twice (or when stopped) to silence every sound still ringing.
   **Record** (red; Cmd+R) arms recording: from a stop it plays, after the
   count-in.
 - **Loop**: on, a sequence (or the song) goes round; off, it plays once
   and stops. **Count-in** (the timer; click for off, 1 bar, 2 bars):
   bars of click before recording starts, with nothing played or recorded
-  until the top (the position shows them as bar 0, in yellow).
+  until the top (the position shows them as bar 0, in yellow). The
+  count-in clicks even with the metronome off (a setting). A hit a little
+  before a sequence's first beat — at the end of the loop, or of the
+  count-in — is recorded on it (by default up to a 1/16 early; a
+  setting).
 - The **position**: bar . beat . sixteenth of the sequence playing.
 - The **sequence**: pick one of the 32 (those with notes are marked), or
   step with the arrows.
@@ -415,6 +448,16 @@ icons whose colour shows their state.
 
 These settings are saved with the project.
 
+**File > Settings…** (Cmd+,) holds what is the same for every project,
+kept with the preferences: whether the count-in clicks with the
+metronome off (on by default), and how early a hit before the downbeat
+still goes on it (off, a 1/32, a 1/16, an 1/8).
+
+To work on several pads at once, **Shift**-click pads (a range) or
+**Cmd**-click them (one more or less): right-click one of them to
+**Mute**, **Solo**, set their **Choke Group** or **Clear Pads**, or press
+Delete to clear them (each one undo step).
+
 ## Projects
 
 A project is a folder, `Name.pads`: `project.fire` (a
@@ -428,12 +471,15 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
 
 - **File > New** (Cmd+N), **Open…** (Cmd+O, a folder), **Open Recent**
   (the last 8, kept in the user's preferences folder), **Save** (Cmd+S),
-  **Save As…** (Cmd+Shift+S: a folder; the samples are copied there).
+  **Save As…** (Cmd+Shift+S: a name and a place; it becomes the folder
+  `<name>.pads`, the samples copied there), **Rename Project…** (its
+  folder renamed beside where it is).
 - Changes are saved on their own every minute, and on quitting. The
   window's title shows the project, with a dot while it has unsaved
   changes. Opening a project starts a new undo history.
-- A new project lives in the temporary folder until **Save As** gives it a
-  place.
+- A new project is "Untitled" and lives in the temporary folder: **Save**
+  asks for its name and place (Documents to start with), as Save As
+  does.
 
 ## Export
 
@@ -544,7 +590,10 @@ insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIN
 plugin BUS SLOT ID PATH                      a CLAP plug-in in a bus slot
 edit_fx pad P S | bus B S | perf N           the slot the Effects tab edits
 fx_param ID VALUE                            one of its settings
-send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..4; -60 dB is off)
+send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..the buses in use; -60 dB is off)
+addbus / delbus B / busdest B D (0 = main) / busname B NAME
+warp PAD on|off [beats|tones|complex|repitch] [BPM]
+rename_project NAME
 route PAD BUS / busvol BUS DB / mute pad N | bus B / solo ... / perf N on|off
 expect level main | bus B | pad N above|below DB   (the meter as shown)
 expect fx KIND                               what the edited slot holds
@@ -614,6 +663,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
 | `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song and launch setting |
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
+| `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |

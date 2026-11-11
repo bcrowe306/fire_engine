@@ -25,6 +25,14 @@ or at a `transpose` of it:
 The default preset analyses 120 ms blocks every 30 ms, so output is heard
 about 60 ms after its input; the clip player compensates. Beyond 2× slower,
 phases are randomised (deterministically, the same on every platform).
+
+To make a whole sound longer or shorter offline (a sampler's warp), `warp`
+picks how: Beats (cut at its hits, each piece moved), Tones (one spectral
+stretch), Complex (the stretch started again at each strong hit) or
+Repitch (resampled):
+
+	out, _ := stretch.warp(input, 48_000, 1.25, {mode = .Beats})
+	defer stretch.warp_destroy(out)
 */
 package stretch
 

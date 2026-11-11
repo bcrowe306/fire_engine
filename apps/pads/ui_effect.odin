@@ -39,7 +39,7 @@ draw_effect :: proc(user: rawptr) {
 	}
 	f := a.platform.fonts
 	im.PushFontFloat(f.bold, 16)
-	im.Text("%s", fmt.ctprintf("%s", target_name(t)))
+	im.Text("%s", fmt.ctprintf("%s", target_name(&a.m.project, t)))
 	im.PopFont()
 	im.Spacing()
 
@@ -166,11 +166,11 @@ param_format :: proc(p: fc.Param_Info) -> cstring {
 }
 
 // "A1 · Insert 1", "Bus B · Slot 3", "Performance 5".
-target_name :: proc(t: pm.Fx_Target) -> string {
+target_name :: proc(p: ^pm.Project, t: pm.Fx_Target) -> string {
 	switch t.kind {
 	case .None: return ""
 	case .Pad:  return fmt.tprintf("%s · Insert %d", pm.pad_label(t.index), t.slot + 1)
-	case .Bus:  return fmt.tprintf("%s · Slot %d", pm.bus_name(t.index + 1 if t.index < pm.BUSES else 0), t.slot + 1)
+	case .Bus:  return fmt.tprintf("%s · Slot %d", pm.bus_index_name(p, t.index), t.slot + 1)
 	case .Perf: return fmt.tprintf("Performance effect %d", t.index + 1)
 	}
 	return ""

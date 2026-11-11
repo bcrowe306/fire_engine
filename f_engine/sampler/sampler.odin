@@ -386,7 +386,7 @@ sampler_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		#partial switch ev in e.payload {
 		case core.Note_On:  note_on(s, ev)
 		case core.Note_Off: for &v in s.voices do if v.on && v.held && same(&v, ev.id, ev.channel, ev.key) do note_off(&v)
-		case core.Note_Choke: for &v in s.voices do if v.on && same(&v, ev.id, ev.channel, ev.key) do choke(s, &v)
+		case core.Note_Choke: for &v in s.voices do if v.on && (ev.key == core.NOTE_KEY_ALL || same(&v, ev.id, ev.channel, ev.key)) do choke(s, &v)
 		case core.Note_Expression:
 			for &v in s.voices do if v.on && same(&v, ev.id, ev.channel, ev.key) {
 				#partial switch ev.kind {

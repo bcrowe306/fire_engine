@@ -87,6 +87,7 @@ Bus_Nodes :: struct {
 	meter:   ^dsp.Meter,
 	built:   Bus, // the settings sent
 	sent:    bool,
+	dest:    int, // where its output is wired: 0 = main, 1..BUSES = a bus (main itself: -1)
 	chain_dirty: bool, // its effect chain must be wired again
 }
 
@@ -227,8 +228,12 @@ build_mixer :: proc(e: ^Engine) -> fc.Error {
 		_ = i
 	}
 	main := &e.mixer.buses[BUSES]
+	main.dest = -1
 	for c in 0 ..< 2 do graph.connect(g, main.meter_id, c, graph.OUTPUT, c)
-	for b in e.mixer.buses[:BUSES] do for c in 0 ..< 2 do graph.connect(g, b.meter_id, c, main.input, c)
+	for &b in e.mixer.buses[:BUSES] {
+		for c in 0 ..< 2 do graph.connect(g, b.meter_id, c, main.input, c)
+		b.dest = 0 // (sync wires it where its bus goes)
+	}
 	e.mixer.built = true
 	return .None
 }
@@ -251,7 +256,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 	mx.any_solo = false
 	for pad, i in p.pads do if pad.solo && pad_used(p, i) do mx.any_solo = true
 	mx.any_bus_solo = false
-	for b in p.buses do if b.solo do mx.any_bus_solo = true
+	for b in p.buses[:p.bus_count] do if b.solo do mx.any_bus_solo = true
 
 	// Pads.
 	for &st, i in mx.strips {
@@ -381,6 +386,16 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 			wire_chain(g, bn.input, chain[:], bn.fader)
 			bn.chain_dirty = false
 			structural = true
+		}
+		// Where it goes: main, or another bus (never round: the model sees to that).
+		if !is_main {
+			want := int(b.dest) if int(b.dest) <= p.bus_count && bus_dest_ok(p, i + 1, int(b.dest)) else 0
+			if want != bn.dest {
+				for c in 0 ..< 2 do graph.disconnect(g, bn.meter_id, c, dest_input(e, bn.dest), c)
+				for c in 0 ..< 2 do graph.connect(g, bn.meter_id, c, dest_input(e, want), c)
+				bn.dest = want
+				structural = true
+			}
 		}
 		muted := b.mute || (!is_main && mx.any_bus_solo && !b.solo)
 		vol := f32(-96) if muted else b.volume

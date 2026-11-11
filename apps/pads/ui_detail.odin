@@ -213,7 +213,7 @@ device_tabs :: proc(a: ^App) {
 		for k in 0 ..< pm.PAD_INSERTS do slot_tab(a, st, {.Pad, i, k})
 		if e := first_empty(a, .Pad, i, pm.PAD_INSERTS); e >= 0 do add_tab(st, e)
 	case .Bus:
-		bus_label := fmt.ctprintf("%s  %s###devbus", ui.ICON_SLIDERS_VERTICAL, pm.bus_name(0 if tr.index == pm.BUSES else tr.index + 1))
+		bus_label := fmt.ctprintf("%s  %s###devbus", ui.ICON_SLIDERS_VERTICAL, pm.bus_index_name(&a.m.project, tr.index))
 		im.TabItemButton(bus_label, {.Leading, .NoTooltip})
 		for k in 0 ..< pm.BUS_SLOTS do slot_tab(a, st, {.Bus, tr.index, k})
 		if e := first_empty(a, .Bus, tr.index, pm.BUS_SLOTS); e >= 0 do add_tab(st, e)

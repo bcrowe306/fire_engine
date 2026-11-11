@@ -8,6 +8,7 @@ import "app:ui"
 import pm "model"
 import im "deps:imgui"
 import "fire:sampler"
+import "fire:stretch"
 
 
 // How the selected pad plays its sample: one-shot, gate, loop or hold;
@@ -34,6 +35,17 @@ draw_playback :: proc(a: ^App) {
 		pm.set_pad(m, i, .Reverse, "Reverse", p)
 		app.seal(&m.history)
 	}
+	// Its choke group (every selected pad's): a hit stops the others
+	// playing in its group (open and closed hats).
+	im.SameLine(0, 16)
+	im.SetNextItemWidth(150)
+	if ui.combo("##choke", fmt.ctprintf("%s  %s", ui.ICON_SCISSORS, "No choke" if pad.choke == 0 else fmt.tprintf("Choke group %d", pad.choke))) {
+		for g in 0 ..= pm.CHOKE_GROUPS {
+			if im.Selectable(fmt.ctprintf("%s###cg%d", "No choke group" if g == 0 else fmt.tprintf("Choke group %d", g), g), int(pad.choke) == g) do set_choke(a, selected_pads(a), g)
+		}
+		im.EndCombo()
+	}
+	if im.IsItemHovered() do im.SetTooltip("Choke group: a pad's hit stops the others playing in its group (open and closed hi-hats)")
 	if pad.mode == .Loop || pad.mode == .Hold {
 		im.SameLine(0, 16)
 		lm := int(pad.loop_mode)
@@ -52,6 +64,98 @@ draw_playback :: proc(a: ^App) {
 			pm.set_pad(m, i, .Crossfade, "Set Crossfade", p)
 		}
 		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+	}
+}
+
+// The selected pad's warp: on, it follows the tempo (made longer or
+// shorter, not faster or slower): how (Beats, Tones, Complex, Re-pitch),
+// its sample's own tempo (guessed; drag or type it), Beats' cuts and gaps;
+// what it does now, or that it is rendering. One row under the playback.
+draw_warp :: proc(a: ^App) {
+	m := &a.m
+	i := a.selected
+	pad := m.project.pads[i]
+	if pm.pad_sample(m, i) == nil do return
+	t := ui.theme()
+	w := pad.warp
+	on := w.on
+	if ui.toggle("Warp", &on) {
+		w.on = on
+		pm.set_warp(m, i, w, "Warp On" if on else "Warp Off")
+		app.seal(&m.history)
+	}
+	if im.IsItemHovered() do im.SetTooltip("Warp: the sample follows the tempo, at its own pitch (made longer or shorter)")
+	if !w.on {
+		im.SameLine(0, 12)
+		im.AlignTextToFramePadding()
+		im.TextDisabled("Off: it plays as it is, whatever the tempo")
+		return
+	}
+	im.SameLine(0, 16)
+	im.SetNextItemWidth(130)
+	if ui.combo("##warpmode", fmt.ctprintf("%s  %s", ui.ICON_AUDIO_WAVEFORM, pm.WARP_MODE_NAMES[w.mode])) {
+		tips := [stretch.Warp_Mode]cstring{
+			.Beats   = "Drums and loops: cut at its hits, each played as it was (attacks exact)",
+			.Tones   = "Voices, bass, pads: a spectral stretch of the whole (pitch kept)",
+			.Complex = "Full mixes: the spectral stretch, started again at each hit (attacks crisp)",
+			.Repitch = "Faster or slower, the pitch with it (a turntable)",
+		}
+		for mode in stretch.Warp_Mode {
+			if im.Selectable(pm.WARP_MODE_NAMES[mode], mode == w.mode) {
+				w.mode = mode
+				pm.set_warp(m, i, w, "Warp Mode")
+				app.seal(&m.history)
+			}
+			if im.IsItemHovered() do im.SetTooltip("%s", tips[mode])
+		}
+		im.EndCombo()
+	}
+	im.SameLine(0, 8)
+	bpm := w.bpm
+	e := ui.number_drag("sample bpm", &bpm, 20, 400, 1, 0.01, "Sample %.2f BPM", 160)
+	if e.changed {
+		w.bpm = bpm
+		pm.set_warp(m, i, w, "Sample Tempo")
+	}
+	if e.ended do app.seal(&m.history)
+	im.SameLine(0, 4)
+	if ui.icon_button(ui.ICON_WAND_SPARKLES, "Guess the sample's tempo from its length") {
+		w.bpm = 0
+		pm.set_warp(m, i, w, "Sample Tempo")
+		app.seal(&m.history)
+	}
+	if w.mode == .Beats {
+		im.SameLine(0, 12)
+		im.SetNextItemWidth(130)
+		if ui.combo("##warpgrain", fmt.ctprintf("Cut: %s", pm.WARP_GRAIN_NAMES[w.grain])) {
+			for g in stretch.Warp_Grain do if im.Selectable(pm.WARP_GRAIN_NAMES[g], g == w.grain) {
+				w.grain = g
+				pm.set_warp(m, i, w, "Warp Cuts")
+				app.seal(&m.history)
+			}
+			im.EndCombo()
+		}
+		if im.IsItemHovered() do im.SetTooltip("Where Beats cuts it: at its hits, or on a grid of its own beats")
+		im.SameLine(0, 12)
+		fill := w.fill_gaps
+		if ui.toggle("Fill gaps", &fill) {
+			w.fill_gaps = fill
+			pm.set_warp(m, i, w, "Fill Gaps")
+			app.seal(&m.history)
+		}
+		if im.IsItemHovered() do im.SetTooltip("Slower: a gap after each piece, filled by looping its tail (off: silence)")
+	}
+	// What it does now: how much longer, at which tempo; or rendering.
+	im.SameLine(0, 14)
+	im.AlignTextToFramePadding()
+	tempo := m.engine.warp_bpm if m.engine.warp_bpm > 0 else m.project.bpm
+	r := pm.warp_ratio(pad, tempo)
+	if pm.warp_rendering(&m.engine, i) {
+		dots := [4]string{"", ".", "..", "..."}
+		im.TextColored(transmute(im.Vec4)t.warn, "%s", fmt.ctprintf("Rendering%s", dots[(a.frame / 15) % 4]))
+	} else {
+		im.TextDisabled("%s", fmt.ctprintf("%.2f×", r))
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s at %.1f BPM", "As it is" if r == 1 else fmt.tprintf("%.0f%% as long", r * 100), tempo))
 	}
 }
 

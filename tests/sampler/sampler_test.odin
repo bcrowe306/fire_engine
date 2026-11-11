@@ -326,6 +326,21 @@ choke_cuts_a_one_shot :: proc(t: ^testing.T) {
 	testing.expectf(t, jump < 0.1, "with a fade, not a click (step %v)", jump)
 }
 
+// A choke of NOTE_KEY_ALL silences every note, whatever its key or channel
+// (a panic), with a fade.
+@(test)
+choke_all_silences_every_note :: proc(t: ^testing.T) {
+	l := lab_make()
+	defer lab_destroy(l)
+	zones := []sampler.Sample_Zone{{source = l.short, root_key = 60, key_lo = 0, key_hi = 127, one_shot = true}}
+	two := []kit.Timed_Event{on(0, 60), {0, core.Note_On{id = core.NOTE_ID_ANY, channel = 15, key = 64, velocity = 1}}, {1000, core.Note_Choke{id = core.NOTE_ID_ANY, key = core.NOTE_KEY_ALL}}}
+	out := play(t, zones, 4000, two)
+	testing.expect(t, kit.peak(out.channels[0][200:900]) > 0.2, "both play")
+	testing.expectf(t, kit.peak(out.channels[0][1000 + int(0.004 * SR):]) < 0.001, "then none (peak %v)", kit.peak(out.channels[0][1000 + int(0.004 * SR):]))
+	jump, _ := kit.max_step(out.channels[0][900:1300])
+	testing.expectf(t, jump < 0.1, "with a fade (step %v)", jump)
+}
+
 // Fades: in from silence where a zone starts playing, out to silence where
 // it stops; the same at any block size.
 @(test)

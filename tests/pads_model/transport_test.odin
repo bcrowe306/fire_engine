@@ -159,3 +159,57 @@ the_fourth_tap_starts_a_beat_later :: proc(t: ^testing.T) {
 	pm.tap(&tt, 2.0) // a fifth: no new start
 	testing.expect(t, !pm.tap_start_due(&tt, 9), "only the fourth starts it")
 }
+
+// The count-in clicks even with the metronome off (the setting, on by
+// default in the app), and only the count-in.
+@(test)
+the_count_in_clicks_with_the_metronome_off :: proc(t: ^testing.T) {
+	r := blips(t, "tr_count_click")
+	defer rig_destroy(r)
+	m := &r.m
+	m.engine.metronome = false
+	m.engine.count_in_click = true
+	tr := m.project.transport
+	tr.count_in = 1
+	pm.set_transport(m, .Count_In, "Count-in", tr)
+	pm.sync(&m.engine)
+	pm.play(&m.engine, count_in = true)
+	render(r, 256)
+	out := render_synced(r, 48_000 * 2 - 256)
+	got := onsets(out[0][:], 0.01)
+	testing.expectf(t, len(got) == 4, "four clicks of count-in (%v)", got)
+	after := render_synced(r, 48_000)
+	testing.expectf(t, len(onsets(after[0][:], 0.01)) == 0, "then none: the metronome is off")
+}
+
+// A hit a little before the top (at the end of the loop, or of the
+// count-in) is recorded on the top; one earlier is where it was played.
+@(test)
+a_hit_just_before_the_downbeat_goes_on_it :: proc(t: ^testing.T) {
+	r := blips(t, "tr_preroll")
+	defer rig_destroy(r)
+	m := &r.m
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	c.preroll = 0.25 // a sixteenth
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	// One bar (4 beats at 120: 96 000 frames). A hit at beat 3.9 (0.1
+	// before the loop's top), and one at beat 3.5 (too early for it).
+	render(r, 84_000) // beat 3.5
+	pm.hit(&m.engine, 1, true)
+	render(r, 512)
+	pm.hit(&m.engine, 1, false)
+	render(r, 9_600 - 1024) // about beat 3.9
+	pm.hit(&m.engine, 0, true)
+	render(r, 512)
+	pm.hit(&m.engine, 0, false)
+	render(r, 512)
+	pm.capture_arm(m, &c, false)
+	notes := m.project.sequences[0].notes
+	testing.expectf(t, len(notes) == 2, "two notes (%v)", notes)
+	for n in notes {
+		if n.pad == 0 do testing.expectf(t, n.start == 0, "the early hit on the top: %v", n.start)
+		if n.pad == 1 do testing.expectf(t, abs(n.start - 3.5) < 0.05, "the other where it was: %v", n.start)
+	}
+}

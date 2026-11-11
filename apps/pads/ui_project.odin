@@ -28,6 +28,10 @@ Project_State :: struct {
 	progress:   f64,
 	export_open: bool, // the Export dialog shows
 	settings:   pm.Export_Settings,
+	untitled:   bool, // a new project, in the temporary folder: Save asks for a name and a place
+	rename_open: bool, // the Rename Project dialog shows
+	rename_buf: [64]u8,
+	save_name:  string, // the name the Save dialog suggests for a new project (owned; "" = Untitled)
 }
 
 // A folder or file chosen in one of the project dialogs.
@@ -88,6 +92,7 @@ recent_add :: proc(a: ^App, dir: string) {
 project_state_destroy :: proc(st: ^Project_State) {
 	for r in st.recent do delete(r)
 	delete(st.recent)
+	delete(st.save_name)
 	delete(st.title)
 	pm.export_destroy(&st.export)
 }
@@ -97,6 +102,10 @@ project_state_destroy :: proc(st: ^Project_State) {
 // Saves into the project's folder (a new one is in the temporary folder
 // until Save As gives it a place).
 save_project :: proc(a: ^App) -> bool {
+	if a.proj.untitled { // not yet anywhere: name it and pick a place first
+		project_dialog(a, .Save_As)
+		return false
+	}
 	if pm.model_save(&a.m) != .None {
 		ui.toast(&a.ws.toasts, .Error, "Could not save the project")
 		return false
@@ -115,6 +124,7 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1
 	a.proj.last_save = time.tick_now()
+	a.proj.untitled = false
 	recent_add(a, dir)
 	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Opened %s", filepath.base(dir)))
 	return true
@@ -126,6 +136,7 @@ new_project :: proc(a: ^App) {
 	if pm.model_dirty(&a.m) do pm.model_save(&a.m)
 	dir, _ := os.make_directory_temp("", "Untitled.pads", context.temp_allocator)
 	if pm.model_new(&a.m, dir) != .None do ui.toast(&a.ws.toasts, .Error, "Could not start a new project")
+	a.proj.untitled = true
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1
 }
@@ -141,8 +152,20 @@ project_dialog :: proc(a: ^App, what: type_of(Project_Chosen{}.what)) {
 		app.post_any_thread(&a.bus, Project_Chosen{pending, strings.clone(string(files[0]))})
 	}
 	switch what {
-	case .Open, .Save_As:
+	case .Open:
 		sdl.ShowOpenFolderDialog(cb, a, a.platform.window, nil, false)
+	case .Save_As:
+		// A name and a place: "<name>.pads" (a folder: the project and its
+		// samples), in Documents for a new one, else beside this one.
+		filters := [1]sdl.DialogFileFilter{{name = "Pads project", pattern = "pads"}}
+		where_ := filepath.dir(a.m.project.dir)
+		if a.proj.untitled {
+			where_ = "."
+			if d := sdl.GetUserFolder(.DOCUMENTS); d != nil do where_ = strings.clone_from_cstring(d, context.temp_allocator)
+		}
+		name := a.proj.save_name if a.proj.untitled && a.proj.save_name != "" else project_name(a)
+		start_at := fmt.ctprintf("%s/%s.pads", where_, name)
+		sdl.ShowSaveFileDialog(cb, a, a.platform.window, &filters[0], 1, start_at)
 	case .Export:
 		if a.proj.settings.stems != .None {
 			sdl.ShowOpenFolderDialog(cb, a, a.platform.window, nil, false)
@@ -165,15 +188,7 @@ subscribe_project :: proc(a: ^App) {
 		defer delete(e.path)
 		switch e.what {
 		case .Open: open_project(a, e.path)
-		case .Save_As:
-			dir := e.path
-			if !strings.has_suffix(dir, ".pads") do dir = strings.concatenate({dir, "/", "Untitled.pads"}, context.temp_allocator)
-			if pm.model_save_as(&a.m, dir) == .None {
-				recent_add(a, dir)
-				ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved as %s", filepath.base(dir)))
-			} else {
-				ui.toast(&a.ws.toasts, .Error, "Could not save there")
-			}
+		case .Save_As: save_project_as(a, e.path)
 		case .Export:
 			path := e.path
 			if a.proj.settings.stems == .None && !strings.has_suffix(path, ".wav") do path = strings.concatenate({path, ".wav"}, context.temp_allocator)
@@ -220,7 +235,7 @@ project_frame :: proc(a: ^App) {
 	if pm.model_dirty(&a.m) && time.tick_since(st.last_save) > AUTOSAVE_EVERY && !st.exporting {
 		if pm.model_save(&a.m) == .None do st.last_save = time.tick_now()
 	}
-	title := fmt.tprintf("%s%s — Pads", strings.trim_suffix(filepath.base(a.m.project.dir), ".pads"), " •" if pm.model_dirty(&a.m) else "")
+	title := fmt.tprintf("%s%s — Pads", project_name(a), " •" if pm.model_dirty(&a.m) else "")
 	if title != st.title {
 		delete(st.title)
 		st.title = strings.clone(title)
@@ -290,6 +305,90 @@ draw_export :: proc(a: ^App) {
 		im.SameLine()
 		if im.Button("Cancel") {
 			st.export_open = false
+			im.CloseCurrentPopup()
+		}
+		im.EndPopup()
+	}
+}
+
+// The project's name: its folder's, without ".pads" ("Untitled" until it
+// is saved somewhere).
+project_name :: proc(a: ^App) -> string {
+	if a.proj.untitled do return "Untitled"
+	return strings.trim_suffix(filepath.base(a.m.project.dir), ".pads")
+}
+
+// Saves the project as `path` (a "<name>.pads" folder: ".pads" is added
+// when missing); from now on it is the project. Not over another project.
+save_project_as :: proc(a: ^App, path: string) -> bool {
+	dir := path if strings.has_suffix(path, ".pads") else strings.concatenate({path, ".pads"}, context.temp_allocator)
+	if dir != a.m.project.dir && os.exists(dir) {
+		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("%s is already there", filepath.base(dir)))
+		return false
+	}
+	if pm.model_save_as(&a.m, dir) != .None {
+		ui.toast(&a.ws.toasts, .Error, "Could not save there")
+		return false
+	}
+	a.proj.untitled = false
+	a.proj.last_save = time.tick_now()
+	recent_add(a, a.m.project.dir)
+	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved as %s", project_name(a)))
+	return true
+}
+
+// Renames the project to `name`: its folder becomes "<name>.pads" beside
+// where it is (a new project: the Save dialog, suggesting that name).
+rename_project :: proc(a: ^App, new_name: string) -> bool {
+	name := strings.trim_space(new_name)
+	if name == "" || strings.contains_any(name, "/\\:") {
+		ui.toast(&a.ws.toasts, .Error, "Not a name a folder can have")
+		return false
+	}
+	if a.proj.untitled { // not saved anywhere yet: the Save dialog, with that name
+		delete(a.proj.save_name)
+		a.proj.save_name = strings.clone(name)
+		project_dialog(a, .Save_As)
+		return true
+	}
+	to := fmt.tprintf("%s/%s.pads", filepath.dir(a.m.project.dir), name)
+	if to == a.m.project.dir do return true
+	if os.exists(to) {
+		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("%s is already there", filepath.base(to)))
+		return false
+	}
+	if pm.model_move(&a.m, to) != .None {
+		ui.toast(&a.ws.toasts, .Error, "Could not rename the project")
+		return false
+	}
+	recent_add(a, a.m.project.dir)
+	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Renamed to %s", name))
+	return true
+}
+
+// The Rename Project dialog (File > Rename Project…).
+draw_rename_project :: proc(a: ^App) {
+	st := &a.proj
+	if !st.rename_open do return
+	im.OpenPopup("Rename Project")
+	if im.BeginPopupModal("Rename Project", &st.rename_open, {.AlwaysAutoResize}) {
+		if im.IsWindowAppearing() {
+			st.rename_buf = {}
+			copy(st.rename_buf[:len(st.rename_buf) - 1], project_name(a))
+			im.SetKeyboardFocusHere()
+		}
+		im.SetNextItemWidth(280)
+		enter := im.InputText("##projname", cstring(&st.rename_buf[0]), len(st.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		im.TextDisabled("%s", fmt.ctprintf("Its folder: %s.pads", strings.truncate_to_byte(string(st.rename_buf[:]), 0)))
+		if im.Button("Rename") || enter {
+			if rename_project(a, strings.truncate_to_byte(string(st.rename_buf[:]), 0)) {
+				st.rename_open = false
+				im.CloseCurrentPopup()
+			}
+		}
+		im.SameLine()
+		if im.Button("Cancel") || im.IsKeyPressed(.Escape) {
+			st.rename_open = false
 			im.CloseCurrentPopup()
 		}
 		im.EndPopup()

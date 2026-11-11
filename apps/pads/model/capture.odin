@@ -14,6 +14,7 @@ Capture :: struct {
 	held:          [PADS][dynamic]Held_Hit, // per pad: hits not yet released
 	midi_key:      int, // the last MIDI note that came in (-1: none yet), for MIDI learn
 	midi_count:    int, // MIDI notes that came in (to notice a new one)
+	preroll:       f64, // beats: a hit this much before a sequence's downbeat (or the end of the count-in) goes on the downbeat (0: none)
 }
 
 @(private)
@@ -64,9 +65,16 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 		}
 		if t.no_pad || !c.armed || !t.playing do continue
 		i := int(t.pad)
-		_, slot, rel, ok := plan_locate(m.engine.plan, t.beat)
-		if !ok do continue
 		if t.on {
+			// Just before a sequence's downbeat (its part's start, each pass;
+			// the top after a count-in): on the downbeat, so a hit a little
+			// early isn't lost at the end of the loop or before the top.
+			if slot, start, early := downbeat_ahead(m, c.preroll, t.beat); early {
+				append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot})
+				continue
+			}
+			_, slot, rel, ok := plan_locate(m.engine.plan, t.beat)
+			if !ok do continue
 			start := input_quantize(m.project.transport.quantize, rel)
 			length := seq_beats(&m.project, m.project.sequences[slot])
 			if start >= length do start -= length
@@ -83,6 +91,20 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 	}
 	if audio_poll(m) do added = true
 	return
+}
+
+// Whether a sequence's downbeat (the start of a pass of its part) comes
+// within `preroll` beats after timeline beat `beat`: its sequence and where
+// in it the downbeat is.
+@(private)
+downbeat_ahead :: proc(m: ^Model, preroll, beat: f64) -> (slot: int, start: f64, ok: bool) {
+	if preroll <= 0 do return
+	pl := m.engine.plan
+	seg, s, rel, found := plan_locate(pl, beat + preroll)
+	if !found do return
+	into := rel - pl.segs[seg].offset // how far past its downbeat beat + preroll is
+	if into >= preroll - 1e-9 do return
+	return s, pl.segs[seg].offset, true
 }
 
 // Pad `i`'s held hit `k` (the oldest by default) ends at `beat`: add it as

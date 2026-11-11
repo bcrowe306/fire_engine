@@ -178,7 +178,7 @@ synth_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		#partial switch ev in e.payload {
 		case core.Note_On:         note_on(s, ev)
 		case core.Note_Off:        for &v in s.voices do if v.on && same_voice(&v, ev.id, ev.channel, ev.key) do note_release(&v)
-		case core.Note_Choke:      for &v in s.voices do if v.on && same_voice(&v, ev.id, ev.channel, ev.key) do note_release(&v)
+		case core.Note_Choke:      for &v in s.voices do if v.on && (ev.key == core.NOTE_KEY_ALL || same_voice(&v, ev.id, ev.channel, ev.key)) do note_release(&v)
 		case core.Note_Expression: for &v in s.voices do if v.on && same_voice(&v, ev.id, ev.channel, ev.key) do note_express(&v, ev)
 		case core.Param_Value, core.Param_Ramp:
 			id, raw, frames, _ := any_param(e.payload)

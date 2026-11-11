@@ -89,5 +89,7 @@ def test_dragging_a_file_anywhere_does_not_crash(app, fixtures, target, window, 
     s = app.state()
     if target == "pad A4":
         assert any(p["index"] == 3 and p["name"] == "Closed Hat" for p in s["pads"])
+    elif target == "seq":  # on a row of the sequence: onto that row's pad
+        assert len(s["pads"]) == 4 and any(p["name"] == "Closed Hat" for p in s["pads"])
     else:
         assert len(s["pads"]) == 3  # dropped where nothing takes it: nothing happens

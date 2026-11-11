@@ -10,11 +10,15 @@ import tb "fire:timebase"
 METRONOME_PARAM_LEVEL_DB :: core.Param_Id(1)
 // Parameter id of the `Metronome`'s switch: 1 clicks, 0 is silent (default 1).
 METRONOME_PARAM_ON :: core.Param_Id(2)
+// Parameter id of the `Metronome`'s count-in switch: 1 clicks the beats
+// before the timeline's beat 0 (a count-in) even while it is off (default 0).
+METRONOME_PARAM_COUNT_IN :: core.Param_Id(3)
 
 // Parameter table of the `Metronome` node. Read-only.
 metronome_params := [?]core.Param_Info {
 	{id = METRONOME_PARAM_LEVEL_DB, name = "Level", unit = .Decibels, min = -60, max = 6, default = -6, flags = {.Automatable}},
 	{id = METRONOME_PARAM_ON, name = "On", min = 0, max = 1, default = 1},
+	{id = METRONOME_PARAM_COUNT_IN, name = "Count-in", min = 0, max = 1, default = 0},
 }
 
 // Settings for `metronome_create`.
@@ -27,7 +31,8 @@ Metronome_Settings :: struct {
 // A click on every beat of a timeline while it plays, higher on the first
 // beat of each bar (bars from the clock's meter, counted from the
 // timeline's beat 0). Mono into every output channel; no inputs. Clicks
-// land on their exact frame at any block size.
+// land on their exact frame at any block size. With its count-in switch on,
+// the beats before beat 0 click even while it is off.
 Metronome :: struct {
 	settings: Metronome_Settings,
 	rate:     f64,
@@ -37,6 +42,7 @@ Metronome :: struct {
 	fall:     f64, // per-frame decay factor
 	level:    f64, // linear
 	on:       bool,
+	count_in: bool, // click before beat 0 even while off
 }
 
 @(private)
@@ -72,13 +78,14 @@ metronome_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	for e in ctx.events_in {
 		if v, _, ok := core.param_event(e.payload, METRONOME_PARAM_LEVEL_DB); ok do m.level = db_to_gain(clamp(v, -60, 6))
 		if v, _, ok := core.param_event(e.payload, METRONOME_PARAM_ON); ok do m.on = v >= 0.5
+		if v, _, ok := core.param_event(e.payload, METRONOME_PARAM_COUNT_IN); ok do m.count_in = v >= 0.5
 	}
 	// Where this call's clicks start.
 	starts: [16]int
 	accent: [16]bool
 	clicks := 0
 	t := ctx.transport
-	if tl := core.transport_timeline(t, m.settings.timeline); tl != nil && tl.playing && m.on {
+	if tl := core.transport_timeline(t, m.settings.timeline); tl != nil && tl.playing && (m.on || m.count_in) {
 		per_bar := 4.0
 		if t.meter.denominator > 0 do per_bar = f64(t.meter.numerator) * 4 / f64(t.meter.denominator)
 		first := core.timeline_next_multiple(t, tl, 1)
@@ -89,6 +96,7 @@ metronome_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 			offset := core.timeline_offset_of(t, tl, b)
 			if offset >= ctx.frames do break
 			beat := f64(b)
+			if !m.on && beat >= 0 do break // only the count-in's clicks
 			starts[clicks] = offset
 			accent[clicks] = math.mod(math.floor(beat + 1e-6), per_bar) < 0.5
 			clicks += 1

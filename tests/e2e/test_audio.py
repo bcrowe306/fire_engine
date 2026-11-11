@@ -34,7 +34,7 @@ def test_arm_and_record_a_take(app):
     app.expect_item("A2 arm", window="detail")  # the strip's arm button, lit
     app.click("Record (Cmd+R)")
     app.until(lambda s: s["timeline"] > 1.0, frames=240, what="a beat or so recorded")
-    app.click("Stop (Space)")
+    app.click("Stop (Space); press twice to silence every sound")
     app.until(lambda s: any(p["index"] == 1 and p["take"] > 0 for p in s["pads"]), frames=240, what="the take")
     assert app.state()["undo"] == "Record Audio"
     take = app.pad(1)["take"]

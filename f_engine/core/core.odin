@@ -51,12 +51,16 @@ Note_Off :: struct {
 // Silences a note at once (a fade of a few milliseconds), even one that
 // would play to its end whatever the note-off (a one-shot drum): for choke
 // groups, where one sound cuts another (an open hi-hat cut by the closed
-// one). Matches as `Note_Off` does.
+// one). Matches as `Note_Off` does; with key NOTE_KEY_ALL it silences
+// every note, whatever its id or channel (all sound off: a panic).
 Note_Choke :: struct {
 	id:      Note_Id, // note instance, or NOTE_ID_ANY
 	channel: u8,      // 0..15
-	key:     u8,      // 0..127
+	key:     u8,      // 0..127, or NOTE_KEY_ALL
 }
+
+// A `Note_Choke` key that silences every note, on every channel.
+NOTE_KEY_ALL :: u8(255)
 
 // Which per-note property a `Note_Expression` changes.
 Note_Expression_Kind :: enum u8 {

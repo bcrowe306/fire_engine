@@ -66,7 +66,7 @@ find_command :: proc(a: ^App, id: string) -> ^Command {
 // `t`, or it isn't enabled.
 run_command :: proc(a: ^App, id: string, t: Target) -> bool {
 	c := find_command(a, id)
-	if c == nil || t.kind not_in c.kinds do return false
+	if c == nil || t.kind not_in c.kinds || !target_valid(a, t) do return false
 	if c.enabled != nil && !c.enabled(a, t) do return false
 	c.run(a, t)
 	return true
@@ -75,6 +75,12 @@ run_command :: proc(a: ^App, id: string, t: Target) -> bool {
 // The menu items of every command for `t` (inside an open popup), groups
 // apart. `extra` draws more first (a pad's colours, say).
 command_items :: proc(a: ^App, t: Target) {
+	// What it was opened on is gone (a note deleted while its menu was
+	// open): nothing to show.
+	if !target_valid(a, t) {
+		im.CloseCurrentPopup()
+		return
+	}
 	last := -1
 	for &c in a.commands {
 		if t.kind not_in c.kinds do continue
@@ -85,7 +91,10 @@ command_items :: proc(a: ^App, t: Target) {
 		label := fmt.ctprintf("%s  %s###%s", c.icon if c.icon != "" else "  ", c.label, c.id)
 		ran := im.MenuItem(label, c.keys, on, ok)
 		ui.name(c.label) // for the probe and scripts: its words, not its icon
-		if ran do c.run(a, t)
+		if ran {
+			c.run(a, t)
+			return // (it may have removed what `t` names: the menu closes)
+		}
 	}
 	if t.kind == .Sequence {
 		im.Separator()
@@ -229,6 +238,15 @@ register_commands :: proc(a: ^App) {
 		checked = proc(a: ^App, t: Target) -> bool { return pm.bus_of(&a.m, t.index).solo }})
 	add(c, {id = "bus.reset", label = "Reset Level and Pan", icon = ui.ICON_ROTATE_CCW, kinds = {.Bus}, group = 1,
 		run = proc(a: ^App, t: Target) { b := pm.bus_of(&a.m, t.index)^; b.volume, b.pan = 0, 0; pm.set_bus(&a.m, t.index, 0, "Reset Bus", b); app.seal(&a.m.history) }})
+	add(c, {id = "bus.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Bus}, group = 2,
+		run = proc(a: ^App, t: Target) { begin_rename_bus(a, t.index + 1) },
+		enabled = proc(a: ^App, t: Target) -> bool { return t.index != pm.BUSES }})
+	add(c, {id = "bus.delete", label = "Delete Bus", icon = ui.ICON_TRASH_2, kinds = {.Bus}, group = 2,
+		run = proc(a: ^App, t: Target) { pm.delete_bus(&a.m, t.index + 1) },
+		enabled = proc(a: ^App, t: Target) -> bool { return t.index != pm.BUSES && a.m.project.bus_count > 1 }})
+	add(c, {id = "bus.add", label = "Add Bus", icon = ui.ICON_PLUS, kinds = {.Bus}, group = 2,
+		run = proc(a: ^App, t: Target) { pm.add_bus(&a.m) },
+		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.bus_count < pm.BUSES }})
 
 	// Files in the browser.
 	add(c, {id = "file.load", label = "Load onto Selected Pad", icon = ui.ICON_DOWNLOAD, kinds = {.File}, group = 0,
@@ -303,4 +321,19 @@ selection_target :: proc(a: ^App, kinds: bit_set[Target_Kind]) -> Target {
 	if .Sequence in kinds do return seq_target(a.m.project.slot)
 	if .Part in kinds do return {kind = .Part}
 	return {}
+}
+
+// Whether `t` still names something: a note, a point, a song step, a bus
+// that may have gone since its menu opened.
+target_valid :: proc(a: ^App, t: Target) -> bool {
+	p := &a.m.project
+	#partial switch t.kind {
+	case .Note:      return t.slot >= 0 && t.slot < pm.SLOTS && t.index >= 0 && t.index < len(p.sequences[t.slot].notes)
+	case .Point:     return t.slot >= 0 && t.slot < pm.SLOTS && t.index >= 0 && t.index < len(p.sequences[t.slot].points)
+	case .Song_Step: return t.index >= 0 && t.index < p.song.count
+	case .Pad, .Take: return t.index >= 0 && t.index < pm.PADS
+	case .Bus:       return t.index == pm.BUSES || (t.index >= 0 && t.index < p.bus_count)
+	case .Sequence:  return t.slot >= 0 && t.slot < pm.SLOTS
+	}
+	return true
 }

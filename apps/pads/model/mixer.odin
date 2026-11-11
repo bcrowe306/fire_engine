@@ -12,8 +12,12 @@ import "fire:dsp"
 PAD_INSERTS :: 2
 // Effect slots on each bus and on main.
 BUS_SLOTS :: 5
-// Buses (A to D); a pad goes to one, or straight to main.
-BUSES :: 4
+// Buses a project can have (A to P; `Project.bus_count` of them are in
+// use): a pad goes to one, or straight to main, and sends to any. Index
+// BUSES stands for main where a bus index is taken.
+BUSES :: 16
+// Buses a new project has.
+DEFAULT_BUSES :: 4
 // Performance effects (applied to main while held).
 PERF_FX :: 16
 // Parameters an effect slot keeps.
@@ -136,20 +140,125 @@ slot_name :: proc(s: Effect_Slot) -> string {
 	return string(EFFECT_NAMES[s.kind])
 }
 
-// A bus (A to D) or main: its effects, then its fader.
+// A bus (A to P) or main: its effects, then its fader, into its
+// destination.
 Bus :: struct {
 	volume: f32, // dB
 	pan:    f32, // -1..1
 	mute:   bool,
 	solo:   bool,
 	slots:  [BUS_SLOTS]Effect_Slot,
+	name:   [16]u8, // "" = "Bus A"...
+	dest:   u8,     // where it goes: 0 = main, 1..BUSES = another bus (never round to itself)
 }
 
-// Where a pad's sound goes: 0 = main, 1..BUSES = a bus.
-bus_name :: proc(b: int) -> string {
-	names := [?]string{"Main", "Bus A", "Bus B", "Bus C", "Bus D"}
-	return names[clamp(b, 0, BUSES)]
+// The name of where sound goes: 0 = "Main", 1..BUSES = a bus (its own
+// name, else "Bus A"...).
+bus_name :: proc(p: ^Project, b: int) -> string {
+	if b <= 0 || b > BUSES do return "Main"
+	if n := strings.truncate_to_byte(string(p.buses[b - 1].name[:]), 0); n != "" do return n
+	letters := "ABCDEFGHIJKLMNOP"
+	return strings.concatenate({"Bus ", letters[b - 1:][:1]}, context.temp_allocator)
 }
+
+// The name of bus index `index` as the mixer counts them (0..BUSES-1, or
+// BUSES: main).
+bus_index_name :: proc(p: ^Project, index: int) -> string {
+	return bus_name(p, 0 if index >= BUSES else index + 1)
+}
+
+// Whether bus `b` (1..BUSES) may go to `dest` (0 = main, 1..BUSES): never
+// round to itself, through other buses or directly.
+bus_dest_ok :: proc(p: ^Project, b, dest: int) -> bool {
+	if dest == 0 do return true
+	if dest < 1 || dest > p.bus_count || dest == b do return false
+	at := dest
+	for _ in 0 ..< BUSES { // follow where dest goes
+		if at == 0 do return true
+		if at == b do return false
+		at = int(p.buses[at - 1].dest)
+	}
+	return false
+}
+
+// Sends bus `b` (1..BUSES) to `dest` (0 = main, or another bus), undoably;
+// false (and nothing changes) if that would go round in a loop.
+set_bus_dest :: proc(m: ^Model, b, dest: int) -> bool {
+	p := &m.project
+	if b < 1 || b > p.bus_count || !bus_dest_ok(p, b, dest) do return false
+	nb := p.buses[b - 1]
+	nb.dest = u8(dest)
+	set_bus(m, b - 1, 3, "Route Bus", nb)
+	app.seal(&m.history)
+	return true
+}
+
+// Renames bus `b` (1..BUSES); "" gives it its letter name back.
+rename_bus :: proc(m: ^Model, b: int, name: string) {
+	p := &m.project
+	if b < 1 || b > p.bus_count do return
+	nb := p.buses[b - 1]
+	nb.name = {}
+	copy(nb.name[:len(nb.name) - 1], strings.trim_space(name))
+	set_bus(m, b - 1, 4, "Rename Bus", nb)
+	app.seal(&m.history)
+}
+
+// Adds a bus (after the others), going to main. Returns it (1..BUSES), or
+// 0 when there are BUSES already.
+add_bus :: proc(m: ^Model) -> int {
+	p := &m.project
+	if p.bus_count >= BUSES do return 0
+	b := p.bus_count + 1
+	app.begin(&m.history, "Add Bus")
+	defer app.end(&m.history)
+	set_bus(m, b - 1, 5, "Add Bus", Bus{})
+	set_bus_count(m, b)
+	return b
+}
+
+// Deletes bus `b` (1..BUSES; not the last one left): pads going to it go
+// to main, their sends to it go, buses going to it go to main; the buses
+// after it move up a letter (and what goes to them follows). One undo step.
+delete_bus :: proc(m: ^Model, b: int) {
+	p := &m.project
+	n := p.bus_count
+	if b < 1 || b > n || n <= 1 do return
+	app.begin(&m.history, "Delete Bus")
+	defer app.end(&m.history)
+	after :: proc(x, b: int) -> int { // where bus x (1..) is once b is gone (0: main)
+		if x == b do return 0
+		return x - 1 if x > b else x
+	}
+	for i in 0 ..< PADS {
+		pad := p.pads[i]
+		np := pad
+		np.bus = u8(after(int(pad.bus), b))
+		for k in b - 1 ..< BUSES - 1 do np.sends[k] = pad.sends[k + 1]
+		np.sends[BUSES - 1] = {}
+		if np != pad do set_pad(m, i, .Whole, "Delete Bus", np)
+	}
+	buses := p.buses
+	for k in b - 1 ..< n - 1 do buses[k] = p.buses[k + 1]
+	buses[n - 1] = {}
+	for k in 0 ..< n - 1 do buses[k].dest = u8(after(int(buses[k].dest), b))
+	for k in 0 ..< n do if buses[k] != p.buses[k] do set_bus(m, k, 5, "Delete Bus", buses[k])
+	set_bus_count(m, n - 1)
+}
+
+// Sets how many buses are in use, undoably.
+@(private)
+set_bus_count :: proc(m: ^Model, n: int) {
+	old := m.project.bus_count
+	app.set_value(&m.history, "Buses", {app.Id(BUS_COUNT_KEY), 0}, old, clamp(n, 1, BUSES), proc(ctx: rawptr, k: app.Key, v: int) {
+		mm := (^Model)(ctx)
+		mm.project.bus_count = v
+		mm.engine.mix_dirty = true
+	})
+}
+
+@(private)
+BUS_COUNT_KEY :: 1 << 23
 
 // The performance effects a project starts with, one per pad of the
 // performance grid.
@@ -211,7 +320,7 @@ set_bus :: proc(m: ^Model, index: int, field: int, name: string, new: Bus) {
 	})
 }
 
-// Bus `index`, or main for BUSES.
+// Bus `index` (0..BUSES-1), or main for BUSES.
 bus_of :: proc(m: ^Model, index: int) -> ^Bus {
 	return &m.project.main if index >= BUSES else &m.project.buses[index]
 }
@@ -330,7 +439,7 @@ set_insert_param :: proc(m: ^Model, pad, slot: int, id: fc.Param_Id, value: f32)
 set_pad_bus :: proc(m: ^Model, pad, bus: int) {
 	if pad < 0 || pad >= PADS do return
 	p := m.project.pads[pad]
-	p.bus = u8(clamp(bus, 0, BUSES))
+	p.bus = u8(clamp(bus, 0, m.project.bus_count))
 	set_pad(m, pad, .Bus, "Set Output", p)
 	app.seal(&m.history)
 }

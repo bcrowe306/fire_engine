@@ -72,6 +72,9 @@ render :: proc(r: ^Rig, frames: int) -> [2][]f32 {
 	for _, src in r.m.engine.sources {
 		for stream.source_state(src) == .Loading do time.sleep(time.Millisecond)
 	}
+	for _, src in r.m.engine.warp_sources {
+		for stream.source_state(src) == .Loading do time.sleep(time.Millisecond)
+	}
 	out := [2][]f32{make([]f32, frames, context.temp_allocator), make([]f32, frames, context.temp_allocator)}
 	app.host_render(&r.host, out[:], frames)
 	return out

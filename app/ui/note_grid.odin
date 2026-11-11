@@ -42,16 +42,33 @@ Grid_Edit :: struct {
 	released:   bool, // a move or resize ended: commit it
 	menu:       int,  // a note right-clicked (its index), or -1
 	menu_empty: bool, // empty space right-clicked (at `at_beat`, `at_row`)
+	row_drop:   int,    // a drag-and-drop payload of `drop_type` let go on a row (its name or its notes), or -1
+	dropped:    string, // ... the payload (temporary allocator)
 }
 
 // A note editor `size` big: `rows` (their names at the left, clickable),
 // `notes` on them (`Roll_Note.key` is the row), the view's rows and beats,
 // positions snapped to `snap` beats, a playhead, the `tool` the mouse is.
-// Names its parts for the probe: "<id>" (the grid) and "<id> row N".
-note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll_View, snap: f64, size: im.Vec2, tool: Grid_Tool, playhead: f64 = -1, bar: f64 = 4) -> (e: Grid_Edit) {
+// Names its parts for the probe: "<id>" (the grid) and "<id> row N". With
+// a `drop_type`, a drag-and-drop payload of it over a row (its name or
+// along it) lights the row, and let go comes back as `row_drop`.
+note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll_View, snap: f64, size: im.Vec2, tool: Grid_Tool, playhead: f64 = -1, bar: f64 = 4, drop_type: cstring = nil) -> (e: Grid_Edit) {
 	im.PushID(id)
 	defer im.PopID()
-	e.row_click, e.row_menu, e.erase, e.select, e.menu = -1, -1, -1, -1, -1
+	e.row_click, e.row_menu, e.erase, e.select, e.menu, e.row_drop = -1, -1, -1, -1, -1, -1
+	// A drop on a row: its name, or anywhere along it in the grid.
+	drop_row := -1 // the row a drag is over (lit)
+	take_drop :: proc(e: ^Grid_Edit, drop_type: cstring, row: int, drop_row: ^int) {
+		if drop_type == nil || !im.BeginDragDropTarget() do return
+		defer im.EndDragDropTarget()
+		if pl := im.AcceptDragDropPayload(drop_type, {.AcceptBeforeDelivery, .AcceptNoDrawDefaultRect}); pl != nil {
+			drop_row^ = row
+			if pl.Delivery {
+				e.row_drop = row
+				e.dropped = strings.clone(strings.string_from_ptr((^u8)(pl.Data), int(pl.DataSize)), context.temp_allocator)
+			}
+		}
+	}
 	t := current
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -81,6 +98,7 @@ note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll
 		if clicked && !im.IsMouseReleased(.Right) do e.row_click = row
 		if hovered && im.IsMouseDoubleClicked(.Left) do e.row_click, e.row_double = row, true
 		if hovered && im.IsMouseClicked(.Right) do e.row_menu = row
+		take_drop(&e, drop_type, row, &drop_row)
 		r := rows[row]
 		c := r.color if r.color != {} else t.accent
 		bg := t.raised if k % 2 == 0 else mix(t.raised, t.bg, 0.3)
@@ -97,6 +115,7 @@ note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll
 	im.SetCursorScreenPos(grid)
 	im.InvisibleButton("##grid", {gw, size.y}, {.MouseButtonLeft, .MouseButtonRight})
 	name(string(id))
+	take_drop(&e, drop_type, to_row(im.GetIO().MousePos.y, grid, row_h, size, view), &drop_row)
 	hovered := im.IsItemHovered()
 	m := io.MousePos
 	hit, edge := -1, false
@@ -262,6 +281,12 @@ note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll
 		im.DrawList_AddLine(dl, {x, grid.y}, {x, grid.y + size.y}, col(t.warn), 2)
 	}
 	im.DrawList_PopClipRect(dl)
+	// A drag over a row: the whole row lit, where it will land.
+	if drop_row >= view.key0 && drop_row < view.key0 + nk && drop_row < len(rows) {
+		y := y_of(drop_row, grid, row_h, size, view)
+		im.DrawList_AddRectFilled(dl, {pos.x, y}, {grid.x + gw, y + row_h}, col(with_alpha(t.accent, 0.18)), 3)
+		im.DrawList_AddRect(dl, {pos.x, y}, {grid.x + gw, y + row_h}, col(t.accent), 3, 2)
+	}
 	im.SetCursorScreenPos({pos.x, pos.y + size.y})
 	im.Dummy({size.x, 0})
 	return

@@ -391,6 +391,15 @@ METRONOME_PARAM_ON : core.Param_Id : core.Param_Id(2)
 
 Parameter id of the `Metronome`'s switch: 1 clicks, 0 is silent (default 1).
 
+### METRONOME_PARAM_COUNT_IN
+
+```odin
+METRONOME_PARAM_COUNT_IN : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Metronome`'s count-in switch: 1 clicks the beats
+before the timeline's beat 0 (a count-in) even while it is off (default 0).
+
 ### MOD_PARAM_RATE_HZ
 
 ```odin
@@ -1636,13 +1645,15 @@ Metronome :: struct {
 	fall: f64,
 	level: f64,
 	on: bool,
+	count_in: bool,
 }
 ```
 
 A click on every beat of a timeline while it plays, higher on the first
 beat of each bar (bars from the clock's meter, counted from the
 timeline's beat 0). Mono into every output channel; no inputs. Clicks
-land on their exact frame at any block size.
+land on their exact frame at any block size. With its count-in switch on,
+the beats before beat 0 click even while it is off.
 
 | Field | Description |
 |-------|-------------|
@@ -1654,6 +1665,7 @@ land on their exact frame at any block size.
 | `fall` | per-frame decay factor |
 | `level` | linear |
 | `on` |  |
+| `count_in` | click before beat 0 even while off |
 
 ### Modulation
 
@@ -3818,7 +3830,7 @@ Parameter table of the `Limiter` node, as returned by `node_params`. Read-only.
 ### metronome_params
 
 ```odin
-metronome_params: [2]core.Param_Info
+metronome_params: [3]core.Param_Info
 ```
 
 Parameter table of the `Metronome` node. Read-only.

@@ -486,15 +486,6 @@ draw_global :: proc(a: ^App) {
 		section(a, "Pad", false)
 	}
 	pad_name_colour(a, i)
-	choke := i32(pad.choke)
-	groups := [pm.CHOKE_GROUPS + 1]cstring{"No choke group", "Choke group 1", "Choke group 2", "Choke group 3", "Choke group 4", "Choke group 5", "Choke group 6"}
-	im.SetNextItemWidth(min(180, im.GetContentRegionAvail().x))
-	if ui.combo_char("##choke", &choke, &groups[0], len(groups)) {
-		p := pad
-		p.choke = u8(choke)
-		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
-		app.seal(&m.history)
-	}
 
 	if wide do im.TableNextColumn()
 	section(a, "Sound", !wide)

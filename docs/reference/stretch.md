@@ -40,6 +40,16 @@ The default preset analyses 120 ms blocks every 30 ms, so output is heard
 about 60 ms after its input; the clip player compensates. Beyond 2× slower,
 phases are randomised (deterministically, the same on every platform).
 
+To make a whole sound longer or shorter offline (a sampler's warp), `warp`
+picks how: Beats (cut at its hits, each piece moved), Tones (one spectral
+stretch), Complex (the stretch started again at each strong hit) or
+Repitch (resampled):
+
+```odin
+out, _ := stretch.warp(input, 48_000, 1.25, {mode = .Beats})
+defer stretch.warp_destroy(out)
+```
+
 ## Constants
 
 ### MAX_CHANNELS
@@ -73,6 +83,68 @@ Configure with `stretch_preset_default` (or `_cheaper`, or
 `stretch_configure`); free with `stretch_destroy`. Everything after
 configuring is realtime-safe and allocation-free. One thread at a time.
 Fields are internal.
+
+### Warp_Mode
+
+```odin
+Warp_Mode :: enum u8 {
+	Beats,
+	Tones,
+	Complex,
+	Repitch,
+}
+```
+
+How `warp` makes a sound longer or shorter (to follow a tempo).
+
+| Value | Description |
+|-------|-------------|
+| `Beats` | cut at its hits (or a grid), each piece at its own speed, moved to its new time: drums and loops; attacks exact |
+| `Tones` | a spectral stretch of the whole: pitch kept, for tonal sounds (voices, bass, pads) |
+| `Complex` | the spectral stretch started again at each strong hit: full mixes, attacks kept crisp |
+| `Repitch` | played faster or slower: the pitch goes with it (turntable) |
+
+### Warp_Grain
+
+```odin
+Warp_Grain :: enum u8 {
+	Transients,
+	Sixteenth,
+	Eighth,
+	Quarter,
+}
+```
+
+Where Beats cuts the sound.
+
+| Value | Description |
+|-------|-------------|
+| `Transients` | at its hits |
+| `Sixteenth` | every 1/16 of its own tempo |
+| `Eighth` |  |
+| `Quarter` |  |
+
+### Warp_Settings
+
+```odin
+Warp_Settings :: struct {
+	mode: Warp_Mode,
+	grain: Warp_Grain,
+	beat_frames: f64,
+	fill_gaps: bool,
+	sensitivity: f64,
+}
+```
+
+Settings for `warp`.
+
+| Field | Description |
+|-------|-------------|
+| `mode` |  |
+| `grain` | Beats: where to cut |
+| `beat_frames` | a beat of the sound, in its frames (for a grid grain); 0 = half a second |
+| `fill_gaps` | Beats, made longer: a piece's gap filled by looping its tail (else it fades to silence) |
+| `sensitivity` | how quiet a hit still cuts (0..1; 0 = 0.5) |
 
 ## Procedures
 
@@ -270,6 +342,25 @@ stretch_output_seek_length :: proc "contextless"(s: ^Stretch, playback_rate: f32
 ```
 
 **Realtime-safe** (callable on the audio thread). How much input `stretch_output_seek` should be given at `playback_rate`.
+
+### warp
+
+```odin
+warp :: proc(input: [][]f32, sample_rate: f64, ratio: f64, settings: Warp_Settings = Warp_Settings{}, allocator: mem.Allocator = context.allocator) -> (output: [][]f32, err: core.Error)
+```
+
+Control thread. `input` (planar, `sample_rate`) made `ratio` times as long
+(ratio > 1: longer, slower) as `settings.mode` says; the result is
+round(ratio × frames) long, allocated with `allocator` (free each
+channel, then the slice). At ratio 1 Beats gives back its input exactly.
+
+### warp_destroy
+
+```odin
+warp_destroy :: proc(output: [][]f32, allocator: mem.Allocator = context.allocator)
+```
+
+Frees what `warp` returned.
 
 ## Variables
 

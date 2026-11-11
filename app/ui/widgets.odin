@@ -230,7 +230,7 @@ Pad_Hit :: struct {
 	released: bool, // went up (for gate and hold modes)
 	held:     bool,
 	velocity: f32,  // 0..1, from where it was hit: higher is harder
-	selected: bool, // clicked with Shift or Cmd, or right-clicked: select without playing
+	selected: bool, // clicked with Shift or Cmd (Ctrl), or right-clicked: select without playing
 	menu:     bool, // right-clicked (for a menu: its colour)
 	mute:     bool, // its Mute button was clicked
 	solo:     bool, // its Solo button was clicked
@@ -253,6 +253,7 @@ Pad_Face :: struct {
 	solo:      bool,
 	buttons:   bool, // show Mute and Solo
 	drop_type: cstring, // the drag-and-drop payload it takes (nil: none)
+	badge:     string,  // a small tag at the top right (its choke group: "C2"; "": none)
 }
 
 // A sampler pad (see Pad_Face): hit it to play it (higher is harder);
@@ -274,7 +275,7 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	}
 	io := im.GetIO()
 	if im.IsItemActivated() {
-		if im.IsMouseClicked(.Right) || io.KeyShift || io.KeySuper {
+		if im.IsMouseClicked(.Right) || io.KeyShift || io.KeySuper || io.KeyCtrl {
 			hit.selected = true
 			hit.menu = im.IsMouseClicked(.Right)
 		} else {
@@ -315,15 +316,26 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	}
 	if face.selected do im.DrawList_AddRect(dl, {pos.x - 1, pos.y - 1}, {max_.x + 1, max_.y + 1}, col(t.accent), r + 1, 2)
 
-	// The name, centred at the top and clipped to the pad.
+	// The name, centred at the top and clipped to the pad (and short of the badge).
 	text_c := t.text if face.has_sound else t.text_dim
 	pad_x, pad_y: f32 = 6, 6
+	badge_w: f32 = 0
+	if face.badge != "" && size.x >= 56 {
+		bc := strings.clone_to_cstring(face.badge, context.temp_allocator)
+		bsz := im.CalcTextSize(bc)
+		bp := im.Vec2{max_.x - bsz.x - 10, pos.y + 4}
+		im.DrawList_AddRectFilled(dl, {bp.x - 1, bp.y}, {bp.x + bsz.x + 5, bp.y + bsz.y + 2}, col(with_alpha(t.warn, 0.85)), 3)
+		im.DrawList_AddText(dl, {bp.x + 2, bp.y + 1}, col(t.bg), bc)
+		badge_w = bsz.x + 10
+	}
 	im.DrawList_PushClipRect(dl, {pos.x + pad_x, pos.y}, {max_.x - pad_x, max_.y}, true)
 	if face.name != "" {
 		nc := strings.clone_to_cstring(face.name, context.temp_allocator)
 		ns := im.CalcTextSize(nc)
 		x := pos.x + max((size.x - ns.x) / 2, pad_x) // too long: from the left, cut at the right
+		if badge_w > 0 do im.DrawList_PushClipRect(dl, {pos.x + pad_x, pos.y}, {max_.x - badge_w - 2, max_.y}, true)
 		im.DrawList_AddText(dl, {math.round(x), pos.y + pad_y}, col(text_c), nc)
+		if badge_w > 0 do im.DrawList_PopClipRect(dl)
 	}
 	// The middle line (the note).
 	if face.middle != "" {

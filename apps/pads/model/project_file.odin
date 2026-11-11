@@ -9,6 +9,7 @@ import fc "fire:core"
 import "fire:perform"
 import "fire:sampler"
 import "fire:session"
+import "fire:stretch"
 
 // The project file in a project folder.
 PROJECT_FILE :: "project.fire"
@@ -17,7 +18,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 11 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted
+PROJECT_VERSION :: 12 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -47,6 +48,21 @@ model_save_as :: proc(m: ^Model, dir: string) -> fc.Error {
 			if os.write_entire_file(dest, data) != nil do return .Device_Error
 		}
 		s.path = intern(p, dest)
+	}
+	p.dir = intern(p, dir)
+	mark_all_sources_stale(&m.engine)
+	return model_save(m)
+}
+
+// Moves the project's folder to `dir` (a rename): its samples go with it.
+// Saves it there.
+model_move :: proc(m: ^Model, dir: string) -> fc.Error {
+	p := &m.project
+	old := p.dir
+	if os.rename(old, dir) != nil do return .Device_Error
+	for &it in p.samples.items {
+		s := &it.value
+		if strings.has_prefix(s.path, old) do s.path = intern(p, strings.concatenate({dir, s.path[len(old):]}, context.temp_allocator))
 	}
 	p.dir = intern(p, dir)
 	mark_all_sources_stale(&m.engine)
@@ -278,6 +294,20 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_string(w, step_label(&st))
 		}
 	}
+	// v12: how many buses, and each one's name and where it goes; each
+	// pad's warp.
+	fc.write_int(w, p.bus_count)
+	for &b in p.buses {
+		fc.write_string(w, strings.truncate_to_byte(string(b.name[:]), 0))
+		fc.write_u8(w, b.dest)
+	}
+	for pad in p.pads {
+		fc.write_bool(w, pad.warp.on)
+		fc.write_u8(w, u8(pad.warp.mode))
+		fc.write_f64(w, pad.warp.bpm)
+		fc.write_u8(w, u8(pad.warp.grain))
+		fc.write_bool(w, pad.warp.fill_gaps)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -372,7 +402,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		for &s in pad.inserts do s = read_slot(r, p)
 		pad.mute = fc.read_bool(r)
 		pad.solo = fc.read_bool(r)
-		if version >= 2 do for &s in pad.sends {
+		if version >= 2 do for &s in pad.sends[:BUSES if version >= 12 else 4] {
 			s.level = clamp(fc.read_f32(r), 0, SEND_MAX)
 			s.pre = fc.read_bool(r)
 		}
@@ -421,7 +451,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	pf.repeat_on = fc.read_bool(r)
 	pf.repeat.rate = perform.Rate(min(fc.read_u8(r), u8(max(perform.Rate))))
 	pf.repeat.gate = fc.read_f32(r)
-	for &b in p.buses do b = read_bus(r, p)
+	for &b in p.buses[:BUSES if version >= 12 else 4] do b = read_bus(r, p)
 	p.main = read_bus(r, p)
 	for &s in p.perf_fx {
 		s = read_slot(r, p)
@@ -492,6 +522,25 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		p.song = p.arrangements[p.arrangement].song
 	} else {
 		p.arrangements[0].song = p.song // one arrangement: the song
+	}
+	if version >= 12 {
+		p.bus_count = clamp(fc.read_int(r), 1, BUSES)
+		for &b in p.buses {
+			copy(b.name[:len(b.name) - 1], fc.read_string(r))
+			b.dest = fc.read_u8(r)
+		}
+		// Nothing goes round in a loop, or to a bus not in use.
+		for &b, i in p.buses do if !bus_dest_ok(p, i + 1, int(b.dest)) do b.dest = 0
+		for &pad in p.pads do if int(pad.bus) > p.bus_count do pad.bus = 0
+		for &pad in p.pads {
+			pad.warp.on = fc.read_bool(r)
+			pad.warp.mode = stretch.Warp_Mode(min(fc.read_u8(r), u8(max(stretch.Warp_Mode))))
+			pad.warp.bpm = clamp(fc.read_f64(r), 0, 400)
+			pad.warp.grain = stretch.Warp_Grain(min(fc.read_u8(r), u8(max(stretch.Warp_Grain))))
+			pad.warp.fill_gaps = fc.read_bool(r)
+		}
+	} else {
+		p.bus_count = DEFAULT_BUSES
 	}
 }
 

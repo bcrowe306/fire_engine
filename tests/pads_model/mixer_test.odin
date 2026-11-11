@@ -6,6 +6,7 @@ import "core:path/filepath"
 import "core:testing"
 
 import app "app:core"
+import fc "fire:core"
 import pm "../../apps/pads/model"
 import "fire:dsp"
 import kit "fire:testkit"
@@ -270,4 +271,63 @@ a_watched_effect_feeds_the_tap :: proc(t: ^testing.T) {
 	pm.watch_slot(&m.engine, {})
 	render(r, 256)
 	testing.expect(t, !pm.watch_read(&m.engine, buf[:]), "let go")
+}
+
+// Up to 16 buses: added, named, routed into each other (never round in a
+// loop), sound going through a chain of them; deleted (what went to it
+// goes to main, the ones after move up a letter); saved and loaded.
+@(test)
+buses_added_routed_and_deleted :: proc(t: ^testing.T) {
+	r := tone_rig(t, "mix_buses")
+	defer rig_destroy(r)
+	m := &r.m
+	p := &m.project
+	testing.expect_value(t, p.bus_count, pm.DEFAULT_BUSES)
+	testing.expect_value(t, pm.add_bus(m), 5)
+	testing.expect_value(t, pm.add_bus(m), 6)
+	pm.rename_bus(m, 6, "Drums")
+	testing.expect_value(t, pm.bus_name(p, 6), "Drums")
+	testing.expect_value(t, pm.bus_name(p, 5), "Bus E")
+	// Pad 0 into E, E into Drums (F), Drums into A: the tone through all.
+	pm.set_pad_bus(m, 0, 5)
+	testing.expect(t, pm.set_bus_dest(m, 5, 6), "E to Drums")
+	testing.expect(t, pm.set_bus_dest(m, 6, 1), "Drums to A")
+	testing.expect(t, !pm.set_bus_dest(m, 1, 5), "not A to E: a loop")
+	testing.expect(t, !pm.set_bus_dest(m, 6, 6), "not to itself")
+	b := p.buses[0]
+	b.volume = -6
+	pm.set_bus(m, 0, 0, "Set Volume", b)
+	pm.sync(&m.engine)
+	pm.hit(&m.engine, 0, true)
+	render(r, 4800)
+	l, _ := level(r)
+	testing.expectf(t, abs(l - 0.5 * 0.501) < 0.02, "through E, Drums and A (-6 dB there): %v", l)
+	// Muting the bus in the middle silences it.
+	d := p.buses[5]
+	d.mute = true
+	pm.set_bus(m, 5, 1, "Mute", d)
+	pm.sync(&m.engine)
+	render(r, 4800)
+	l, _ = level(r)
+	testing.expectf(t, l < 1e-3, "Drums muted: nothing (%v)", l)
+	app.undo(&m.history)
+	// Saved and loaded: the buses, their names and routes, a send to F.
+	pm.set_send_db(m, 0, 6, -3)
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	r2 := rig_make(t, "mix_buses_load")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, p.dir), fc.Error.None)
+	q := &r2.m.project
+	testing.expect_value(t, q.bus_count, 6)
+	testing.expect_value(t, pm.bus_name(q, 6), "Drums")
+	testing.expect(t, q.buses[4].dest == 6 && q.buses[5].dest == 1 && q.pads[0].bus == 5, "the routes")
+	testing.expectf(t, abs(pm.send_db(q.pads[0].sends[5]) + 3) < 0.01, "the send to F (%v)", pm.send_db(q.pads[0].sends[5]))
+	// Deleting E: pad 0 goes to main; Drums becomes E (still into A).
+	pm.delete_bus(m, 5)
+	testing.expect_value(t, p.bus_count, 5)
+	testing.expect_value(t, pm.bus_name(p, 5), "Drums")
+	testing.expect(t, p.pads[0].bus == 0 && p.buses[4].dest == 1, "what went to E goes to main; Drums moved up")
+	testing.expectf(t, abs(pm.send_db(p.pads[0].sends[4]) + 3) < 0.01, "the send moved with it")
+	app.undo(&m.history)
+	testing.expect(t, p.bus_count == 6 && p.pads[0].bus == 5 && pm.bus_name(p, 6) == "Drums", "one undo step")
 }

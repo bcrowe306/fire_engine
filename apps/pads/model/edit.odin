@@ -44,15 +44,15 @@ Pad_Field :: enum {
 	Mute,
 	Solo,
 	Send_0, // a send's level (one field per bus, so drags of different sends don't merge)
-	Send_1,
-	Send_2,
-	Send_3,
+	Send_1, Send_2, Send_3, Send_4, Send_5, Send_6, Send_7, Send_8,
+	Send_9, Send_10, Send_11, Send_12, Send_13, Send_14, Send_15,
 	Send_Pre,
 	Fades,
 	Kind,
 	Input,
 	Monitor,
 	Voice, // a field of the voice (see `set_voice`)
+	Warp,
 }
 
 // Changes one setting of pad `index`'s voice, undoably: `key` names the

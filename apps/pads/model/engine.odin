@@ -27,6 +27,9 @@ Engine :: struct {
 	nodes:   [PADS]Pad_Nodes,
 	dirty:   [PADS]bool,
 	sources: map[app.Id]^stream.Source, // opened samples (each retained once)
+	warp_sources: map[string]^stream.Source, // opened warp renderings, by path
+	warp_jobs: [dynamic]^Warp_Job, // renderings under way
+	warp_bpm:  f64, // the tempo warped pads follow (the one playing)
 	// The sequencer: a timeline, the player of the current sequence (into
 	// the router), and the metronome.
 	timeline:  fc.Timeline_Id,
@@ -36,6 +39,8 @@ Engine :: struct {
 	seq_dirty: bool, // the current sequence (or the slot) changed
 	bpm:       f64,  // the tempo the clock has
 	metronome: bool, // the click is on (set it, then `sync`)
+	count_in_click: bool, // the count-in clicks even with the metronome off (a setting; `sync`)
+	count_click_on: bool, // what the metronome node has
 	metro_on:  bool, // what the metronome node has
 	metro_db:  f32,  // its level, as sent
 	recording: bool, // the capture is armed (the metronome may click only then)
@@ -74,6 +79,8 @@ Pad_Nodes :: struct {
 	eq:      graph.Node_Id,
 	handle:  ^sampler.Sampler,
 	built:   Pad, // the pad as the engine has it
+	zone_src: ^stream.Source, // what its zone plays (its sample, or its warp's rendering)
+	warp_scale: f64, // how much longer that is than its sample (1: not warped)
 	fader:   graph.Node_Id, // its volume: after its inserts (the mixer wires it)
 	// Automation of the current sequence: a player into the sampler, one
 	// into the EQ, one into the fader.
@@ -97,6 +104,7 @@ Pad_Nodes :: struct {
 engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error {
 	e.host, e.project = host, project
 	e.sources = make(map[app.Id]^stream.Source)
+	e.warp_sources = make(map[string]^stream.Source)
 	for &x in e.perf_live do x = -1
 	return build_fixed(e)
 }
@@ -148,6 +156,9 @@ engine_destroy :: proc(e: ^Engine) {
 	preview_destroy(&e.preview)
 	for _, src in e.sources do stream.source_release(src)
 	delete(e.sources)
+	warp_clear(e)
+	delete(e.warp_sources)
+	delete(e.warp_jobs)
 }
 
 // The engine must look at pad `index` again.
@@ -177,6 +188,7 @@ source_of :: proc(e: ^Engine, id: app.Id) -> ^stream.Source {
 sync :: proc(e: ^Engine) {
 	g := e.host.graph
 	preview_poll(e)
+	warp_poll(e)
 	structural := false
 	for i in 0 ..< PADS {
 		if !e.dirty[i] do continue
@@ -245,12 +257,15 @@ sync :: proc(e: ^Engine) {
 			continue
 		}
 		// The sample map: rebuilt when anything the zone holds changed.
-		if zone_changed(n.built, pad) {
-			m, err := sampler.sample_map_create({zone_of(pad, i, src)})
+		// (A warped pad plays its rendering, once ready: its positions scaled.)
+		zsrc, scale := warp_source(e, pad, src)
+		if zone_changed(n.built, pad) || zsrc != n.zone_src {
+			m, err := sampler.sample_map_create({zone_of(pad, i, zsrc, scale)})
 			if err == .None {
 				sampler.sampler_set_map(n.handle, m)
 				sampler.sample_map_release(m)
 			}
+			n.zone_src, n.warp_scale = zsrc, scale
 		}
 		// Parameters: smoothed changes.
 		set :: proc(g: ^graph.Graph, id: graph.Node_Id, p: fc.Param_Id, old, new: f32, fresh: bool) {
@@ -307,6 +322,10 @@ sync_sequencer :: proc(e: ^Engine) {
 	if e.metro_on != click {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_ON, 1 if click else 0)
 		e.metro_on = click
+	}
+	if e.count_click_on != e.count_in_click {
+		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_COUNT_IN, 1 if e.count_in_click else 0)
+		e.count_click_on = e.count_in_click
 	}
 	if e.metro_db != tr.metro_db {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_LEVEL_DB, f64(tr.metro_db))
@@ -501,6 +520,12 @@ stop :: proc(e: ^Engine) {
 	e.seq_dirty = true
 }
 
+// Silences every voice of every pad at once (a fade of a few
+// milliseconds): what a second press of Stop does.
+silence_all :: proc(e: ^Engine) {
+	intrinsics.atomic_add(&e.router.silence, 1)
+}
+
 // The sample frame pad `index` is playing (its newest voice), or false
 // when it is silent: for a playhead over its waveform.
 pad_playhead :: proc(e: ^Engine, index: int) -> (frame: i64, playing: bool) {
@@ -534,18 +559,21 @@ zone_changed :: proc(a, b: Pad) -> bool {
 		a.fade_in != b.fade_in || a.fade_out != b.fade_out
 }
 
-// The sampler zone that plays `pad`.
-zone_of :: proc(pad: Pad, index: int, src: ^stream.Source) -> sampler.Sample_Zone {
+// The sampler zone that plays `pad` from `src`, `scale` times as long as
+// its sample (a warp's rendering): its positions in its sample's frames
+// scaled to it.
+zone_of :: proc(pad: Pad, index: int, src: ^stream.Source, scale := 1.0) -> sampler.Sample_Zone {
 	key := pad_key(index)
 	loop := pad.mode == .Loop || pad.mode == .Hold
+	at :: proc(x: i64, scale: f64) -> i64 { return i64(math.round(f64(x) * scale)) }
 	return {
 		source = src, root_key = key, key_lo = key, key_hi = key, exact_keys = true, // pad 1 is key 0: only key 0
-		start = pad.start, end = pad.end,
-		loop = loop, loop_start = pad.loop_start if pad.loop_end > 0 else pad.start, loop_end = pad.loop_end,
-		loop_mode = pad.loop_mode, crossfade = pad.crossfade,
+		start = at(pad.start, scale), end = at(pad.end, scale),
+		loop = loop, loop_start = at(pad.loop_start if pad.loop_end > 0 else pad.start, scale), loop_end = at(pad.loop_end, scale),
+		loop_mode = pad.loop_mode, crossfade = at(pad.crossfade, scale),
 		one_shot = pad.mode == .One_Shot || pad.mode == .Hold,
 		reverse = pad.reverse, pan = f64(pad.pan),
-		fade_in = pad.fade_in, fade_out = pad.fade_out,
+		fade_in = at(pad.fade_in, scale), fade_out = at(pad.fade_out, scale),
 	}
 }
 
@@ -592,6 +620,7 @@ engine_clear :: proc(e: ^Engine) {
 mark_all_sources_stale :: proc(e: ^Engine) {
 	for _, src in e.sources do stream.source_release(src)
 	clear(&e.sources)
+	warp_clear(e)
 	for &n in e.nodes do n.built.sample = 0 // their zones again
 	mark_all(e)
 }

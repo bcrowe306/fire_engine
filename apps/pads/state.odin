@@ -49,6 +49,8 @@ State :: struct {
 	note_list:  [dynamic]State_Note, // its notes (in order)
 	muted_notes: int,
 	launch:     string, // when a sequence picked while playing takes over: Now, Beat, Bar, End
+	silences:   int,    // times Stop silenced every voice
+	pad_sel:    [dynamic]int, // the pads selected together (0-based)
 	points:     int,
 	bars:       int,
 	undo:       string, // the next undo step's name
@@ -66,7 +68,7 @@ State :: struct {
 	queued:     int, // the sequence about to take over (1-based; 0: none)
 	fx_params:  [dynamic][2]f32, // the effect being edited: its settings, (id, value) each
 	pads:       [dynamic]State_Pad, // the ones with a sound
-	buses:      [pm.BUSES + 1]State_Bus, // A..D, then main
+	buses:      [dynamic]State_Bus, // those in use (A...), then main
 	browser:    State_Browser,
 	toasts:     []string,
 	errors:     int, // drive lines that failed so far
@@ -83,7 +85,11 @@ State_Pad :: struct {
 	bus:     int,
 	mute:    bool,
 	solo:    bool,
-	sends:   [pm.BUSES]f32, // dB (-60: off)
+	sends:   []f32, // dB (-60: off), to each bus in use
+	choke:   int,    // its choke group (0: none)
+	warp:    string, // its warp's mode, or "" when off
+	warp_bpm: f64,   // its sample's tempo (warp)
+	warp_ready: bool, // its warp rendered and playing
 	inserts: [pm.PAD_INSERTS]string,
 	slices:  int,
 	level:   f32, // the meter's peak now
@@ -133,6 +139,7 @@ State_Bus :: struct {
 	mute:   bool,
 	solo:   bool,
 	slots:  [pm.BUS_SLOTS]string,
+	dest:   string, // where it goes ("Main", another bus)
 }
 
 State_Browser :: struct {
@@ -205,6 +212,9 @@ state_json :: proc(a: ^App) -> string {
 		if n.muted do s.muted_notes += 1
 	}
 	s.launch = enum_name(p.switch_at)
+	s.silences = a.transport.silences
+	s.pad_sel = make([dynamic]int, context.temp_allocator)
+	for i in 0 ..< pm.PADS do if i in selected_pads(a) do append(&s.pad_sel, i)
 	s.undo = app.undo_name(&m.history)
 	s.dirty = pm.model_dirty(m)
 	s.project = p.dir
@@ -227,7 +237,11 @@ state_json :: proc(a: ^App) -> string {
 		sp := State_Pad{index = i, label = pm.pad_label(i), name = pm.pad_name(&pad), mode = enum_name(pad.mode),
 			volume = pad.volume, pan = pad.pan, pitch = pad.pitch, bus = int(pad.bus), mute = pad.mute, solo = pad.solo,
 			slices = pad.slice_count}
-		for x, k in pad.sends do sp.sends[k] = pm.send_db(x)
+		sp.choke = int(pad.choke)
+		if pad.warp.on do sp.warp = enum_name(pad.warp.mode)
+		sp.warp_bpm, sp.warp_ready = pad.warp.bpm, pad.warp.on && !pm.warp_rendering(&m.engine, i)
+		sp.sends = make([]f32, p.bus_count, context.temp_allocator)
+		for x, k in pad.sends[:p.bus_count] do sp.sends[k] = pm.send_db(x)
 		for x, k in pad.inserts do sp.inserts[k] = pm.slot_name(x)
 		v := a.mixer.pads[i]
 		sp.level = max(v[0].peak, v[1].peak)
@@ -241,11 +255,12 @@ state_json :: proc(a: ^App) -> string {
 		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames
 		append(&s.pads, sp)
 	}
-	for b in 0 ..= pm.BUSES {
+	s.buses = make([dynamic]State_Bus, context.temp_allocator)
+	for b in 0 ..= pm.BUSES do if b < p.bus_count || b == pm.BUSES {
 		bus := pm.bus_of(m, b)^
-		sb := State_Bus{name = pm.bus_name(0 if b == pm.BUSES else b + 1), volume = bus.volume, pan = bus.pan, mute = bus.mute, solo = bus.solo}
+		sb := State_Bus{name = pm.bus_index_name(p, b), volume = bus.volume, pan = bus.pan, mute = bus.mute, solo = bus.solo, dest = pm.bus_name(p, int(bus.dest)) if b < pm.BUSES else ""}
 		for x, k in bus.slots do sb.slots[k] = pm.slot_name(x)
-		s.buses[b] = sb
+		append(&s.buses, sb)
 	}
 	br := &a.browser
 	s.browser.root, s.browser.tab, s.browser.selected = br.root, br.tab, br.selected

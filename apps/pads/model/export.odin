@@ -104,10 +104,10 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 	case .Buses:
 		os.make_directory_all(path)
 		stem(x, path, "Main", {.Bus, 0})
-		for b in 1 ..= BUSES {
+		for b in 1 ..= p.bus_count {
 			used := false
 			for pad, i in p.pads do if int(pad.bus) == b && pad_used(p, i) do used = true
-			if used do stem(x, path, bus_name(b), {.Bus, b})
+			if used do stem(x, path, bus_name(p, b), {.Bus, b})
 		}
 	}
 	if len(x.passes) == 0 do return false

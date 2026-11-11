@@ -33,6 +33,8 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { a := (^App)(u); if save_project(a) do ui.toast(&a.ws.toasts, .Success, "Saved") }})
 	add(acts, {id = "save_as", label = "Save As…", icon = ui.ICON_SAVE, chord = ui.MOD_CMD | ui.MOD_SHIFT | i32(im.Key.S), user = a,
 		run = proc(u: rawptr) { project_dialog((^App)(u), .Save_As) }})
+	add(acts, {id = "rename_project", label = "Rename Project…", icon = ui.ICON_PENCIL, user = a,
+		run = proc(u: rawptr) { (^App)(u).proj.rename_open = true }})
 	add(acts, {id = "export", label = "Export Audio…", icon = ui.ICON_DOWNLOAD, chord = ui.MOD_CMD | i32(im.Key.E), user = a,
 		run = proc(u: rawptr) { (^App)(u).proj.export_open = true }})
 	add(acts, {id = "resample", label = "Resample Sequence to Pad", icon = ui.ICON_COPY_PLUS, user = a,
@@ -50,10 +52,12 @@ setup_actions :: proc(a: ^App) {
 			switch {
 			case editing_notes(a): delete_selection(a)
 			case song_editing(a):  song_delete(a)
-			case:                  pm.clear_pad(&a.m, a.selected)
+			case:                  clear_pads(a, selected_pads(a))
 			}
 		},
 		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return editing_notes(a) || song_editing(a) || pm.pad_used(&a.m.project, a.selected) }})
+	add(acts, {id = "settings", label = "Settings…", icon = ui.ICON_SETTINGS, chord = ui.MOD_CMD | i32(im.Key.Comma), user = a,
+		run = proc(u: rawptr) { (^App)(u).settings.open = true }})
 	add(acts, {id = "palette", label = "Command Palette", icon = ui.ICON_SEARCH, chord = ui.MOD_CMD | i32(im.Key.K), user = a,
 		run = proc(u: rawptr) { ui.palette_open(&(^App)(u).ws.palette) }})
 	add(acts, {id = "theme", label = "Light Theme", icon = ui.ICON_SUN, user = a,
@@ -136,12 +140,14 @@ draw_menu :: proc(user: rawptr) {
 		}
 		ui.menu_action(&a.actions, "save")
 		ui.menu_action(&a.actions, "save_as")
+		ui.menu_action(&a.actions, "rename_project")
 		im.Separator()
 		ui.menu_action(&a.actions, "import")
 		ui.menu_action(&a.actions, "import_midi")
 		ui.menu_action(&a.actions, "export")
 		ui.menu_action(&a.actions, "resample")
 		im.Separator()
+		ui.menu_action(&a.actions, "settings")
 		ui.menu_action(&a.actions, "quit")
 		im.EndMenu()
 	}
@@ -281,10 +287,12 @@ subscribe_imports :: proc(a: ^App) {
 //	lane velocity|chance|automation [PARAM]   what the sequence editor's lane shows
 //	insert PAD SLOT KIND / busfx BUS SLOT KIND / perf_fx N KIND   (BUS 4 = main; KIND: lowpass, reverb, ring...)
 //	plugin BUS SLOT ID PATH / edit_fx pad P S|bus B S|perf N / fx_param ID VALUE (the edited slot)
-//	send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..4; DB -60 = off)
+//	send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..the buses in use; DB -60 = off)
+//	addbus / delbus B / busdest B D (0 = main) / busname B NAME   buses: add, delete, route, rename
+//	warp PAD on|off [beats|tones|complex|repitch] [BPM]   a pad's warp (its sample's tempo: guessed if not given)
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
-//	save / save_as DIR / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
+//	save / save_as DIR / rename_project NAME / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
 //	resample / song add SLOT [REPEATS] | mode on|off | loop on|off | clear / switch end|bar|beat|now / export_dialog [off]
 //	expect file PATH / expect song K / expect dirty 0|1 / expect pads_loaded K
 //	theme light|dark, action ID
@@ -538,7 +546,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "send":
 		// send PAD BUS DB [pre|post]
 		i, b := num(w, 1), num(w, 2)
-		if !pad_ok(i) || b < 1 || b > pm.BUSES || len(w) < 4 do return false
+		if !pad_ok(i) || b < 1 || b > a.m.project.bus_count || len(w) < 4 do return false
 		pm.set_send_db(&a.m, i, b, numf(w, 3))
 		app.seal(&a.m.history)
 		if len(w) > 4 do pm.set_send_pre(&a.m, i, b, w[4] == "pre")
@@ -548,6 +556,33 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			pm.set_pad_bus(&a.m, i, num(w, 2))
 			return true
 		}
+	case "warp": // warp PAD on|off [beats|tones|complex|repitch] [BPM]
+		i := num(w, 1)
+		if !pad_ok(i) || len(w) < 3 do return false
+		wp := a.m.project.pads[i].warp
+		wp.on = w[2] == "on"
+		if len(w) > 3 do switch w[3] {
+		case "beats":   wp.mode = .Beats
+		case "tones":   wp.mode = .Tones
+		case "complex": wp.mode = .Complex
+		case "repitch": wp.mode = .Repitch
+		}
+		if len(w) > 4 do wp.bpm = f64(numf(w, 4))
+		pm.set_warp(&a.m, i, wp)
+		app.seal(&a.m.history)
+		return true
+	case "addbus": // a bus after the others
+		return pm.add_bus(&a.m) > 0
+	case "delbus": // delbus B (1..)
+		n := a.m.project.bus_count
+		pm.delete_bus(&a.m, num(w, 1))
+		return a.m.project.bus_count == n - 1
+	case "busdest": // busdest B D: bus B (1..) to D (0 = main, or a bus); fails if it would loop
+		return pm.set_bus_dest(&a.m, num(w, 1), num(w, 2))
+	case "busname": // busname B NAME
+		if len(w) < 3 do return false
+		pm.rename_bus(&a.m, num(w, 1), strings.join(w[2:], " ", context.temp_allocator))
+		return true
 	case "busvol":
 		b := num(w, 1)
 		if b < 0 || b > pm.BUSES do return false
@@ -582,11 +617,16 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if i < 0 || i >= pm.PERF_FX do return false
 		pm.hold_perf_fx(&a.m, i, len(w) < 3 || w[2] != "off")
 		return true
-	case "save":
+	case "save": // (in place, even a new project: no dialog in a script)
+		if a.proj.untitled do return pm.model_save(&a.m) == .None
 		return save_project(a)
+	case "rename_project":
+		if len(w) < 2 do return false
+		return rename_project(a, strings.join(w[1:], " ", context.temp_allocator))
 	case "save_as":
 		if len(w) < 2 do return false
 		if pm.model_save_as(&a.m, strings.join(w[1:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not save as")
+		a.proj.untitled = false
 		return true
 	case "open":
 		if len(w) < 2 do return false

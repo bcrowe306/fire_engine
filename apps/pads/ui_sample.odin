@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:math"
 
 import app "app:core"
 import "app:ui"
@@ -53,6 +54,7 @@ draw_sample :: proc(user: rawptr) {
 		}
 	}
 	draw_playback(a)
+	draw_warp(a)
 	draw_tools(a)
 	im.Spacing()
 
@@ -72,7 +74,27 @@ draw_sample :: proc(user: rawptr) {
 	}
 	avail := im.GetContentRegionAvail()
 	head, playing := pm.pad_playhead(&m.engine, i)
-	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head if playing else -1)
+	wave_at := im.GetCursorScreenPos()
+	wave_size := im.Vec2{avail.x, max(avail.y - 4, 80)}
+	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, wave_size, ui.rgb(pad.color), head if playing else -1)
+	// Warped: the sample's own beats over it (bars stronger), from its
+	// start, so you see what the tempo will follow.
+	if pad.warp.on && pad.warp.bpm > 0 && w.view.end > w.view.start {
+		if smp := pm.pad_sample(m, i); smp != nil {
+			dl := im.GetWindowDrawList()
+			beat := smp.rate * 60 / pad.warp.bpm
+			first := max(math.ceil((w.view.start - f64(start)) / beat), 0)
+			im.DrawList_PushClipRect(dl, wave_at, {wave_at.x + wave_size.x, wave_at.y + wave_size.y}, true)
+			for k := first; f64(start) + k * beat <= w.view.end; k += 1 {
+				f := f64(start) + k * beat
+				x := wave_at.x + f32((f - w.view.start) / (w.view.end - w.view.start)) * wave_size.x
+				bar := int(k) % 4 == 0
+				im.DrawList_AddLine(dl, {x, wave_at.y + (0 if bar else wave_size.y * 0.8)}, {x, wave_at.y + wave_size.y}, ui.col(ui.with_alpha(t.warn, 0.55 if bar else 0.35)), 1.5 if bar else 1)
+				if bar do im.DrawList_AddText(dl, {x + 3, wave_at.y + wave_size.y - 18}, ui.col(ui.with_alpha(t.warn, 0.8)), fmt.ctprintf("%d", int(k) / 4 + 1))
+			}
+			im.DrawList_PopClipRect(dl)
+		}
+	}
 	if e.moved {
 		p := pad
 		field := pm.Pad_Field.Region

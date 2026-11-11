@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:path/filepath"
 import "core:slice"
 
 import app "app:core"
@@ -16,6 +17,7 @@ Seq_State :: struct {
 	view:     ui.Roll_View,
 	grid:     pm.Grid, // snap and quantize
 	lane:     int,     // 0 = velocity, 1 = chance, 2 = automation
+	lane_hs:  [2]f32,  // the lane's height (dragged): velocity and chance, automation (0: its default)
 	param:    pm.Lane_Param, // the automation lane shown (of the selected pad)
 	selected: int,     // the note the lanes edit (an index into the sequence), or -1
 	sel:      [dynamic]pm.Seq_Note, // the selected notes (by value: they survive edits that keep them)
@@ -167,8 +169,13 @@ draw_sequence :: proc(user: rawptr) {
 	length := pm.seq_beats(&m.project, s)
 	beat, playing := pm.position(&m.engine)
 	avail := im.GetContentRegionAvail()
-	lane_h: f32 = 120 if st.lane == 2 else 56 // automation gets room to draw
-	roll_h := max(avail.y - lane_h - im.GetStyle().ItemSpacing.y - 4, 4 * ROW_MIN)
+	// The lane's height: dragged by the bar between it and the grid (each
+	// kind keeps its own; automation starts with room to draw).
+	li := 1 if st.lane == 2 else 0
+	if st.lane_hs[li] <= 0 do st.lane_hs[li] = 120 if li == 1 else 56
+	SPLIT :: 8
+	lane_h := clamp(st.lane_hs[li], 32, max(avail.y * 0.6, 40))
+	roll_h := max(avail.y - lane_h - SPLIT - im.GetStyle().ItemSpacing.y - 4, 4 * ROW_MIN)
 	// As many rows as fit at ROW_MIN or taller; the wheel scrolls the rest.
 	n_rows := max(len(rows), 1)
 	keys := clamp(int(roll_h / ROW_MIN), min(4, n_rows), min(n_rows, 24 if st.piano else pm.PADS_PER_BANK))
@@ -186,9 +193,35 @@ draw_sequence :: proc(user: rawptr) {
 		im.TextDisabled("No notes to fold to: draw some, or turn Fold off.")
 		return
 	}
-	e := ui.note_grid("seq", notes[:], rows, &st.view, snap, {avail.x, roll_h}, st.tool, beat if playing else -1, pm.bar_beats(&m.project))
+	top := im.GetCursorScreenPos()
+	e := ui.note_grid("seq", notes[:], rows, &st.view, snap, {avail.x, roll_h}, st.tool, beat if playing else -1, pm.bar_beats(&m.project), drop_type = "PADS_FILE")
+	// The bar between the grid and the lane: drag it to give the lane more
+	// room (or less).
+	im.SetCursorScreenPos({top.x, top.y + roll_h})
+	im.InvisibleButton("##lanesplit", {avail.x, SPLIT})
+	ui.name("lane splitter")
+	{
+		hot := im.IsItemHovered() || im.IsItemActive()
+		if hot do im.SetMouseCursor(.ResizeNS)
+		if im.IsItemActive() do st.lane_hs[li] = clamp(lane_h - im.GetIO().MouseDelta.y, 32, max(avail.y * 0.6, 40))
+		cy := top.y + roll_h + SPLIT / 2
+		cx := top.x + ui.roll_rows_width(rows) + (avail.x - ui.roll_rows_width(rows)) / 2
+		im.DrawList_AddLine(im.GetWindowDrawList(), {cx - 18, cy}, {cx + 18, cy}, ui.col(t.accent if hot else ui.with_alpha(t.text, 0.25)), 3)
+		if im.IsItemHovered() && !im.IsItemActive() do im.SetTooltip("Drag: the lane's height")
+	}
 	before := raw_data(s.notes)
 	editor_edits(a, e, notes[:], which[:], row_pad[:], row_pitch[:], length, snap)
+	// A sample dropped on a row: onto that row's pad.
+	if e.row_drop >= 0 && e.row_drop < len(row_pad) {
+		pad := row_pad[e.row_drop]
+		if pm.load_onto_pad(m, pad, e.dropped) == .None {
+			a.selected = pad
+			show_pad_chain(a, pad)
+			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.dropped), pm.pad_label(pad)))
+		} else {
+			ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.dropped)))
+		}
+	}
 	note_keys(a, which[:], row_pad[:], row_pitch[:])
 	// Notes changed this frame: the lane waits for the next (its notes are
 	// this frame's, gone stale).

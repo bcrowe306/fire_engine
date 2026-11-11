@@ -48,11 +48,12 @@ draw_pads :: proc(user: rawptr) {
 			tint      = ui.rgb(pad.color),
 			has_sound = has,
 			lit       = a.lit[index] > 0 || a.held[index],
-			selected  = a.selected == index,
+			selected  = index in selected_pads(a),
 			mute      = pad.mute,
 			solo      = pad.solo,
 			buttons   = has,
 			drop_type = "PADS_FILE",
+			badge     = fmt.tprintf("C%d", pad.choke) if pad.choke > 0 && has else "",
 		}
 		if has && a.pad_waves && !audio do face.peaks = pad_peaks(a, index)
 		switch a.play_mode {
@@ -74,9 +75,10 @@ draw_pads :: proc(user: rawptr) {
 		}
 		hit := ui.pad("pad", face, {side, side})
 		if hit.pressed do press(a, index, hit.velocity)
+		if hit.pressed && a.play_mode == .Pads do a.pad_sel, a.pad_anchor = {index}, index
 		if (hit.pressed || hit.selected) && a.play_mode == .Pads do show_pad_chain(a, index)
 		if hit.released do release(a, index)
-		if hit.selected && a.play_mode == .Pads do a.selected = index
+		if hit.selected && a.play_mode == .Pads do select_pad(a, index, hit.menu)
 		if hit.menu && a.play_mode == .Pads do im.OpenPopup("##padmenu")
 		if im.IsItemHovered({.DelayNormal}) || (im.IsMouseHoveringRect(pos, {pos.x + side, pos.y + side}) && im.IsKeyDown(.LeftAlt)) {
 			modes := [pm.Pad_Mode]string{.One_Shot = "one-shot", .Gate = "gate", .Loop = "loop", .Hold = "hold"}
@@ -92,11 +94,16 @@ draw_pads :: proc(user: rawptr) {
 		// A file from the browser dropped on it.
 		if hit.dropped != "" && pm.load_onto_pad(&a.m, index, hit.dropped) == .None do a.selected = index
 		if im.BeginPopup("##padmenu") {
-			command_items(a, pad_target(index))
-			im.Separator()
-			if im.BeginMenu(ui.ICON_PALETTE + "  Colour") {
-				pad_color_menu(a, index)
-				im.EndMenu()
+			if card(selected_pads(a)) > 1 {
+				pads_menu_items(a)
+			} else {
+				command_items(a, pad_target(index))
+				im.Separator()
+				choke_menu(a, {index})
+				if im.BeginMenu(ui.ICON_PALETTE + "  Colour") {
+					pad_color_menu(a, index)
+					im.EndMenu()
+				}
 			}
 			im.EndPopup()
 		}
@@ -181,3 +188,112 @@ pad_peaks :: proc(a: ^App, index: int) -> []ui.Peak {
 
 // Columns of a sample's peaks kept for the pads' faces.
 PEAK_COLUMNS :: 512
+
+// A set of pads (their indices).
+Pad_Set :: bit_set[0 ..< pm.PADS; u128]
+
+// The pads a pad command acts on: those selected together, when the
+// selected pad is one of them; else the selected pad alone.
+selected_pads :: proc(a: ^App) -> Pad_Set {
+	if a.selected in a.pad_sel && card(a.pad_sel) > 1 do return a.pad_sel
+	return {a.selected}
+}
+
+// Selects pad `index` by a click with Shift (the pads from the last one
+// clicked to it), Cmd or Ctrl (one more, or one less), or the right button
+// (it alone, unless it is already selected: the menu acts on them all).
+@(private)
+select_pad :: proc(a: ^App, index: int, menu: bool) {
+	io := im.GetIO()
+	sel := selected_pads(a)
+	switch {
+	case menu:
+		if index not_in sel do a.pad_sel, a.pad_anchor = {index}, index
+		else do a.pad_sel = sel
+	case io.KeyShift:
+		from := a.pad_anchor if a.pad_anchor >= 0 && a.pad_anchor < pm.PADS else a.selected
+		a.pad_sel = {}
+		for k in min(from, index) ..= max(from, index) do a.pad_sel += {k}
+	case:
+		a.pad_sel = sel ~ {index}
+		if card(a.pad_sel) == 0 do a.pad_sel = {index}
+		a.pad_anchor = index
+	}
+	if index in a.pad_sel || card(a.pad_sel) == 0 do a.selected = index
+	else do for k in 0 ..< pm.PADS do if k in a.pad_sel { a.selected = k; break }
+	show_pad_chain(a, a.selected)
+}
+
+// The menu for several pads at once: clear, mute, solo, their choke group
+// and colour. One undo step each.
+@(private)
+pads_menu_items :: proc(a: ^App) {
+	sel := selected_pads(a)
+	im.TextDisabled("%s", fmt.ctprintf("%d pads", card(sel)))
+	im.Separator()
+	all_muted, all_solo := true, true
+	for i in 0 ..< pm.PADS do if i in sel {
+		all_muted &&= a.m.project.pads[i].mute
+		all_solo &&= a.m.project.pads[i].solo
+	}
+	if im.MenuItem(ui.ICON_VOLUME_X + "  Unmute" if all_muted else ui.ICON_VOLUME_X + "  Mute") do set_pads_flag(a, sel, .Mute, !all_muted)
+	ui.name("Mute Pads")
+	if im.MenuItem(ui.ICON_HEADPHONES + "  Unsolo" if all_solo else ui.ICON_HEADPHONES + "  Solo") do set_pads_flag(a, sel, .Solo, !all_solo)
+	ui.name("Solo Pads")
+	choke_menu(a, sel)
+	if im.MenuItem(ui.ICON_ERASER + "  Clear Pads", "Delete") do clear_pads(a, sel)
+	ui.name("Clear Pads")
+}
+
+// Mutes or solos pads `sel` (`on`): one undo step.
+@(private)
+set_pads_flag :: proc(a: ^App, sel: Pad_Set, field: pm.Pad_Field, on: bool) {
+	m := &a.m
+	name := "Mute Pads" if field == .Mute else "Solo Pads"
+	app.begin(&m.history, name)
+	defer app.end(&m.history)
+	for i in 0 ..< pm.PADS do if i in sel {
+		p := m.project.pads[i]
+		if field == .Mute do p.mute = on
+		else do p.solo = on
+		pm.set_pad(m, i, field, name, p)
+	}
+}
+
+// Clears pads `sel`: one undo step.
+clear_pads :: proc(a: ^App, sel: Pad_Set) {
+	app.begin(&a.m.history, "Clear Pads")
+	defer app.end(&a.m.history)
+	for i in 0 ..< pm.PADS do if i in sel do pm.clear_pad(&a.m, i)
+}
+
+// A "Choke Group" submenu for pads `sel`: none, or one of the groups (a
+// pad hit stops the others playing in its group).
+@(private)
+choke_menu :: proc(a: ^App, sel: Pad_Set) {
+	if !im.BeginMenu(ui.ICON_SCISSORS + "  Choke Group") do return
+	defer im.EndMenu()
+	cur := -1
+	for i in 0 ..< pm.PADS do if i in sel {
+		g := int(a.m.project.pads[i].choke)
+		cur = g if cur == -1 || cur == g else -2 // -2: mixed
+	}
+	for g in 0 ..= pm.CHOKE_GROUPS {
+		label := fmt.ctprintf("None###choke0") if g == 0 else fmt.ctprintf("Group %d###choke%d", g, g)
+		if im.MenuItem(label, nil, cur == g) do set_choke(a, sel, g)
+		ui.name(fmt.tprintf("choke %d", g))
+	}
+}
+
+// Puts pads `sel` in choke group `g` (0: none): one undo step.
+set_choke :: proc(a: ^App, sel: Pad_Set, g: int) {
+	m := &a.m
+	app.begin(&m.history, "Set Choke Group")
+	defer app.end(&m.history)
+	for i in 0 ..< pm.PADS do if i in sel {
+		p := m.project.pads[i]
+		p.choke = u8(clamp(g, 0, pm.CHOKE_GROUPS))
+		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
+	}
+	app.seal(&m.history)
+}

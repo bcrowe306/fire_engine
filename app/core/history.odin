@@ -80,7 +80,7 @@ execute :: proc(h: ^History, cmd: Command) {
 	for &s in h.redo do step_free(h, &s)
 	clear(&h.redo)
 	if h.group != nil {
-		if !merge_into(h, h.group, cmd) do append(&h.group.commands, cmd)
+		if !merge_into(h, h.group, cmd, any = true) do append(&h.group.commands, cmd)
 		return
 	}
 	if !h.sealed && len(h.undo) > 0 && len(h.undo[len(h.undo) - 1].commands) == 1 && h.saved != len(h.undo) {
@@ -187,14 +187,25 @@ history_clear :: proc(h: ^History) {
 }
 
 @(private)
-merge_into :: proc(h: ^History, s: ^Step, cmd: Command) -> bool {
+merge_into :: proc(h: ^History, s: ^Step, cmd: Command, any := false) -> bool {
 	if len(s.commands) == 0 do return false
-	last := s.commands[len(s.commands) - 1]
-	if last.vtable != cmd.vtable || last.vtable.merge == nil do return false
-	if !last.vtable.merge(last.data, cmd.data) do return false
-	command_free(h, cmd)
-	return true
+	// The last command; or, within a transaction (`any`), the latest of the
+	// same kind that takes it (a drag of several things at once: each
+	// thing's commands merge, however they interleave).
+	lo := max(len(s.commands) - MERGE_LOOKBACK, 0) if any else len(s.commands) - 1
+	for k := len(s.commands) - 1; k >= lo; k -= 1 {
+		c := s.commands[k]
+		if c.vtable != cmd.vtable || c.vtable.merge == nil do continue
+		if !c.vtable.merge(c.data, cmd.data) do continue
+		command_free(h, cmd)
+		return true
+	}
+	return false
 }
+
+// How far back in a transaction a command looks for one to merge into.
+@(private)
+MERGE_LOOKBACK :: 256
 
 @(private)
 push_undo :: proc(h: ^History, s: Step) {

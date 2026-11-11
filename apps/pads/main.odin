@@ -68,9 +68,12 @@ App :: struct {
 	pad_waves: bool, // the pads show their sound's waveform (View > Pad Waveforms)
 	peaks:    map[app.Id][]ui.Peak, // per sample, for the pads' faces
 	tools:    Tool_State,
+	settings: App_Settings, // File > Settings…
 	seq:      Seq_State,
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
+	pad_sel:  Pad_Set, // pads selected together (Shift: a range, Cmd: one more); see `selected_pads`
+	pad_anchor: int,   // where a Shift-click range starts
 	frame:    int,
 	play_mode: pm.Play_Mode,
 	keys:     pm.Keys,
@@ -115,6 +118,7 @@ main :: proc() {
 			os.exit(2)
 		}
 	}
+	untitled := project == "" // a new project in the temporary folder, until it is saved somewhere
 	if project == "" {
 		dir, _ := os.make_directory_temp("", "Untitled.pads", context.allocator)
 		project = dir
@@ -153,6 +157,8 @@ main :: proc() {
 		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project)
 	}
 	recent_load(a)
+	a.proj.untitled = untitled
+	settings_load(a)
 	a.proj.last_save = time.tick_now()
 	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
 	defer plugin_choice_clear(&a.plugin_choice)
@@ -240,6 +246,8 @@ frame :: proc(a: ^App) {
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_export(a)
+	draw_settings(a)
+	draw_rename_project(a)
 	draw_seq_dialogs(a)
 	project_frame(a)
 	pm.sync(&a.m.engine)

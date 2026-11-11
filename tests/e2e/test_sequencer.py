@@ -14,7 +14,7 @@ def test_play_stop_and_the_metronome(app, fixtures):
     loaded(app, fixtures)
     app.click("Play (Space)")  # on the transport toolbar
     assert app.state()["playing"]
-    app.click("Stop (Space)")
+    app.click("Stop (Space); press twice to silence every sound")
     assert not app.state()["playing"]
     app.key("space")
     assert app.state()["playing"]

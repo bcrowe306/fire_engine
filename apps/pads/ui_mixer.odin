@@ -2,6 +2,7 @@ package pads
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 
 import app "app:core"
 import "app:ui"
@@ -20,6 +21,9 @@ Meter_View :: struct {
 Mixer_State :: struct {
 	pads:  [pm.PADS][2]Meter_View,
 	buses: [pm.BUSES + 1][2]Meter_View,
+	multi: bool, // an edit of several strips at once is open (one undo step)
+	rename_bus: int, // the bus being renamed (1..BUSES; 0: none)
+	rename_buf: [16]u8,
 }
 
 // Reads a meter into its display: the level falls at about 24 dB a second,
@@ -72,7 +76,8 @@ STRIP_W :: 86
 @(private) ROW_H :: 18 // a slot, a send, the output
 @(private) EQ_H :: 28
 @(private) PAN_H :: 30
-@(private) SLOT_ROWS :: 6 // pads: 2 inserts and 4 sends; buses: 5 slots and a gap
+@(private) SLOT_ROWS :: 6 // pads: 2 inserts and SEND_ROWS sends; buses: 5 slots and a gap
+@(private) SEND_ROWS :: 4 // sends shown at once (more buses: they scroll)
 @(private) FADER_LO :: -60 // the bottom of the fader (off)
 @(private) FADER_HI :: 6
 
@@ -83,10 +88,14 @@ draw_mixer :: proc(user: rawptr) {
 	a := (^App)(user)
 	m := &a.m
 	avail := im.GetContentRegionAvail()
-	buses_w := f32(pm.BUSES + 1) * (STRIP_W + STRIP_GAP) + 4
+	n_buses := m.project.bus_count
+	add_w: f32 = 26 if n_buses < pm.BUSES else 0 // the + that adds a bus
+	full_w := f32(n_buses) * (STRIP_W + STRIP_GAP) + 4 + add_w // the buses (they scroll when many)
+	main_w := f32(STRIP_W + 4) // main, pinned at the right
+	buses_w := min(full_w, max(avail.x * 0.55 - main_w, STRIP_W + STRIP_GAP))
 	im.PushStyleVarVec2(.ItemSpacing, {STRIP_GAP, 0})
 	defer im.PopStyleVar()
-	if im.BeginChild("##pads", {max(avail.x - buses_w - 8, STRIP_W), avail.y}, {}, {.HorizontalScrollbar}) {
+	if im.BeginChild("##pads", {max(avail.x - buses_w - main_w - 16, STRIP_W), avail.y}, {}, {.HorizontalScrollbar}) {
 		h := im.GetContentRegionAvail().y
 		any := false
 		for _, i in m.project.pads do if pm.pad_used(&m.project, i) {
@@ -109,14 +118,81 @@ draw_mixer :: proc(user: rawptr) {
 	// The line between the pads and the buses.
 	pos := im.GetCursorScreenPos()
 	im.DrawList_AddLine(im.GetWindowDrawList(), {pos.x - 5, pos.y + 4}, {pos.x - 5, pos.y + avail.y - 4}, ui.col(ui.theme().border), 1)
-	if im.BeginChild("##buses", {buses_w, avail.y}, {}, {.NoScrollbar}) {
+	if im.BeginChild("##buses", {buses_w, avail.y}, {}, {.HorizontalScrollbar} if full_w > buses_w else {.NoScrollbar}) {
 		h := im.GetContentRegionAvail().y
-		for b in 0 ..= pm.BUSES {
+		for b in 0 ..< n_buses {
 			if b > 0 do im.SameLine()
 			bus_strip(a, b, h)
 		}
+		if n_buses < pm.BUSES {
+			im.SameLine()
+			if ui.icon_button(ui.ICON_PLUS, "Add a bus", size = 22) do pm.add_bus(m)
+			ui.name("add bus")
+		}
 	}
 	im.EndChild()
+	im.SameLine(0, 4)
+	// As tall as the bus strips (above their scrollbar, when they scroll).
+	main_h := avail.y - (im.GetStyle().ScrollbarSize if full_w > buses_w else 0)
+	if im.BeginChild("##main", {main_w, avail.y}, {}, {.NoScrollbar}) do bus_strip(a, pm.BUSES, main_h)
+	im.EndChild()
+	draw_rename_bus(a)
+}
+
+// Renames bus `b` (1..BUSES): its dialog opens.
+begin_rename_bus :: proc(a: ^App, b: int) {
+	a.mixer.rename_bus = b
+	a.mixer.rename_buf = {}
+	copy(a.mixer.rename_buf[:len(a.mixer.rename_buf) - 1], pm.bus_name(&a.m.project, b))
+}
+
+// The Rename Bus dialog.
+@(private)
+draw_rename_bus :: proc(a: ^App) {
+	st := &a.mixer
+	if st.rename_bus == 0 do return
+	im.OpenPopup("Rename Bus")
+	open := true
+	if im.BeginPopupModal("Rename Bus", &open, {.AlwaysAutoResize}) {
+		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
+		im.SetNextItemWidth(200)
+		enter := im.InputText("##busname", cstring(&st.rename_buf[0]), len(st.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		if im.Button("Rename") || enter {
+			pm.rename_bus(&a.m, st.rename_bus, strings.truncate_to_byte(string(st.rename_buf[:]), 0))
+			st.rename_bus = 0
+			im.CloseCurrentPopup()
+		}
+		im.SameLine()
+		if im.Button("Cancel") || im.IsKeyPressed(.Escape) {
+			st.rename_bus = 0
+			im.CloseCurrentPopup()
+		}
+		im.EndPopup()
+	}
+	if !open do st.rename_bus = 0
+}
+
+// The strips an edit of pad `i`'s strip changes: the selected ones, when
+// it is one of several selected; else it alone.
+@(private)
+strip_targets :: proc(a: ^App, i: int) -> Pad_Set {
+	sel := selected_pads(a)
+	return sel if i in sel && card(sel) > 1 else {i}
+}
+
+// Opens (or, with `ended`, closes) the undo step an edit of several strips
+// makes, so a drag of them all is one step.
+@(private)
+multi_edit :: proc(a: ^App, n: int, changed, ended: bool) {
+	if n > 1 && changed && !a.mixer.multi {
+		app.begin(&a.m.history, "Edit Channels")
+		a.mixer.multi = true
+	}
+	if ended && a.mixer.multi {
+		app.end(&a.m.history)
+		a.mixer.multi = false
+		app.seal(&a.m.history)
+	}
 }
 
 // --- the parts of a strip ------------------------------------------------------------------
@@ -272,12 +348,17 @@ send_row :: proc(a: ^App, pad, bus: int) {
 	t := ui.theme()
 	s := m.project.pads[pad].sends[bus - 1]
 	on := s.level > 0
-	letters := "ABCD"
-	name := fmt.tprintf("%s %s", letters[bus - 1:][:1], "pre" if s.pre else "")
-	lo, hi, _ := row(a, fmt.ctprintf("##send %s", letters[bus - 1:][:1]), "", t.text)
+	letters := "ABCDEFGHIJKLMNOP"
+	letter := letters[bus - 1:][:1]
+	short := pm.bus_name(&m.project, bus)
+	if short == fmt.tprintf("Bus %s", letter) do short = letter // unnamed: its letter
+	name := fmt.tprintf("%s %s", short, "pre" if s.pre else "")
+	lo, hi, _ := row(a, fmt.ctprintf("##send %s", letter), "", t.text)
 	dl := im.GetWindowDrawList()
 	small(a)
+	im.DrawList_PushClipRect(dl, lo, {hi.x - 18, hi.y}, true)
 	text_in(dl, lo, {hi.x - 18, hi.y}, name, t.text if on else t.text_dim, left = true)
+	im.DrawList_PopClipRect(dl)
 	im.PopFont()
 	// The knob.
 	db := pm.send_db(s)
@@ -293,13 +374,20 @@ send_row :: proc(a: ^App, pad, bus: int) {
 		im.DrawList_PathStroke(dl, ui.col(t.warn if s.pre else t.accent), 2.5)
 	}
 	// Input: on the row's button (the last item before the knob drawing).
+	// With several strips selected, each one's send moves by as much.
 	v := db
 	e := ui_drag(&v, pm.SEND_MIN_DB, 6, 0, 140)
 	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 		v = pm.SEND_MIN_DB if on else 0
 		e.changed, e.ended = true, true
 	}
-	if e.changed do pm.set_send_db(m, pad, bus, v)
+	targets := strip_targets(a, pad)
+	multi_edit(a, card(targets), e.changed, false)
+	if e.changed do for j in 0 ..< pm.PADS do if j in targets {
+		cur := pm.send_db(m.project.pads[j].sends[bus - 1])
+		pm.set_send_db(m, j, bus, clamp(v if j == pad else cur + (v - db), pm.SEND_MIN_DB, 6))
+	}
+	multi_edit(a, card(targets), false, e.ended)
 	if e.ended do app.seal(&m.history)
 	if im.BeginPopupContextItem(fmt.ctprintf("##sendmenu%d", bus)) {
 		if im.MenuItem("Pre-fader", nil, s.pre) do pm.set_send_pre(m, pad, bus, !s.pre)
@@ -310,7 +398,7 @@ send_row :: proc(a: ^App, pad, bus: int) {
 		im.EndPopup()
 	}
 	if im.IsItemHovered({.DelayShort}) && !im.IsItemActive() {
-		im.SetTooltip("%s", fmt.ctprintf("Send to %s: %s, %s-fader", pm.bus_name(bus), "off" if !on else fmt.tprintf("%+.1f dB", db), "pre" if s.pre else "post"))
+		im.SetTooltip("%s", fmt.ctprintf("Send to %s: %s, %s-fader", pm.bus_name(&m.project, bus), "off" if !on else fmt.tprintf("%+.1f dB", db), "pre" if s.pre else "post"))
 	}
 }
 
@@ -344,16 +432,46 @@ ui_drag :: proc(value: ^f32, lo, hi, default, range_px: f32) -> (e: ui.Edit) {
 	return
 }
 
-// Where a strip's sound goes: Main or a bus; click to pick.
+// Where a strip's sound goes: Main or a bus in use; click to pick (for
+// every selected strip, when it is one of them).
 @(private)
 output_row :: proc(a: ^App, pad: int) {
 	m := &a.m
 	t := ui.theme()
 	cur := int(m.project.pads[pad].bus)
-	_, _, clicked := row(a, "##output", pm.bus_name(cur), t.text)
+	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, pm.bus_name(&m.project, cur)), t.text)
 	if clicked do im.OpenPopup("##outmenu")
+	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Output: %s (click to route it)", pm.bus_name(&m.project, cur)))
 	if im.BeginPopup("##outmenu") {
-		for b in 0 ..= pm.BUSES do if im.MenuItem(fmt.ctprintf("%s", pm.bus_name(b)), nil, b == cur) do pm.set_pad_bus(m, pad, b)
+		for b in 0 ..= m.project.bus_count do if im.MenuItem(fmt.ctprintf("%s###out%d", pm.bus_name(&m.project, b), b), nil, b == cur) {
+			targets := strip_targets(a, pad)
+			app.begin(&m.history, "Route")
+			for j in 0 ..< pm.PADS do if j in targets do pm.set_pad_bus(m, j, b)
+			app.end(&m.history)
+			app.seal(&m.history)
+		}
+		im.EndPopup()
+	}
+}
+
+// Where bus `b` (0..BUSES-1) goes: Main or another bus (not one that would
+// bring it round to itself); click to pick. Main's: the output.
+@(private)
+bus_output_row :: proc(a: ^App, b: int) {
+	m := &a.m
+	t := ui.theme()
+	if b >= pm.BUSES {
+		row(a, "##output", "Output", t.text_dim)
+		return
+	}
+	cur := int(m.project.buses[b].dest)
+	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, pm.bus_name(&m.project, cur)), t.text)
+	if clicked do im.OpenPopup("##busout")
+	if im.BeginPopup("##busout") {
+		for d in 0 ..= m.project.bus_count do if d != b + 1 {
+			ok := pm.bus_dest_ok(&m.project, b + 1, d)
+			if im.MenuItem(fmt.ctprintf("%s###bo%d", pm.bus_name(&m.project, d), d), nil, d == cur, ok) do pm.set_bus_dest(m, b + 1, d)
+		}
 		im.EndPopup()
 	}
 }
@@ -594,7 +712,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	defer im.PopID()
 	strip_name = pm.pad_label(i)
 	top := im.GetCursorScreenPos()
-	strip_begin(h, a.selected == i && !compact)
+	strip_begin(h, i in selected_pads(a) && !compact)
 	defer strip_end(top, h)
 	t := ui.theme()
 	color := ui.rgb(pad.color)
@@ -610,28 +728,47 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 			failed := pm.slot_failed(&m.engine, i, -1, k)
 			slot_row(a, {.Pad, i, k}, s, failed)
 		}
-		for b in 1 ..= pm.BUSES do send_row(a, i, b)
+		// A send to each bus in use: SEND_ROWS show, the rest scroll.
+		n := m.project.bus_count
+		if n <= SEND_ROWS {
+			for b in 1 ..= n do send_row(a, i, b)
+			for _ in n ..< SEND_ROWS do im.Dummy({inner_w(), ROW_H + 2})
+		} else {
+			im.PushStyleVar(.ScrollbarSize, 4)
+			if im.BeginChild("##sends", {inner_w() + 6, SEND_ROWS * (ROW_H + 2)}, {}, {}) {
+				for b in 1 ..= n do send_row(a, i, b)
+				im.Dummy({0, 0}) // (the rows end on a cursor move)
+			}
+			im.EndChild()
+			im.PopStyleVar()
+		}
 		gap()
 	}
-	output_row(a, i)
-	gap()
+	// With several strips selected (Shift- or Cmd-click their names), an
+	// edit of one changes them all: level and pan by as much, mute and
+	// solo to the same.
+	targets := strip_targets(a, i)
 	pan := pad.pan
 	pe := pan_knob(a, &pan)
-	if pe.changed {
-		p := pad
-		p.pan = pan
-		pm.set_pad(m, i, .Pan, "Set Pan", p)
+	multi_edit(a, card(targets), pe.changed, false)
+	if pe.changed do for j in 0 ..< pm.PADS do if j in targets {
+		p := m.project.pads[j]
+		p.pan = pan if j == i else clamp(p.pan + (pan - pad.pan), -1, 1)
+		pm.set_pad(m, j, .Pan, "Set Pan", p)
 	}
+	multi_edit(a, card(targets), false, pe.ended)
 	if pe.ended do app.seal(&m.history)
 	gap()
 	vol := pad.volume
 	readouts(a, vol, &a.mixer.pads[i])
 	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h, compact))
-	if fe.changed {
-		p := pad
-		p.volume = vol
-		pm.set_pad(m, i, .Volume, "Set Volume", p)
+	multi_edit(a, card(targets), fe.changed, false)
+	if fe.changed do for j in 0 ..< pm.PADS do if j in targets {
+		p := m.project.pads[j]
+		p.volume = vol if j == i else clamp(p.volume + (vol - pad.volume), FADER_LO, FADER_HI)
+		pm.set_pad(m, j, .Volume, "Set Volume", p)
 	}
+	multi_edit(a, card(targets), false, fe.ended)
 	if fe.ended do app.seal(&m.history)
 	gap()
 	mute, solo := pad.mute, pad.solo
@@ -640,14 +777,27 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		if armed != pm.audio_armed(m, i) {
 			pm.arm_audio(m, i, armed)
 		} else {
-			p := pad
-			p.mute, p.solo = mute, solo
-			pm.set_pad(m, i, .Mute if mute != pad.mute else .Solo, "Mute" if mute != pad.mute else "Solo", p)
+			field: pm.Pad_Field = .Mute if mute != pad.mute else .Solo
+			name := "Mute" if mute != pad.mute else "Solo"
+			app.begin(&m.history, name)
+			for j in 0 ..< pm.PADS do if j in targets {
+				p := m.project.pads[j]
+				if field == .Mute do p.mute = mute
+				else do p.solo = solo
+				pm.set_pad(m, j, field, name, p)
+			}
+			app.end(&m.history)
 			app.seal(&m.history)
 		}
 	}
 	gap()
-	if name_plate(fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&m.project.pads[i])), color) do a.selected = i
+	output_row(a, i) // where it goes, right above its name
+	gap()
+	if name_plate(fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&m.project.pads[i])), color) {
+		io := im.GetIO()
+		if io.KeyShift || io.KeyCtrl || io.KeySuper do select_pad(a, i, false)
+		else do a.selected, a.pad_sel, a.pad_anchor = i, {i}, i
+	}
 	item_menu(a, pad_target(i), "##stripmenu")
 	_ = t
 }
@@ -659,7 +809,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	bus := pm.bus_of(m, b)^
 	im.PushIDInt(i32(1000 + b))
 	defer im.PopID()
-	strip_name = pm.bus_name(0 if b == pm.BUSES else b + 1)
+	strip_name = pm.bus_index_name(&m.project, b)
 	top := im.GetCursorScreenPos()
 	strip_begin(h, false)
 	defer strip_end(top, h)
@@ -670,8 +820,6 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	gap()
 	for s, k in bus.slots do slot_row(a, {.Bus, b, k}, s, pm.slot_failed(&m.engine, -1, b, k))
 	for _ in pm.BUS_SLOTS ..< SLOT_ROWS do im.Dummy({inner_w(), ROW_H + 2})
-	gap()
-	row(a, "##output", "Main" if !is_main else "Output", t.text_dim)
 	gap()
 	pan := bus.pan
 	pe := pan_knob(a, &pan)
@@ -700,6 +848,8 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 		app.seal(&m.history)
 	}
 	gap()
-	name_plate(pm.bus_name(0 if is_main else b + 1), t.accent if is_main else ui.mix(t.accent, t.text_dim, 0.55))
+	bus_output_row(a, b) // where it goes, right above its name
+	gap()
+	if name_plate(pm.bus_index_name(&m.project, b), t.accent if is_main else ui.mix(t.accent, t.text_dim, 0.55)) && !is_main && im.IsMouseDoubleClicked(.Left) do begin_rename_bus(a, b + 1)
 	item_menu(a, {kind = .Bus, index = b}, "##busmenu")
 }
