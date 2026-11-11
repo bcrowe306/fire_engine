@@ -41,7 +41,7 @@ busy_project :: proc(r: ^Rig) {
 	pad = m.project.pads[1]
 	pm.set_pad(m, 1, .Whole, "Edit", pad)
 	pm.add_note(m, 0, {start = 0, length = 0.25, pad = 0, velocity = 0.9})
-	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 1, velocity = 0.5, pitch = 7, probability = 0.5})
+	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 1, velocity = 0.5, pitch = 7, probability = 0.5, muted = true})
 	pm.add_point(m, 0, {pad = 0, param = .Volume, beat = 0, value = -12})
 	pm.set_swing(m, 0, 0.3, .Eighth)
 	pm.add_note(m, 2, {start = 0.5, length = 0.25, pad = 1, velocity = 1})
@@ -90,7 +90,7 @@ a_project_saves_and_loads_whole :: proc(t: ^testing.T) {
 	testing.expect(t, p.pads[0] == before.pads[0], "pad 0 the same (with its insert)")
 	testing.expect(t, p.pads[100] == before.pads[100] && p.pads[100].color == 0xc77dff, "pad 100 (G5) the same")
 	s := p.sequences[0]
-	testing.expect(t, len(s.notes) == 2 && s.notes[1].pitch == 7 && s.notes[1].probability == 0.5 && s.swing == 0.3 && s.swing_grid == .Eighth, "the sequence")
+	testing.expect(t, len(s.notes) == 2 && s.notes[1].pitch == 7 && s.notes[1].probability == 0.5 && s.notes[1].muted && !s.notes[0].muted && s.swing == 0.3 && s.swing_grid == .Eighth, "the sequence")
 	testing.expect_value(t, len(s.points), 1)
 	testing.expect(t, p.buses[0] == before.buses[0], "bus A")
 	testing.expect(t, p.song == before.song, "the song")

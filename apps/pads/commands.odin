@@ -172,7 +172,9 @@ register_commands :: proc(a: ^App) {
 		run = proc(a: ^App, t: Target) { paste_marked(a) }, enabled = proc(a: ^App, t: Target) -> bool { return a.seq_ops.has_part }})
 	add(c, {id = "part.duplicate", label = "Duplicate After", icon = ui.ICON_COPY_PLUS, kinds = {.Part}, group = 0, keys = "Cmd+D",
 		run = proc(a: ^App, t: Target) { duplicate_selection(a) }, enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
-	add(c, {id = "part.delete", label = "Delete Notes", icon = ui.ICON_TRASH_2, kinds = {.Part}, group = 1, keys = "Delete",
+	add(c, {id = "part.mute", label = "Mute / Unmute", icon = ui.ICON_VOLUME_X, kinds = {.Part}, group = 1, keys = "0",
+		run = proc(a: ^App, t: Target) { mute_selection(a) }, enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
+	add(c, {id = "part.delete", label = "Delete Notes", icon = ui.ICON_TRASH_2, kinds = {.Part}, group = 1, keys = "Delete / Backspace",
 		run = proc(a: ^App, t: Target) { delete_selection(a) }, enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
 
 	// Sequences.

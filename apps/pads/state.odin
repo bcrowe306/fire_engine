@@ -40,11 +40,15 @@ State :: struct {
 	song_beat:  f64, // where in the song (beats)
 	song_seconds: f64, // how long the song plays
 	song_selected: int, // the step whose settings show (1-based; 0: none)
+	song_sel:   [dynamic]int, // the selected steps (1-based)
 	arrangements: [dynamic]string,
 	arrangement: int, // 1-based
 	snap:       bool, // the sequence editor snaps to its grid
 	curved:     int, // automation points of the current sequence bending the line after them
 	notes:      int, // in the current sequence
+	note_list:  [dynamic]State_Note, // its notes (in order)
+	muted_notes: int,
+	launch:     string, // when a sequence picked while playing takes over: Now, Beat, Bar, End
 	points:     int,
 	bars:       int,
 	undo:       string, // the next undo step's name
@@ -103,6 +107,12 @@ State_Sequence :: struct {
 	bars:  int,
 	notes: int,
 	color: u32, // shown (its own or its slot's)
+}
+
+State_Note :: struct {
+	start: f64,
+	pad:   int,
+	muted: bool,
 }
 
 State_Step :: struct {
@@ -180,6 +190,8 @@ state_json :: proc(a: ^App) -> string {
 	}
 	s.song_seconds = pm.song_seconds(p)
 	s.song_selected = a.song_ui.step + 1 if a.song_ui.step < p.song.count else 0
+	s.song_sel = make([dynamic]int, context.temp_allocator)
+	for k in 0 ..< p.song.count do if k in a.song_ui.sel do append(&s.song_sel, k + 1)
 	s.arrangements = make([dynamic]string, context.temp_allocator)
 	for k in 0 ..< p.arrangement_count do append(&s.arrangements, strings.clone(pm.arrangement_name(p, k), context.temp_allocator))
 	s.arrangement = p.arrangement + 1
@@ -187,6 +199,12 @@ state_json :: proc(a: ^App) -> string {
 	seq := pm.current_sequence(m)
 	s.notes, s.points, s.bars = len(seq.notes), len(seq.points), seq.bars
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
+	s.note_list = make([dynamic]State_Note, context.temp_allocator)
+	for n in seq.notes {
+		append(&s.note_list, State_Note{start = n.start, pad = int(n.pad), muted = n.muted})
+		if n.muted do s.muted_notes += 1
+	}
+	s.launch = enum_name(p.switch_at)
 	s.undo = app.undo_name(&m.history)
 	s.dirty = pm.model_dirty(m)
 	s.project = p.dir

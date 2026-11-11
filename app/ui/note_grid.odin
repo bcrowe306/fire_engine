@@ -232,8 +232,14 @@ note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll
 			y0 := grid.y + size.y - f32(row - view.key0 + 1) * row_h
 			base := n.color if n.color != {} else t.accent
 			c := mix(base, t.text, 0.15) if n.selected || hot else base
-			c = with_alpha(c, (0.45 + 0.55 * n.velocity) * alpha)
-			im.DrawList_AddRectFilled(dl, {x0 + 1, y0 + 1}, {x1 - 1, y0 + row_h - 1}, col(c), 3)
+			if n.muted {
+				// Hollow, with a faint fill: there, but silent.
+				im.DrawList_AddRectFilled(dl, {x0 + 1, y0 + 1}, {x1 - 1, y0 + row_h - 1}, col(with_alpha(c, 0.12 * alpha)), 3)
+				im.DrawList_AddRect(dl, {x0 + 1.5, y0 + 1.5}, {x1 - 1.5, y0 + row_h - 1.5}, col(with_alpha(c, 0.7 * alpha)), 3, 1.5)
+			} else {
+				c = with_alpha(c, (0.45 + 0.55 * n.velocity) * alpha)
+				im.DrawList_AddRectFilled(dl, {x0 + 1, y0 + 1}, {x1 - 1, y0 + row_h - 1}, col(c), 3)
+			}
 			if n.selected do im.DrawList_AddRect(dl, {x0 + 1, y0 + 1}, {x1 - 1, y0 + row_h - 1}, col(with_alpha(t.text, alpha)), 3, 1.5)
 		}
 		draw_note(dl, n, n.start if ghost else start, length, n.key if ghost else row, grid, beat_w, row_h, size, view, i == hit, t)

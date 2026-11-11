@@ -126,6 +126,23 @@ draw_toolbar :: proc(user: rawptr) {
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = p.slot >= pm.SLOTS - 1) do pm.select_slot(m, p.slot + 1)
 
+	// What plays (the sequence, or the song), and when a sequence picked
+	// while playing takes over.
+	im.SameLine(0, gap)
+	mode := 1 if p.song_mode else 0
+	if ui.segmented("play_mode", {"Pattern", "Song"}, &mode) {
+		p.song_mode = mode == 1
+		e.seq_dirty = true
+	}
+	if im.IsItemHovered() do im.SetTooltip("Play the sequence shown (Pattern) or the song's steps one after another (Song)")
+	im.SameLine(0, 8)
+	im.SetNextItemWidth(156)
+	if ui.combo("##launch_at", fmt.ctprintf("%s  %s", ui.ICON_TIMER, LAUNCH_NAMES[p.switch_at])) {
+		for sw in LAUNCH_ORDER do if im.Selectable(LAUNCH_NAMES[sw], sw == p.switch_at) do p.switch_at = sw
+		im.EndCombo()
+	}
+	if im.IsItemHovered() do im.SetTooltip("Launch: when a sequence picked while playing takes over")
+
 	// Tempo: drag by 1 (Shift: 0.1), tap, and the time signature.
 	im.SameLine(0, gap)
 	bpm := p.bpm
@@ -291,3 +308,9 @@ draw_toolbar :: proc(user: rawptr) {
 	sz := im.GetWindowSize()
 	im.DrawList_AddLine(im.GetWindowDrawList(), {vp.x, vp.y + sz.y - 1}, {vp.x + sz.x, vp.y + sz.y - 1}, ui.col(t.border), 1)
 }
+
+// The launch settings, in the toolbar's order, and their short names.
+@(private)
+LAUNCH_ORDER := [4]pm.Switch_At{.Now, .Beat, .Bar, .End}
+@(private)
+LAUNCH_NAMES := [pm.Switch_At]cstring{.Now = "At once", .Beat = "Next beat", .Bar = "Next bar", .End = "Sequence end"}

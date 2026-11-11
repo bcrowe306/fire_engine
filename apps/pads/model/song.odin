@@ -156,6 +156,64 @@ song_move :: proc(m: ^Model, from, to: int) {
 	set_song(m, "Move in Song", s)
 }
 
+// A set of song steps (their indices).
+Step_Set :: bit_set[0 ..< SONG_STEPS; u64]
+
+// Removes the steps in `sel`: one undo step.
+song_remove_steps :: proc(m: ^Model, sel: Step_Set, name := "Remove from Song") {
+	s := m.project.song
+	out: Song
+	for i in 0 ..< s.count do if i not_in sel {
+		out.steps[out.count] = s.steps[i]
+		out.count += 1
+	}
+	set_song(m, name, out)
+}
+
+// Puts `steps` into the song from step `before` on (the ones there move
+// along; as many as fit): one undo step. Returns the steps they became.
+song_insert_steps :: proc(m: ^Model, steps: []Song_Step, before: int, name := "Paste Steps") -> (added: Step_Set) {
+	s := m.project.song
+	at := clamp(before, 0, s.count)
+	k := min(len(steps), SONG_STEPS - s.count)
+	if k <= 0 do return
+	copy(s.steps[at + k:s.count + k], s.steps[at:s.count])
+	copy(s.steps[at:at + k], steps[:k])
+	s.count += k
+	for i in at ..< at + k do added += {i}
+	set_song(m, name, s)
+	return
+}
+
+// Moves the steps in `sel` (in their order) to before step `to` (as the
+// song is now; `to` = the count: the end): one undo step. Returns where
+// they went.
+song_move_steps :: proc(m: ^Model, sel: Step_Set, to: int) -> (moved: Step_Set) {
+	s := m.project.song
+	picked, rest: Song
+	before := 0
+	for i in 0 ..< s.count {
+		if i in sel {
+			picked.steps[picked.count] = s.steps[i]
+			picked.count += 1
+			if i < to do before += 1
+		} else {
+			rest.steps[rest.count] = s.steps[i]
+			rest.count += 1
+		}
+	}
+	if picked.count == 0 do return
+	at := clamp(to - before, 0, rest.count)
+	out: Song
+	copy(out.steps[:at], rest.steps[:at])
+	copy(out.steps[at:at + picked.count], picked.steps[:picked.count])
+	copy(out.steps[at + picked.count:rest.count + picked.count], rest.steps[at:rest.count])
+	out.count = rest.count + picked.count
+	for i in at ..< at + picked.count do moved += {i}
+	set_song(m, "Move in Song", out)
+	return
+}
+
 // Sets how many times step `i` plays.
 song_repeats :: proc(m: ^Model, i, repeats: int) {
 	s := m.project.song
@@ -299,7 +357,7 @@ plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 		lo, hi := sg.offset, min(sg.offset + sg.period, l) // its part of the sequence
 		for off := 0.0; off < sg.span - 1e-9; off += sg.period {
 			for n in s.notes {
-				if n.start < lo - 1e-9 || n.start >= hi - 1e-9 || int(n.pad) >= PADS || off + n.start - lo >= sg.span - 1e-9 do continue
+				if n.muted || n.start < lo - 1e-9 || n.start >= hi - 1e-9 || int(n.pad) >= PADS || off + n.start - lo >= sg.span - 1e-9 do continue
 				start := clip.swing(tb.Beats(n.start), g, f64(s.swing)) - tb.Beats(lo)
 				end := clip.swing(tb.Beats(min(n.start + n.length, hi)), g, f64(s.swing)) - tb.Beats(lo)
 				at := tb.Beats(sg.start + off) + start

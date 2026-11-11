@@ -99,3 +99,50 @@ arrangements_switch_undo_and_save :: proc(t: ^testing.T) {
 	testing.expect_value(t, q.arrangement_count, 1)
 	testing.expect_value(t, pm.arrangement_name(q, 0), "Radio edit")
 }
+
+@(test)
+song_steps_moved_pasted_removed_as_groups :: proc(t: ^testing.T) {
+	r := rig_make(t, "song_groups")
+	defer rig_destroy(r)
+	m := &r.m
+	p := &m.project
+	for k in 0 ..< 5 do pm.song_add(m, k) // steps play slots 0 1 2 3 4
+	slots :: proc(p: ^pm.Project) -> (out: [dynamic]int) {
+		out = make([dynamic]int, context.temp_allocator)
+		for st in p.song.steps[:p.song.count] do append(&out, int(st.slot))
+		return
+	}
+	same :: proc(a: [dynamic]int, b: []int) -> bool {
+		if len(a) != len(b) do return false
+		for x, i in a do if x != b[i] do return false
+		return true
+	}
+	// Steps 1 and 3 to the end, then to the front.
+	moved := pm.song_move_steps(m, {1, 3}, 5)
+	testing.expectf(t, same(slots(p), {0, 2, 4, 1, 3}) && moved == {3, 4}, "to the end: %v %v", slots(p), moved)
+	moved = pm.song_move_steps(m, moved, 0)
+	testing.expectf(t, same(slots(p), {1, 3, 0, 2, 4}) && moved == {0, 1}, "to the front: %v", slots(p))
+	app.undo(&m.history)
+	testing.expectf(t, same(slots(p), {0, 2, 4, 1, 3}), "one undo step: %v", slots(p))
+	// Pasted after the last selected, then removed together.
+	copied := []pm.Song_Step{p.song.steps[0], p.song.steps[1]}
+	added := pm.song_insert_steps(m, copied, 2)
+	testing.expectf(t, same(slots(p), {0, 2, 0, 2, 4, 1, 3}) && added == {2, 3}, "pasted: %v", slots(p))
+	pm.song_remove_steps(m, added)
+	testing.expectf(t, same(slots(p), {0, 2, 4, 1, 3}), "removed: %v", slots(p))
+	// Full: only as many as fit.
+	for p.song.count < pm.SONG_STEPS do pm.song_add(m, 0)
+	testing.expect_value(t, pm.song_insert_steps(m, copied, 0), pm.Step_Set{})
+}
+
+@(test)
+muted_notes_stay_silent :: proc(t: ^testing.T) {
+	r := blips(t, "muted_notes")
+	defer rig_destroy(r)
+	m := &r.m
+	for b in 0 ..< 4 do pm.add_note(m, 0, {start = f64(b), length = 0.25, pad = 0, velocity = 1, muted = b % 2 == 1})
+	pm.play(&m.engine)
+	out := render_synced(r, 48_000 * 2) // 4 beats at 120
+	got := onsets(out[0][:])
+	testing.expectf(t, len(got) == 2, "two of four notes muted (%v)", got)
+}

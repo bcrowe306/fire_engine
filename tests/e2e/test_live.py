@@ -22,7 +22,9 @@ def test_launch_sequences(app, fixtures):
     app.click("launch 2", window="perform")  # stopped: it starts playing
     s = app.state()
     assert s["playing"] and s["slot"] == 2, (s["playing"], s["slot"])
-    app.click("Sequence end", window="perform")
+    app.click("##launch_at", window="##toolbar")  # the launch setting, in the toolbar
+    app.click("Sequence end")
+    assert app.state()["launch"] == "End"
     app.click("launch 1", window="perform")
     assert app.state()["queued"] == 1  # it waits for the bar's end
     app.screenshot("queued")

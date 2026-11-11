@@ -312,3 +312,45 @@ draw_pad_rename :: proc(a: ^App) {
 		im.EndPopup()
 	}
 }
+
+// Mutes the selected notes (0), or unmutes them when all are muted: they
+// stay where they are, silent.
+mute_selection :: proc(a: ^App) {
+	if len(a.seq.sel) == 0 do return
+	all := true
+	for n in a.seq.sel do all &&= n.muted
+	new := make([]pm.Seq_Note, len(a.seq.sel), context.temp_allocator)
+	for n, i in a.seq.sel {
+		new[i] = n
+		new[i].muted = !all
+	}
+	landed := pm.replace_notes(&a.m, a.m.project.slot, a.seq.sel[:], new, false, .Mute, "Unmute Notes" if all else "Mute Notes")
+	app.seal(&a.m.history)
+	clear(&a.seq.sel)
+	append(&a.seq.sel, ..landed)
+}
+
+// Moves the selected notes `beats` later and `rows` up (the editor's rows:
+// pads, or pitches in the piano roll); none move if one would leave the
+// sequence or the rows.
+nudge_selection :: proc(a: ^App, beats: f64, rows: int, row_pad, row_pitch: []int) {
+	st := &a.seq
+	length := pm.seq_beats(&a.m.project, pm.current_sequence(&a.m))
+	moved := make([]pm.Seq_Note, len(st.sel), context.temp_allocator)
+	for n, i in st.sel {
+		x := n
+		x.start += beats
+		if x.start < -1e-9 || x.start >= length - 1e-9 do return
+		if rows != 0 {
+			k := row_of_note(row_pad, row_pitch, st.piano, n) + rows
+			if k < 0 || k >= len(row_pad) do return
+			x.pad = u8(row_pad[k])
+			if st.piano do x.pitch = i8(row_pitch[k])
+		}
+		moved[i] = x
+	}
+	landed := pm.replace_notes(&a.m, a.m.project.slot, st.sel[:], moved, false, .Notes, "Nudge Notes")
+	app.seal(&a.m.history)
+	clear(&st.sel)
+	append(&st.sel, ..landed)
+}

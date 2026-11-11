@@ -299,6 +299,7 @@ Roll_Note :: struct {
 	velocity: f32,
 	selected: bool,
 	color:    Color, // {} = the accent
+	muted:    bool,  // drawn hollow: there, but silent
 }
 
 // What the user did to the notes this frame. The caller makes commands

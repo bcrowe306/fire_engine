@@ -22,6 +22,7 @@ Seq_Note :: struct {
 	pitch:       i8,  // semitones from the pad's own pitch (keyboard mode)
 	velocity:    f32, // 0..1
 	probability: f32, // 0..1: the chance it plays each time round
+	muted:       bool, // kept in place, but silent
 }
 
 // A note grid: quantize and swing step, and the editor's snap.
@@ -223,6 +224,7 @@ Seq_Field :: enum {
 	Paint, // notes drawn in one drag (one undo step)
 	Erase, // notes swept away in one drag
 	Color,
+	Mute,
 }
 
 // Replaces slot `slot`'s sequence with `new` (copied), undoably, as an edit

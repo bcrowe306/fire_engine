@@ -234,6 +234,9 @@ frame :: proc(a: ^App) {
 	update_meters(a)
 	ui.handle_shortcuts(&a.actions)
 	play_keys(a)
+	// Which editor has the keyboard: the one drawn focused this frame says
+	// so (a hidden one keeps none).
+	a.seq.focused, a.song_ui.focused = false, false
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_export(a)

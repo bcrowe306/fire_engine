@@ -331,22 +331,11 @@ intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
 // a cell, in its state: playing (a bar runs across it), queued (it pulses
 // and counts down), the one shown. Click to launch it (when stopped it
 // starts playing); Shift-click only to show it. When a switch lands: the
-// project's switch setting, here too.
+// project's launch setting (in the toolbar).
 draw_launcher :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
 	t := ui.theme()
-	sw := int(p.switch_at)
-	order := [4]pm.Switch_At{.Now, .Beat, .Bar, .End}
-	cur := 0
-	for o, k in order do if o == p.switch_at do cur = k
-	im.AlignTextToFramePadding()
-	im.TextDisabled("Launch")
-	im.SameLine(0, 12)
-	if ui.segmented("launch_at", {"At once", "Next beat", "Next bar", "Sequence end"}, &cur) do p.switch_at = order[cur]
-	_ = sw
-	if im.IsItemHovered() do im.SetTooltip("When a sequence you launch takes over")
-	im.Spacing()
 
 	beat, playing := pm.position(&m.engine)
 	tl, _ := pm.timeline_beat(&m.engine)

@@ -17,7 +17,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 10 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves
+PROJECT_VERSION :: 11 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -196,6 +196,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_u8(w, u8(n.pitch))
 			fc.write_f32(w, n.velocity)
 			fc.write_f32(w, n.probability)
+			fc.write_bool(w, n.muted)
 		}
 		fc.write_int(w, len(s.points))
 		for pt in s.points {
@@ -398,6 +399,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			x.pad = min(fc.read_u8(r), PADS - 1)
 			x.pitch = i8(fc.read_u8(r))
 			x.velocity, x.probability = fc.read_f32(r), fc.read_f32(r)
+			if version >= 11 do x.muted = fc.read_bool(r)
 		}
 		k := fc.read_int(r)
 		if k < 0 || k > 1 << 20 do return

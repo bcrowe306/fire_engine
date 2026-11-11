@@ -45,8 +45,15 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "import_midi", label = "Import MIDI File…", icon = ui.ICON_MUSIC, user = a,
 		run = proc(u: rawptr) { open_midi_dialog((^App)(u)) }})
 	add(acts, {id = "clear_pad", label = "Clear Pad", icon = ui.ICON_ERASER, chord = i32(im.Key.Delete), user = a,
-		run = proc(u: rawptr) { a := (^App)(u); if editing_notes(a) do delete_selection(a); else do pm.clear_pad(&a.m, a.selected) },
-		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return editing_notes(a) || pm.pad_used(&a.m.project, a.selected) }})
+		run = proc(u: rawptr) {
+			a := (^App)(u)
+			switch {
+			case editing_notes(a): delete_selection(a)
+			case song_editing(a):  song_delete(a)
+			case:                  pm.clear_pad(&a.m, a.selected)
+			}
+		},
+		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return editing_notes(a) || song_editing(a) || pm.pad_used(&a.m.project, a.selected) }})
 	add(acts, {id = "palette", label = "Command Palette", icon = ui.ICON_SEARCH, chord = ui.MOD_CMD | i32(im.Key.K), user = a,
 		run = proc(u: rawptr) { ui.palette_open(&(^App)(u).ws.palette) }})
 	add(acts, {id = "theme", label = "Light Theme", icon = ui.ICON_SUN, user = a,
@@ -76,17 +83,24 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "double", label = "Double Sequence", icon = ui.ICON_COPY_PLUS, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.double_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "duplicate_sequence", label = "Duplicate Sequence", icon = ui.ICON_COPY_PLUS, chord = ui.MOD_CMD | i32(im.Key.D), user = a,
-		run = proc(u: rawptr) { a := (^App)(u); if editing_notes(a) do duplicate_selection(a); else do pm.duplicate_sequence(&a.m, a.m.project.slot) }})
+		run = proc(u: rawptr) {
+			a := (^App)(u)
+			switch {
+			case editing_notes(a): duplicate_selection(a)
+			case song_editing(a):  song_duplicate(a)
+			case:                  pm.duplicate_sequence(&a.m, a.m.project.slot)
+			}
+		}})
 	add(acts, {id = "rename_sequence", label = "Rename Sequence…", icon = ui.ICON_PENCIL, chord = i32(im.Key.F2), user = a,
 		run = proc(u: rawptr) { a := (^App)(u); begin_rename_sequence(a, a.m.project.slot) }})
 	add(acts, {id = "copy_bars", label = "Copy Bars to…", icon = ui.ICON_COPY, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); begin_copy_bars(a, a.m.project.slot) }})
 	add(acts, {id = "copy", label = "Copy Marked Notes", icon = ui.ICON_COPY, chord = ui.MOD_CMD | i32(im.Key.C), user = a,
-		run = proc(u: rawptr) { copy_marked((^App)(u)) },
-		enabled = proc(u: rawptr) -> bool { return len((^App)(u).seq.sel) > 0 }})
+		run = proc(u: rawptr) { a := (^App)(u); if song_editing(a) do song_copy(a); else do copy_marked(a) },
+		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return len(a.seq.sel) > 0 || song_editing(a) }})
 	add(acts, {id = "paste", label = "Paste Notes", icon = ui.ICON_CLIPBOARD_PASTE, chord = ui.MOD_CMD | i32(im.Key.V), user = a,
-		run = proc(u: rawptr) { paste_marked((^App)(u)) },
-		enabled = proc(u: rawptr) -> bool { return (^App)(u).seq_ops.has_part }})
+		run = proc(u: rawptr) { a := (^App)(u); if a.song_ui.focused do song_paste(a); else do paste_marked(a) },
+		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return a.song_ui.clip_n > 0 if a.song_ui.focused else a.seq_ops.has_part }})
 	add(acts, {id = "clear_sequence", label = "Clear Sequence", icon = ui.ICON_TRASH_2, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,

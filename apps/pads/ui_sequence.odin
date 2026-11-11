@@ -161,7 +161,7 @@ draw_sequence :: proc(user: rawptr) {
 	for n, i in s.notes {
 		k := row_of(row_pad[:], row_pitch[:], st.piano, n)
 		if k < 0 do continue
-		append(&notes, ui.Roll_Note{start = n.start, length = n.length, key = k, velocity = n.velocity, selected = is_selected(st, n), color = ui.rgb(m.project.pads[n.pad].color)})
+		append(&notes, ui.Roll_Note{start = n.start, length = n.length, key = k, velocity = n.velocity, selected = is_selected(st, n), color = ui.rgb(m.project.pads[n.pad].color), muted = n.muted})
 		append(&which, i)
 	}
 	length := pm.seq_beats(&m.project, s)
@@ -189,6 +189,7 @@ draw_sequence :: proc(user: rawptr) {
 	e := ui.note_grid("seq", notes[:], rows, &st.view, snap, {avail.x, roll_h}, st.tool, beat if playing else -1, pm.bar_beats(&m.project))
 	before := raw_data(s.notes)
 	editor_edits(a, e, notes[:], which[:], row_pad[:], row_pitch[:], length, snap)
+	note_keys(a, which[:], row_pad[:], row_pitch[:])
 	// Notes changed this frame: the lane waits for the next (its notes are
 	// this frame's, gone stale).
 	if raw_data(pm.current_sequence(m).notes) != before {
@@ -204,7 +205,7 @@ draw_sequence :: proc(user: rawptr) {
 	bars := make([]ui.Lane_Bar, len(notes), context.temp_allocator)
 	for n, k in notes {
 		sn := s.notes[which[k]]
-		bars[k] = {beat = n.start, value = sn.velocity if st.lane == 0 else sn.probability, color = n.color, selected = n.selected}
+		bars[k] = {beat = n.start, value = sn.velocity if st.lane == 0 else sn.probability, color = ui.with_alpha(n.color, 0.3) if n.muted else n.color, selected = n.selected}
 	}
 	le := ui.value_lane("lane", bars, 0, length, {avail.x, lane_h}, ui.roll_rows_width(rows))
 
@@ -521,4 +522,38 @@ audition :: proc(a: ^App, pad, pitch: int) {
 		pm.hit(&a.m.engine, pad, true, pitch = i8(pitch), keyboard = true)
 		a.audition_off = {pad, pitch, 12}
 	}
+}
+
+// The editor's note keys, while it has the keyboard: Backspace (and
+// Delete) remove the selected notes, 0 mutes or unmutes them, Cmd+A
+// selects every note shown, the arrows nudge the selection a grid step
+// (Shift: a bar) or a row.
+@(private)
+note_keys :: proc(a: ^App, which, row_pad, row_pitch: []int) {
+	st := &a.seq
+	io := im.GetIO()
+	if !st.focused || io.WantTextInput do return
+	cmd := io.KeyCtrl // (Cmd on macOS: ImGui swaps them)
+	if cmd && im.IsKeyPressed(.A, false) {
+		s := pm.current_sequence(&a.m)
+		clear(&st.sel)
+		for i in which do append(&st.sel, s.notes[i])
+		return
+	}
+	if len(st.sel) == 0 || cmd || io.KeyAlt do return
+	if im.IsKeyPressed(.Backspace, false) {
+		delete_selection(a)
+		return
+	}
+	if im.IsKeyPressed(._0, false) || im.IsKeyPressed(.Keypad0, false) {
+		mute_selection(a)
+		return
+	}
+	beats, rows := 0.0, 0
+	step := pm.bar_beats(&a.m.project) if io.KeyShift else pm.grid_beats(st.grid)
+	if im.IsKeyPressed(.LeftArrow) do beats = -step
+	if im.IsKeyPressed(.RightArrow) do beats = step
+	if im.IsKeyPressed(.UpArrow) do rows = 1 // (rows count from the bottom)
+	if im.IsKeyPressed(.DownArrow) do rows = -1
+	if beats != 0 || rows != 0 do nudge_selection(a, beats, rows, row_pad, row_pitch)
 }

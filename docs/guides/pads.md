@@ -190,10 +190,14 @@ for other toggles.
   - **Erase** (E): click or sweep across notes to remove them;
   - **Move** (M): drag the selection (Alt-drag copies it), in time and to
     other rows.
-  With notes selected, Delete removes them, Cmd+D duplicates them after
+  With notes selected, Delete or Backspace (the Mac's delete key) removes
+  them; **0** mutes them (they stay where they are, drawn hollow, and are
+  not played; 0 again unmutes them); the arrows nudge them a grid step
+  (Shift: a bar) or a row up or down; Cmd+D duplicates them after
   themselves, Cmd+C copies and Cmd+V pastes them (into any sequence; at
-  the selection's bar, or where the grid's menu was opened); right-click
-  a note for its commands and the selection's.
+  the selection's bar, or where the grid's menu was opened). Cmd+A
+  selects every note shown. Right-click a note for its commands and the
+  selection's.
   Click a row's name to select its pad (its strip and devices follow) and
   every note in its row, and to hear it (the **headphones** turn that
   off); right-click it for the pad's commands (**Rename…**, colour, mute,
@@ -223,7 +227,7 @@ for other toggles.
   every sequence in use as a cell (its name, bars, its own tempo). Click
   one to launch it — stopped, it starts playing; playing, it takes over
   **at once**, on the **next beat**, the **next bar** or at the **sequence
-  end** (chosen beside it, as in the Song tab). The playing cell runs a
+  end** (the toolbar's **launch** setting). The playing cell runs a
   bar across; a queued one pulses with the beat and counts down; Shift-
   click only shows a sequence; **+ New** goes to the next empty one;
   right-click a cell for the sequence's commands. A sequence's own tempo
@@ -286,7 +290,16 @@ Delete clears the pad; View > Light Theme switches theme.
   and seconds (at each step's tempo), each step a block in its sequence's
   colour with its name and repeats (muted ones hatched), and the playhead;
   click the ruler to play the song from that bar, a block to select its
-  step. The playing step's card runs a bar across. On the left, every
+  step (Shift-click: a range; Cmd-click: one more or less). A selected or
+  hovered block has a grip at each end: drag the right one to change how
+  much of its sequence it plays, the left one to change where that part
+  starts (its end stays), by bars (Shift: beats); drag a block's middle
+  to move the selected steps elsewhere (a line shows where they land).
+  With steps selected, Cmd+C copies them and Cmd+V pastes them after the
+  last selected, Cmd+D duplicates them there, Cmd+X cuts them, Delete or
+  Backspace removes them, Cmd+A selects them all. The playing step's
+  card runs a bar across (drag cards too; a selected card takes the
+  selection with it). On the left, every
   **sequence** slot with its colour, length, own tempo and how many times
   the song plays it (the playing one lit): double-click one or its **+** to
   add it at the end, drag it onto a step to put it before that one or
@@ -294,8 +307,10 @@ Delete clears the pad; View > Light Theme switches theme.
   commands (**Colour** among them: its colour shows on the launcher, the
   toolbar's list, the song and the Sequence panel). On the right, the
   selected **step**: its sequence, a section name (shown on the
-  timeline), repeats, which **part** of the sequence it plays (start and
-  length, drawn over the sequence), **Transpose**, **Mute**, its **own
+  timeline), **Repeats**, which part of the sequence it plays (**Start**
+  and **Length** in beats, drawn over the sequence), **Transpose** — each a
+  number to drag (a step at a time; Shift: finer), scroll, or
+  double-click and type — **Mute**, its **own
   tempo**, and Duplicate/Remove. The picker at the top holds
   **arrangements**: several songs from the same sequences, one current
   (Song mode and export play it); right-click it to add, duplicate,
@@ -377,6 +392,10 @@ icons whose colour shows their state.
 - The **position**: bar . beat . sixteenth of the sequence playing.
 - The **sequence**: pick one of the 32 (those with notes are marked), or
   step with the arrows.
+- **Pattern | Song**: play the sequence shown, or the song's steps one
+  after another (the Song tab has the same switch). Beside it, **launch**:
+  when a sequence picked while playing takes over — **At once**, the
+  **Next beat**, the **Next bar** or at the **Sequence end**.
 - **Tempo**: drag it (right or up) to change it by 1 BPM, with **Shift**
   by 0.1; scroll it; double-click to type it. **Tap** in time to set it: it
   flashes with each tap, and the fourth starts playback a beat later,
@@ -593,6 +612,8 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
 | `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
+| `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song and launch setting |
+| `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
