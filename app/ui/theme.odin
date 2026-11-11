@@ -13,6 +13,7 @@ Theme :: struct {
 	// Surfaces, from the back.
 	bg:          Color, // window background
 	surface:     Color, // panels, cards
+	inset:       Color, // the main content (the panels in the middle): a shade under `surface`, set apart
 	raised:      Color, // controls at rest (frames, buttons)
 	hover:       Color, // controls under the mouse
 	pressed:     Color,
@@ -40,6 +41,7 @@ theme_dark :: proc() -> Theme {
 		name        = "Dark",
 		bg          = rgb(0x17181c),
 		surface     = rgb(0x1f2026),
+		inset       = rgb(0x1a1b20),
 		raised      = rgb(0x2a2c33),
 		hover       = rgb(0x34363f),
 		pressed     = rgb(0x3e414b),
@@ -67,6 +69,7 @@ theme_light :: proc() -> Theme {
 	t.name = "Light"
 	t.bg = rgb(0xf4f5f7)
 	t.surface = rgb(0xffffff)
+	t.inset = rgb(0xedeff3)
 	t.raised = rgb(0xe3e6eb)
 	t.hover = rgb(0xd8dce3)
 	t.pressed = rgb(0xccd1d9)

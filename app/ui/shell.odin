@@ -400,7 +400,16 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 			wc := im.WindowClass{ParentViewportId = ~im.ID(0), DockNodeFlagsOverrideSet = DOCK_NODE_NO_TAB_BAR, DockingAllowUnclassed = true}
 			im.SetNextWindowClass(&wc)
 		}
-		if im.Begin(w.titles[p.id], &p.open, p.flags) do p.draw(p.user)
+		// The panels in the middle sit a shade darker than the rest: the main
+		// content, set apart.
+		// (Filled here: a docked window's background is its dock host's.)
+		if im.Begin(w.titles[p.id], &p.open, p.flags) {
+			if w.layout[p.id] == .Center {
+				at, size := im.GetWindowPos(), im.GetWindowSize()
+				im.DrawList_AddRectFilled(im.GetWindowDrawList(), at, {at.x + size.x, at.y + size.y}, col(current.inset))
+			}
+			p.draw(p.user)
+		}
 		im.End()
 	}
 	if actions != nil do palette_draw(&w.palette, actions)
