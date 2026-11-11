@@ -273,9 +273,9 @@ app_folder :: proc(allocator := context.allocator) -> string {
 
 // The user's configuration folder for `app`.
 user_config_folder :: proc(app: string, allocator := context.allocator) -> string {
-	home := os.get_env("HOME", context.temp_allocator)
 	p: string
 	when ODIN_OS == .Darwin {
+		home := os.get_env("HOME", context.temp_allocator)
 		p, _ = filepath.join({home, "Library", "Application Support", app}, context.temp_allocator)
 	} else when ODIN_OS == .Windows {
 		data := os.get_env("APPDATA", context.temp_allocator)
@@ -283,7 +283,7 @@ user_config_folder :: proc(app: string, allocator := context.allocator) -> strin
 		p, _ = filepath.join({data, app}, context.temp_allocator)
 	} else {
 		xdg := os.get_env("XDG_CONFIG_HOME", context.temp_allocator)
-		if xdg == "" do xdg, _ = filepath.join({home, ".config"}, context.temp_allocator)
+		if xdg == "" do xdg, _ = filepath.join({os.get_env("HOME", context.temp_allocator), ".config"}, context.temp_allocator)
 		p, _ = filepath.join({xdg, strings.to_lower(app, context.temp_allocator)}, context.temp_allocator)
 	}
 	return strings.clone(p, allocator)
