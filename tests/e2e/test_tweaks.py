@@ -53,10 +53,10 @@ def test_stop_twice_silences(app, fixtures):
 
 def test_settings(app, tmp_path):
     app.key("cmd+,")
+    app.click("Recording")
     app.click("Count-in clicks with the metronome off")
-    app.key("esc")
-    prefs = os.path.join(app.tmp, "prefs", "settings.txt")
-    assert "count_in_click=0" in open(prefs).read()
+    prefs = os.path.join(app.tmp, "prefs", "settings.ini")
+    assert "count_in_click = false" in open(prefs).read()
 
 
 def test_a_sample_dropped_on_a_row(app, library):

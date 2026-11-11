@@ -554,6 +554,7 @@ model_new :: proc(m: ^Model, dir: string) -> fc.Error {
 	app.history_destroy(&m.history)
 	project_destroy(&m.project)
 	project_init(&m.project, dir)
+	apply_defaults(&m.project, m.defaults)
 	app.history_init(&m.history, m, bus = bus)
 	return engine_init(&m.engine, host, &m.project)
 }

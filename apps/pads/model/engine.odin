@@ -30,6 +30,11 @@ Engine :: struct {
 	warp_sources: map[string]^stream.Source, // opened warp renderings, by path
 	warp_jobs: [dynamic]^Warp_Job, // renderings under way
 	warp_bpm:  f64, // the tempo warped pads follow (the one playing)
+	// MIDI clock: sent (a node into the graph's MIDI out), and followed.
+	clock_out_id: graph.Node_Id,
+	clock_out:    bool,
+	follower:     transport.Midi_Clock_Follower,
+	following:    bool,
 	// The sequencer: a timeline, the player of the current sequence (into
 	// the router), and the metronome.
 	timeline:  fc.Timeline_Id,
@@ -113,6 +118,7 @@ engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error 
 // it from the model. Subscribe this to `app.Host_Engine_Changed`.
 engine_rebuild :: proc(e: ^Engine) -> fc.Error {
 	e.nodes = {}
+	e.clock_out, e.following = false, false // (a new graph and clock: set again by the app)
 	return build_fixed(e)
 }
 
@@ -589,6 +595,8 @@ hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, 
 // its samples (before loading another project into the model).
 engine_clear :: proc(e: ^Engine) {
 	g := e.host.graph
+	if e.clock_out do graph.remove_node(g, e.clock_out_id)
+	if e.following do transport.set_sync(e.host.clock, {})
 	for &n in e.nodes do if n.live do remove_pad_nodes(g, &n)
 	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
 	for b in e.mixer.buses {
@@ -707,4 +715,42 @@ sync_watch :: proc(e: ^Engine) -> bool {
 	if id != {} do for c in 0 ..< 2 do graph.connect(g, id, c, e.tap_id, c)
 	e.watch_node = id
 	return true
+}
+
+// Sends MIDI clock (24 ticks a beat, Start, Stop, Song Position, following
+// the sequencer) to the MIDI output, or stops.
+set_clock_out :: proc(e: ^Engine, on: bool) {
+	if on == e.clock_out do return
+	g := e.host.graph
+	if on {
+		id, err := graph.add_node(g, transport.midi_clock_create({follow = e.timeline}), 0, 0)
+		if err != .None do return
+		graph.connect_events(g, id, graph.OUTPUT)
+		e.clock_out_id = id
+	} else {
+		graph.remove_node(g, e.clock_out_id)
+		e.clock_out_id = {}
+	}
+	graph.commit(g)
+	e.clock_out = on
+}
+
+// Makes the clock follow the MIDI clock in `events` (the host's block MIDI:
+// `app.host_block_midi`), its Start and Stop starting and stopping the
+// sequencer; nil: its own tempo again.
+follow_midi_clock :: proc(e: ^Engine, events: ^[]fc.Event) {
+	if events == nil {
+		if e.following do transport.set_sync(e.host.clock, {})
+		e.following = false
+		return
+	}
+	if e.following do return
+	e.follower = {events = events}
+	transport.set_sync(e.host.clock, transport.midi_clock_follow_sync(&e.follower, e.timeline))
+	e.following = true
+}
+
+// The MIDI clock heard: its tempo (0: none yet) and whether it runs.
+midi_clock_heard :: proc(e: ^Engine) -> transport.Midi_Clock_Follower {
+	return e.follower
 }

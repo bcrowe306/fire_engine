@@ -11,7 +11,8 @@ import pytest
 # would wait for a person) or records from a sound card.
 SKIP = (
     "Quit", "Open Project…", "Save As…", "Import Sample…", "Import MIDI File…", "Export…",
-    "Record the input onto this pad", "Plug-in (CLAP)…", "New Project",
+    "Record the input onto this pad", "Plug-in (CLAP) from a file…", "New Project",
+    "Choose…", "Add a folder…", "Scan now", "Settings…",
 )
 
 PLACES = [

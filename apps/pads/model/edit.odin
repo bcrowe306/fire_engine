@@ -14,6 +14,24 @@ Model :: struct {
 	project: Project,
 	engine:  Engine,
 	history: app.History,
+	defaults: Project_Defaults, // what a new project starts with (the app's settings)
+}
+
+// What a new project starts with.
+Project_Defaults :: struct {
+	bpm:   f64,      // 0 = 120
+	sig:   Time_Sig, // {0, 0} = 4/4
+	bars:  int,      // each sequence's length; 0 = 1
+	buses: int,      // 0 = DEFAULT_BUSES
+}
+
+// Puts `d` into a project just made (its tempo, time signature, sequences'
+// length and buses).
+apply_defaults :: proc(p: ^Project, d: Project_Defaults) {
+	if d.bpm > 0 do p.bpm = clamp(d.bpm, 40, 300)
+	if d.sig.num > 0 && d.sig.den > 0 do p.transport.time_sig = d.sig
+	if d.bars > 0 do for &s in p.sequences do s.bars = clamp(d.bars, 1, MAX_BARS)
+	if d.buses > 0 do p.bus_count = clamp(d.buses, 1, BUSES)
 }
 
 // Which part of a pad an edit changes: consecutive edits of the same part

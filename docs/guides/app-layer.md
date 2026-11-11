@@ -127,8 +127,33 @@ command of it.
   where `panel_add` asked: the centre, left, right or bottom.
   `workspace_reset_layout` puts them back.
 
+- **Zoom.** `set_zoom(&p, 1.25)` draws the whole UI larger (fixed sizes
+  too): ImGui sees a window that much smaller at that much more pixel
+  density, and the mouse is scaled to match (a drive script's positions
+  stay ImGui's).
+- **Theme presets.** `theme_presets()` (Dark, Light, Midnight, Graphite,
+  Paper), `theme_colors(&t)` (each colour by name, for settings files and
+  editors), `theme_is_dark`.
+
 `apps/gallery` shows all of it, wired to a real `History` so everything
 undoes: `task app:gallery`.
+
+## Settings files
+
+`app.Ini` reads and writes INI files (`[section]`, `key = value`) and
+keeps a person's comments, and the lines it can't read, where they were:
+
+```odin
+ini, _ := app.ini_load(path)
+defer app.ini_destroy(&ini)
+zoom := app.ini_f64(&ini, "appearance", "zoom", 1)
+app.ini_set_bool(&ini, "midi", "clock_out", true)
+app.ini_save(&ini, path) // whole or not at all
+```
+
+`app.settings_file_path("Pads", "settings.ini")` is where an app keeps
+them: beside it when one is already there (portable), else in the user's
+configuration folder.
 
 ## Driving the UI from a script
 

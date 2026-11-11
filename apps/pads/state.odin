@@ -50,6 +50,13 @@ State :: struct {
 	muted_notes: int,
 	launch:     string, // when a sequence picked while playing takes over: Now, Beat, Bar, End
 	silences:   int,    // times Stop silenced every voice
+	theme:      string, // the theme in use
+	zoom:       f32,
+	settings_open: bool,
+	clock_out:  bool,   // MIDI clock goes out
+	sync:       string, // what the tempo follows: Internal, Midi_Clock, Link
+	plugins:    int,    // plug-ins found
+	plugin_effects: [dynamic]string, // the effects among them (names)
 	pad_sel:    [dynamic]int, // the pads selected together (0-based)
 	points:     int,
 	bars:       int,
@@ -213,6 +220,11 @@ state_json :: proc(a: ^App) -> string {
 	}
 	s.launch = enum_name(p.switch_at)
 	s.silences = a.transport.silences
+	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
+	s.clock_out, s.sync = m.engine.clock_out, enum_name(a.settings.sync)
+	s.plugins = len(a.plugins.entries)
+	s.plugin_effects = make([dynamic]string, context.temp_allocator)
+	for e in plugin_effects(a) do append(&s.plugin_effects, e.name)
 	s.pad_sel = make([dynamic]int, context.temp_allocator)
 	for i in 0 ..< pm.PADS do if i in selected_pads(a) do append(&s.pad_sel, i)
 	s.undo = app.undo_name(&m.history)

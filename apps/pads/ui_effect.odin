@@ -65,7 +65,17 @@ draw_effect :: proc(user: rawptr) {
 			}
 		}
 		im.Separator()
-		if im.Selectable("Plug-in (CLAP)…", false) do open_plugin_dialog(a, t)
+		// The plug-ins found (Settings > Plug-ins), then any file.
+		for pe in plugin_effects(a) {
+			if im.Selectable(fmt.ctprintf("%s  %s###pl%s", ui.ICON_LAYOUT_GRID, pe.name, pe.id), s.kind == .Plugin && s.plugin_id == pe.id) {
+				pm.set_target_slot(m, t, pm.new_plugin_effect(&m.project, pe.path, pe.id, pe.name), "Add Plug-in")
+			}
+			if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s %s", pe.vendor, pe.version))
+		}
+		if im.Selectable("Plug-in (CLAP) from a file…", false) do open_plugin_dialog(a, t)
+		if len(a.plugins.entries) == 0 && im.Selectable("Find plug-ins… (Settings)", false) {
+			a.settings.open, a.settings.page = true, .Plugins
+		}
 		im.EndCombo()
 	}
 	if s.kind == .None do return

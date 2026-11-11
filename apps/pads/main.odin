@@ -69,6 +69,7 @@ App :: struct {
 	peaks:    map[app.Id][]ui.Peak, // per sample, for the pads' faces
 	tools:    Tool_State,
 	settings: App_Settings, // File > Settings…
+	plugins:  Plugin_Scan,  // the CLAP plug-ins found
 	seq:      Seq_State,
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
@@ -118,12 +119,6 @@ main :: proc() {
 			os.exit(2)
 		}
 	}
-	untitled := project == "" // a new project in the temporary folder, until it is saved somewhere
-	if project == "" {
-		dir, _ := os.make_directory_temp("", "Untitled.pads", context.allocator)
-		project = dir
-	}
-
 	a := new(App)
 	a.dark, a.pad_waves = true, true
 	a.peaks = make(map[app.Id][]ui.Peak)
@@ -132,12 +127,25 @@ main :: proc() {
 		delete(a.peaks)
 	}
 	a.prefs = prefs
+	// The settings first: the device, the look, the last project.
+	settings_load(a)
+	defer settings_destroy(&a.settings)
+	recent_load(a)
+	if project == "" && a.settings.open_last && len(a.proj.recent) > 0 do project = a.proj.recent[0]
+	untitled := project == "" // a new project in the temporary folder, until it is saved somewhere
+	if project == "" {
+		dir, _ := os.make_directory_temp("", "Untitled.pads", context.allocator)
+		project = dir
+	}
 	p := &a.platform
-	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0}) {
+	layout := ""
+	if a.settings.layout do layout, _ = filepath.join({settings_folder(a), "layout.ini"})
+	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0, ini_path = layout}) {
 		ui.platform_destroy(p)
 		os.exit(1)
 	}
 	defer ui.platform_destroy(p)
+	appearance_apply(a)
 	app.bus_init(&a.bus)
 	defer app.bus_destroy(&a.bus)
 	if !open_engine(a, fake) {
@@ -152,21 +160,28 @@ main :: proc() {
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
-	// A project folder with a project in it opens; otherwise it is a new one.
+	// A project folder with a project in it opens; otherwise it is a new one
+	// (with what the settings say a new one starts with).
+	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
+	project_defaults_apply(a)
 	if f, _ := filepath.join({project, pm.PROJECT_FILE}, context.temp_allocator); os.exists(f) {
 		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project)
+	} else {
+		pm.model_new(&a.m, project)
 	}
-	recent_load(a)
 	a.proj.untitled = untitled
-	settings_load(a)
 	a.proj.last_save = time.tick_now()
-	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
+	sync_apply(a)
 	defer plugin_choice_clear(&a.plugin_choice)
 	a.seq.selected, a.seq.grid = -1, .Sixteenth
 	app.subscribe(&a.bus, app.Host_Engine_Changed, proc(user: rawptr, e: ^app.Host_Engine_Changed) {
-		pm.engine_rebuild(&(^App)(user).m.engine)
+		a := (^App)(user)
+		pm.engine_rebuild(&a.m.engine)
+		sync_apply(a) // (the clock out and what it follows: on the new clock)
 	}, a)
 	setup_actions(a)
+	keys_apply(a)
+	subscribe_settings(a)
 	subscribe_imports(a)
 	subscribe_project(a)
 	setup_workspace(a)
@@ -174,6 +189,8 @@ main :: proc() {
 	a.bview.renaming = -1
 	pm.browser_init(&a.browser, favorites_path(a))
 	defer pm.browser_destroy(&a.browser)
+	plugins_load(a)
+	defer plugins_destroy(&a.plugins)
 
 	if control >= 0 {
 		// Live: commands from a harness, through a driver with no script of
@@ -222,8 +239,9 @@ main :: proc() {
 // Opens the audio device (the fake one if asked), with inputs for
 // recording when the device has them.
 open_engine :: proc(a: ^App, fake: bool) -> bool {
-	for inputs in ([]int{2, 0}) {
-		settings := app.Host_Settings{fake = fake, inputs = inputs, max_block = 512, ram_bytes = 512 << 20, rebuild_on_rate_change = true}
+	for inputs in ([]int{a.settings.audio.inputs, 0}) {
+		settings := host_settings(a, fake)
+		settings.inputs = inputs
 		if a.host.driver != nil do app.host_destroy(&a.host)
 		if app.host_init(&a.host, settings, &a.bus) != .None do continue
 		if app.host_open(&a.host) == .None do return true
@@ -238,8 +256,9 @@ frame :: proc(a: ^App) {
 	run_fake(a)
 	handle_drops(a)
 	update_meters(a)
-	ui.handle_shortcuts(&a.actions)
-	play_keys(a)
+	if a.settings.recording == "" do ui.handle_shortcuts(&a.actions) // (not while a new shortcut is pressed)
+	if a.settings.recording == "" do play_keys(a)
+	plugins_scan_step(a)
 	// Which editor has the keyboard: the one drawn focused this frame says
 	// so (a hidden one keeps none).
 	a.seq.focused, a.song_ui.focused = false, false

@@ -155,6 +155,40 @@ Settings for a MIDI clock node.
 | `port` | `core.Midi_Raw.port` of every message |
 | `send_while_stopped` | keep ticking on the grid while `follow` is stopped |
 
+### Midi_Clock_Follower
+
+```odin
+Midi_Clock_Follower :: struct {
+	events: ^[]core.Event,
+	bpm: f64,
+	running: bool,
+	ticks: i64,
+	last: f64,
+	interval: f64,
+	heard: int,
+	pending: Start_Stop,
+}
+```
+
+Follows an outside MIDI clock: its tempo (from the 24 ticks per quarter
+note, smoothed), its position (Song Position Pointer, then counted
+ticks), and its Start, Continue and Stop for one timeline. Give the clock
+`midi_clock_follow_sync` of it; `events` must point at the MIDI that came
+in during the block the clock runs (the app host's `host_block_midi`).
+Audio-thread state; read `bpm` and `running` from any thread (torn
+reads are harmless: they are for display).
+
+| Field | Description |
+|-------|-------------|
+| `events` | the block's incoming MIDI |
+| `bpm` | the tempo heard (0: no clock yet) |
+| `running` | between a Start (or Continue) and a Stop |
+| `ticks` | Audio thread. ticks since the top (24 a beat) |
+| `last` | the reference frame of the last tick |
+| `interval` | frames per tick, smoothed (0: none yet) |
+| `heard` | ticks heard since the clock started (it takes a few to know the tempo) |
+| `pending` |  |
+
 ### Segment_Proc
 
 ```odin
@@ -360,6 +394,15 @@ beats line up with the timeline's. It sends Start when the timeline starts
 at 0, otherwise Song Position (rounded down to a sixteenth) then Continue;
 Stop when it stops; and Stop, Song Position, Continue when it jumps (a
 locate or loop wrap). Otherwise ticks fall on the grid. Control thread.
+
+### midi_clock_follow_sync
+
+```odin
+midi_clock_follow_sync :: proc(f: ^Midi_Clock_Follower, timeline: core.Timeline_Id = {}) -> Sync
+```
+
+A `Sync` that makes the clock follow `f`, starting and stopping
+`timeline` with the outside clock's Start and Stop.
 
 ### process
 

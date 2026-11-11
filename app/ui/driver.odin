@@ -50,6 +50,7 @@ Driver :: struct {
 	at:        int,      // next line
 	wait:      int,      // frames left to wait
 	pending:   [dynamic]sdl.Event, // events for the next frame (a click's release)
+	zoom:      f32, // the UI's zoom (positions are ImGui's: the window's are this many times larger)
 	out_dir:   string,   // where screenshots go
 	shot_path: string,   // set for the frame to capture
 	shots:     [dynamic]string, // every screenshot written
@@ -265,7 +266,8 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 		return true
 	case "scroll":
 		e: sdl.Event
-		e.wheel = {type = .MOUSE_WHEEL, windowID = window, x = num(w, 1), y = num(w, 2), mouse_x = d.mouse.x, mouse_y = d.mouse.y}
+		z := d.zoom if d.zoom > 0 else 1
+		e.wheel = {type = .MOUSE_WHEEL, windowID = window, x = num(w, 1), y = num(w, 2), mouse_x = d.mouse.x * z, mouse_y = d.mouse.y * z}
 		_ = sdl.PushEvent(&e)
 		return true
 	case "key":
@@ -429,7 +431,8 @@ button :: proc(w: []string, i: int) -> u8 {
 @(private)
 push_motion :: proc(d: ^Driver, window: sdl.WindowID, at: [2]f32) {
 	e: sdl.Event
-	e.motion = {type = .MOUSE_MOTION, windowID = window, x = at.x, y = at.y, xrel = at.x - d.mouse.x, yrel = at.y - d.mouse.y}
+	z := d.zoom if d.zoom > 0 else 1
+	e.motion = {type = .MOUSE_MOTION, windowID = window, x = at.x * z, y = at.y * z, xrel = (at.x - d.mouse.x) * z, yrel = (at.y - d.mouse.y) * z}
 	d.mouse = at
 	_ = sdl.PushEvent(&e)
 }
@@ -437,7 +440,8 @@ push_motion :: proc(d: ^Driver, window: sdl.WindowID, at: [2]f32) {
 @(private)
 push_button :: proc(d: ^Driver, window: sdl.WindowID, b: u8, down: bool, later: bool) {
 	e: sdl.Event
-	e.button = {type = .MOUSE_BUTTON_DOWN if down else .MOUSE_BUTTON_UP, windowID = window, button = b, down = down, clicks = 1, x = d.mouse.x, y = d.mouse.y}
+	z := d.zoom if d.zoom > 0 else 1
+	e.button = {type = .MOUSE_BUTTON_DOWN if down else .MOUSE_BUTTON_UP, windowID = window, button = b, down = down, clicks = 1, x = d.mouse.x * z, y = d.mouse.y * z}
 	if later {
 		append(&d.pending, e)
 	} else {

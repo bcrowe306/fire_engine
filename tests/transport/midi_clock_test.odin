@@ -142,3 +142,56 @@ midi_clock_ticks_between_frames :: proc(t: ^testing.T) {
 		transport.destroy(c)
 	}
 }
+
+// Following a MIDI clock: the tempo from its ticks (steady through ±20
+// frames of jitter), the position counted from Start (and from a Song
+// Position Pointer), and its Start and Stop passed to the timeline.
+@(test)
+midi_clock_follower_hears_tempo_position_start_stop :: proc(t: ^testing.T) {
+	f: transport.Midi_Clock_Follower
+	events: []core.Event
+	f.events = &events
+	s := transport.midi_clock_follow_sync(&f, {})
+	rate := 48_000.0
+	tick := rate * 60 / (140 * 24) // frames between ticks at 140 BPM
+	block := 512
+	next := 0.0 // when the next tick is due
+	jitter := [5]f64{0, 20, -15, 8, -20}
+	k := 0
+	b: transport.Sync_Block
+	run :: proc(f: ^transport.Midi_Clock_Follower, s: transport.Sync, events: ^[]core.Event, b: ^transport.Sync_Block, frame, block: int, rate: f64, next: ^f64, tick: f64, jitter: [5]f64, k: ^int, extra: []core.Event = nil) {
+		list := make([dynamic]core.Event, context.temp_allocator)
+		append(&list, ..extra)
+		for next^ < f64(frame + block) {
+			at := clamp(next^ + jitter[k^ % 5], f64(frame), f64(frame + block - 1))
+			append(&list, core.Event{offset = u32(at) - u32(frame), payload = core.Midi_Raw{bytes = {transport.MIDI_CLOCK, 0, 0}}})
+			next^ += tick
+			k^ += 1
+		}
+		events^ = list[:]
+		b^ = {frame = tb.Sample_Time(frame), frames = block, sample_rate = rate}
+		s.begin_block(s.user, b)
+	}
+	start := []core.Event{{offset = 0, payload = core.Midi_Raw{bytes = {transport.MIDI_START, 0, 0}}}}
+	run(&f, s, &events, &b, 0, block, rate, &next, tick, jitter, &k, start)
+	frame := block
+	for ; frame < int(rate * 2); frame += block do run(&f, s, &events, &b, frame, block, rate, &next, tick, jitter, &k)
+	testing.expectf(t, abs(f.bpm - 140) < 1, "the tempo heard: %v", f.bpm)
+	testing.expect(t, b.ok && f.running, "running, setting the clock")
+	elapsed := f64(frame - block) / rate * 140 / 60
+	testing.expectf(t, abs(f64(b.beat) - elapsed) < 0.1, "where it is: %v (want about %v)", b.beat, elapsed)
+	// Stop: passed on; the position holds.
+	stop := []core.Event{{offset = 0, payload = core.Midi_Raw{bytes = {transport.MIDI_STOP, 0, 0}}}}
+	run(&f, s, &events, &b, frame, block, rate, &next, tick, jitter, &k, stop)
+	testing.expect(t, b.start_stop == .Stop && !f.running, "stopped")
+	held := b.beat
+	frame += block
+	run(&f, s, &events, &b, frame, block, rate, &next, tick, jitter, &k)
+	testing.expect_value(t, b.beat, held)
+	// Song Position Pointer 32 (sixteenths: beat 8), then Continue.
+	spp := []core.Event{{offset = 0, payload = core.Midi_Raw{bytes = {transport.MIDI_SONG_POSITION, 32, 0}}}, {offset = 1, payload = core.Midi_Raw{bytes = {transport.MIDI_CONTINUE, 0, 0}}}}
+	frame += block
+	run(&f, s, &events, &b, frame, block, rate, &next, tick, jitter, &k, spp)
+	testing.expect(t, b.start_stop == .Start && f.running, "continued")
+	testing.expectf(t, abs(f64(b.beat) - 8) < 0.1, "from beat 8: %v", b.beat)
+}

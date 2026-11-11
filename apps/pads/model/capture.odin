@@ -15,6 +15,7 @@ Capture :: struct {
 	midi_key:      int, // the last MIDI note that came in (-1: none yet), for MIDI learn
 	midi_count:    int, // MIDI notes that came in (to notice a new one)
 	preroll:       f64, // beats: a hit this much before a sequence's downbeat (or the end of the count-in) goes on the downbeat (0: none)
+	midi_offset:   f64, // seconds: notes from MIDI are recorded this much earlier (a controller's delay)
 }
 
 @(private)
@@ -65,6 +66,8 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 		}
 		if t.no_pad || !c.armed || !t.playing do continue
 		i := int(t.pad)
+		t := t
+		if t.midi_key >= 0 && c.midi_offset != 0 do t.beat -= c.midi_offset * m.engine.bpm / 60 // (MIDI: the controller's delay)
 		if t.on {
 			// Just before a sequence's downbeat (its part's start, each pass;
 			// the top after a count-in): on the downbeat, so a hit a little

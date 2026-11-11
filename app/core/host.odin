@@ -28,6 +28,7 @@ Host_Settings :: struct {
 	ram_bytes:     int,    // audio files up to this decoded size are held in memory (samplers need it); 0 = the streamer's default
 	midi:          bool,   // open the system's MIDI: every input port into the graph (see `host_midi_*`)
 	midi_output:   string, // a MIDI output port id the graph's MIDI goes to; "" = none
+	midi_inputs_off: []string, // input port ids left closed (every other input is opened)
 	// At a new sample rate, start from an empty graph and clock instead of
 	// carrying the old ones over (for apps that rebuild the engine from
 	// their own model on `Host_Engine_Changed`).
@@ -71,6 +72,8 @@ Host :: struct {
 	midi_received: u64, // atomic: MIDI messages into the graph
 	in_events:   []fc.Event, // audio thread: MIDI in, per block
 	out_events:  []fc.Event, // audio thread: the graph's events out, per block
+	block_midi:  []fc.Event, // audio thread: this block's MIDI in, while the clock runs it (see `host_block_midi`)
+	load:        u32, // atomic: f32 bits: how much of each callback's time the engine takes (smoothed)
 }
 
 // Announced on the bus when the device changes.
@@ -120,6 +123,64 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 	return session.register_builtin(&h.registry, &h.env)
 }
 
+// Closes the MIDI ports and opens them again as `h.settings` now says
+// (`midi`, `midi_inputs_off`, `midi_output`). Control thread; MIDI already
+// queued is dropped.
+host_midi_reopen :: proc(h: ^Host) {
+	close_midi(h)
+	if h.settings.midi && !h.settings.fake do open_midi(h)
+}
+
+// Closes every MIDI port and the MIDI driver.
+@(private)
+close_midi :: proc(h: ^Host) {
+	if h.midi_driver == nil do return
+	if h.midi_out_open {
+		midi.output_stop(&h.midi_out)
+		midi.close_port(h.midi_driver, h.midi_port)
+		midi.output_destroy(&h.midi_out)
+		h.midi_out_open = false
+	}
+	for p in h.midi_inputs do midi.close_port(h.midi_driver, p)
+	delete(h.midi_inputs)
+	h.midi_inputs = nil
+	midi.driver_destroy(h.midi_driver)
+	h.midi_driver = nil
+}
+
+// The MIDI input ports open now, by id (temporary allocator).
+host_midi_open_inputs :: proc(h: ^Host) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	if h.midi_driver == nil do return nil
+	ports, _ := midi.enumerate(h.midi_driver, context.temp_allocator)
+	for p in ports do if p.direction == .Input {
+		off := false
+		for x in h.settings.midi_inputs_off do if x == p.id do off = true
+		if !off do append(&out, p.id)
+	}
+	return out[:]
+}
+
+// How much of each callback's time the engine takes (0..1, and more when
+// it can't keep up), smoothed. Any thread.
+host_load :: proc "contextless" (h: ^Host) -> f32 {
+	return transmute(f32)intrinsics.atomic_load(&h.load)
+}
+
+// The latency the device reports: input and output, and a loopback's
+// round trip (from its timestamps once it has run), in frames. Control thread.
+host_latency :: proc(h: ^Host) -> (input, output, round_trip: int) {
+	if !h.opened do return
+	return h.format.input_latency_frames, h.format.output_latency_frames, backend.round_trip_latency_frames(&h.device)
+}
+
+// Where the MIDI that came in during the block the clock is running is,
+// for a `transport.Sync` that reads it (a MIDI clock follower): valid only
+// inside the sync's `begin_block`. Audio thread.
+host_block_midi :: proc(h: ^Host) -> ^[]fc.Event {
+	return &h.block_midi
+}
+
 // Opens the platform's MIDI, every input port, and the output port in the
 // settings. A machine with no MIDI is not an error: there is just none.
 @(private)
@@ -132,6 +193,9 @@ open_midi :: proc(h: ^Host) {
 	ports, _ := midi.enumerate(d, context.temp_allocator)
 	for p in ports {
 		if p.direction == .Input {
+			off := false
+			for x in h.settings.midi_inputs_off do if x == p.id do off = true
+			if off do continue
 			if port, e := midi.open_input(d, p.id, u8(len(h.midi_inputs))); e == .None do append(&h.midi_inputs, port)
 		} else if p.direction == .Output && h.settings.midi_output != "" && p.id == h.settings.midi_output && !h.midi_out_open {
 			if midi.output_init(&h.midi_out, d) == nil {
@@ -174,16 +238,7 @@ host_destroy :: proc(h: ^Host) {
 	if h.disk != nil do record.disk_writer_destroy(h.disk)
 	if h.streamer != nil do stream.destroy(h.streamer)
 	fc.registry_destroy(&h.registry)
-	if h.midi_driver != nil {
-		if h.midi_out_open {
-			midi.output_stop(&h.midi_out)
-			midi.close_port(h.midi_driver, h.midi_port)
-			midi.output_destroy(&h.midi_out)
-		}
-		for p in h.midi_inputs do midi.close_port(h.midi_driver, p)
-		delete(h.midi_inputs)
-		midi.driver_destroy(h.midi_driver)
-	}
+	close_midi(h)
 	midi.input_destroy(&h.midi_in)
 	delete(h.in_events)
 	delete(h.out_events)
@@ -280,7 +335,9 @@ run_block :: proc(h: ^Host, inputs, outputs: [][]f32, frames: int, block_ns: u64
 	midi.input_process(&h.midi_in, block_ns, frames, rate, &in_w)
 	out_w := fc.Event_Writer{buffer = h.out_events}
 	ctx := fc.Process_Context{inputs = inputs, outputs = outputs, frames = frames, events_in = fc.event_writer_events(&in_w), events_out = &out_w}
+	h.block_midi = ctx.events_in // (for a sync following MIDI clock)
 	transport.process(h.clock, &ctx, render_segment, h.graph, block_ns)
+	h.block_midi = nil
 	if n := in_w.count; n > 0 do intrinsics.atomic_add(&h.midi_received, u64(n))
 	sent: u64 = 0
 	for e in fc.event_writer_events(&out_w) do if _, ok := e.payload.(fc.Midi_Raw); ok do sent += 1
@@ -317,7 +374,14 @@ open_device :: proc(h: ^Host) -> fc.Error {
 	cb := backend.Device_Callback {
 		process = proc(user: rawptr, block: ^backend.Io_Block) {
 			h := (^Host)(user)
+			t0 := time.tick_now()
 			run_block(h, block.inputs, block.outputs, block.frames, block.output_ns)
+			// The load: this callback's time against the time its frames last.
+			if rate := h.format.sample_rate; rate > 0 && block.frames > 0 {
+				x := f32(time.duration_seconds(time.tick_since(t0)) * rate / f64(block.frames))
+				old := transmute(f32)intrinsics.atomic_load(&h.load)
+				intrinsics.atomic_store(&h.load, transmute(u32)(old + (x - old) * 0.05))
+			}
 		},
 		user = h,
 	}

@@ -81,6 +81,84 @@ theme_light :: proc() -> Theme {
 	return t
 }
 
+// A dark theme with a blue cast and a violet accent.
+theme_midnight :: proc() -> Theme {
+	t := theme_dark()
+	t.name = "Midnight"
+	t.bg = rgb(0x0f1220)
+	t.surface = rgb(0x161a2c)
+	t.inset = rgb(0x121527)
+	t.raised = rgb(0x21263d)
+	t.hover = rgb(0x2a304b)
+	t.pressed = rgb(0x343b5a)
+	t.border = rgb(0x262b44)
+	t.text = rgb(0xe4e6f2)
+	t.text_dim = rgb(0x8a8fae)
+	t.accent = rgb(0x8b7cff)
+	return t
+}
+
+// A neutral grey dark theme with an orange accent.
+theme_graphite :: proc() -> Theme {
+	t := theme_dark()
+	t.name = "Graphite"
+	t.bg = rgb(0x1b1b1b)
+	t.surface = rgb(0x242424)
+	t.inset = rgb(0x1f1f1f)
+	t.raised = rgb(0x303030)
+	t.hover = rgb(0x3a3a3a)
+	t.pressed = rgb(0x444444)
+	t.border = rgb(0x333333)
+	t.text = rgb(0xebebeb)
+	t.text_dim = rgb(0x949494)
+	t.accent = rgb(0xff8a3d)
+	t.accent_text = rgb(0x1b1b1b)
+	return t
+}
+
+// A warm light theme, like paper, with a teal accent.
+theme_paper :: proc() -> Theme {
+	t := theme_light()
+	t.name = "Paper"
+	t.bg = rgb(0xf3efe7)
+	t.surface = rgb(0xfbf8f2)
+	t.inset = rgb(0xefe9df)
+	t.raised = rgb(0xe6dfd2)
+	t.hover = rgb(0xdcd4c5)
+	t.pressed = rgb(0xd1c8b7)
+	t.border = rgb(0xdbd2c3)
+	t.text = rgb(0x2b2620)
+	t.text_dim = rgb(0x7a7166)
+	t.accent = rgb(0x1f8a83)
+	return t
+}
+
+// The themes the app comes with, by name.
+theme_presets :: proc() -> [5]Theme {
+	return {theme_dark(), theme_light(), theme_midnight(), theme_graphite(), theme_paper()}
+}
+
+// A colour of a theme, by name: for settings files and editors.
+Theme_Color :: struct {
+	name:  string,
+	color: ^Color,
+}
+
+// The colours of `t` that make it up, by name (pointers into `t`).
+theme_colors :: proc(t: ^Theme) -> [14]Theme_Color {
+	return {
+		{"bg", &t.bg}, {"surface", &t.surface}, {"inset", &t.inset}, {"raised", &t.raised},
+		{"hover", &t.hover}, {"pressed", &t.pressed}, {"border", &t.border}, {"text", &t.text},
+		{"text_dim", &t.text_dim}, {"accent", &t.accent}, {"accent_text", &t.accent_text},
+		{"ok", &t.ok}, {"warn", &t.warn}, {"danger", &t.danger},
+	}
+}
+
+// Whether `t` is a dark theme (light text on a dark background).
+theme_is_dark :: proc(t: Theme) -> bool {
+	return 0.3 * t.bg.r + 0.59 * t.bg.g + 0.11 * t.bg.b < 0.5
+}
+
 // Makes `t` the current ImGui style, its sizes scaled by `scale` (logical
 // points to ImGui units: 1 where the OS scales for us, as on macOS).
 theme_apply :: proc(t: Theme, scale: f32 = 1) {

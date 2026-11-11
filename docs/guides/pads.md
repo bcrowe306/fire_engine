@@ -448,10 +448,57 @@ icons whose colour shows their state.
 
 These settings are saved with the project.
 
-**File > Settings…** (Cmd+,) holds what is the same for every project,
-kept with the preferences: whether the count-in clicks with the
-metronome off (on by default), and how early a hit before the downbeat
-still goes on it (off, a 1/32, a 1/16, an 1/8).
+## Settings
+
+**File > Settings…** (Cmd+,) holds what is the same for every project, in
+a window over the app: its pages down the left, each page scrolling on
+the right. They are kept in `settings.ini`: in your configuration folder
+(macOS `~/Library/Application Support/Pads`, Windows `%APPDATA%\Pads`,
+Linux `~/.config/pads`), or beside the app when a `settings.ini` is
+already there (a portable install, on a stick); the window shows which.
+It is a plain text file: what you write in it by hand (comments too)
+stays when Pads writes it back. The recent projects, browser favourites,
+plug-in list (`plugins.ini`) and window layout (`layout.ini`) sit beside
+it.
+
+- **Appearance**: the theme (Dark, Light, Midnight, Graphite, Paper, and
+  your own), every one of its colours (click a swatch), **Save as
+  preset**; the **zoom** (50–300%: everything drawn larger or smaller, as
+  a browser zooms); the pads' waveforms; whether the layout is
+  remembered, and **Reset layout**.
+- **Audio**: the output and input devices, sample rate and buffer size
+  (what each device offers), input channels. Changes wait for **Apply**,
+  which opens the device with them; keep them within 10 s or they go
+  back (no getting stuck without sound). Below, the engine now: the rate
+  and buffer it runs at, the latency in, out and round trip, its block,
+  channels, dropouts since starting, and its **load** (how much of each
+  buffer's time it takes to make it).
+- **MIDI & Sync**: MIDI on or off, each input port on or off, the output
+  port (pads' MIDI out and the clock go there), activity, and an **input
+  offset** (MIDI notes recorded that much earlier, for a controller's own
+  delay). What the **tempo follows**: Pads, an incoming **MIDI clock**
+  (its tempo, Start, Stop and Song Position; the tempo it hears shows),
+  or an **Ableton Link** session (start and stop with it too; how many
+  apps are in it). **Clock out** sends MIDI clock to the output. Link is
+  GPL, so Pads (MIT) leaves it out unless it is built with it:
+  `./scripts/link.sh`, then `task app:pads LINK=1`.
+- **Recording**: whether the count-in clicks with the metronome off (on
+  by default), and how early a hit before a sequence's downbeat still
+  goes on it (off, a 1/32, a 1/16, an 1/8).
+- **Projects**: what a new project starts with (tempo, time signature,
+  sequence length, buses), the folder Save starts in, autosave (off, or
+  every 1–10 minutes), opening the last project on start, and the export
+  sample rate and bit depth.
+- **Plug-ins**: the folders searched (the system's CLAP folders and
+  CLAP_PATH's, then your own), **Scan now** (a library a frame; on start
+  if you like), and what was found: name, vendor, version, kind, and
+  whether it is used (a blocked one is never opened). A library that
+  stops Pads during a scan is blocked at the next start. The effect
+  plug-ins found are offered in every effect slot's list.
+- **Keyboard**: every command and its shortcut; click one and press the
+  new keys (Esc keeps it, Backspace takes it away). One already used is
+  shown, with **Take it**; **Reset** one or all. The editors' own keys
+  are listed below them.
 
 To work on several pads at once, **Shift**-click pads (a range) or
 **Cmd**-click them (one more or less): right-click one of them to
@@ -663,6 +710,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
 | `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song and launch setting |
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
+| `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |

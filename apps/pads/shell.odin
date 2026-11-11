@@ -125,8 +125,9 @@ bank_actions := [pm.BANKS]proc(u: rawptr) {
 }
 
 set_dark :: proc(a: ^App, dark: bool) {
-	a.dark = dark
-	ui.set_theme(&a.platform, ui.theme_dark() if dark else ui.theme_light())
+	a.settings.theme = ui.theme_dark() if dark else ui.theme_light()
+	appearance_apply(a)
+	settings_save(a)
 }
 
 draw_menu :: proc(user: rawptr) {
@@ -290,6 +291,7 @@ subscribe_imports :: proc(a: ^App) {
 //	send PAD BUS DB [pre|post]   a pad's send to bus BUS (1..the buses in use; DB -60 = off)
 //	addbus / delbus B / busdest B D (0 = main) / busname B NAME   buses: add, delete, route, rename
 //	warp PAD on|off [beats|tones|complex|repitch] [BPM]   a pad's warp (its sample's tempo: guessed if not given)
+//	plugin_folder PATH / scan_plugins   a folder for plug-ins, and a scan of every folder
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
 //	save / save_as DIR / rename_project NAME / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
@@ -570,6 +572,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) > 4 do wp.bpm = f64(numf(w, 4))
 		pm.set_warp(&a.m, i, wp)
 		app.seal(&a.m.history)
+		return true
+	case "plugin_folder": // plugin_folder PATH: a folder plug-ins are scanned in
+		if len(w) < 2 do return false
+		append(&a.settings.plugin_folders, strings.clone(strings.join(w[1:], " ", context.temp_allocator)))
+		return true
+	case "scan_plugins": // scans now (a library a frame)
+		plugins_scan(a)
 		return true
 	case "addbus": // a bus after the others
 		return pm.add_bus(&a.m) > 0

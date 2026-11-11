@@ -16,7 +16,6 @@ import sdl "deps:sdl3"
 // Recent projects kept.
 RECENT :: 8
 // How often unsaved changes are saved on their own.
-AUTOSAVE_EVERY :: 60 * time.Second
 
 // What the File menu keeps between runs, and the export under way.
 Project_State :: struct {
@@ -45,16 +44,17 @@ Project_Chosen :: struct {
 // The path of preferences file `name`: in --prefs's folder, or the
 // system's place for them (temporary allocator; "" if there is none).
 prefs_file :: proc(a: ^App, name: string) -> string {
-	dir := a.prefs
-	if dir != "" {
-		os.make_directory_all(dir)
-	} else {
-		p := sdl.GetPrefPath("Fire Engine", "Pads")
-		if p == nil do return ""
-		dir = strings.clone_from_cstring(cstring(p), context.temp_allocator)
-		sdl.free(rawptr(p))
-	}
+	dir := a.prefs if a.prefs != "" else settings_folder(a)
+	os.make_directory_all(dir)
 	path, _ := filepath.join({dir, name}, context.temp_allocator)
+	// Kept elsewhere before settings.ini: brought over the first time.
+	if a.prefs == "" && !os.exists(path) {
+		if p := sdl.GetPrefPath("Fire Engine", "Pads"); p != nil {
+			old, _ := filepath.join({string(cstring(p)), name}, context.temp_allocator)
+			sdl.free(rawptr(p))
+			if data, err := os.read_entire_file(old, context.temp_allocator); err == nil do _ = os.write_entire_file(path, data)
+		}
+	}
 	return path
 }
 
@@ -162,6 +162,7 @@ project_dialog :: proc(a: ^App, what: type_of(Project_Chosen{}.what)) {
 		if a.proj.untitled {
 			where_ = "."
 			if d := sdl.GetUserFolder(.DOCUMENTS); d != nil do where_ = strings.clone_from_cstring(d, context.temp_allocator)
+			if a.settings.projects_folder != "" do where_ = a.settings.projects_folder
 		}
 		name := a.proj.save_name if a.proj.untitled && a.proj.save_name != "" else project_name(a)
 		start_at := fmt.ctprintf("%s/%s.pads", where_, name)
@@ -232,7 +233,8 @@ project_frame :: proc(a: ^App) {
 			else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d file%s", len(files), "" if len(files) == 1 else "s"))
 		}
 	}
-	if pm.model_dirty(&a.m) && time.tick_since(st.last_save) > AUTOSAVE_EVERY && !st.exporting {
+	every := time.Duration(a.settings.autosave_min) * time.Minute
+	if every > 0 && pm.model_dirty(&a.m) && time.tick_since(st.last_save) > every && !st.exporting && !st.untitled {
 		if pm.model_save(&a.m) == .None do st.last_save = time.tick_now()
 	}
 	title := fmt.tprintf("%s%s — Pads", project_name(a), " •" if pm.model_dirty(&a.m) else "")

@@ -15,6 +15,9 @@ vars:
   OUT: '{{.ROOT_DIR}}/.build/app'
   EXE: '{{if eq OS "windows"}}.exe{{end}}'
   COLLECTIONS: -collection:fire={{.ROOT_DIR}}/f_engine -collection:app={{.ROOT_DIR}}/app -collection:deps={{.ROOT_DIR}}/vendor
+  # LINK=1 builds Ableton Link into Pads (GPLv2+: run ./scripts/link.sh first);
+  # without it Pads (MIT) has none.
+  PADS_LINK: '-collection:padslink={{.ROOT_DIR}}/apps/pads/link/{{if .LINK}}on{{else}}off{{end}}'
   OPT: '{{.OPT | default "speed"}}'
   # The Python `task deps` sets up (pytest for the e2e suite).
   E2E_PYTHON: '{{if eq OS "windows"}}{{.ROOT_DIR}}/.deps/venv/Scripts/python.exe{{else}}{{.ROOT_DIR}}/.deps/venv/bin/python{{end}}'
@@ -34,11 +37,11 @@ tasks:
     # Up to date only if the sources are unchanged and it was built at this OPT
     # (a debug build is not an optimized one).
     status:
-      - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}"'
+      - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}{{.LINK}}"'
     cmds:
       - mkdir -p {{.OUT}}
-      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
-      - echo {{.OPT}} > {{.OUT}}/pads.opt
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
+      - echo {{.OPT}}{{.LINK}} > {{.OUT}}/pads.opt
 
   gallery:
     desc: 'Build and run the widget gallery (args go to it: task app:gallery -- --drive tests/app_ui/drive/gallery.txt --headless).'

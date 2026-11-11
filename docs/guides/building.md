@@ -111,6 +111,10 @@ odin build apps/pads -collection:fire=f_engine -collection:app=app -collection:d
 The result has no SDL or ImGui library to ship beside it (`otool -L` on
 macOS, `ldd` on Linux show only system libraries).
 
+Pads takes a fourth, `padslink`: `apps/pads/link/off` (no Ableton Link, the
+default) or `apps/pads/link/on` (`task app:pads LINK=1`, after
+`./scripts/link.sh`). Link is GPLv2+, so a Pads built with it is too.
+
 ## Testing the app layer
 
 ```bash

@@ -49,6 +49,7 @@ Platform :: struct {
 	target_h:     u32,
 	scale:        f32, // pixels per logical point (2 on a Retina display)
 	ui_scale:     f32, // the display's scale beyond that (1.5 on a Windows display at 150%)
+	zoom:         f32, // the user's zoom of the whole UI (1 = as designed; see `set_zoom`)
 	running:      bool,
 	frame:        u64, // frames drawn
 	driver:       ^Driver, // when the UI runs from a script
@@ -169,9 +170,26 @@ frame_begin :: proc(p: ^Platform) -> bool {
 	for d in p.drops do delete(d.path)
 	clear(&p.drops)
 	if p.control != nil && p.driver != nil do control_poll(p.control, p.driver)
-	if p.driver != nil do driver_step(p.driver, p)
+	z := p.zoom if p.zoom > 0 else 1
+	if p.driver != nil {
+		p.driver.zoom = z
+		driver_step(p.driver, p)
+	}
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
+		// Zoomed: the window's positions are ImGui's times the zoom.
+		if z != 1 {
+			#partial switch e.type {
+			case .MOUSE_MOTION:
+				e.motion.x, e.motion.y, e.motion.xrel, e.motion.yrel = e.motion.x / z, e.motion.y / z, e.motion.xrel / z, e.motion.yrel / z
+			case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
+				e.button.x, e.button.y = e.button.x / z, e.button.y / z
+			case .MOUSE_WHEEL:
+				e.wheel.mouse_x, e.wheel.mouse_y = e.wheel.mouse_x / z, e.wheel.mouse_y / z
+			case .DROP_FILE, .DROP_POSITION, .DROP_TEXT:
+				e.drop.x, e.drop.y = e.drop.x / z, e.drop.y / z
+			}
+		}
 		imsdl.ProcessEvent(&e)
 		#partial switch e.type {
 		case .DROP_FILE:
@@ -186,6 +204,20 @@ frame_begin :: proc(p: ^Platform) -> bool {
 	im.probe_frame() // the frame just drawn's items become the ones a test reads
 	imgpu.NewFrame()
 	imsdl.NewFrame()
+	// Zoomed: ImGui sees a window `z` times smaller at `z` times the pixel
+	// density, so everything (fixed sizes too) is drawn `z` times larger,
+	// and the mouse (which the backend may have read from the system
+	// unscaled while a button is held) is where it is in that window.
+	if z != 1 {
+		io := im.GetIO()
+		io.DisplaySize = {io.DisplaySize.x / z, io.DisplaySize.y / z}
+		io.DisplayFramebufferScale = {io.DisplayFramebufferScale.x * z, io.DisplayFramebufferScale.y * z}
+		if p.driver == nil && sdl.GetMouseFocus() == p.window {
+			mx, my: f32
+			_ = sdl.GetMouseState(&mx, &my)
+			im.IO_AddMousePosEvent(io, mx / z, my / z)
+		}
+	}
 	if p.fixed_dt > 0 do im.GetIO().DeltaTime = p.fixed_dt
 	im.NewFrame()
 	return true
@@ -257,6 +289,12 @@ set_theme :: proc(p: ^Platform, t: Theme) {
 	theme_apply(t, p.ui_scale)
 	p.clear = t.bg
 	current = t
+}
+
+// Zooms the whole UI by `zoom` (0.5..3; 1 = as designed): everything is
+// drawn that much larger, fixed sizes included, as a browser zooms.
+set_zoom :: proc(p: ^Platform, zoom: f32) {
+	p.zoom = clamp(zoom, 0.5, 3)
 }
 
 // Asks the app to quit after this frame.
