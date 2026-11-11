@@ -48,6 +48,7 @@ Midi_Out :: struct {
 	on:      bool,
 	channel: u8, // 0..15
 	key:     u8,
+	port:    string, // the output port's id (interned); "" = the default output (Settings)
 }
 
 // Plays the pads. Live notes (hits from the UI, and MIDI notes mapped to
@@ -68,6 +69,12 @@ Router :: struct {
 	modes:    [PADS]Pad_Mode,
 	midi_map: [128]i16, // MIDI key → pad (-1: none)
 	midi_out: [PADS]Midi_Out,
+	out_port: [PADS]u8,  // each pad's MIDI out: the output port's index (255: none open)
+	in_port:  [PADS]i16, // each pad's MIDI in: IN_ALL (the drum map), IN_NONE, or an input port's index
+	in_channel: [PADS]u8, // 0 = any, 1..16
+	armed:    [PADS]bool, // armed tracks: their own MIDI input plays them (and records)
+	midi_in_hits:  [PADS]u32, // atomic: MIDI notes that played each pad (activity lights)
+	midi_out_hits: [PADS]u32, // atomic: MIDI notes each pad sent
 	// Audio thread.
 	effects:  Perform,
 	arp:      pf.Arp,
@@ -105,6 +112,8 @@ router_create :: proc(allocator := context.allocator) -> (fc.Node, ^Router) {
 	rt.spsc_init(&r.settings, 16, allocator)
 	r.next_id = 1 << 30 // apart from the sequencer's and the effects' ids
 	for &m, k in r.midi_map do m = i16(k) if k < PADS else -1
+	for &x in r.in_port do x = IN_ALL // (until `sync` says otherwise)
+	for &x in r.out_port do x = 255
 	pf.arp_init(&r.arp, {})
 	pf.repeat_init(&r.repeat, {})
 	return fc.node_make(&router_vtable, r, allocator), r
@@ -155,9 +164,25 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			key := v.bytes[1] & 0x7F
 			on := status == 0x90 && v.bytes[2] > 0
 			vel := f32(v.bytes[2]) / 127
+			ch := (v.bytes[0] & 15) + 1
+			// An armed track listening to this port (and channel): it plays,
+			// chromatically (the key's distance from C3 its pitch).
+			if t := armed_listener(r, int(v.port), int(ch)); t >= 0 {
+				h := Hit{pad = u8(t), on = on, velocity = vel, pitch = i8(int(key) - KEYS_CENTER), keyboard = true}
+				r.keys_pad[key] = h.pad
+				fc.event_writer_push(&live, {e.offset, note(on, KEYS_CHANNEL, key, vel)})
+				rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = i16(key)})
+				if on do intrinsics.atomic_add(&r.midi_in_hits[t], 1)
+				continue
+			}
+			// Else the drum map, for tracks that take any port's MIDI.
 			p := r.midi_map[key]
+			if p >= 0 && r.in_port[p] != IN_ALL do p = -1
 			rt.spsc_push(&r.taken, Taken{hit = {pad = u8(max(p, 0)), on = on, velocity = vel}, beat = beat, playing = playing, midi_key = i16(key), no_pad = p < 0})
-			if p >= 0 do fc.event_writer_push(&live, {e.offset, note(on, 0, pad_key(int(p)), vel)})
+			if p >= 0 {
+				fc.event_writer_push(&live, {e.offset, note(on, 0, pad_key(int(p)), vel)})
+				if on do intrinsics.atomic_add(&r.midi_in_hits[p], 1)
+			}
 		case fc.Note_On, fc.Note_Off:
 			sound(r, out, e) // the sequencer
 		}
@@ -264,12 +289,31 @@ strike :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, offset: u32, i:
 	return true
 }
 
-// [rt] Pad `i`'s MIDI out, if it has one.
+// [rt] Pad `i`'s MIDI out, if it has one (to its port; 255, none open,
+// goes nowhere).
 @(private)
 midi_send :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, offset: u32, i: int, on: bool, velocity: f32) {
 	m := r.midi_out[i]
-	if !m.on do return
+	if !m.on do return // (no port open: the host drops it, but it counts as sent)
 	status := (0x90 if on else 0x80) | (m.channel & 15)
 	vel := u8(clamp(velocity * 127 + 0.5, 1, 127)) if on else 64
-	fc.event_writer_push(out, {offset, fc.Midi_Raw{bytes = {status, m.key & 127, vel}}})
+	fc.event_writer_push(out, {offset, fc.Midi_Raw{bytes = {status, m.key & 127, vel}, port = r.out_port[i]}})
+	if on do intrinsics.atomic_add(&r.midi_out_hits[i], 1)
+}
+
+// A pad's MIDI in takes any port's (the drum map).
+IN_ALL :: i16(-2)
+// A pad's MIDI in takes none.
+IN_NONE :: i16(-1)
+
+// [rt] The armed track that listens to input port `port` on channel `ch`
+// (1..16), or -1: the selected one first, else the lowest.
+@(private)
+armed_listener :: proc "contextless" (r: ^Router, port, ch: int) -> int {
+	for i in 0 ..< PADS {
+		if !r.armed[i] || int(r.in_port[i]) != port do continue
+		if c := r.in_channel[i]; c != 0 && int(c) != ch do continue
+		return i
+	}
+	return -1
 }

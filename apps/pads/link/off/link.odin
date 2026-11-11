@@ -1,7 +1,7 @@
 /*
-Ableton Link for Pads: not built in. Link is GPLv2+; Pads (MIT) leaves it
-out unless it is built with `task app:pads LINK=1` (after
-`./scripts/link.sh`), which uses the package in ../on instead of this one.
+Ableton Link for Pads: not in this build, because its library wasn't built
+(`./scripts/link.sh`, which `task deps` runs) or LINK=0 asked to leave it
+out. With the library there, `task app:pads` uses the package in ../on.
 */
 package padslink
 

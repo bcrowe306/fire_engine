@@ -107,6 +107,8 @@ State_Pad :: struct {
 	input:   string,
 	monitor: bool,
 	armed:   bool,
+	midi_in: string, // what MIDI plays it: "All MIDI", "No MIDI", a port's name
+	midi_in_notes: u32, // MIDI notes that have played it
 	take:    i64, // an audio pad's take in the current sequence: its frames (0: none)
 	attack, release: f32,
 	voice:   pm.Voice, // its envelopes, filter, pitch, LFOs and routes
@@ -221,7 +223,7 @@ state_json :: proc(a: ^App) -> string {
 	s.launch = enum_name(p.switch_at)
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
-	s.clock_out, s.sync = m.engine.clock_out, enum_name(a.settings.sync)
+	s.clock_out, s.sync = a.settings.clock_out, enum_name(a.settings.sync) // (the setting: with no output port open nothing is sent)
 	s.plugins = len(a.plugins.entries)
 	s.plugin_effects = make([dynamic]string, context.temp_allocator)
 	for e in plugin_effects(a) do append(&s.plugin_effects, e.name)
@@ -261,7 +263,9 @@ state_json :: proc(a: ^App) -> string {
 		sp.fade_in, sp.fade_out = pad.fade_in, pad.fade_out
 		f, ok := pm.pad_playhead(&m.engine, i)
 		sp.playhead = f if ok else -1
-		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), enum_name(pad.input), pad.monitor, pm.audio_armed(m, i)
+		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), audio_in_text(a, i), pad.monitor, pm.track_armed(m, i)
+		sp.midi_in = midi_in_text(a, i)
+		sp.midi_in_notes, _ = pm.midi_activity(&m.engine, i)
 		sp.attack, sp.release, sp.voice = pad.attack, pad.release, pad.voice
 		if l, live := pm.pad_live(&m.engine, i); live do sp.cutoff_now = l.cutoff
 		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames

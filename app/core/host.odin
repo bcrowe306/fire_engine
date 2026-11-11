@@ -1,6 +1,7 @@
 package app
 
 import "base:intrinsics"
+import "core:strings"
 import "core:time"
 
 import "fire:backend"
@@ -27,7 +28,7 @@ Host_Settings :: struct {
 	fake:          bool,   // the simulated driver (tests, headless runs)
 	ram_bytes:     int,    // audio files up to this decoded size are held in memory (samplers need it); 0 = the streamer's default
 	midi:          bool,   // open the system's MIDI: every input port into the graph (see `host_midi_*`)
-	midi_output:   string, // a MIDI output port id the graph's MIDI goes to; "" = none
+	midi_output:   string, // the MIDI output port id an app sends to by default ("" = none); every output port is opened (see `host_midi_output_index`)
 	midi_inputs_off: []string, // input port ids left closed (every other input is opened)
 	// At a new sample rate, start from an empty graph and clock instead of
 	// carrying the old ones over (for apps that rebuild the engine from
@@ -65,9 +66,11 @@ Host :: struct {
 	midi_driver: ^midi.Driver,
 	midi_in:     midi.Midi_Input,
 	midi_out:    midi.Midi_Output,
-	midi_port:   midi.Port, // the output port, when `midi_out_open`
 	midi_out_open: bool,
-	midi_inputs: [dynamic]midi.Port, // open input ports
+	midi_outputs: [dynamic]midi.Port, // open output ports: `core.Midi_Raw.port` out is an index into these
+	midi_output_ids: [dynamic]string,
+	midi_inputs: [dynamic]midi.Port, // open input ports: `core.Midi_Raw.port` in is an index into these
+	midi_input_ids: [dynamic]string,
 	midi_sent:   u64, // atomic: MIDI messages the graph has sent out (sent to the port if one is open)
 	midi_received: u64, // atomic: MIDI messages into the graph
 	in_events:   []fc.Event, // audio thread: MIDI in, per block
@@ -125,10 +128,14 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 
 // Closes the MIDI ports and opens them again as `h.settings` now says
 // (`midi`, `midi_inputs_off`, `midi_output`). Control thread; MIDI already
-// queued is dropped.
+// queued is dropped, and the device stops for a moment while it happens.
 host_midi_reopen :: proc(h: ^Host) {
+	// The audio thread reads the open ports: the device pauses meanwhile.
+	running := h.running
+	if running do host_close(h)
 	close_midi(h)
 	if h.settings.midi && !h.settings.fake do open_midi(h)
+	if running do host_open(h)
 }
 
 // Closes every MIDI port and the MIDI driver.
@@ -137,13 +144,18 @@ close_midi :: proc(h: ^Host) {
 	if h.midi_driver == nil do return
 	if h.midi_out_open {
 		midi.output_stop(&h.midi_out)
-		midi.close_port(h.midi_driver, h.midi_port)
 		midi.output_destroy(&h.midi_out)
 		h.midi_out_open = false
 	}
+	for p in h.midi_outputs do midi.close_port(h.midi_driver, p)
 	for p in h.midi_inputs do midi.close_port(h.midi_driver, p)
+	for s in h.midi_output_ids do delete(s)
+	for s in h.midi_input_ids do delete(s)
+	delete(h.midi_outputs)
+	delete(h.midi_output_ids)
 	delete(h.midi_inputs)
-	h.midi_inputs = nil
+	delete(h.midi_input_ids)
+	h.midi_outputs, h.midi_output_ids, h.midi_inputs, h.midi_input_ids = nil, nil, nil, nil
 	midi.driver_destroy(h.midi_driver)
 	h.midi_driver = nil
 }
@@ -189,25 +201,46 @@ open_midi :: proc(h: ^Host) {
 	if err != .None || d == nil do return
 	h.midi_driver = d
 	d.input = &h.midi_in
-	h.midi_inputs = make([dynamic]midi.Port)
+	h.midi_inputs, h.midi_input_ids = make([dynamic]midi.Port), make([dynamic]string)
+	h.midi_outputs, h.midi_output_ids = make([dynamic]midi.Port), make([dynamic]string)
 	ports, _ := midi.enumerate(d, context.temp_allocator)
 	for p in ports {
 		if p.direction == .Input {
 			off := false
 			for x in h.settings.midi_inputs_off do if x == p.id do off = true
 			if off do continue
-			if port, e := midi.open_input(d, p.id, u8(len(h.midi_inputs))); e == .None do append(&h.midi_inputs, port)
-		} else if p.direction == .Output && h.settings.midi_output != "" && p.id == h.settings.midi_output && !h.midi_out_open {
-			if midi.output_init(&h.midi_out, d) == nil {
-				if port, e := midi.open_output(d, p.id); e == .None {
-					h.midi_port, h.midi_out_open = port, true
-					midi.output_start(&h.midi_out)
-				} else {
-					midi.output_destroy(&h.midi_out)
-				}
+			if port, e := midi.open_input(d, p.id, u8(len(h.midi_inputs))); e == .None {
+				append(&h.midi_inputs, port)
+				append(&h.midi_input_ids, strings.clone(p.id))
+			}
+		} else if p.direction == .Output {
+			if !h.midi_out_open {
+				if midi.output_init(&h.midi_out, d) != nil do continue
+				midi.output_start(&h.midi_out)
+				h.midi_out_open = true
+			}
+			if port, e := midi.open_output(d, p.id); e == .None {
+				append(&h.midi_outputs, port)
+				append(&h.midi_output_ids, strings.clone(p.id))
 			}
 		}
 	}
+}
+
+// The index MIDI input port `id` has in `core.Midi_Raw.port` (as it came
+// in), or -1 if it isn't open.
+host_midi_input_index :: proc(h: ^Host, id: string) -> int {
+	for x, i in h.midi_input_ids do if x == id do return i
+	return -1
+}
+
+// The index MIDI output port `id` has for `core.Midi_Raw.port` (to send to
+// it), or -1 if it isn't open; "" is the settings' default output.
+host_midi_output_index :: proc(h: ^Host, id: string) -> int {
+	want := id if id != "" else h.settings.midi_output
+	if want == "" do return -1
+	for x, i in h.midi_output_ids do if x == want do return i
+	return -1
 }
 
 // The MIDI ports the system has (inputs and outputs), or none. Control thread.
@@ -342,10 +375,7 @@ run_block :: proc(h: ^Host, inputs, outputs: [][]f32, frames: int, block_ns: u64
 	sent: u64 = 0
 	for e in fc.event_writer_events(&out_w) do if _, ok := e.payload.(fc.Midi_Raw); ok do sent += 1
 	if sent > 0 do intrinsics.atomic_add(&h.midi_sent, sent)
-	if h.midi_out_open {
-		ports := [1]midi.Port{h.midi_port}
-		midi.output_push_events(&h.midi_out, fc.event_writer_events(&out_w), ports[:], block_ns, rate)
-	}
+	if h.midi_out_open do midi.output_push_events(&h.midi_out, fc.event_writer_events(&out_w), h.midi_outputs[:], block_ns, rate)
 }
 
 @(private)
@@ -393,10 +423,12 @@ open_device :: proc(h: ^Host) -> fc.Error {
 	return .None
 }
 
-// Makes the clock and graph at `rate`, or moves the existing ones there.
+// Makes the clock and graph at `rate` (and the settings' channels), or
+// moves the existing ones there.
 @(private)
 ensure_engine :: proc(h: ^Host, rate: f64) -> fc.Error {
-	if h.graph != nil && h.graph.settings.sample_rate == rate do return .None
+	// (Another rate, or another number of channels: a new graph.)
+	if h.graph != nil && h.graph.settings.sample_rate == rate && h.graph.settings.input_channels == h.settings.inputs && h.graph.settings.output_channels == h.settings.outputs do return .None
 	st := graph.default_settings(rate, h.settings.max_block)
 	st.input_channels = h.settings.inputs
 	st.output_channels = h.settings.outputs

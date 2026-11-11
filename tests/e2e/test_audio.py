@@ -18,9 +18,9 @@ def test_a_pad_becomes_an_audio_track(app):
     assert app.state()["undo"] == "Audio Track"
     app.click("Monitor", window="detail")
     assert app.pad(1)["monitor"]
-    app.click("##input", window="detail")
-    app.click("Input 2")
-    assert app.pad(1)["input"] == "Mono_2"
+    app.click("##audioin", window="detail")
+    app.click("In 2")
+    assert app.pad(1)["input"] == "In 2"
     app.click("Sampler", window="detail")
     assert app.state()["undo"] == "Sampler Pad"
     app.key("cmd+z")
@@ -29,8 +29,7 @@ def test_a_pad_becomes_an_audio_track(app):
 
 def test_arm_and_record_a_take(app):
     audio_pad(app)
-    app.click("Arm", window="detail")
-    assert app.pad(1)["armed"]
+    assert app.pad(1)["armed"]  # selected: armed
     app.expect_item("A2 arm", window="detail")  # the strip's arm button, lit
     app.click("Record (Cmd+R)")
     app.until(lambda s: s["timeline"] > 1.0, frames=240, what="a beat or so recorded")
@@ -51,8 +50,9 @@ def test_arm_and_record_a_take(app):
 
 def test_the_strips_arm_button(app):
     audio_pad(app)
+    assert app.pad(1)["armed"]  # selected: armed
     app.click("A2 arm", window="detail")
-    assert app.pad(1)["armed"]
+    assert not app.pad(1)["armed"]
     app.panel("Mixer")
     app.click("A2 arm", window="mixer")
-    assert not app.pad(1)["armed"]
+    assert app.pad(1)["armed"]

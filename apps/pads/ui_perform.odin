@@ -158,6 +158,8 @@ draw_perform :: proc(user: rawptr) {
 				pm.set_pad(m, i, .Whole, "Set MIDI Out", pad)
 			}
 			if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+			im.SameLine()
+			midi_out_port_combo(a, i, 180)
 		}
 	}
 	if wide do im.TableNextColumn()

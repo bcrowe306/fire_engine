@@ -486,6 +486,7 @@ draw_global :: proc(a: ^App) {
 		section(a, "Pad", false)
 	}
 	pad_name_colour(a, i)
+	track_io_section(a, i)
 
 	if wide do im.TableNextColumn()
 	section(a, "Sound", !wide)

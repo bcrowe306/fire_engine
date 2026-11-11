@@ -42,15 +42,11 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 		for c in 0 ..< 2 do graph.connect(g, id, c, n.voice, c)
 	}
 	n.holds = {}
-	// The input: inputs 1 and 2, or one of them on both sides.
+	// The input: a pair of channels, or one on both sides.
 	ins := g.settings.input_channels
-	src := [2]int{0, 1}
-	channels := 2
-	switch pad.input {
-	case .Stereo_1_2:
-	case .Mono_1: src, channels = {0, 0}, 1
-	case .Mono_2: src, channels = {1, 1}, 1
-	}
+	first := int(pad.input.channel)
+	src := [2]int{first, first + 1} if pad.input.stereo else [2]int{first, first}
+	channels := 2 if pad.input.stereo else 1
 	if ins <= max(src[0], src[1]) do return // the device has no such input
 	if mid, err := graph.add_node(g, dsp.gain_create(), 2, 2); err == .None {
 		n.monitor_id = mid

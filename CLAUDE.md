@@ -35,6 +35,10 @@ task app:ctl              # Pads under remote control: type drive commands (clic
 ```
 
 Look at the screenshots after UI changes (layout, spacing, padding).
+
+Licences: Fire Engine (f_engine/, app/) is MIT; Pads (apps/pads) is
+GPL-3.0-or-later so it can build Ableton Link in (whenever `third_party/link`
+is built: `task deps` / `./scripts/link.sh`; `LINK=0` leaves it out).
 See docs/guides/building.md, docs/guides/app-layer.md and docs/guides/pads.md.
 
 ### Linux test machine (DigitalOcean)

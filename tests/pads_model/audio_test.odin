@@ -54,7 +54,7 @@ an_audio_pad_records_a_take_and_plays_it_with_the_sequence :: proc(t: ^testing.T
 	m := &r.m
 	pm.set_pad_kind(m, 0, .Audio)
 	testing.expect(t, pm.pad_used(&m.project, 0), "an audio pad is used")
-	pm.arm_audio(m, 0, true)
+	pm.arm_track(m, 0, true)
 	c: pm.Capture
 	defer pm.capture_destroy(&c)
 	pm.capture_arm(m, &c, true)
@@ -107,7 +107,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 	defer rig_destroy(r)
 	m := &r.m
 	pm.set_pad_kind(m, 3, .Audio)
-	pm.arm_audio(m, 3, true)
+	pm.arm_track(m, 3, true)
 	tr := m.project.transport
 	tr.count_in = 1
 	pm.set_transport(m, .Count_In, "Count-in", tr)
@@ -134,7 +134,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 
 	// Saved and loaded: the pad's kind and input, and the clip.
 	pad := m.project.pads[3]
-	pad.input, pad.monitor = .Mono_2, true
+	pad.input, pad.monitor = {channel = 1}, true
 	pm.set_pad(m, 3, .Input, "Input", pad)
 	testing.expect_value(t, pm.model_save(m), fc.Error.None)
 	r2 := rig_make(t, "audio_count2")
@@ -142,7 +142,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
 	p2 := &r2.m.project
 	testing.expect_value(t, p2.pads[3].kind, pm.Pad_Kind.Audio)
-	testing.expect_value(t, p2.pads[3].input, pm.Audio_Input.Mono_2)
+	testing.expect_value(t, p2.pads[3].input, pm.Audio_Input{channel = 1})
 	testing.expect(t, p2.pads[3].monitor, "monitor")
 	testing.expect_value(t, p2.clips[0][3].bpm, 120)
 	testing.expect(t, app.store_get(&p2.samples, p2.clips[0][3].sample) != nil, "the clip's sample")

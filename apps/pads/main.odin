@@ -1,5 +1,14 @@
 /*
 Pads: a sampler and sequencer built on Fire Engine's application layer.
+
+Copyright (c) 2026 Fire Engine contributors. Pads is free software: you can
+redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version (see LICENSE here). It
+is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY. It is built on Fire Engine (MIT) and Ableton Link (GPL-2.0 or
+later).
+
 Load samples onto 64 pads in 4 banks, play them from the mouse, keyboard or
 MIDI, and shape each one: its region, mode, loop, envelope, pitch, EQ and
 choke group; chop, stretch and edit the audio.
@@ -70,6 +79,7 @@ App :: struct {
 	tools:    Tool_State,
 	settings: App_Settings, // File > Settings…
 	plugins:  Plugin_Scan,  // the CLAP plug-ins found
+	io:       Track_Io,     // arming, and the MIDI activity lights
 	seq:      Seq_State,
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
@@ -121,6 +131,7 @@ main :: proc() {
 	}
 	a := new(App)
 	a.dark, a.pad_waves = true, true
+	a.io.by_select = -1
 	a.peaks = make(map[app.Id][]ui.Peak)
 	defer {
 		for _, p in a.peaks do delete(p)
@@ -259,6 +270,7 @@ frame :: proc(a: ^App) {
 	if a.settings.recording == "" do ui.handle_shortcuts(&a.actions) // (not while a new shortcut is pressed)
 	if a.settings.recording == "" do play_keys(a)
 	plugins_scan_step(a)
+	track_io_frame(a)
 	// Which editor has the keyboard: the one drawn focused this frame says
 	// so (a hidden one keeps none).
 	a.seq.focused, a.song_ui.focused = false, false

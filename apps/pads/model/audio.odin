@@ -10,7 +10,7 @@ import "fire:audiofile"
 import fc "fire:core"
 import "fire:record"
 
-// Audio pads: tracks that record. Arm one (`arm_audio`) and record: while
+// Audio pads: tracks that record. Arm one (`arm_track`) and record: while
 // the sequence plays, its input is recorded; when the recording stops the
 // take is folded into the current sequence's clip for that pad, one
 // sequence long, each pass over what was there before (the last pass
@@ -47,14 +47,17 @@ set_pad_kind :: proc(m: ^Model, index: int, kind: Pad_Kind) {
 	app.seal(&m.history)
 }
 
-// Arms (or disarms) audio pad `index` for recording. Not saved, not undone.
-arm_audio :: proc(m: ^Model, index: int, on: bool) {
+// Arms (or disarms) track `index`: an audio track records while armed (and
+// monitors its input), a sampler track's own MIDI input plays it. Not
+// saved, not undone.
+arm_track :: proc(m: ^Model, index: int, on: bool) {
 	if index < 0 || index >= PADS do return
-	m.engine.armed[index] = on && m.project.pads[index].kind == .Audio
+	m.engine.armed[index] = on
+	m.engine.router.armed[index] = on
 }
 
-// Whether audio pad `index` is armed.
-audio_armed :: proc(m: ^Model, index: int) -> bool {
+// Whether track `index` is armed.
+track_armed :: proc(m: ^Model, index: int) -> bool {
 	return m.engine.armed[index]
 }
 

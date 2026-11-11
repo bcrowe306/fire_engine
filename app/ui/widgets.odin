@@ -254,6 +254,7 @@ Pad_Face :: struct {
 	buttons:   bool, // show Mute and Solo
 	drop_type: cstring, // the drag-and-drop payload it takes (nil: none)
 	badge:     string,  // a small tag at the top right (its choke group: "C2"; "": none)
+	armed:     bool,    // a red dot at the bottom centre: it records what comes in
 }
 
 // A sampler pad (see Pad_Face): hit it to play it (higher is harder);
@@ -348,6 +349,13 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.85) if face.lit || hit.held || face.has_sound else t.text_dim), mc)
 	}
 	im.DrawList_PopClipRect(dl)
+
+	// Armed: a red dot between Mute and Solo.
+	if face.armed {
+		c := im.Vec2{pos.x + size.x / 2, max_.y - 12}
+		im.DrawList_AddCircleFilled(dl, c, 4.5, col(t.danger))
+		im.DrawList_AddCircle(dl, c, 6.5, col(with_alpha(t.danger, 0.4)), 0, 1.5)
+	}
 
 	// Mute and Solo, bottom left and right.
 	if face.buttons && size.x >= 56 && size.y >= 48 {

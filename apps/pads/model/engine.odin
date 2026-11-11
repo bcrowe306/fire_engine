@@ -30,6 +30,8 @@ Engine :: struct {
 	warp_sources: map[string]^stream.Source, // opened warp renderings, by path
 	warp_jobs: [dynamic]^Warp_Job, // renderings under way
 	warp_bpm:  f64, // the tempo warped pads follow (the one playing)
+	// A meter on each pair of the device's input channels.
+	input_meters: [MAX_INPUTS / 2]struct { id: graph.Node_Id, meter: ^dsp.Meter },
 	// MIDI clock: sent (a node into the graph's MIDI out), and followed.
 	clock_out_id: graph.Node_Id,
 	clock_out:    bool,
@@ -140,6 +142,14 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	e.metro_id = graph.add_node(g, dsp.metronome_create({timeline = e.timeline}), 0, 2) or_return
 	for c in 0 ..< 2 do graph.connect(g, e.metro_id, c, graph.OUTPUT, c)
 	build_mixer(e) or_return
+	// Input meters: one a pair of the device's input channels.
+	ins := min(g.settings.input_channels, MAX_INPUTS)
+	for k in 0 ..< (ins + 1) / 2 {
+		mnode, meter := dsp.meter_create()
+		id := graph.add_node(g, mnode, 2, 2) or_return
+		for c in 0 ..< 2 do if 2 * k + c < ins do graph.connect(g, graph.INPUT, 2 * k + c, id, c)
+		e.input_meters[k] = {id, meter}
+	}
 	tnode, tap := dsp.tap_create()
 	e.tap = tap
 	e.tap_id = graph.add_node(g, tnode, 2, 0) or_return
@@ -205,6 +215,7 @@ sync :: proc(e: ^Engine) {
 		e.router.groups[i] = pad.choke
 		e.router.modes[i] = pad.mode
 		e.router.midi_out[i] = pad.midi_out
+		midi_ports_of(e, i, pad)
 		audio := pad.kind == .Audio
 		want := src != nil || audio
 		// A pad that changes kind (or an audio pad its input) is built again.
@@ -613,6 +624,7 @@ engine_clear :: proc(e: ^Engine) {
 	graph.remove_node(g, e.preview.id)
 	graph.remove_node(g, e.preview.gain_id)
 	graph.remove_node(g, e.tap_id)
+	for im_ in e.input_meters do if im_.meter != nil do graph.remove_node(g, im_.id)
 	graph.commit(g)
 	transport.remove_timeline(e.host.clock, e.timeline)
 	engine_destroy(e)
@@ -723,7 +735,9 @@ set_clock_out :: proc(e: ^Engine, on: bool) {
 	if on == e.clock_out do return
 	g := e.host.graph
 	if on {
-		id, err := graph.add_node(g, transport.midi_clock_create({follow = e.timeline}), 0, 0)
+		port := app.host_midi_output_index(e.host, "")
+		if port < 0 do return // (no output: nothing to send to)
+		id, err := graph.add_node(g, transport.midi_clock_create({follow = e.timeline, port = u8(port)}), 0, 0)
 		if err != .None do return
 		graph.connect_events(g, id, graph.OUTPUT)
 		e.clock_out_id = id
@@ -753,4 +767,50 @@ follow_midi_clock :: proc(e: ^Engine, events: ^[]fc.Event) {
 // The MIDI clock heard: its tempo (0: none yet) and whether it runs.
 midi_clock_heard :: proc(e: ^Engine) -> transport.Midi_Clock_Follower {
 	return e.follower
+}
+
+// Pad `i`'s MIDI ports as the router counts them (the host's open ports).
+@(private)
+midi_ports_of :: proc(e: ^Engine, i: int, pad: Pad) {
+	r := e.router
+	out := app.host_midi_output_index(e.host, pad.midi_out.port)
+	r.out_port[i] = u8(out) if out >= 0 && out < 255 else 255
+	switch pad.midi_in.mode {
+	case .All:  r.in_port[i] = IN_ALL
+	case .None: r.in_port[i] = IN_NONE
+	case .Port:
+		idx := app.host_midi_input_index(e.host, pad.midi_in.port)
+		r.in_port[i] = i16(idx) if idx >= 0 else IN_NONE
+	}
+	r.in_channel[i] = pad.midi_in.channel
+}
+
+// The MIDI ports opened again (Settings): every track's ports, and the
+// clock out, looked up again.
+midi_ports_changed :: proc(e: ^Engine) {
+	for pad, i in e.project.pads do midi_ports_of(e, i, pad)
+	if e.clock_out {
+		set_clock_out(e, false)
+		set_clock_out(e, true)
+	}
+}
+
+// MIDI notes that have played track `i`, and that it has sent, so far
+// (activity lights).
+midi_activity :: proc(e: ^Engine, i: int) -> (received, sent: u32) {
+	return intrinsics.atomic_load(&e.router.midi_in_hits[i]), intrinsics.atomic_load(&e.router.midi_out_hits[i])
+}
+
+// Input channels the engine meters at most.
+MAX_INPUTS :: 32
+
+// How many input channels the device has open.
+input_channels :: proc(e: ^Engine) -> int {
+	return min(e.host.graph.settings.input_channels, MAX_INPUTS)
+}
+
+// The levels on input pair `k` (channels 2k and 2k+1) since the last call.
+input_level :: proc(e: ^Engine, k: int) -> (peak, rms: [2]f32) {
+	if k < 0 || k >= MAX_INPUTS / 2 || e.input_meters[k].meter == nil do return
+	return dsp.meter_read(e.input_meters[k].meter)
 }

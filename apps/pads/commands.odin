@@ -141,9 +141,9 @@ register_commands :: proc(a: ^App) {
 		run = proc(a: ^App, t: Target) { p := a.m.project.pads[t.index]; p.solo = !p.solo; pm.set_pad(&a.m, t.index, .Solo, "Solo", p); app.seal(&a.m.history) },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].solo }})
 	add(c, {id = "pad.arm", label = "Arm to Record", icon = ui.ICON_CIRCLE_DOT, kinds = {.Pad}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.arm_audio(&a.m, t.index, !pm.audio_armed(&a.m, t.index)) },
+		run = proc(a: ^App, t: Target) { pm.arm_track(&a.m, t.index, !pm.track_armed(&a.m, t.index)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Audio },
-		checked = proc(a: ^App, t: Target) -> bool { return pm.audio_armed(&a.m, t.index) }})
+		checked = proc(a: ^App, t: Target) -> bool { return pm.track_armed(&a.m, t.index) }})
 	add(c, {id = "pad.audio", label = "Audio Track", icon = ui.ICON_MIC, kinds = {.Pad}, group = 1,
 		run = proc(a: ^App, t: Target) { k := a.m.project.pads[t.index].kind; pm.set_pad_kind(&a.m, t.index, .Sampler if k == .Audio else .Audio) },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Audio }})

@@ -15,9 +15,12 @@ vars:
   OUT: '{{.ROOT_DIR}}/.build/app'
   EXE: '{{if eq OS "windows"}}.exe{{end}}'
   COLLECTIONS: -collection:fire={{.ROOT_DIR}}/f_engine -collection:app={{.ROOT_DIR}}/app -collection:deps={{.ROOT_DIR}}/vendor
-  # LINK=1 builds Ableton Link into Pads (GPLv2+: run ./scripts/link.sh first);
-  # without it Pads (MIT) has none.
-  PADS_LINK: '-collection:padslink={{.ROOT_DIR}}/apps/pads/link/{{if .LINK}}on{{else}}off{{end}}'
+  # Pads (GPL-3.0-or-later) has Ableton Link built in when its library is
+  # there (./scripts/link.sh, which `task deps` runs); LINK=0 leaves it out,
+  # LINK=1 insists on it.
+  LINK:
+    sh: 'ls {{.ROOT_DIR}}/third_party/link/lib/*abl_link* > /dev/null 2>&1 && echo 1 || echo 0'
+  PADS_LINK: '-collection:padslink={{.ROOT_DIR}}/apps/pads/link/{{if eq .LINK "1"}}on{{else}}off{{end}}'
   OPT: '{{.OPT | default "speed"}}'
   # The Python `task deps` sets up (pytest for the e2e suite).
   E2E_PYTHON: '{{if eq OS "windows"}}{{.ROOT_DIR}}/.deps/venv/Scripts/python.exe{{else}}{{.ROOT_DIR}}/.deps/venv/bin/python{{end}}'

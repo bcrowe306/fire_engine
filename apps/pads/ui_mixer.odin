@@ -21,6 +21,7 @@ Meter_View :: struct {
 Mixer_State :: struct {
 	pads:  [pm.PADS][2]Meter_View,
 	buses: [pm.BUSES + 1][2]Meter_View,
+	inputs: [pm.MAX_INPUTS / 2][2]Meter_View, // the device's input channels, a pair each
 	multi: bool, // an edit of several strips at once is open (one undo step)
 	rename_bus: int, // the bus being renamed (1..BUSES; 0: none)
 	rename_buf: [16]u8,
@@ -57,6 +58,16 @@ update_meters :: proc(a: ^App) {
 		pk, rms := pm.bus_level(e, b)
 		meter_update(&a.mixer.buses[b], pk, rms, dt)
 	}
+	for k in 0 ..< pm.MAX_INPUTS / 2 {
+		pk, rms := pm.input_level(e, k)
+		meter_update(&a.mixer.inputs[k], pk, rms, dt)
+	}
+}
+
+// Input channel `c`'s meter (0: input 1).
+input_view :: proc(a: ^App, c: int) -> Meter_View {
+	if c < 0 || c >= pm.MAX_INPUTS do return {}
+	return a.mixer.inputs[c / 2][c % 2]
 }
 
 // The strip being drawn's name ("A1", "Bus A", "Main"): its parts are
@@ -454,6 +465,35 @@ output_row :: proc(a: ^App, pad: int) {
 	}
 }
 
+// What comes into track `pad`: its MIDI input (with its activity light) or
+// its audio input (with its level); click to choose.
+@(private)
+input_row :: proc(a: ^App, pad: int) {
+	m := &a.m
+	t := ui.theme()
+	audio := m.project.pads[pad].kind == .Audio
+	text := audio_in_text(a, pad) if audio else midi_in_text(a, pad)
+	lo, hi, clicked := row(a, "##input", fmt.tprintf("%s %s", ui.ICON_ARROW_LEFT, text), t.text_dim)
+	dl := im.GetWindowDrawList()
+	if audio {
+		// Its level along the bottom of the row.
+		in_ := m.project.pads[pad].input
+		lvl := input_view(a, int(in_.channel)).peak
+		if in_.stereo do lvl = max(lvl, input_view(a, int(in_.channel) + 1).peak)
+		db := 20 * math.log10(max(lvl, 1e-6))
+		f := clamp((db + 60) / 60, 0, 1)
+		if f > 0 do im.DrawList_AddRectFilled(dl, {lo.x + 2, hi.y - 3}, {lo.x + 2 + (hi.x - lo.x - 4) * f, hi.y - 1}, ui.col(t.ok if db < -12 else (t.warn if db < -1 else t.danger)), 1)
+	} else {
+		midi_light(dl, {hi.x - 10, lo.y + (hi.y - lo.y - 7) / 2}, 7, a.io.in_lit[pad], a.io.out_lit[pad])
+	}
+	if clicked do im.OpenPopup("##inmenu")
+	if im.BeginPopup("##inmenu") {
+		if audio do audio_in_items(a, pad)
+		else do midi_in_items(a, pad)
+		im.EndPopup()
+	}
+}
+
 // Where bus `b` (0..BUSES-1) goes: Main or another bus (not one that would
 // bring it round to itself); click to pick. Main's: the output.
 @(private)
@@ -695,7 +735,7 @@ name_plate :: proc(name: string, color: ui.Color) -> bool {
 // compact strip has no EQ display, inserts or sends).
 @(private)
 fader_h :: proc(h: f32, compact := false) -> f32 {
-	fixed: f32 = 2 * STRIP_PAD + (ROW_H + 2) + 4 + PAN_H + 4 + 21 + 4 + ROW_H + 4 + 21
+	fixed: f32 = 2 * STRIP_PAD + 2 * (ROW_H + 2) + 4 + PAN_H + 4 + 21 + 4 + ROW_H + 4 + 21
 	if !compact do fixed += EQ_H + 4 + SLOT_ROWS * (ROW_H + 2) + 4
 	return max(h - fixed, 60)
 }
@@ -772,10 +812,10 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	if fe.ended do app.seal(&m.history)
 	gap()
 	mute, solo := pad.mute, pad.solo
-	armed := pm.audio_armed(m, i)
-	if mute_solo(a, &mute, &solo, &armed if pad.kind == .Audio else nil) {
-		if armed != pm.audio_armed(m, i) {
-			pm.arm_audio(m, i, armed)
+	armed := pm.track_armed(m, i)
+	if mute_solo(a, &mute, &solo, &armed) {
+		if armed != pm.track_armed(m, i) {
+			arm_click(a, i)
 		} else {
 			field: pm.Pad_Field = .Mute if mute != pad.mute else .Solo
 			name := "Mute" if mute != pad.mute else "Solo"
@@ -791,6 +831,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		}
 	}
 	gap()
+	input_row(a, i) // what comes in: MIDI (and its light), or audio (and its level)
 	output_row(a, i) // where it goes, right above its name
 	gap()
 	if name_plate(fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&m.project.pads[i])), color) {
@@ -848,6 +889,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 		app.seal(&m.history)
 	}
 	gap()
+	im.Dummy({inner_w(), ROW_H + 2}) // (in line with the tracks' input rows)
 	bus_output_row(a, b) // where it goes, right above its name
 	gap()
 	if name_plate(pm.bus_index_name(&m.project, b), t.accent if is_main else ui.mix(t.accent, t.text_dim, 0.55)) && !is_main && im.IsMouseDoubleClicked(.Left) do begin_rename_bus(a, b + 1)

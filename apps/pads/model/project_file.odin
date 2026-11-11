@@ -18,7 +18,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 12 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps
+PROJECT_VERSION :: 13 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -195,7 +195,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_i64(w, pad.fade_in)
 		fc.write_i64(w, pad.fade_out)
 		fc.write_u8(w, u8(pad.kind))
-		fc.write_u8(w, u8(pad.input))
+		fc.write_u8(w, legacy_input(pad.input)) // (v6-12's; v13 has more, at the end)
 		fc.write_bool(w, pad.monitor)
 		write_voice(w, pad.voice)
 	}
@@ -308,6 +308,15 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u8(w, u8(pad.warp.grain))
 		fc.write_bool(w, pad.warp.fill_gaps)
 	}
+	// v13: each track's MIDI in and out ports, its audio input by channel.
+	for pad in p.pads {
+		fc.write_u8(w, u8(pad.midi_in.mode))
+		fc.write_string(w, pad.midi_in.port)
+		fc.write_u8(w, pad.midi_in.channel)
+		fc.write_string(w, pad.midi_out.port)
+		fc.write_u8(w, pad.input.channel)
+		fc.write_bool(w, pad.input.stereo)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -412,7 +421,11 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		}
 		if version >= 6 {
 			pad.kind = Pad_Kind(min(fc.read_u8(r), u8(max(Pad_Kind))))
-			pad.input = Audio_Input(min(fc.read_u8(r), u8(max(Audio_Input))))
+			switch fc.read_u8(r) { // inputs 1 + 2, input 1, input 2 (v13: at the end)
+			case 1: pad.input = {channel = 0}
+			case 2: pad.input = {channel = 1}
+			case:   pad.input = {channel = 0, stereo = true}
+			}
 			pad.monitor = fc.read_bool(r)
 		}
 		if version >= 7 do pad.voice = read_voice(r)
@@ -539,12 +552,27 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			pad.warp.grain = stretch.Warp_Grain(min(fc.read_u8(r), u8(max(stretch.Warp_Grain))))
 			pad.warp.fill_gaps = fc.read_bool(r)
 		}
+		if version >= 13 do for &pad in p.pads {
+			pad.midi_in.mode = Midi_In_Mode(min(fc.read_u8(r), u8(max(Midi_In_Mode))))
+			pad.midi_in.port = intern(p, fc.read_string(r))
+			pad.midi_in.channel = min(fc.read_u8(r), 16)
+			pad.midi_out.port = intern(p, fc.read_string(r))
+			pad.input.channel = min(fc.read_u8(r), 63)
+			pad.input.stereo = fc.read_bool(r)
+		}
 	} else {
 		p.bus_count = DEFAULT_BUSES
 	}
 }
 
 _ :: strings.clone
+
+// An audio input as v6-12 wrote it: inputs 1 + 2, input 1, input 2.
+@(private)
+legacy_input :: proc(x: Audio_Input) -> u8 {
+	if x.stereo do return 0
+	return 2 if x.channel == 1 else 1
+}
 
 // Replaces the model with a new, empty project in folder `dir` (and a new
 // history); the engine is built again.

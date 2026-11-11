@@ -42,10 +42,23 @@ Pad_Kind :: enum u8 {
 }
 
 // The inputs an audio pad records.
-Audio_Input :: enum u8 {
-	Stereo_1_2, // inputs 1 and 2
-	Mono_1,     // input 1, on both sides
-	Mono_2,
+Audio_Input :: struct {
+	channel: u8,   // its first input channel (0: input 1)
+	stereo:  bool, // it and the next (1/2, 3/4...); else it alone, on both sides
+}
+
+// Where a track's MIDI comes from.
+Midi_In_Mode :: enum u8 {
+	All,  // any port: the drum map (note N plays the pad the map gives it)
+	None, // no MIDI plays it
+	Port, // `Midi_In.port` (and channel): played chromatically, while armed
+}
+
+// A track's MIDI input.
+Midi_In :: struct {
+	mode:    Midi_In_Mode,
+	port:    string, // .Port: the port's id (interned)
+	channel: u8,     // 0 = any; 1..16
 }
 
 // An audio pad's take in one sequence: a file one sequence long (at the
@@ -139,6 +152,7 @@ Pad :: struct {
 	slices:     [MAX_SLICES]i64,
 	slice_count: int,
 	midi_out:   Midi_Out, // its hits also go out as MIDI
+	midi_in:    Midi_In,  // what MIDI plays it
 	inserts:    [PAD_INSERTS]Effect_Slot, // after its EQ
 	mute, solo: bool,
 	sends:      [BUSES]Send, // to the buses, besides its output
@@ -216,7 +230,7 @@ default_transport :: proc() -> Transport {
 
 // The default pad: one-shot, full volume, centred.
 default_pad :: proc() -> Pad {
-	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice()}
+	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}}
 }
 
 // Prepares an empty project in `dir`.

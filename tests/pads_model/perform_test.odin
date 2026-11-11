@@ -1,6 +1,7 @@
 package test_pads_model
 
 import "core:log"
+import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:time"
@@ -229,4 +230,54 @@ engine_timing :: proc(t: ^testing.T) {
 	when ODIN_OPTIMIZATION_MODE != .None {
 		testing.expectf(t, 10 / secs > 0.5, "at least half real time (%.1f×)", 10 / secs)
 	}
+}
+
+// A track's own MIDI input: armed, notes from its port play it
+// chromatically (and record, pitched), not the drum map's pad; unarmed,
+// they don't; a track that takes no MIDI ignores the drum map too; and its
+// activity is counted.
+@(test)
+a_tracks_midi_input_plays_it_when_armed :: proc(t: ^testing.T) {
+	r := blips(t, "perf_track_midi")
+	defer rig_destroy(r)
+	m := &r.m
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pad := m.project.pads[1]
+	pad.midi_in = {mode = .Port, port = "keys"}
+	pm.set_pad(m, 1, .Midi_In, "MIDI In", pad)
+	pm.sync(&m.engine)
+	m.engine.router.in_port[1] = 2 // (the test host has no ports: say "keys" is input 2)
+	// Not armed: port 2's E3 plays nothing (the drum map's pad 64 is empty).
+	app.host_midi_inject(&r.host, {0x90, 64, 100}, port = 2)
+	out := render(r, 4800)
+	testing.expectf(t, kit.peak(out[0][:]) < 1e-3, "unarmed: silent (%v)", kit.peak(out[0][:]))
+	app.host_midi_inject(&r.host, {0x80, 64, 0}, port = 2)
+	render(r, 2400)
+	// Armed: E3 plays pad 1 four semitones up (880 Hz × 2^(4/12)).
+	pm.arm_track(m, 1, true)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	render(r, 2400)
+	app.host_midi_inject(&r.host, {0x90, 64, 100}, port = 2)
+	out = render(r, 3000)
+	up := 880 * math.pow(2, 4.0 / 12)
+	testing.expectf(t, kit.tone_amplitude(out[0][:], SR, up) > 4 * kit.tone_amplitude(out[0][:], SR, 880), "pad 1, pitched up")
+	app.host_midi_inject(&r.host, {0x80, 64, 0}, port = 2)
+	render(r, 2400)
+	pm.capture_arm(m, &c, false)
+	notes := m.project.sequences[0].notes
+	testing.expectf(t, len(notes) == 1 && notes[0].pad == 1 && notes[0].pitch == 4, "recorded on pad 1, pitched: %v", notes)
+	received, _ := pm.midi_activity(&m.engine, 1)
+	testing.expect_value(t, received, 1)
+	// Pad 0 takes no MIDI: the drum map's key 0 leaves it silent.
+	p0 := m.project.pads[0]
+	p0.midi_in.mode = .None
+	pm.set_pad(m, 0, .Midi_In, "MIDI In", p0)
+	pm.stop(&m.engine)
+	pm.sync(&m.engine)
+	render(r, 4800)
+	app.host_midi_inject(&r.host, {0x90, 0, 100})
+	out = render(r, 4800)
+	testing.expectf(t, kit.peak(out[0][:]) < 1e-3, "no MIDI: silent (%v)", kit.peak(out[0][:]))
 }

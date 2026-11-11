@@ -44,7 +44,7 @@ draw_pads :: proc(user: rawptr) {
 		face := ui.Pad_Face{
 			label     = fmt.tprintf("pad %s", label),
 			name      = pm.pad_name(pad) if has else label,
-			middle    = (ui.ICON_CIRCLE_DOT + " armed" if pm.audio_armed(&a.m, index) else ui.ICON_MIC + " audio") if audio else pm.pad_note_name(index),
+			middle    = (ui.ICON_CIRCLE_DOT + " armed" if pm.track_armed(&a.m, index) else ui.ICON_MIC + " audio") if audio else pm.pad_note_name(index),
 			tint      = ui.rgb(pad.color),
 			has_sound = has,
 			lit       = a.lit[index] > 0 || a.held[index],
@@ -54,6 +54,7 @@ draw_pads :: proc(user: rawptr) {
 			buttons   = has,
 			drop_type = "PADS_FILE",
 			badge     = fmt.tprintf("C%d", pad.choke) if pad.choke > 0 && has else "",
+			armed     = pm.track_armed(&a.m, index),
 		}
 		if has && a.pad_waves && !audio do face.peaks = pad_peaks(a, index)
 		switch a.play_mode {

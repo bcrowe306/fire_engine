@@ -69,6 +69,8 @@ Pad_Field :: enum {
 	Kind,
 	Input,
 	Monitor,
+	Midi_In,
+	Midi_Out,
 	Voice, // a field of the voice (see `set_voice`)
 	Warp,
 }

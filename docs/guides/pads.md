@@ -448,6 +448,30 @@ icons whose colour shows their state.
 
 These settings are saved with the project.
 
+## Tracks: ins, outs and arming
+
+Each pad is a track. Its strip (and its Global tab, or an audio track's
+Sample tab) has its **input**, right above its output: for a sampler
+track, its **MIDI in** — *All MIDI* (any port's notes, by the drum map:
+note N plays the pad the map gives it, Learn changes it), *No MIDI*, or
+one port (any channel, or 1–16), whose notes play it chromatically (E3 is
+four semitones up) while it is **armed**, and record onto it, pitched.
+For an audio track, its **audio input**: a channel of the interface (In 1,
+In 2...) or a stereo pair (In 1/2...), with its level along the row. A
+sampler track's light flashes green as its MIDI comes in and blue as its
+**MIDI out** (Perform panel: on, channel, note, and its own output port)
+goes out; the toolbar's light (click it for the MIDI settings) does the
+same for all MIDI.
+
+**Arming**: every strip has **R**, and an armed pad a red dot. Selecting a
+track arms it, and the one armed before by selecting goes back (Settings >
+Recording turns this off); click R to arm only that track, or Cmd-click
+to arm more (those stay armed when the selection moves). An armed audio
+track records its input when you record (and monitors it, with
+**Monitor**); an armed sampler track plays its own port's notes and
+records them. Pads hit on the grid or the computer keyboard, and notes
+by the drum map, record onto any pad, armed or not.
+
 ## Settings
 
 **File > Settings…** (Cmd+,) holds what is the same for every project, in
@@ -480,11 +504,11 @@ it.
   (its tempo, Start, Stop and Song Position; the tempo it hears shows),
   or an **Ableton Link** session (start and stop with it too; how many
   apps are in it). **Clock out** sends MIDI clock to the output. Link is
-  GPL, so Pads (MIT) leaves it out unless it is built with it:
-  `./scripts/link.sh`, then `task app:pads LINK=1`.
-- **Recording**: whether the count-in clicks with the metronome off (on
-  by default), and how early a hit before a sequence's downbeat still
-  goes on it (off, a 1/32, a 1/16, an 1/8).
+  built in whenever its library is there (`task deps` builds it).
+- **Recording**: **Arm the selected track** (on by default), whether the
+  count-in clicks with the metronome off (on by default), and how early a
+  hit before a sequence's downbeat still goes on it (off, a 1/32, a 1/16,
+  an 1/8).
 - **Projects**: what a new project starts with (tempo, time signature,
   sequence length, buses), the folder Save starts in, autosave (off, or
   every 1–10 minutes), opening the last project on start, and the export
@@ -710,6 +734,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
 | `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song and launch setting |
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
+| `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
@@ -765,3 +790,10 @@ task app:ctl -- --headless 'click_item "  Mixer"' 'items fader'   # some command
 ```
 
 `crash segv|assert|bounds` crashes on purpose (to see a report).
+
+## Licence
+
+Pads is free software under the GNU General Public License, version 3 or
+later (`apps/pads/LICENSE`), so that it can include Ableton Link
+(GPL-2.0-or-later). Fire Engine itself — the engine and the application
+layer Pads is built on — stays under the MIT licence.

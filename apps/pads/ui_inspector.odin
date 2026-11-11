@@ -216,19 +216,7 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 	pad_name_colour(a, i)
 
 	section(a, "Input", !wide)
-	input := i32(pad.input)
-	inputs := [3]cstring{"Inputs 1 + 2", "Input 1", "Input 2"}
-	im.SetNextItemWidth(min(180, im.GetContentRegionAvail().x))
-	if ui.combo_char("##input", &input, &inputs[0], len(inputs)) {
-		p := pad
-		p.input = pm.Audio_Input(input)
-		pm.set_pad(m, i, .Input, "Set Input", p)
-		app.seal(&m.history)
-	}
-	im.SameLine(0, 16)
-	armed := pm.audio_armed(m, i)
-	if ui.toggle("Arm", &armed) do pm.arm_audio(m, i, armed)
-	if im.IsItemHovered() do im.SetTooltip("Armed, it records while you record (Cmd+R)")
+	track_io_section(a, i) // armed, its input channels and their level
 	im.SameLine(0, 16)
 	mon := pad.monitor
 	if ui.toggle("Monitor", &mon) {

@@ -292,6 +292,7 @@ subscribe_imports :: proc(a: ^App) {
 //	addbus / delbus B / busdest B D (0 = main) / busname B NAME   buses: add, delete, route, rename
 //	warp PAD on|off [beats|tones|complex|repitch] [BPM]   a pad's warp (its sample's tempo: guessed if not given)
 //	plugin_folder PATH / scan_plugins   a folder for plug-ins, and a scan of every folder
+//	midi KEY VEL [PORT] / midi_in PAD all|none|PORT [CH] / arm PAD on|off   MIDI in (by port index), a track's MIDI input, arming
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
 //	save / save_as DIR / rename_project NAME / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
@@ -459,11 +460,37 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		pm.set_perform(&a.m, p)
 		return true
 	case "midi":
-		// midi KEY VELOCITY (0 = note-off)
+		// midi KEY VELOCITY [PORT] (0 = note-off; the port's index, 0 by default)
 		if len(w) < 3 do return false
 		key, vel := num(w, 1), num(w, 2)
 		if key < 0 || key > 127 do return false
-		app.host_midi_inject(&a.host, {0x90 if vel > 0 else 0x80, u8(key), u8(clamp(vel, 0, 127))})
+		port := u8(num(w, 3)) if len(w) > 3 else 0
+		app.host_midi_inject(&a.host, {0x90 if vel > 0 else 0x80, u8(key), u8(clamp(vel, 0, 127))}, port)
+		return true
+	case "midi_in":
+		// midi_in PAD all|none|INDEX [CHANNEL]: what MIDI plays it (INDEX: an
+		// input port's index, as `midi` sends; for scripts without ports)
+		i := num(w, 1)
+		if !pad_ok(i) || len(w) < 3 do return false
+		p := a.m.project.pads[i]
+		switch w[2] {
+		case "all":  p.midi_in = {mode = .All}
+		case "none": p.midi_in = {mode = .None}
+		case:        p.midi_in = {mode = .Port, port = pm.intern(&a.m.project, w[2]), channel = u8(num(w, 3)) if len(w) > 3 else 0}
+		}
+		pm.set_pad(&a.m, i, .Midi_In, "MIDI In", p)
+		app.seal(&a.m.history)
+		pm.sync(&a.m.engine)
+		if p.midi_in.mode == .Port do a.m.engine.router.in_port[i] = i16(num(w, 2)) // (no ports here: the index as given)
+		return true
+	case "arm":
+		// arm PAD on|off
+		i := num(w, 1)
+		if !pad_ok(i) do return false
+		on := len(w) < 3 || w[2] != "off"
+		pm.arm_track(&a.m, i, on)
+		if on do a.io.manual += {i}
+		else do a.io.manual -= {i}
 		return true
 	case "learn":
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {

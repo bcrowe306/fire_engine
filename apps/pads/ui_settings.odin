@@ -47,6 +47,7 @@ App_Settings :: struct {
 	link_start_stop: bool,
 	midi_offset_ms: f32, // MIDI notes recorded this much earlier (a controller's latency)
 	// Recording.
+	arm_selected: bool, // the selected track is armed
 	count_in_click: bool,
 	preroll:   Preroll,
 	// New projects.
@@ -189,6 +190,7 @@ settings_load :: proc(a: ^App) {
 	s.midi_offset_ms = f32(app.ini_f64(ini_, "midi", "input_offset_ms", 0))
 	// Recording (settings.txt's, the first time).
 	s.count_in_click = app.ini_bool(ini_, "recording", "count_in_click", true)
+	s.arm_selected = app.ini_bool(ini_, "recording", "arm_selected", true)
 	s.preroll = Preroll(clamp(app.ini_int(ini_, "recording", "preroll", int(Preroll.Sixteenth)), 0, int(max(Preroll))))
 	if _, has := app.ini_get(ini_, "recording", "preroll"); !has do migrate_settings_txt(a)
 	// New projects.
@@ -234,6 +236,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_bool(ini, "midi", "link_start_stop", s.link_start_stop)
 	app.ini_set_f64(ini, "midi", "input_offset_ms", f64(s.midi_offset_ms))
 	app.ini_set_bool(ini, "recording", "count_in_click", s.count_in_click)
+	app.ini_set_bool(ini, "recording", "arm_selected", s.arm_selected)
 	app.ini_set_int(ini, "recording", "preroll", int(s.preroll))
 	app.ini_set_f64(ini, "project", "tempo", s.default_bpm)
 	app.ini_set_int(ini, "project", "beats", s.default_sig[0])
@@ -447,6 +450,7 @@ midi_apply :: proc(a: ^App) {
 		h.settings.midi, h.settings.midi_output, h.settings.midi_inputs_off = s.midi_on, s.midi_output, s.midi_off[:]
 		app.host_midi_reopen(h)
 	}
+	pm.midi_ports_changed(&a.m.engine) // (the ports' numbers changed)
 	sync_apply(a)
 }
 
@@ -777,6 +781,15 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 		im.SameLine()
 		im.TextColored(transmute(im.Vec4)ui.theme().warn, "Not applied yet")
 	}
+	// What comes in, channel by channel.
+	im.SeparatorText("Input levels")
+	n := pm.input_channels(&a.m.engine)
+	if n == 0 do im.TextDisabled("No inputs open (Input channels above).")
+	for c in 0 ..< n {
+		label(fmt.ctprintf("In %d", c + 1))
+		level_bar(input_view(a, c).peak, 260, 10)
+		ui.name(fmt.tprintf("input meter %d", c + 1))
+	}
 	// What it runs at, and how it is doing.
 	im.Spacing()
 	im.SeparatorText("The engine now")
@@ -903,7 +916,7 @@ page_midi :: proc(a: ^App) -> (changed: bool) {
 		}
 		hint(fmt.ctprintf("%d other app%s in the session.", padslink.peers(&s.link), "" if padslink.peers(&s.link) == 1 else "s"))
 	}
-	if !padslink.AVAILABLE && s.sync != .Link do hint("Ableton Link is left out of this Pads (it is GPL): build it in with ./scripts/link.sh, then task app:pads LINK=1.")
+	if !padslink.AVAILABLE && s.sync != .Link do hint("Ableton Link isn't in this build: run ./scripts/link.sh (or task deps), then build Pads again.")
 	label("Clock out")
 	if ui.toggle("Send MIDI clock to the output", &s.clock_out) {
 		sync_apply(a)
@@ -918,6 +931,9 @@ page_midi :: proc(a: ^App) -> (changed: bool) {
 @(private)
 page_recording :: proc(a: ^App) -> (changed: bool) {
 	s := &a.settings
+	label("Arming")
+	if ui.toggle("Arm the selected track", &s.arm_selected) do changed = true
+	hint("Selecting a track arms it (and the one before goes back, unless you armed it yourself). Cmd-click an arm button to arm more than one. Armed audio tracks record their input; armed sampler tracks play and record their own MIDI input.")
 	label("Count-in")
 	if ui.toggle("Count-in clicks with the metronome off", &s.count_in_click) do changed = true
 	hint("The bars counted in before recording always click.")

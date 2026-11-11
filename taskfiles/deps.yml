@@ -1,4 +1,5 @@
-# Third-party libraries the app layer links statically: SDL3 and Dear ImGui.
+# Third-party libraries the app layer links statically: SDL3 and Dear ImGui;
+# and Ableton Link, which Pads builds in.
 # Sources are fetched at pinned versions into .deps/ (gitignored) and the
 # libraries are built into the vendored bindings' folders, where the Odin
 # packages look for them:
@@ -29,6 +30,14 @@ tasks:
     cmds:
       - task: sdl3
       - task: imgui
+      - task: link
+
+  link:
+    desc: Fetch and build Ableton Link (GPL-2.0+) for Pads (GPL-3.0+); fire:link and its tests use it too.
+    status:
+      - ls {{.ROOT_DIR}}/third_party/link/lib/*abl_link* > /dev/null 2>&1
+    cmds:
+      - bash {{.ROOT_DIR}}/scripts/link.sh
 
   sdl3:
     desc: Fetch SDL3 at the pinned tag and build it as a static library.

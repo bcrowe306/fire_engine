@@ -1,6 +1,6 @@
 /*
-Ableton Link for Pads: built in (`task app:pads LINK=1`). Link is GPLv2+, so
-a Pads built this way is too. The clock follows the session (its tempo and
+Ableton Link for Pads (GPL-3.0-or-later; Link itself is GPL-2.0-or-later):
+built in whenever its library is there. The clock follows the session (its tempo and
 beat grid, the bar as quantum); start/stop sync starts and stops the
 sequencer with the session.
 */

@@ -219,6 +219,23 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("Time signature")
 
+	// MIDI activity: a light, green while MIDI comes in, blue while it
+	// goes out. Click it for the MIDI settings.
+	im.SameLine(0, gap)
+	{
+		lp := im.GetCursorScreenPos()
+		size: f32 = 14
+		if im.InvisibleButton("##midilight", {size + 4, big}) {
+			a.settings.open, a.settings.page = true, .Midi
+		}
+		ui.name("midi activity")
+		midi_light(im.GetWindowDrawList(), {lp.x + 2, lp.y + (big - size) / 2}, size, a.io.all_in_lit, a.io.all_out_lit)
+		if im.IsItemHovered() {
+			sent, received := app.host_midi_counts(&a.host)
+			im.SetTooltip("%s", fmt.ctprintf("MIDI: %d in, %d out (click for the MIDI settings)", received, sent))
+		}
+	}
+
 	// The metronome: on/off, and its settings.
 	im.SameLine(0, gap)
 	if ui.icon_button(ui.ICON_METRONOME, "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", on = e.metronome, size = big) do e.metronome = !e.metronome
