@@ -207,8 +207,16 @@ for other toggles.
   covers (a note it reaches into keeps the part after it), however it got
   there (drawn, moved, pasted, recorded, imported). Under the rows, a lane: each note's velocity, its chance (the
   probability it plays each time round), or the selected pad's
-  automation (volume, pitch or an EQ band; click to add a point, drag,
-  right-click to delete). Recording overdubs: hit pads (mouse, keys or
+  automation (volume, pitch or an EQ band), one lane at a time. With
+  **Select** a click adds a point and a drag moves one; with **Draw** a
+  drag draws freehand (a point each grid step) and **Shift**-drag a
+  straight line; **Ctrl**-drag on a line bends it into a curve (up bends
+  it in, down out; the engine plays the same curve); **Erase** sweeps away
+  every point in the columns it crosses; right-click a point to delete it.
+  Each stroke is one undo step, and a dot rides the line at the value
+  playing. The **magnet** (Snap) puts notes and points on the grid; off,
+  they go anywhere (hold Cmd on macOS, Alt elsewhere, to place one freely
+  while it is on). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
   the sequencer plays them.
 - **Perform** (a panel beside the Mixer): at its top, the **launcher**:
@@ -271,14 +279,27 @@ drag is one step. Cmd+K opens the command palette; Cmd+1..8 switch banks (or Vie
 Delete clears the pad; View > Light Theme switches theme.
 
 - **Song** (middle tab): **Pattern** plays the current sequence; **Song**
-  plays the chain of steps below, each a sequence played 1–16 times
-  (drag a step onto another to move it; with the toolbar's **Loop** on it
-  goes round, otherwise it stops at the end). On the right, the
-  **sequences** in use, each with its length, own tempo and how many times
+  plays the chain of steps, each a sequence played 1–16 times (drag a step
+  onto another to move it; with the toolbar's **Loop** on it goes round,
+  otherwise it stops at the end). Across the top, the **timeline**: the
+  song laid out in time, bars on its ruler and its total length in minutes
+  and seconds (at each step's tempo), each step a block in its sequence's
+  colour with its name and repeats (muted ones hatched), and the playhead;
+  click the ruler to play the song from that bar, a block to select its
+  step. The playing step's card runs a bar across. On the left, every
+  **sequence** slot with its colour, length, own tempo and how many times
   the song plays it (the playing one lit): double-click one or its **+** to
   add it at the end, drag it onto a step to put it before that one or
   onto the **+** at the end, click it to edit it, right-click for its
-  commands. **Add** (the current sequence's name) puts the current one at
+  commands (**Colour** among them: its colour shows on the launcher, the
+  toolbar's list, the song and the Sequence panel). On the right, the
+  selected **step**: its sequence, a section name (shown on the
+  timeline), repeats, which **part** of the sequence it plays (start and
+  length, drawn over the sequence), **Transpose**, **Mute**, its **own
+  tempo**, and Duplicate/Remove. The picker at the top holds
+  **arrangements**: several songs from the same sequences, one current
+  (Song mode and export play it); right-click it to add, duplicate,
+  rename or delete one. **Add** (the current sequence's name) puts the current one at
   the end; **Merge into this…** lays another sequence's notes and
   automation over the current one. In pattern mode, a sequence picked
   while playing takes over **at the end of the playing sequence**, **at
@@ -397,7 +418,9 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
 
 ## Export
 
-**File > Export Audio…** (Cmd+E): the current sequence (once) or the song;
+**File > Export Audio…** (Cmd+E): the current sequence (once) or a song
+(pick the arrangement; the file is named after it, and the dialog shows
+its length);
 a mixdown, or stems — a file per pad with a sound, or per bus (and main,
 for the pads that go straight there); 16-bit (dithered), 24-bit or 32-bit
 float WAV; 44.1, 48 or 96 kHz (resampled from the engine's rate with
@@ -569,6 +592,8 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_device.py` | the device tabs: the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
+| `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
+| `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |

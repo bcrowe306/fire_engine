@@ -280,13 +280,17 @@ sync_sequencer :: proc(e: ^Engine) {
 	{
 		pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
 		cur, next := audio_runs(e.plan, f64(pos))
-		want := sequence_tempo(p, cur.slot if on && cur.valid else p.slot)
+		run_tempo :: proc(p: ^Project, r: Audio_Run) -> f64 {
+			if r.step >= 0 && r.step < p.song.count do return step_tempo(p, r.step)
+			return sequence_tempo(p, r.slot)
+		}
+		want := run_tempo(p, cur) if on && cur.valid else sequence_tempo(p, p.slot)
 		if e.bpm != want {
 			transport.set_tempo(e.host.clock, want)
 			e.bpm = want
 		}
 		if on && next.valid && next.start > f64(pos) {
-			nb := sequence_tempo(p, next.slot)
+			nb := run_tempo(p, next)
 			if nb != want && (e.tempo_at != next.start || e.tempo_next != nb) {
 				grid := transport.status(e.host.clock).grid
 				transport.set_tempo(e.host.clock, nb, transport.At_Beat(f64(grid) + next.start - f64(pos)))
@@ -462,14 +466,14 @@ struck :: proc(e: ^Engine, index: int) -> u32 {
 // Starts the sequencer from the top of the sequence; with `count_in`, the
 // transport's count-in bars of click first (the playhead starts that far
 // before the top, where nothing plays and nothing records).
-play :: proc(e: ^Engine, count_in := false) {
+play :: proc(e: ^Engine, count_in := false, from_beat := 0.0) {
 	e.stopped = false
 	e.pending.active = false
 	e.plan.at = 0
 	if e.project.song_mode && e.project.song.count > 0 do e.project.slot = int(e.project.song.steps[0].slot)
 	e.seq_dirty = true
 	sync_sequencer(e)
-	from := 0.0
+	from := max(from_beat, 0)
 	if count_in do from = -f64(clamp(e.project.transport.count_in, 0, 2)) * bar_beats(e.project)
 	place_audio(e, from) // the players have what plays from the top before it does
 	transport.locate(e.host.clock, e.timeline, tb.Beats(from))

@@ -27,6 +27,7 @@ Seq_State :: struct {
 	piano_pad: int, // ... that pad
 	fold:     bool, // only the rows that have notes
 	focused:  bool, // the editor has the keyboard (its tool keys work)
+	free:     bool, // snap off: notes and points go anywhere (Cmd held: the same, for a moment)
 	editing:  bool, // a paint, a sweep or a drag is under way (sealed when the mouse lets go)
 	paste_at: f64,  // where a paste from the menu goes (-1: the selection's bar)
 	menu_target: Target, // what the open note or point menu is for
@@ -55,6 +56,8 @@ draw_editor_tools :: proc(a: ^App) {
 		if k > 0 do im.SameLine(0, 2)
 		if ui.icon_button(tl.icon, tl.tip, on = st.tool == tl.tool) do st.tool = tl.tool
 	}
+	im.SameLine(0, 10)
+	if ui.icon_button(ui.ICON_MAGNET, "Snap: on (to the grid; hold " + ui.FREE_KEY + " to place freely)" if !st.free else "Snap: off (anywhere)", on = !st.free) do st.free = !st.free
 	im.SameLine(0, 14)
 	if ui.icon_button(ui.ICON_HEADPHONES, "Hear a row's pad when you click its name: on" if !st.quiet else "Hear a row's pad when you click its name: off", on = !st.quiet) do st.quiet = !st.quiet
 	im.SameLine(0, 14)
@@ -164,7 +167,7 @@ draw_sequence :: proc(user: rawptr) {
 	length := pm.seq_beats(&m.project, s)
 	beat, playing := pm.position(&m.engine)
 	avail := im.GetContentRegionAvail()
-	lane_h: f32 = 56
+	lane_h: f32 = 120 if st.lane == 2 else 56 // automation gets room to draw
 	roll_h := max(avail.y - lane_h - im.GetStyle().ItemSpacing.y - 4, 4 * ROW_MIN)
 	// As many rows as fit at ROW_MIN or taller; the wheel scrolls the rest.
 	n_rows := max(len(rows), 1)
@@ -177,7 +180,8 @@ draw_sequence :: proc(user: rawptr) {
 	st.view.key0 = clamp(st.view.key0, 0, max(n_rows - keys, 0))
 	roll_h = f32(keys) * (roll_h / f32(keys))
 	st.view.beat0, st.view.beats = 0, length
-	snap := pm.grid_beats(st.grid)
+	// Snap: off, or Cmd held while editing, notes go anywhere.
+	snap := pm.grid_beats(st.grid) if !st.free && !ui.free_down() else 0
 	if len(rows) == 0 {
 		im.TextDisabled("No notes to fold to: draw some, or turn Fold off.")
 		return
@@ -219,8 +223,10 @@ draw_sequence :: proc(user: rawptr) {
 	if le.ended do app.seal(&m.history)
 }
 
-// The selected pad's automation lane for `a.seq.param`: click to add a
-// point, drag to move, right-click to delete.
+// The selected pad's automation lane for `a.seq.param`, edited with the
+// editor's tool: Select clicks a point in and drags one, Draw draws
+// freehand (Shift: a straight line), Erase sweeps; Ctrl-drag bends a
+// segment. A dot rides it where it plays.
 draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec2, left: f32) {
 	m := &a.m
 	st := &a.seq
@@ -229,24 +235,42 @@ draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec
 	points, first := pm.lane_points(s, pad, st.param)
 	lo, hi := pm.lane_range(st.param)
 	norm :: proc(v, lo, hi: f32) -> f32 { return (v - lo) / (hi - lo) }
-	view := make([]ui.Lane_Point, len(points), context.temp_allocator)
-	for p, i in points do view[i] = {beat = p.beat, value = norm(p.value, lo, hi)}
-	// The lane's label sits where the editor's row names are.
-	pos := im.GetCursorScreenPos()
-	im.DrawList_AddText(im.GetWindowDrawList(), {pos.x + 4, pos.y + 4}, ui.col(ui.theme().text_dim),
-		fmt.ctprintf("%s %s", pm.pad_label(pad), pm.LANE_NAMES[st.param]))
-	im.SetCursorScreenPos({pos.x + left, pos.y})
-	e := ui.automation_lane("auto", view, 0, length, snap, {size.x - left, size.y}, ui.rgb(m.project.pads[pad].color))
 	value_of :: proc(n, lo, hi: f32) -> f32 { return lo + clamp(n, 0, 1) * (hi - lo) }
+	view := make([]ui.Auto_Lane_Point, len(points), context.temp_allocator)
+	for p, i in points do view[i] = {beat = p.beat, value = norm(p.value, lo, hi), curve = p.curve}
+	// The lane's label (and its value now) where the editor's row names are.
+	pos := im.GetCursorScreenPos()
+	beat, playing := pm.position(&m.engine)
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4}, ui.col(ui.theme().text_dim), fmt.ctprintf("%s %s", pm.pad_label(pad), pm.LANE_NAMES[st.param]))
+	if len(view) > 0 && playing {
+		v := value_of(ui.auto_lane_value(view, beat), lo, hi)
+		im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4 + im.GetTextLineHeightWithSpacing()}, ui.col(ui.theme().text), fmt.ctprintf("%.1f", v))
+	}
+	im.SetCursorScreenPos({pos.x + left, pos.y})
+	e := ui.auto_lane("auto", view, 0, length, snap, {size.x - left, size.y}, st.tool, ui.rgb(m.project.pads[pad].color), beat if playing else -1)
 	if e.add && e.at.beat <= length {
 		pm.add_point(m, slot, {pad = u8(pad), param = st.param, beat = e.at.beat, value = value_of(e.at.value, lo, hi)})
+		app.seal(&m.history)
 	}
 	if e.moving >= 0 && e.moving < len(points) {
 		p := points[e.moving]
 		p.beat, p.value = clamp(e.to.beat, 0, length), value_of(e.to.value, lo, hi)
 		pm.set_point(m, slot, first + e.moving, p)
-		if e.released do app.seal(&m.history)
 	}
+	if e.bend >= 0 && e.bend < len(points) {
+		p := points[e.bend]
+		p.curve = e.curve
+		pm.set_point(m, slot, first + e.bend, p)
+	}
+	if len(e.stroke) > 0 {
+		pts := make([dynamic]pm.Auto_Point, 0, len(e.stroke), context.temp_allocator)
+		b0, b1 := e.stroke[0].beat, e.stroke[len(e.stroke) - 1].beat
+		for sp in e.stroke do if sp.beat <= length do append(&pts, pm.Auto_Point{pad = u8(pad), param = st.param, beat = sp.beat, value = value_of(sp.value, lo, hi)})
+		pm.replace_lane_range(m, slot, pad, st.param, min(b0, b1), max(b0, b1), pts[:])
+	}
+	if e.swept do pm.replace_lane_range(m, slot, pad, st.param, e.swept_lo, e.swept_hi, nil)
+	if e.released do app.seal(&m.history)
 	if e.menu >= 0 && e.menu < len(points) {
 		st.menu_target = {kind = .Point, slot = slot, index = first + e.menu}
 		im.OpenPopup("##pointmenu")

@@ -3,99 +3,99 @@ package test_pads_model
 import "core:testing"
 
 import app "app:core"
+import fc "fire:core"
+import "fire:transport"
 import pm "../../apps/pads/model"
-import kit "fire:testkit"
-
-// Which pad (0: 440 Hz, 1: 880 Hz) sounds at each onset.
-@(private)
-which_pads :: proc(x: []f32, at: []int) -> [dynamic]int {
-	out := make([dynamic]int, context.temp_allocator)
-	for a in at {
-		seg := x[a:][:min(1200, len(x) - a)]
-		append(&out, 0 if kit.tone_amplitude(seg, SR, 440) > kit.tone_amplitude(seg, SR, 880) else 1)
-	}
-	return out
-}
 
 @(test)
-a_song_plays_its_steps_then_stops :: proc(t: ^testing.T) {
-	r := blips(t, "song_chain")
+song_steps_play_parts_muted_transposed_at_their_tempo :: proc(t: ^testing.T) {
+	r := blips(t, "song_steps")
 	defer rig_destroy(r)
 	m := &r.m
-	pm.add_note(m, 0, {start = 0, length = 0.25, pad = 0, velocity = 1}) // sequence 1: pad 0 on beat 1
-	pm.add_note(m, 1, {start = 0, length = 0.25, pad = 1, velocity = 1}) // sequence 2: pad 1
-	pm.song_add(m, 0, repeats = 2)
-	pm.song_add(m, 1)
-	testing.expect_value(t, m.project.song.count, 2)
-	testing.expect_value(t, pm.song_beats(&m.project), 12)
-	m.project.song_mode = true
-	tr := m.project.transport
-	tr.loop = false // it plays once and stops
-	pm.set_transport(m, .Loop, "Loop", tr)
+	p := &m.project
+	for b in 0 ..< 4 do pm.add_note(m, 0, {start = f64(b), length = 0.25, pad = 0, velocity = 1})
+	pm.song_add(m, 0) // all of it: 4 beats
+	pm.song_add(m, 0) // beats 2..3 only, twice
+	st := p.song.steps[1]
+	st.start, st.length, st.repeats = 2, 2, 2
+	pm.set_step(m, 1, st, "Step Part")
+	pm.song_add(m, 0) // muted
+	st = p.song.steps[2]
+	st.mute = true
+	pm.set_step(m, 2, st, "Mute Step")
+	testing.expect_value(t, pm.song_beats(p), 4 + 4 + 4)
+	pl := pm.plan_song(p, 0)
+	// Step 2's first pass plays beats 2 and 3 of the sequence: located at
+	// song beat 4.5, the sequence is at beat 2.5.
+	_, slot, rel, ok := pm.plan_locate(pl, 4.5)
+	testing.expect(t, ok && slot == 0 && abs(rel - 2.5) < 1e-9, "a part of the sequence")
+	// The notes played: 4, then 2 + 2, then none (muted).
+	p.song_mode = true
+	m.engine.seq_dirty = true
 	pm.play(&m.engine)
-	out := render(r, 48_000 * 8) // 16 beats: the song is 12
+	out := render_synced(r, 48_000 * 6) // 12 beats at 120
 	got := onsets(out[0][:])
-	testing.expectf(t, len(got) == 3, "three bars, then it stops (%v)", got)
-	if len(got) == 3 {
-		pads := which_pads(out[0][:], got[:])
-		testing.expectf(t, pads[0] == 0 && pads[1] == 0 && pads[2] == 1, "1, 1, 2 (%v)", pads)
-		testing.expectf(t, abs(got[2] - (8 * 24_000 + 256)) <= 256, "the second sequence at beat 8 (%d)", got[2])
-	}
-	pm.sync(&m.engine) // (each frame, the app's sync notices the end; the clock stops on its next block)
-	render(r, 512)
-	_, playing := pm.position(&m.engine)
-	testing.expect(t, !playing, "stopped at the end")
-	// Looping, it goes round.
-	tr.loop = true
-	pm.set_transport(m, .Loop, "Loop", tr)
+	testing.expectf(t, len(got) == 8, "4 + 2 × 2, the muted step silent (%v)", got)
+	// A step's tempo takes over where it does; the song's length in time.
+	pm.stop(&m.engine)
+	st = p.song.steps[1]
+	st.bpm = 60
+	pm.set_step(m, 1, st, "Step Tempo")
+	secs := pm.song_seconds(p)
+	testing.expectf(t, abs(secs - (2 + 4 + 2)) < 1e-9, "2 s + 4 beats at 60 + 2 s (%v)", secs)
 	pm.play(&m.engine)
-	out = render(r, 48_000 * 8)
-	testing.expectf(t, len(onsets(out[0][:])) == 4, "round again (%v)", onsets(out[0][:]))
-	// Editing the song undoes.
-	pm.song_remove(m, 0)
-	testing.expect_value(t, m.project.song.count, 1)
-	app.undo(&m.history)
-	testing.expect_value(t, m.project.song.count, 2)
+	render_synced(r, 48_000 * 2 + 2400) // past step 1 (4 beats at 120)
+	testing.expect_value(t, transport.status(m.engine.host.clock).tempo_bpm, 60)
 }
 
 @(test)
-picking_a_sequence_while_playing_switches_on_the_grid :: proc(t: ^testing.T) {
-	r := blips(t, "song_switch")
+arrangements_switch_undo_and_save :: proc(t: ^testing.T) {
+	r := rig_make(t, "song_arr")
 	defer rig_destroy(r)
 	m := &r.m
+	p := &m.project
 	pm.add_note(m, 0, {start = 0, length = 0.25, pad = 0, velocity = 1})
-	pm.add_note(m, 0, {start = 2, length = 0.25, pad = 0, velocity = 1})
-	pm.add_note(m, 1, {start = 0, length = 0.25, pad = 1, velocity = 1})
-	pm.add_note(m, 1, {start = 1, length = 0.25, pad = 1, velocity = 1})
-	// At the end of the sequence: picked at beat 1, it takes over at beat 4.
-	m.project.switch_at = .End
-	pm.play(&m.engine)
-	render(r, 24_000 + 2400) // beat 1.1
-	pm.select_slot(m, 1)
-	testing.expect_value(t, m.project.slot, 0) // not yet
-	slot, in_beats, queued := pm.pending_switch(&m.engine)
-	testing.expectf(t, queued && slot == 1 && abs(in_beats - 2.9) < 0.05, "queued for beat 4 (%v %v)", slot, in_beats)
-	pm.sync(&m.engine)
-	out := render(r, 48_000 * 2 - 2400) // to beat 5
-	got := onsets(out[0][:])
-	pads := which_pads(out[0][:], got[:])
-	// Beat 2: pad 0 (still sequence 1); beat 4: pad 1 (sequence 2).
-	testing.expectf(t, len(got) == 2 && pads[0] == 0 && pads[1] == 1, "then sequence 2 (%v %v)", got, pads)
-	if len(got) == 2 do testing.expectf(t, abs((got[1] + 26_400) - (4 * 24_000 + 256)) <= 256, "exactly at beat 4 (%d)", got[1] + 26_400)
-	pm.sync(&m.engine)
-	testing.expect_value(t, m.project.slot, 1)
-	// At the next beat.
-	m.project.switch_at = .Beat
-	render(r, 24_000 / 2) // beat 5.5
-	pm.select_slot(m, 0)
-	pm.sync(&m.engine)
-	out = render(r, 24_000 * 3 / 2) // to beat 7
-	got = onsets(out[0][:])
-	pads = which_pads(out[0][:], got[:])
-	testing.expectf(t, len(got) >= 1 && pads[0] == 0, "sequence 1 from beat 6 (%v %v)", got, pads)
-	if len(got) >= 1 do testing.expectf(t, abs(got[0] - (12_000 + 256)) <= 256, "at beat 6 (%d)", got[0])
-	// Merging: sequence 1's notes laid over sequence 2's.
-	pm.merge_sequences(m, 0, 1)
-	testing.expect_value(t, len(m.project.sequences[1].notes), 4)
-	testing.expect_value(t, app.undo_name(&m.history), "Merge Sequences")
+	pm.song_add(m, 0)
+	testing.expect_value(t, p.arrangement_count, 1)
+	b := pm.add_arrangement(m, copy_of = 0)
+	testing.expect_value(t, b, 1)
+	testing.expect_value(t, p.song.count, 1) // the copy's song
+	testing.expect_value(t, pm.arrangement_name(p, 1), "Song copy")
+	pm.song_add(m, 0)
+	testing.expect_value(t, p.song.count, 2)
+	pm.select_arrangement(m, 0)
+	testing.expect_value(t, p.song.count, 1) // the first is as it was
+	pm.select_arrangement(m, 1)
+	testing.expect_value(t, p.song.count, 2) // the second kept its step
+	pm.rename_arrangement(m, 1, " Radio edit ")
+	testing.expect_value(t, pm.arrangement_name(p, 1), "Radio edit")
+	app.undo(&m.history)
+	testing.expect_value(t, pm.arrangement_name(p, 1), "Song copy")
+	app.redo(&m.history)
+	// Saved and loaded: both, the current one, a step's settings, colours, curves.
+	st := p.song.steps[1]
+	st.start, st.length, st.transpose, st.mute = 1, 2, -3, true
+	copy(st.label[:], "Drop")
+	pm.set_step(m, 1, st, "Step")
+	s := p.sequences[0]
+	s.color = 0x123456
+	pm.set_sequence(m, 0, .Name, "Colour", s)
+	pm.add_point(m, 0, {pad = 0, param = .Volume, beat = 0, value = -12, curve = 0.5})
+	pm.add_point(m, 0, {pad = 0, param = .Volume, beat = 2, value = 0})
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	r2 := rig_make(t, "song_arr2")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, p.dir), fc.Error.None)
+	q := &r2.m.project
+	testing.expect_value(t, q.arrangement_count, 2)
+	testing.expect_value(t, q.arrangement, 1)
+	testing.expect_value(t, q.song.count, 2)
+	testing.expect(t, q.song.steps[1].start == 1 && q.song.steps[1].length == 2 && q.song.steps[1].transpose == -3 && q.song.steps[1].mute, "the step's settings")
+	testing.expect_value(t, pm.step_label(&q.song.steps[1]), "Drop")
+	testing.expect_value(t, q.arrangements[0].song.count, 1)
+	testing.expect_value(t, pm.sequence_color(q, 0), 0x123456)
+	testing.expect_value(t, q.sequences[0].points[0].curve, 0.5)
+	pm.delete_arrangement(&r2.m, 0)
+	testing.expect_value(t, q.arrangement_count, 1)
+	testing.expect_value(t, pm.arrangement_name(q, 0), "Radio edit")
 }

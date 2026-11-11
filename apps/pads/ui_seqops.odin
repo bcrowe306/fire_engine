@@ -54,6 +54,32 @@ sequence_menu_items :: proc(a: ^App, slot: int) {
 	command_items(a, seq_target(slot))
 }
 
+// Sequence `slot`'s colour: its slot's own, or one of the swatches.
+seq_color_menu :: proc(a: ^App, slot: int) {
+	m := &a.m
+	cur := m.project.sequences[slot].color
+	im.TextDisabled("%s", fmt.ctprintf("%s colour", pm.sequence_name(&m.project, slot)))
+	swatch :: proc(c: u32, on: bool, name: string) -> bool {
+		hit := im.ColorButton("##swatch", transmute(im.Vec4)ui.rgb(c), {.NoTooltip, .NoBorder}, {22, 22})
+		ui.name(name)
+		if on {
+			mn, mx := im.GetItemRectMin(), im.GetItemRectMax()
+			im.DrawList_AddRect(im.GetWindowDrawList(), {mn.x - 2, mn.y - 2}, {mx.x + 2, mx.y + 2}, ui.col(ui.theme().text), 4, 1.5)
+		}
+		return hit
+	}
+	im.PushIDInt(-1)
+	if swatch(pm.SEQ_PALETTE[slot % len(pm.SEQ_PALETTE)], cur == 0, "colour default") do pm.set_sequence_color(m, slot, 0)
+	im.PopID()
+	if im.IsItemHovered() do im.SetTooltip("Its slot's own colour")
+	for c, k in PAD_PALETTE {
+		if k % 6 != 5 do im.SameLine(0, 4)
+		im.PushIDInt(i32(k))
+		if swatch(c, cur == c, fmt.tprintf("colour %d", k + 1)) do pm.set_sequence_color(m, slot, c)
+		im.PopID()
+	}
+}
+
 // The current sequence's name (double-click to rename, right-click for its
 // menu), its own tempo, duplicate: the head of the Sequence panel.
 sequence_head :: proc(a: ^App) {
@@ -66,6 +92,10 @@ sequence_head :: proc(a: ^App) {
 	im.Selectable(label, false, {.AllowDoubleClick}, {w, im.GetFrameHeight()})
 	im.PopFont()
 	ui.name("sequence name")
+	{
+		mn, mx := im.GetItemRectMin(), im.GetItemRectMax()
+		im.DrawList_AddRectFilled(im.GetWindowDrawList(), {mn.x + 4, mx.y - 3}, {mx.x - 4, mx.y - 1}, ui.col(ui.rgb(pm.sequence_color(&m.project, slot))), 1)
+	}
 	if im.IsItemHovered() {
 		im.SetTooltip("Double-click to rename; right-click for more")
 		if im.IsMouseDoubleClicked(.Left) do begin_rename_sequence(a, slot)

@@ -35,6 +35,15 @@ State :: struct {
 	song_mode:  bool,
 	song_steps: int,
 	song:       [dynamic]int, // each step's sequence (1-based)
+	steps:      [dynamic]State_Step, // each step's settings
+	song_step:  int, // the step playing (1-based; 0: none)
+	song_beat:  f64, // where in the song (beats)
+	song_seconds: f64, // how long the song plays
+	song_selected: int, // the step whose settings show (1-based; 0: none)
+	arrangements: [dynamic]string,
+	arrangement: int, // 1-based
+	snap:       bool, // the sequence editor snaps to its grid
+	curved:     int, // automation points of the current sequence bending the line after them
 	notes:      int, // in the current sequence
 	points:     int,
 	bars:       int,
@@ -93,6 +102,18 @@ State_Sequence :: struct {
 	bpm:   f64, // its own (0: the project's)
 	bars:  int,
 	notes: int,
+	color: u32, // shown (its own or its slot's)
+}
+
+State_Step :: struct {
+	slot:      int, // 1-based
+	repeats:   int,
+	start:     f64,
+	length:    f64, // beats it plays of its sequence (each time)
+	mute:      bool,
+	transpose: int,
+	bpm:       f64, // its own (0: its sequence's)
+	label:     string,
 }
 
 State_Bus :: struct {
@@ -149,15 +170,30 @@ state_json :: proc(a: ^App) -> string {
 	s.song_mode, s.song_steps = p.song_mode, p.song.count
 	s.song = make([dynamic]int, context.temp_allocator)
 	for st in p.song.steps[:p.song.count] do append(&s.song, int(st.slot) + 1)
+	s.steps = make([dynamic]State_Step, context.temp_allocator)
+	for &st in p.song.steps[:p.song.count] {
+		append(&s.steps, State_Step{int(st.slot) + 1, int(st.repeats), st.start, pm.step_period(p, st), st.mute, int(st.transpose), st.bpm, strings.clone(pm.step_label(&st), context.temp_allocator)})
+	}
+	{
+		step, _, beat := pm.song_progress(&m.engine)
+		s.song_step, s.song_beat = step + 1, beat
+	}
+	s.song_seconds = pm.song_seconds(p)
+	s.song_selected = a.song_ui.step + 1 if a.song_ui.step < p.song.count else 0
+	s.arrangements = make([dynamic]string, context.temp_allocator)
+	for k in 0 ..< p.arrangement_count do append(&s.arrangements, strings.clone(pm.arrangement_name(p, k), context.temp_allocator))
+	s.arrangement = p.arrangement + 1
+	s.snap = !a.seq.free
 	seq := pm.current_sequence(m)
 	s.notes, s.points, s.bars = len(seq.notes), len(seq.points), seq.bars
+	for pt in seq.points do if pt.curve != 0 do s.curved += 1
 	s.undo = app.undo_name(&m.history)
 	s.dirty = pm.model_dirty(m)
 	s.project = p.dir
 	s.exporting = a.proj.exporting
 	s.sequences = make([dynamic]State_Sequence, context.temp_allocator)
 	for sq, k in p.sequences do if pm.slot_used(m, k) || k == p.slot {
-		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes)})
+		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes), color = pm.sequence_color(p, k)})
 	}
 	s.marked = len(a.seq.sel) > 0
 	s.selected_notes = len(a.seq.sel)

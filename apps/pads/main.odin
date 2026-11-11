@@ -52,6 +52,7 @@ App :: struct {
 	device:   Device_State, // the device tabs' LFO traces
 	seq_ops:  Seq_Ops, // renaming, copying bars, the copied part
 	spectrum: Spectrum_State, // an effect's spectrum, drawn on its device
+	song_ui:  Song_State, // the Song tab's selected step, renaming
 	commands: [dynamic]Command, // everything that can be done to something (commands.odin)
 	pad_clip: pm.Pad, // a copied pad
 	has_pad_clip: bool,

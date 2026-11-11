@@ -148,7 +148,12 @@ project_dialog :: proc(a: ^App, what: type_of(Project_Chosen{}.what)) {
 			sdl.ShowOpenFolderDialog(cb, a, a.platform.window, nil, false)
 		} else {
 			filters := [1]sdl.DialogFileFilter{{name = "WAV", pattern = "wav"}}
-			sdl.ShowSaveFileDialog(cb, a, a.platform.window, &filters[0], 1, nil)
+			// Named after what it renders: the arrangement, or the sequence.
+			p := &a.m.project
+			name := pm.arrangement_name(p, p.arrangement) if a.proj.settings.source == .Song else pm.sequence_name(p, p.slot)
+			start_at: cstring = nil
+			if p.dir != "" do start_at = fmt.ctprintf("%s/%s.wav", p.dir, name)
+			sdl.ShowSaveFileDialog(cb, a, a.platform.window, &filters[0], 1, start_at)
 		}
 	}
 }
@@ -244,7 +249,20 @@ draw_export :: proc(a: ^App) {
 		s := &st.settings
 		src := int(s.source)
 		im.TextDisabled("What")
-		if ui.segmented("src", {"This sequence", "The song"}, &src) do s.source = pm.Export_Source(src)
+		if ui.segmented("src", {"This sequence", "A song"}, &src) do s.source = pm.Export_Source(src)
+		if s.source == .Song {
+			// Which arrangement (each exports on its own).
+			m := &a.m
+			im.SameLine()
+			im.SetNextItemWidth(170)
+			if ui.combo("##exparr", fmt.ctprintf("%s", pm.arrangement_name(&m.project, m.project.arrangement))) {
+				for k in 0 ..< m.project.arrangement_count {
+					if im.Selectable(fmt.ctprintf("%s###ea%d", pm.arrangement_name(&m.project, k), k), k == m.project.arrangement) do pm.select_arrangement(m, k)
+				}
+				im.EndCombo()
+			}
+			im.TextDisabled("%s", fmt.ctprintf("%s long", clock_text(pm.song_seconds(&m.project))))
+		}
 		stems := int(s.stems)
 		im.TextDisabled("As")
 		if ui.segmented("stems", {"Mixdown", "Stems: pads", "Stems: buses"}, &stems) do s.stems = pm.Export_Stems(stems)

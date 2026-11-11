@@ -266,3 +266,216 @@ any_selected :: proc(notes: []Roll_Note) -> bool {
 	for n in notes do if n.selected do return true
 	return false
 }
+
+// One breakpoint of an `auto_lane`: where, how high (0..1), and how the
+// segment to the next one bends (0 a line, -1..1 as clip's Curve tension).
+Auto_Lane_Point :: struct {
+	beat:  f64,
+	value: f32,
+	curve: f32,
+}
+
+// What the user did to an automation lane this frame.
+Auto_Lane_Edit :: struct {
+	add:      bool, // a point at `at` (Select: a click on empty space)
+	at:       Auto_Lane_Point,
+	moving:   int,  // a point dragged (index), or -1; to `to`
+	to:       Auto_Lane_Point,
+	released: bool, // a drag, a stroke or a bend ended
+	stroke:   []Auto_Lane_Point, // drawn (Draw): replace the points from its first beat to its last with these
+	bend:     int,  // the segment from point `bend` bent to `curve` (Ctrl-drag), or -1
+	curve:    f32,
+	erase:    int,  // a point to delete (a click with Erase), or -1
+	swept:    bool, // Erase swept across beats `swept_lo`..`swept_hi` (done): delete the points there
+	swept_lo, swept_hi: f64,
+	menu:     int,  // a point right-clicked, or -1
+}
+
+// The value an automation lane has at `beat`: as its points join (lines,
+// or curves bent as the engine bends them).
+auto_lane_value :: proc(points: []Auto_Lane_Point, beat: f64) -> f32 {
+	if len(points) == 0 do return 0
+	if beat <= points[0].beat do return points[0].value
+	for k in 1 ..< len(points) {
+		a, b := points[k - 1], points[k]
+		if beat > b.beat do continue
+		span := b.beat - a.beat
+		if span <= 0 do return b.value
+		x := (beat - a.beat) / span
+		if abs(a.curve) > 1e-6 {
+			kk := 8 * f64(a.curve)
+			x = (math.exp(kk * x) - 1) / (math.exp(kk) - 1)
+		}
+		return a.value + (b.value - a.value) * f32(x)
+	}
+	return points[len(points) - 1].value
+}
+
+// An automation lane `size` big across `beats` beats from `beat0`, edited
+// with `tool`: Select (click adds a point, drag moves one), Draw (drag
+// draws freehand, Shift-drag a straight line, each replacing what was
+// under it), Erase (click or sweep removes points); with any, Ctrl-drag a
+// segment to bend it. `now` (a beat, or -1) marks where it plays, with a
+// dot at its value.
+auto_lane :: proc(id: cstring, points: []Auto_Lane_Point, beat0, beats: f64, snap: f64, size: im.Vec2, tool: Grid_Tool, tint: Color = {}, now: f64 = -1) -> (e: Auto_Lane_Edit) {
+	im.PushID(id)
+	defer im.PopID()
+	e.moving, e.bend, e.erase, e.menu = -1, -1, -1, -1
+	t := current
+	color := tint if tint != {} else t.accent
+	dl := im.GetWindowDrawList()
+	pos := im.GetCursorScreenPos()
+	io := im.GetIO()
+	im.InvisibleButton("##lane", size, {.MouseButtonLeft, .MouseButtonRight})
+	name(widget_name(id, "lane"))
+	hovered := im.IsItemHovered()
+	bw := size.x / f32(max(beats, 1e-6))
+	sx :: proc(b: f64, pos: im.Vec2, beat0: f64, bw: f32) -> f32 { return pos.x + f32(b - beat0) * bw }
+	sy :: proc(v: f32, pos, size: im.Vec2) -> f32 { return pos.y + 4 + (1 - v) * (size.y - 8) }
+	m := io.MousePos
+	mb := beat0 + f64((m.x - pos.x) / bw)
+	mv := clamp(1 - (m.y - pos.y - 4) / (size.y - 8), 0, 1)
+	snapped :: proc(b, snap: f64) -> f64 { return math.round(b / snap) * snap if snap > 0 else b }
+	hit := -1
+	for p, i in points {
+		dx, dy := m.x - sx(p.beat, pos, beat0, bw), m.y - sy(p.value, pos, size)
+		if dx * dx + dy * dy < 64 do hit = i
+	}
+	seg := -1 // the segment under the mouse
+	for k in 1 ..< len(points) do if mb >= points[k - 1].beat && mb < points[k].beat do seg = k - 1
+	if hovered && im.IsMouseClicked(.Right) && hit >= 0 do e.menu = hit
+
+	Gesture :: enum u8 { None, Move, Draw, Line, Bend, Sweep }
+	@(static) g: Gesture
+	@(static) drag, bend_seg: int
+	@(static) start: [2]f32 // where it started: beat, value
+	@(static) bend0: f32
+	@(static) sweep: [2]f64 // the beats Erase has crossed
+	@(static) stroke: [dynamic]Auto_Lane_Point
+	// Ctrl-drag bends: macOS makes Ctrl+click a right click, so a right
+	// button pressed with Ctrl starts one too.
+	right_bend := im.IsMouseClicked(.Right) && ctrl_down() && seg >= 0 && hit < 0
+	if im.IsItemActivated() && (im.IsMouseClicked(.Left) || right_bend) {
+		g = .None
+		start = {f32(mb), mv}
+		clear(&stroke)
+		if ctrl_down() && seg >= 0 && hit < 0 {
+			g, bend_seg, bend0 = .Bend, seg, points[seg].curve
+		} else {
+			switch tool {
+			case .Select, .Move:
+				if hit >= 0 {
+					g, drag = .Move, hit
+				} else {
+					e.add, e.at = true, {max(snapped(mb, snap), 0), mv, 0}
+				}
+			case .Draw:
+				g = .Line if io.KeyShift else .Draw
+				append(&stroke, Auto_Lane_Point{max(snapped(mb, snap), 0), mv, 0})
+			case .Erase:
+				g = .Sweep
+				sweep = {mb, mb}
+				if hit >= 0 do sweep = {points[hit].beat, points[hit].beat}
+			}
+		}
+	}
+	if im.IsItemActive() || im.IsItemDeactivated() do switch g {
+	case .None:
+	case .Move:
+		e.moving, e.to = drag, {max(snapped(mb, snap), 0), mv, points[drag].curve if drag < len(points) else 0}
+	case .Draw: // a point each grid step (or 1/32 free), the latest kept
+		step := snap if snap > 0 else 0.125
+		b := max(math.round(mb / step) * step, 0)
+		last := &stroke[len(stroke) - 1]
+		if abs(b - last.beat) < 1e-9 do last.value = mv
+		else if b > last.beat do append(&stroke, Auto_Lane_Point{b, mv, 0})
+	case .Line:
+		if len(stroke) == 1 do append(&stroke, Auto_Lane_Point{})
+		stroke[1] = {max(snapped(mb, snap), 0), mv, 0}
+	case .Bend:
+		// Up bends it in: Ctrl-drag sets the tension by how far.
+		dir: f32 = 1 if bend_seg + 1 < len(points) && points[bend_seg + 1].value >= points[bend_seg].value else -1
+		e.bend, e.curve = bend_seg, clamp(bend0 + dir * (start[1] - mv) * 2.5, -1, 1)
+	case .Sweep: // every point in the columns crossed, whatever its value
+		sweep = {min(sweep[0], mb), max(sweep[1], mb)}
+	}
+	if im.IsItemDeactivated() {
+		e.released = true
+		if g == .Draw || g == .Line {
+			s := stroke[:]
+			if g == .Line && len(s) == 2 && s[1].beat < s[0].beat do s[0], s[1] = s[1], s[0]
+			e.stroke = s
+		}
+		if g == .Sweep {
+			tol := f64(6 / bw)
+			e.swept, e.swept_lo, e.swept_hi = true, sweep[0] - tol, sweep[1] + tol
+		}
+		g = .None
+	}
+
+	// The lane: its line (curved as it plays), the points, a stroke being
+	// drawn, and now: a line and a dot at its value.
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(PLOT_BG), t.radius)
+	for k in 1 ..< 4 do im.DrawList_AddLine(dl, {pos.x, pos.y + size.y * f32(k) / 4}, {pos.x + size.x, pos.y + size.y * f32(k) / 4}, col(mix(PLOT_BG, t.text, 0.07)), 1)
+	shown := make([dynamic]Auto_Lane_Point, 0, len(points), context.temp_allocator)
+	append(&shown, ..points)
+	if e.moving >= 0 && e.moving < len(shown) do shown[e.moving] = e.to
+	if e.bend >= 0 && e.bend < len(shown) do shown[e.bend].curve = e.curve
+	if g == .Sweep { // the swept points already gone
+		tol := f64(6 / bw)
+		n := 0
+		for x in shown do if x.beat < sweep[0] - tol || x.beat > sweep[1] + tol { shown[n] = x; n += 1 }
+		resize(&shown, n)
+		lo, hi := sx(sweep[0], pos, beat0, bw) - 6, sx(sweep[1], pos, beat0, bw) + 6
+		im.DrawList_AddRectFilled(dl, {lo, pos.y}, {hi, pos.y + size.y}, col(with_alpha(t.danger, 0.12)))
+	}
+	if len(shown) > 0 {
+		pts := make([dynamic]im.Vec2, 0, 256, context.temp_allocator)
+		append(&pts, im.Vec2{pos.x, sy(shown[0].value, pos, size)})
+		N :: 160
+		for k in 0 ..= N {
+			b := beat0 + beats * f64(k) / N
+			append(&pts, im.Vec2{sx(b, pos, beat0, bw), sy(auto_lane_value(shown[:], b), pos, size)})
+		}
+		fill := color
+		fill.a = 0.16
+		for k in 1 ..< len(pts) do im.DrawList_AddQuadFilled(dl, {pts[k - 1].x, pos.y + size.y}, pts[k - 1], pts[k], {pts[k].x, pos.y + size.y}, col(fill))
+		im.DrawList_AddPolyline(dl, &pts[0], i32(len(pts)), col(color), 2)
+		for p, i in shown {
+			c := im.Vec2{sx(p.beat, pos, beat0, bw), sy(p.value, pos, size)}
+			on := i == hit || i == e.moving
+			im.DrawList_AddCircleFilled(dl, c, 5 if on else 3.5, col(t.text if on else lighten(color, 0.3)), 12)
+		}
+		if seg >= 0 && ctrl_down() && hovered do im.SetMouseCursor(.ResizeNS)
+	}
+	if len(stroke) > 1 && (g == .Draw || g == .Line) {
+		sp := make([]im.Vec2, len(stroke), context.temp_allocator)
+		for p, k in stroke do sp[k] = {sx(p.beat, pos, beat0, bw), sy(p.value, pos, size)}
+		im.DrawList_AddPolyline(dl, &sp[0], i32(len(sp)), col(t.warn), 2)
+	}
+	if now >= beat0 && now <= beat0 + beats && len(shown) > 0 {
+		x := sx(now, pos, beat0, bw)
+		v := auto_lane_value(shown[:], now)
+		im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(with_alpha(t.warn, 0.7)), 1.5)
+		im.DrawList_AddCircleFilled(dl, {x, sy(v, pos, size)}, 7, col(Color{color.r, color.g, color.b, 0.3}), 16)
+		im.DrawList_AddCircleFilled(dl, {x, sy(v, pos, size)}, 4, col(lighten(color, 0.5)), 16)
+	}
+	return
+}
+
+// Whether the Control key itself is held (ImGui reports Cmd as Ctrl on
+// macOS, where it swaps them).
+ctrl_down :: proc() -> bool {
+	io := im.GetIO()
+	return io.KeySuper if io.ConfigMacOSXBehaviors else io.KeyCtrl
+}
+
+// Whether the key that places notes and points off the grid is held: Cmd
+// on macOS, Alt elsewhere (Ctrl bends automation).
+free_down :: proc() -> bool {
+	io := im.GetIO()
+	return io.KeyCtrl if io.ConfigMacOSXBehaviors else io.KeyAlt
+}
+
+// The name of the key `free_down` reads: "Cmd" or "Alt".
+FREE_KEY :: "Cmd" when ODIN_OS == .Darwin else "Alt"

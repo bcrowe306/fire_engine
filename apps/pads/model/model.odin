@@ -172,7 +172,10 @@ Project :: struct {
 	main:    Bus,
 	perf_fx: [PERF_FX]Effect_Slot, // the performance effects (on while held)
 	perf_intensity: [PERF_FX]f32, // how hard each plays (0..1) unless its press says
-	song:    Song,
+	song:    Song, // the current arrangement's (kept in `arrangements` too when switching or saving)
+	arrangements: [ARRANGEMENTS]Arrangement,
+	arrangement_count: int, // 1..ARRANGEMENTS
+	arrangement: int,       // the current one
 	transport: Transport, // loop, count-in, the metronome, the time signature, input quantize
 	song_mode: bool, // play the song, not the current sequence
 	switch_at: Switch_At, // when a sequence picked while playing takes over
@@ -222,6 +225,8 @@ project_init :: proc(p: ^Project, dir: string) {
 	for &pad in p.pads do pad = default_pad()
 	for &s in p.sequences do s = default_sequence()
 	p.perf_fx = default_perf_fx()
+	p.arrangement_count = 1
+	copy(p.arrangements[0].name[:], "Song")
 	for &x in p.perf_intensity do x = 1
 	p.perform = {arp = {rate = .Sixteenth, gate = 0.5, octaves = 1}, repeat = {rate = .Sixteenth, gate = 0.5}}
 	for &k, key in p.midi_map do k = i16(key) if key < PADS else -1 // note N plays pad N (A1 = 0)

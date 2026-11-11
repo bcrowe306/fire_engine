@@ -67,6 +67,16 @@ Sequence :: struct {
 	points:     []Auto_Point, // automation, sorted by pad, parameter, beat
 	name:       [24]u8, // "" = "Sequence N"
 	bpm:        f64,    // its own tempo (it takes over when it plays); 0 = the project's
+	color:      u32,    // 0xRRGGBB; 0 = its slot's colour from SEQ_PALETTE
+}
+
+// Colours sequences take by their slot, until given one.
+SEQ_PALETTE := [8]u32{0x58a6ff, 0xf5a623, 0x7ee787, 0xff7b72, 0xd2a8ff, 0x56d4dd, 0xffa657, 0xf778ba}
+
+// Sequence `slot`'s colour.
+sequence_color :: proc(p: ^Project, slot: int) -> u32 {
+	c := p.sequences[slot].color
+	return c if c != 0 else SEQ_PALETTE[slot % len(SEQ_PALETTE)]
 }
 
 // What an automation lane moves.
@@ -103,6 +113,7 @@ Auto_Point :: struct {
 	param: Lane_Param,
 	beat:  f64,
 	value: f32, // in the parameter's units (see lane_range)
+	curve: f32, // the segment to the next point: 0 a line, -1..1 bending (as clip's Curve tension)
 }
 
 // The points of pad `pad`'s `param` lane in `s` (a view into s.points) and
@@ -211,6 +222,7 @@ Seq_Field :: enum {
 	Tempo,
 	Paint, // notes drawn in one drag (one undo step)
 	Erase, // notes swept away in one drag
+	Color,
 }
 
 // Replaces slot `slot`'s sequence with `new` (copied), undoably, as an edit
@@ -280,7 +292,7 @@ put_sequence :: proc(m: ^Model, slot: int, s: Sequence) {
 
 @(private)
 sequences_equal :: proc(a, b: Sequence) -> bool {
-	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
+	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && a.color == b.color && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
 }
 
 // Notes of one pad and pitch never overlap: taken in order (later ones are

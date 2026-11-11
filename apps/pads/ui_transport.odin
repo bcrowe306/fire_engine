@@ -98,10 +98,20 @@ draw_toolbar :: proc(user: rawptr) {
 	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pm.select_slot(m, p.slot - 1)
 	im.SameLine(0, 0)
 	im.SetNextItemWidth(118)
-	if ui.combo("##slot", fmt.ctprintf("%s", pm.sequence_name(p, p.slot))) {
+	bar_dl, combo_at := im.GetWindowDrawList(), im.GetCursorScreenPos()
+	open := ui.combo("##slot", fmt.ctprintf("   %s", pm.sequence_name(p, p.slot)))
+	im.DrawList_AddCircleFilled(bar_dl, {combo_at.x + 12, combo_at.y + im.GetFrameHeight() / 2}, 5, ui.col(ui.rgb(pm.sequence_color(p, p.slot))))
+	if open {
 		for k in 0 ..< pm.SLOTS {
-			label := fmt.ctprintf("%s %s###s%d", ui.ICON_CIRCLE_DOT if pm.slot_used(m, k) else "   ", pm.sequence_name(p, k), k)
+			label := fmt.ctprintf("     %s###s%d", pm.sequence_name(p, k), k)
 			if im.Selectable(label, k == p.slot) do pm.select_slot(m, k)
+			{ // its colour: a filled dot when it has notes, a ring when empty
+				mn, mx := im.GetItemRectMin(), im.GetItemRectMax()
+				cc := ui.rgb(pm.sequence_color(p, k))
+				ctr := im.Vec2{mn.x + 9, (mn.y + mx.y) / 2}
+				if pm.slot_used(m, k) do im.DrawList_AddCircleFilled(im.GetWindowDrawList(), ctr, 5, ui.col(cc))
+				else do im.DrawList_AddCircle(im.GetWindowDrawList(), ctr, 5, ui.col(ui.with_alpha(cc, 0.5)), 0, 1.5)
+			}
 			if im.BeginPopupContextItem() {
 				sequence_menu_items(a, k)
 				im.EndPopup()

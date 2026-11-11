@@ -17,7 +17,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 9 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity
+PROJECT_VERSION :: 10 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -60,17 +60,18 @@ model_load :: proc(m: ^Model, dir: string) -> fc.Error {
 	l, err := session.load({}, path, nil, context.temp_allocator)
 	if err != .None do return err
 	defer session.loaded_destroy(&l)
-	fresh: Project
-	project_init(&fresh, dir)
-	if lerr := project_read(&fresh, l); lerr != .None {
-		project_destroy(&fresh)
+	fresh := new(Project) // big: not on the stack
+	defer free(fresh)
+	project_init(fresh, dir)
+	if lerr := project_read(fresh, l); lerr != .None {
+		project_destroy(fresh)
 		return lerr
 	}
 	host, bus := m.engine.host, m.history.bus
 	engine_clear(&m.engine)
 	app.history_destroy(&m.history)
 	project_destroy(&m.project)
-	m.project = fresh
+	m.project = fresh^
 	app.history_init(&m.history, m, bus = bus)
 	return engine_init(&m.engine, host, &m.project)
 }
@@ -252,6 +253,30 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_f64(w, s.bpm)
 	}
 	for x in p.perf_intensity do fc.write_f32(w, x) // (v9)
+	// v10: sequences' colours and their automation's curves; every
+	// arrangement (the current one's song as edited), each step whole.
+	for &s in p.sequences {
+		fc.write_u32(w, s.color)
+		for pt in s.points do fc.write_f32(w, pt.curve)
+	}
+	arr := p.arrangements
+	arr[p.arrangement].song = p.song
+	fc.write_int(w, p.arrangement_count)
+	fc.write_int(w, p.arrangement)
+	for &a in arr[:p.arrangement_count] {
+		fc.write_string(w, strings.truncate_to_byte(string(a.name[:]), 0))
+		fc.write_int(w, a.song.count)
+		for &st in a.song.steps[:a.song.count] {
+			fc.write_u8(w, st.slot)
+			fc.write_u8(w, st.repeats)
+			fc.write_f64(w, st.start)
+			fc.write_f64(w, st.length)
+			fc.write_bool(w, st.mute)
+			fc.write_u8(w, u8(st.transpose))
+			fc.write_f64(w, st.bpm)
+			fc.write_string(w, step_label(&st))
+		}
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -439,6 +464,33 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		}
 	}
 	if version >= 9 do for &x in p.perf_intensity do x = clamp(fc.read_f32(r), 0, 1)
+	if version >= 10 {
+		for &s in p.sequences {
+			s.color = fc.read_u32(r) & 0xffffff
+			for &pt in s.points do pt.curve = clamp(fc.read_f32(r), -1, 1)
+		}
+		p.arrangement_count = clamp(fc.read_int(r), 1, ARRANGEMENTS)
+		p.arrangement = clamp(fc.read_int(r), 0, p.arrangement_count - 1)
+		for &a in p.arrangements[:p.arrangement_count] {
+			a = {}
+			copy(a.name[:len(a.name) - 1], fc.read_string(r))
+			a.song.count = clamp(fc.read_int(r), 0, SONG_STEPS)
+			for &st in a.song.steps[:a.song.count] {
+				st.slot = min(fc.read_u8(r), SLOTS - 1)
+				st.repeats = clamp(fc.read_u8(r), 1, 16)
+				st.start = max(fc.read_f64(r), 0)
+				st.length = max(fc.read_f64(r), 0)
+				st.mute = fc.read_bool(r)
+				st.transpose = i8(clamp(i32(i8(fc.read_u8(r))), -48, 48))
+				b := fc.read_f64(r)
+				st.bpm = clamp(b, 40, 300) if b > 0 else 0
+				copy(st.label[:len(st.label) - 1], fc.read_string(r))
+			}
+		}
+		p.song = p.arrangements[p.arrangement].song
+	} else {
+		p.arrangements[0].song = p.song // one arrangement: the song
+	}
 }
 
 _ :: strings.clone

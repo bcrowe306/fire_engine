@@ -73,7 +73,8 @@ a_project_saves_and_loads_whole :: proc(t: ^testing.T) {
 	testing.expect(t, !pm.model_dirty(m), "saved")
 	path, _ := filepath.join({m.project.dir, pm.PROJECT_FILE}, context.temp_allocator)
 	testing.expect(t, os.exists(path), "project.fire")
-	before := m.project
+	before := new_clone(m.project) // big: not on the stack
+	defer free(before)
 
 	// Into another model: everything comes back.
 	r2 := rig_make(t, "proj_load")

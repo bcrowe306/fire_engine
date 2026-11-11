@@ -372,9 +372,10 @@ draw_launcher :: proc(a: ^App) {
 		is_cur := k == p.slot
 		is_playing := is_cur && playing
 		is_next := queued && next == k
-		bg := t.raised
-		if is_playing do bg = ui.mix(t.raised, t.accent, 0.55)
-		else if is_cur do bg = ui.mix(t.raised, t.accent, 0.2)
+		sc := ui.rgb(pm.sequence_color(p, k))
+		bg := ui.mix(t.raised, sc, 0.12)
+		if is_playing do bg = ui.mix(t.raised, sc, 0.55)
+		else if is_cur do bg = ui.mix(t.raised, sc, 0.28)
 		if hovered do bg = ui.lighten(bg, 0.06)
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
 		// Queued: a border that pulses with the beat.
@@ -382,16 +383,17 @@ draw_launcher :: proc(a: ^App) {
 			pulse := f32(0.5 + 0.5 * math.cos(math.TAU * tl))
 			im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.warn, 0.5 + 0.5 * pulse)), t.radius, 2.5)
 		}
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + 4, pos.y + h}, ui.col(sc), 2)
 		s := p.sequences[k]
-		fg := t.accent_text if is_playing else t.text
+		fg := t.text
 		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7}, ui.col(fg), fmt.ctprintf("%s", pm.sequence_name(p, k)))
 		info := fmt.ctprintf("%d bar%s%s", s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "")
 		if is_next do info = fmt.ctprintf("in %.1f beats", max(in_beats, 0))
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7 + im.GetTextLineHeightWithSpacing()}, ui.col(t.warn if is_next else (t.accent_text if is_playing else t.text_dim)), info)
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7 + im.GetTextLineHeightWithSpacing()}, ui.col(t.warn if is_next else (t.text if is_playing else t.text_dim)), info)
 		// Playing: where in it the playhead is.
 		if is_playing {
 			f := f32(beat / max(pm.seq_beats(p, s), 1e-6))
-			im.DrawList_AddRectFilled(dl, {pos.x + 4, pos.y + h - 6}, {pos.x + 4 + (w - 8) * f, pos.y + h - 3}, ui.col(t.accent_text), 2)
+			im.DrawList_AddRectFilled(dl, {pos.x + 4, pos.y + h - 6}, {pos.x + 4 + (w - 8) * f, pos.y + h - 3}, ui.col(t.text), 2)
 		}
 		if clicked {
 			if im.GetIO().KeyShift {

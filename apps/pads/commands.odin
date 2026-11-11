@@ -87,6 +87,14 @@ command_items :: proc(a: ^App, t: Target) {
 		ui.name(c.label) // for the probe and scripts: its words, not its icon
 		if ran do c.run(a, t)
 	}
+	if t.kind == .Sequence {
+		im.Separator()
+		if im.BeginMenu(ui.ICON_PALETTE + "  Colour") {
+			seq_color_menu(a, t.slot)
+			im.EndMenu()
+		}
+		ui.name("Colour")
+	}
 }
 
 // A right-click menu on the last item, for `t`: its commands (`id` names

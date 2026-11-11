@@ -36,6 +36,17 @@ set_sequence_tempo :: proc(m: ^Model, slot: int, bpm: f64) {
 	set_sequence(m, slot, .Tempo, "Sequence Tempo", s)
 }
 
+// Gives sequence `slot` a colour (0xRRGGBB; 0: its slot's), undoably: it
+// shows on the launcher, the song and the toolbar.
+set_sequence_color :: proc(m: ^Model, slot: int, color: u32) {
+	if slot < 0 || slot >= SLOTS do return
+	s := m.project.sequences[slot]
+	if s.color == color do return
+	s.color = color
+	set_sequence(m, slot, .Color, "Sequence Colour", s)
+	app.seal(&m.history)
+}
+
 // The tempo sequence `slot` plays at: its own, or the project's.
 sequence_tempo :: proc(p: ^Project, slot: int) -> f64 {
 	b := p.sequences[slot].bpm
@@ -214,4 +225,19 @@ remove_note_values :: proc(m: ^Model, slot: int, gone: []Seq_Note, field := Seq_
 	if len(notes) == len(s.notes) do return
 	s.notes = notes[:]
 	set_sequence(m, slot, field, name, s)
+}
+
+// Replaces pad `pad`'s `param` points from beat `lo` to `hi` of sequence
+// `slot` with `pts` (a drawn stroke or line): one undo step.
+replace_lane_range :: proc(m: ^Model, slot, pad: int, param: Lane_Param, lo, hi: f64, pts: []Auto_Point) {
+	s := m.project.sequences[slot]
+	points := make([dynamic]Auto_Point, 0, len(s.points) + len(pts), context.temp_allocator)
+	for p in s.points {
+		if int(p.pad) == pad && p.param == param && p.beat >= lo - 1e-9 && p.beat <= hi + 1e-9 do continue
+		append(&points, p)
+	}
+	append(&points, ..pts)
+	s.points = points[:]
+	set_sequence(m, slot, .Notes, "Draw Automation", s)
+	app.seal(&m.history)
 }

@@ -8,6 +8,7 @@ import "fire:clip"
 import "fire:dsp"
 import "fire:graph"
 import "fire:record"
+import "fire:stream"
 import tb "fire:timebase"
 import "fire:transport"
 
@@ -18,6 +19,9 @@ Audio_Run :: struct {
 	valid:      bool,
 	slot:       int,
 	start, end: f64,
+	offset:     f64, // beats into the sequence each pass starts at (a song step's part)
+	period:     f64, // beats a pass plays
+	step:       int, // the song step it starts at, or -1
 }
 
 // Silence, for the monitor's gain.
@@ -138,12 +142,20 @@ give :: proc(e: ^Engine, n: ^Pad_Nodes, pad, k: int, run: Audio_Run) {
 	if n.players[k] == nil do return
 	n.holds[k] = run
 	c := e.project.clips[run.slot][pad] if run.valid else {}
+	muted := run.valid && run.step >= 0 && run.step < e.project.song.count && e.project.song.steps[run.step].mute
 	src := source_of(e, c.sample)
-	if src == nil || !(c.bpm > 0) {
+	if src == nil || !(c.bpm > 0) || muted {
 		clip.audio_player_set(n.players[k], nil, {})
 		return
 	}
-	ac, err := clip.audio_clip_create(src, {bpm = c.bpm, mode = .Repitch, fade_in = -1, fade_out = -1})
+	// A song step's part of the take: its frames.
+	info := stream.source_info(src)
+	fpb := info.sample_rate * 60 / c.bpm
+	first := i64(run.offset * fpb)
+	last := i64((run.offset + run.period) * fpb) if run.period > 0 else 0
+	if first <= 0 || first >= info.frames do first = 0
+	if last <= first || last > info.frames do last = 0
+	ac, err := clip.audio_clip_create(src, {start = first, end = last, bpm = c.bpm, mode = .Repitch, fade_in = -1, fade_out = -1})
 	if err != .None {
 		clip.audio_player_set(n.players[k], nil, {})
 		return
@@ -178,9 +190,9 @@ audio_runs :: proc(pl: Plan, beat: f64) -> (cur, next: Audio_Run) {
 	run_from :: proc(pl: ^Plan, seg: int, base: f64, loops: bool) -> (r: Audio_Run, after: int) {
 		first := pl.segs[seg]
 		last := seg
-		for last + 1 < pl.count && pl.segs[last + 1].slot == first.slot do last += 1
+		for last + 1 < pl.count && pl.segs[last + 1].slot == first.slot && pl.segs[last + 1].offset == first.offset && pl.segs[last + 1].period == first.period && pl.alike[last + 1] do last += 1
 		end := pl.segs[last].start + pl.segs[last].span
-		r = {valid = true, slot = first.slot, start = base + first.start, end = base + end}
+		r = {valid = true, slot = first.slot, start = base + first.start, end = base + end, offset = first.offset, period = first.period, step = first.step}
 		if loops && first.start <= pl.loop_start && end >= pl.loop_end do r.start, r.end = pl.at + first.start, math.INF_F64 // the same run every cycle
 		return r, last + 1
 	}
