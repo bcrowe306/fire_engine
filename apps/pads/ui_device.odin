@@ -30,6 +30,7 @@ TRACE_LEN :: 120
 Voice_Key :: enum {
 	Amp_Adsr = 1, Filter, Slope, Cutoff, Resonance, Key_Track, Vel_Cutoff, Filter_Env, Filter_Adsr,
 	Pitch_Env, Pitch_Adsr, Vel_Pitch, Pitch_Track, Fine, Voices,
+	Voice_Mode, Glide, Glide_Always, Glide_Octaves,
 	Lfo = 100, // + LFO × 10 + its field
 	Route = 200, // + route × 10 + its field
 }
@@ -558,7 +559,38 @@ draw_global :: proc(a: ^App) {
 		pm.set_voice(m, i, int(Voice_Key.Voices), "Set Voices", nv)
 	}
 	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
-	if im.IsItemHovered() do im.SetTooltip("How many notes it plays at once (more steal the oldest)")
+	if im.IsItemHovered() do im.SetTooltip("How many notes it plays at once (more fade the oldest out)")
+	if pad.kind != .Slicer {
+		// Mono and legato, and their glide.
+		mode := int(pad.voice.mode)
+		if ui.segmented("voice_mode", {"Poly", "Mono", "Legato"}, &mode) {
+			nv := pad.voice
+			nv.mode = sampler.Voice_Mode(mode)
+			put_voice(a, .Voice_Mode, "Voice Mode", nv)
+		}
+		ui.name("voice mode")
+		if im.IsItemHovered() do im.SetTooltip("Mono: one note at a time; Legato: a note over a held one slides the sound there")
+		if pad.voice.mode != .Poly {
+			voice_knob(a, "Glide", &a.voice_edit.glide, 0, 2, 0, "%.3f s", int(Voice_Key.Glide), "Set Glide")
+			im.SameLine(0, 12)
+			im.BeginGroup()
+			always := pad.voice.glide_always
+			if ui.toggle("Always", &always) {
+				nv := pad.voice
+				nv.glide_always = always
+				put_voice(a, .Glide_Always, "Always Glide", nv)
+			}
+			if im.IsItemHovered() do im.SetTooltip("Every note glides from the last (else only notes played over a held one)")
+			octaves := pad.voice.glide_octaves
+			if ui.toggle("By octave", &octaves) {
+				nv := pad.voice
+				nv.glide_octaves = octaves
+				put_voice(a, .Glide_Octaves, "Glide by Octave", nv)
+			}
+			if im.IsItemHovered() do im.SetTooltip("The glide time is an octave's: wider leaps take longer")
+			im.EndGroup()
+		}
+	}
 	im.Spacing()
 	im.Spacing()
 	if im.Button(ui.ICON_ERASER + "  Clear Pad") do pm.clear_pad(m, i)

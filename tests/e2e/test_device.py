@@ -111,3 +111,21 @@ def test_transpose_moves_in_whole_semitones(app, fixtures):
         app.cmd("scroll 0 -2")
         app.wait(3)
         assert app.pad(pad)["pitch"] == p - 1
+
+
+def test_mono_legato_and_glide(app, fixtures):
+    loaded(app, fixtures)
+    app.click("Global", window="detail")
+    app.expect_no_item("Glide", window="detail")  # (poly: no glide)
+    app.click("voice mode", window="detail", at=(0.83, 0.5))  # the third: Legato
+    v = app.pad(0)["voice"]
+    assert v["mode"] == 2, v["mode"]  # Legato
+    assert app.state()["undo"] == "Voice Mode"
+    app.expect_item("Glide", window="detail")
+    app.drag_by("Glide", 0, -40, window="detail")
+    assert app.pad(0)["voice"]["glide"] > 0.1, app.pad(0)["voice"]["glide"]
+    app.click("Always", window="detail")
+    assert app.pad(0)["voice"]["glide_always"]
+    app.screenshot("voice_glide")
+    app.key("cmd+z")
+    assert not app.pad(0)["voice"]["glide_always"]

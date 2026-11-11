@@ -703,6 +703,12 @@ voice_params :: proc(pad: Pad) -> (out: [len(sampler.sampler_params)]f64) {
 	put(&out, sampler.SAMPLER_PARAM_PITCH_VELOCITY, f64(v.vel_pitch))
 	put(&out, sampler.SAMPLER_PARAM_PITCH_KEYTRACK, f64(v.pitch_track) * 100)
 	put(&out, sampler.SAMPLER_PARAM_FINE_TUNE, f64(v.fine))
+	if pad.kind != .Slicer { // (a slicer's keys are its slices: no sliding between them)
+		put(&out, sampler.SAMPLER_PARAM_VOICE_MODE, f64(v.mode))
+		put(&out, sampler.SAMPLER_PARAM_GLIDE, f64(v.glide))
+	}
+	put(&out, sampler.SAMPLER_PARAM_GLIDE_ALWAYS, 1 if v.glide_always else 0)
+	put(&out, sampler.SAMPLER_PARAM_GLIDE_OCTAVES, 1 if v.glide_octaves else 0)
 	for l, k in v.lfos {
 		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_SHAPE), f64(l.shape))
 		put(&out, sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_MODE), f64(l.mode))

@@ -20,7 +20,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 18 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names
+PROJECT_VERSION :: 19 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -469,7 +469,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			}
 			pad.monitor = fc.read_bool(r)
 		}
-		if version >= 7 do pad.voice = read_voice(r)
+		if version >= 7 do pad.voice = read_voice(r, version)
 	}
 	for &s in p.sequences {
 		s.bars = clamp(fc.read_int(r), 1, MAX_BARS)
@@ -680,10 +680,14 @@ write_voice :: proc(w: ^fc.State_Writer, v: Voice) {
 		fc.write_f32(w, r.amount)
 	}
 	fc.write_int(w, v.voices)
+	fc.write_u8(w, u8(v.mode)) // v19
+	fc.write_f32(w, v.glide)
+	fc.write_bool(w, v.glide_always)
+	fc.write_bool(w, v.glide_octaves)
 }
 
 @(private)
-read_voice :: proc(r: ^fc.State_Reader) -> (v: Voice) {
+read_voice :: proc(r: ^fc.State_Reader, version: u32) -> (v: Voice) {
 	v = default_voice()
 	v.decay = clamp(fc.read_f32(r), 0.005, 10)
 	v.sustain = clamp(fc.read_f32(r), 0, 1)
@@ -714,6 +718,12 @@ read_voice :: proc(r: ^fc.State_Reader) -> (v: Voice) {
 		rt.amount = clamp(fc.read_f32(r), -1, 1)
 	}
 	v.voices = clamp(fc.read_int(r), 1, 32)
+	if version >= 19 {
+		v.mode = sampler.Voice_Mode(min(fc.read_u8(r), u8(max(sampler.Voice_Mode))))
+		v.glide = clamp(fc.read_f32(r), 0, 5)
+		v.glide_always = fc.read_bool(r)
+		v.glide_octaves = fc.read_bool(r)
+	}
 	// The envelopes' times and sustains, in range.
 	for adsr in ([]^[4]f32{&v.filter_adsr, &v.pitch_adsr}) {
 		adsr[0] = clamp(adsr[0], 0.0005, 10)

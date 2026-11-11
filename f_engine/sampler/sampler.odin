@@ -173,6 +173,27 @@ SAMPLER_PARAM_GAIN_DB :: core.Param_Id(6)
 // Parameter id of a transposition of every note, in semitones (−48..48, default 0).
 SAMPLER_PARAM_TRANSPOSE :: core.Param_Id(7)
 
+// Parameter id of how notes share voices: 0 poly, 1 mono (each note
+// starts its sample again), 2 legato (a note played while another is
+// held slides the sounding voice to it, starting nothing).
+SAMPLER_PARAM_VOICE_MODE :: core.Param_Id(SAMPLER_PARAM_ROUTE_SOURCE + MOD_ROUTES * ROUTE_PARAMS)
+// Parameter id of the glide time, in seconds (0..5, default 0): mono and
+// legato notes slide from the last note's pitch to theirs.
+SAMPLER_PARAM_GLIDE :: core.Param_Id(SAMPLER_PARAM_VOICE_MODE + 1)
+// Parameter id of whether every mono note glides (1), or only those
+// played while another is held (0, the default).
+SAMPLER_PARAM_GLIDE_ALWAYS :: core.Param_Id(SAMPLER_PARAM_VOICE_MODE + 2)
+// Parameter id of whether a glide takes its time an octave (1: leaps take
+// longer), or the same time however far (0, the default).
+SAMPLER_PARAM_GLIDE_OCTAVES :: core.Param_Id(SAMPLER_PARAM_VOICE_MODE + 3)
+
+// How a sampler's notes share its voices (`SAMPLER_PARAM_VOICE_MODE`).
+Voice_Mode :: enum u8 {Poly, Mono, Legato}
+
+// Voices a sampler keeps beyond its polyphony, for stolen ones to fade
+// out on while the notes that stole them start.
+SPARE_VOICES :: 4
+
 // Parameter table of the sampler node, as returned by `node_params`. Read-only.
 sampler_params := [?]core.Param_Info {
 	{id = SAMPLER_PARAM_ATTACK, name = "Attack", min = 0.0005, max = 10, default = 0.001, flags = {.Automatable}},
@@ -207,6 +228,10 @@ sampler_params := [?]core.Param_Info {
 	ROUTE_PARAM_INFOS[0], ROUTE_PARAM_INFOS[1], ROUTE_PARAM_INFOS[2], ROUTE_PARAM_INFOS[3], ROUTE_PARAM_INFOS[4], ROUTE_PARAM_INFOS[5],
 	ROUTE_PARAM_INFOS[6], ROUTE_PARAM_INFOS[7], ROUTE_PARAM_INFOS[8], ROUTE_PARAM_INFOS[9], ROUTE_PARAM_INFOS[10], ROUTE_PARAM_INFOS[11],
 	ROUTE_PARAM_INFOS[12], ROUTE_PARAM_INFOS[13], ROUTE_PARAM_INFOS[14], ROUTE_PARAM_INFOS[15], ROUTE_PARAM_INFOS[16], ROUTE_PARAM_INFOS[17],
+	{id = SAMPLER_PARAM_VOICE_MODE, name = "Voice Mode", min = 0, max = 2, default = 0, flags = {.Stepped}},
+	{id = SAMPLER_PARAM_GLIDE, name = "Glide", min = 0, max = 5, default = 0, flags = {.Automatable}},
+	{id = SAMPLER_PARAM_GLIDE_ALWAYS, name = "Always Glide", min = 0, max = 1, default = 0, flags = {.Stepped}},
+	{id = SAMPLER_PARAM_GLIDE_OCTAVES, name = "Glide by Octaves", min = 0, max = 1, default = 0, flags = {.Stepped}},
 }
 
 // The fastest a voice plays its sample (two octaves up at equal rates).
@@ -234,6 +259,10 @@ Sampler :: struct {
 	lfo_auto:    [LFOS]f64, // the free-running LFOs' phases (cycles)
 	live:        Sampler_Live, // published under `live_seq`
 	live_seq:    u64,
+	notes:       u64, // notes started (each note's voices share its number)
+	held:        [16]u8, // keys held, oldest first (mono: the one to slide back to)
+	held_count:  int,
+	last_key:    f64, // the last note's pitch (where a glide starts; < 0: none yet)
 }
 
 @(private)
@@ -263,6 +292,12 @@ Sampler_Voice :: struct {
 	age:        int, // frames since its note-on (its modulation is evaluated on this grid)
 	mod:        Voice_Mod, // its modulation for the chunk it is in
 	ended:      int, // its age when its sample ended (-1: still playing)
+	note:       u64, // its note's number (`Sampler.notes`)
+	dying:      bool, // stolen: fading out, then free
+	pitch:      f64, // the key it sounds at now (its glide in it)
+	glide_from, glide_to: f64,
+	glide_pos:  f64, // 0..1 through its glide
+	glide_len:  f64, // the glide's frames
 }
 
 // Frames a filtered voice rings on after its sample ends.
@@ -291,6 +326,7 @@ sampler_create :: proc(settings: Sampler_Settings, allocator := context.allocato
 	s = new(Sampler, allocator)
 	s.settings, s.allocator = settings, allocator
 	s.playhead = -1
+	s.last_key = -1
 	if s.settings.voices <= 0 do s.settings.voices = 32
 	for p in sampler_params do s.params[p.id - 1] = p.default
 	rt.spsc_init(&s.pending, 8, allocator)
@@ -324,7 +360,7 @@ sampler_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, allocator: mem.A
 	s.sample_rate, s.max_block = cfg.sample_rate, cfg.max_block
 	max_input := int(f64(cfg.max_block) * MAX_SPEED) + 64
 	ae: mem.Allocator_Error
-	s.voices, ae = make([]Sampler_Voice, s.settings.voices, allocator)
+	s.voices, ae = make([]Sampler_Voice, s.settings.voices + SPARE_VOICES, allocator)
 	for c in 0 ..< 2 {
 		if ae == nil do s.scratch[c], ae = make([]f32, max_input, allocator)
 		if ae == nil do s.mixed[c], ae = make([]f32, cfg.max_block, allocator)
@@ -388,7 +424,7 @@ sampler_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		pos = int(e.offset)
 		#partial switch ev in e.payload {
 		case core.Note_On:  note_on(s, ev)
-		case core.Note_Off: for &v in s.voices do if v.on && v.held && same(&v, ev.id, ev.channel, ev.key) do note_off(&v)
+		case core.Note_Off: key_off(s, ev)
 		case core.Note_Choke: for &v in s.voices do if v.on && (ev.key == core.NOTE_KEY_ALL || same(&v, ev.id, ev.channel, ev.key)) do choke(s, &v)
 		case core.Note_Expression:
 			for &v in s.voices do if v.on && same(&v, ev.id, ev.channel, ev.key) {
@@ -459,19 +495,47 @@ velocity_gain :: proc "contextless" (velocity, sens: f64) -> f64 {
 	return math.pow(v, 1 + (min(sens, 1) - 0.5) * 4)
 }
 
-// [rt] Starts a voice for every zone of the current map that matches.
+// [rt] A note starts: in legato, with a note held, the sounding voices
+// slide to it; else room is made (the notes over the polyphony faded
+// out) and a voice starts for every zone of the current map that
+// matches, gliding from the last note in mono and legato.
 @(private)
 note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
+	mode := voice_mode(s)
+	key := f64(ev.key)
+	had_held := s.held_count > 0
+	held_push(s, ev.key)
+	if mode == .Legato && had_held {
+		slid := false
+		for &v in s.voices do if v.on && v.held && !v.dying {
+			glide(s, &v, key)
+			v.key, v.id, v.channel = ev.key, ev.id, ev.channel
+			slid = true
+		}
+		if slid {
+			s.last_key = key
+			return
+		}
+	}
 	m := s.current
 	if m == nil do return
+	make_room(s, 1 if mode != .Poly else s.settings.voices)
+	s.notes += 1
+	from := s.last_key
+	glides := mode != .Poly && from >= 0 && param(s, SAMPLER_PARAM_GLIDE) > 0 && (had_held || param(s, SAMPLER_PARAM_GLIDE_ALWAYS) > 0.5)
 	for &z in m.zones {
 		if ev.key < z.key_lo || ev.key > z.key_hi || ev.velocity < z.vel_lo || ev.velocity > z.vel_hi do continue
-		v := &s.voices[pick_voice(s)]
+		v := &s.voices[free_voice(s)]
 		s.clock += 1
 		v^ = {
 			on = true, map_ = m, zone = &z, id = ev.id, channel = ev.channel, key = ev.key, started = s.clock,
 			velocity = velocity_gain(f64(ev.velocity), s.params[SAMPLER_PARAM_VELOCITY - 1] * 0.01) * math.pow(10, z.gain_db / 20),
 			pos = z.start, phase = f64(z.start), mono = v.mono, stereo = v.stereo, volume = 1, pan = 0.5 + 0.5 * z.pan, held = true, ended = -1,
+			note = s.notes, pitch = key, glide_to = key, glide_pos = 1,
+		}
+		if glides {
+			v.pitch = from
+			glide(s, v, key)
 		}
 		if s.settings.quality != .Cubic {
 			dsp.resampler_reset(&v.mono)
@@ -482,23 +546,128 @@ note_on :: proc "contextless" (s: ^Sampler, ev: core.Note_On) {
 		v.note_velocity = f64(ev.velocity)
 		mod_note_on(s, v)
 	}
+	s.last_key = key
 }
 
-// [rt] A free voice, else the quietest releasing one, else the oldest.
+// [rt] The voice mode now.
 @(private)
-pick_voice :: proc "contextless" (s: ^Sampler) -> int {
+voice_mode :: #force_inline proc "contextless" (s: ^Sampler) -> Voice_Mode {
+	return Voice_Mode(clamp(int(math.round(param(s, SAMPLER_PARAM_VOICE_MODE))), 0, 2))
+}
+
+// [rt] Sets voice `v` sliding from where it sounds to `to` over the glide
+// time (an octave's, with octave scaling).
+@(private)
+glide :: proc "contextless" (s: ^Sampler, v: ^Sampler_Voice, to: f64) {
+	t := param(s, SAMPLER_PARAM_GLIDE)
+	if param(s, SAMPLER_PARAM_GLIDE_OCTAVES) > 0.5 do t *= abs(to - v.pitch) / 12
+	v.glide_from, v.glide_to, v.glide_pos = v.pitch, to, 0
+	v.glide_len = t * s.sample_rate
+	if v.glide_len < 1 do v.pitch, v.glide_pos = to, 1
+}
+
+// [rt] Moves a voice's glide on by `n` frames.
+@(private)
+glide_step :: #force_inline proc "contextless" (v: ^Sampler_Voice, n: int) {
+	if v.glide_pos >= 1 do return
+	v.glide_pos = min(v.glide_pos + f64(n) / max(v.glide_len, 1), 1)
+	v.pitch = v.glide_from + (v.glide_to - v.glide_from) * v.glide_pos
+}
+
+// [rt] Fades out (as a choke does) the notes beyond the first `poly - 1`,
+// so a new one fits: released ones first, then the oldest.
+@(private)
+make_room :: proc "contextless" (s: ^Sampler, poly: int) {
+	for {
+		count := 0
+		victim: u64 = 0
+		victim_released := false
+		seen: [64]u64
+		n := 0
+		for v in s.voices {
+			if !v.on || v.dying do continue
+			dup := false
+			for k in 0 ..< n do dup ||= seen[k] == v.note
+			if dup do continue
+			if n < len(seen) {
+				seen[n] = v.note
+				n += 1
+			}
+			count += 1
+			released := !v.held
+			if victim == 0 || (released && !victim_released) || (released == victim_released && v.note < victim) {
+				victim, victim_released = v.note, released
+			}
+		}
+		if count < poly || victim == 0 do return
+		for &v in s.voices do if v.on && v.note == victim do kill(s, &v)
+	}
+}
+
+// [rt] A free voice; with none, the fading one nearest silence (cut off).
+@(private)
+free_voice :: proc "contextless" (s: ^Sampler) -> int {
 	for v, i in s.voices do if !v.on do return i
 	pick := 0
 	for v, i in s.voices {
 		q := s.voices[pick]
-		releasing, best := v.amp.stage == .Release, q.amp.stage == .Release
-		if releasing != best {
-			if releasing do pick = i
-		} else if releasing ? v.amp.level < q.amp.level : v.started < q.started {
+		if v.dying != q.dying {
+			if v.dying do pick = i
+		} else if v.amp.level < q.amp.level {
 			pick = i
 		}
 	}
 	return pick
+}
+
+// [rt] A stolen voice: faded out over CHOKE_SECONDS, then free.
+@(private)
+kill :: proc "contextless" (s: ^Sampler, v: ^Sampler_Voice) {
+	choke(s, v)
+	v.dying = true
+}
+
+// [rt] Key `key` is held (the newest last).
+@(private)
+held_push :: proc "contextless" (s: ^Sampler, key: u8) {
+	held_remove(s, key)
+	if s.held_count == len(s.held) {
+		for k in 1 ..< len(s.held) do s.held[k - 1] = s.held[k]
+		s.held_count -= 1
+	}
+	s.held[s.held_count] = key
+	s.held_count += 1
+}
+
+@(private)
+held_remove :: proc "contextless" (s: ^Sampler, key: u8) {
+	k := 0
+	for i in 0 ..< s.held_count do if s.held[i] != key {
+		s.held[k] = s.held[i]
+		k += 1
+	}
+	s.held_count = k
+}
+
+// [rt] A key let go. In mono and legato, with another still held, the
+// voice slides back to the newest of those; else its notes are released.
+@(private)
+key_off :: proc "contextless" (s: ^Sampler, ev: core.Note_Off) {
+	held_remove(s, ev.key)
+	if voice_mode(s) != .Poly && s.held_count > 0 {
+		back := s.held[s.held_count - 1]
+		slid := false
+		for &v in s.voices do if v.on && v.held && !v.dying && same(&v, ev.id, ev.channel, ev.key) {
+			glide(s, &v, f64(back))
+			v.key, v.id = back, core.NOTE_ID_ANY
+			slid = true
+		}
+		if slid {
+			s.last_key = f64(back)
+			return
+		}
+	}
+	for &v in s.voices do if v.on && v.held && same(&v, ev.id, ev.channel, ev.key) do note_off(&v)
 }
 
 // [rt]
@@ -549,6 +718,7 @@ sampler_render :: proc(s: ^Sampler, ctx: ^core.Process_Context, from, to: int) {
 					break
 				}
 				v.mod = voice_mod(s, &v, from + done, ctx.transport)
+				glide_step(&v, MOD_CHUNK) // (its pitch for this chunk: where the glide is at its start, then on)
 			}
 			m := &v.mod
 			render_voice(s, &v, done, c, m.semis)
@@ -624,7 +794,7 @@ render_voice :: proc(s: ^Sampler, v: ^Sampler_Voice, at, n: int, extra_semis: f6
 	frames := stream.source_frames(z.source)
 	info := stream.source_info(z.source)
 	track := param(s, SAMPLER_PARAM_PITCH_KEYTRACK) * 0.01
-	semis := (f64(v.key) - f64(z.root_key)) * track + z.tune_cents / 100 + v.tuning + s.params[SAMPLER_PARAM_TRANSPOSE - 1] + extra_semis
+	semis := (v.pitch - f64(z.root_key)) * track + z.tune_cents / 100 + v.tuning + s.params[SAMPLER_PARAM_TRANSPOSE - 1] + extra_semis
 	speed := min(math.pow(2, semis / 12) * info.sample_rate / s.sample_rate, MAX_SPEED)
 	if s.settings.quality == .Cubic {
 		render_cubic(s, v, frames, at, n, speed)

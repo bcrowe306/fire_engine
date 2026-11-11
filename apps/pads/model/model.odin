@@ -140,6 +140,10 @@ Voice :: struct {
 	lfos:     [sampler.LFOS]Lfo,
 	routes:   [sampler.MOD_ROUTES]Route,
 	voices:   int, // notes at once (1..32)
+	mode:     sampler.Voice_Mode, // poly, mono (each note anew), legato (notes over held ones slide)
+	glide:    f32,  // seconds: mono and legato notes slide from the last one
+	glide_always:  bool, // every mono note glides (not only those over a held one)
+	glide_octaves: bool, // a glide's time is an octave's (leaps take longer)
 }
 
 // One LFO's settings.

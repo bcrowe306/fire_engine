@@ -151,6 +151,15 @@ for other toggles.
   - **Global**: sampler or audio track, name and colour (click it for the
     swatches and picker), volume, pan, transpose, fine tune, how many notes it plays at
     once, Clear Pad. An audio pad shows only Sample, Effects and Global.
+    A note past the voice count fades the oldest out over 3 ms, so taking
+    over never clicks. The voice mode is **Poly**, **Mono** (one note at
+    a time, each starting the sample again) or **Legato**: a note played
+    over a held one slides the sounding voice to it without starting it
+    again, and letting go slides back to the newest note still held. In
+    mono and legato, **Glide** sets the slide's time. **Always** makes
+    every note glide from the last, not only notes played over a held
+    one. **By octave** makes the time an octave's, so wider leaps take
+    longer. A slicer has no glide: its keys are its slices.
 - **Sample** (bottom tab): how the pad plays — **One-shot** to the end,
   **Gate** while held, **Loop** loops while held, **Hold** loops until hit
   again; reverse; its **choke group** (a hit stops the others playing in
@@ -907,7 +916,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
 | `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
-| `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs |
+| `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
 | `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |

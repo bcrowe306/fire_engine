@@ -8,6 +8,7 @@ import "core:time"
 import app "app:core"
 import fc "fire:core"
 import "fire:fx"
+import "fire:sampler"
 import "fire:synth"
 import kit "fire:testkit"
 import pm "../../apps/pads/model"
@@ -291,4 +292,37 @@ a_preset_saves_and_loads :: proc(t: ^testing.T) {
 	app.undo(&r2.m.history)
 	testing.expect(t, app.store_len(&r2.m.project.wave_docs) == 0 && r2.m.project.pads[5].synth.preset[0] == 0, "undone in one")
 	render(r2, 512)
+}
+
+// A sampler pad in legato with a glide: a sequenced note over a held one
+// slides the sound up (the first note's pitch gone, no second voice);
+// in poly both sound. The settings save.
+@(test)
+a_sampler_pad_glides_in_legato :: proc(t: ^testing.T) {
+	play :: proc(t: ^testing.T, mode: sampler.Voice_Mode) -> (lo, hi: f64, r: ^Rig) {
+		r = rig_make(t, "sampler_legato")
+		m := &r.m
+		testing.expect_value(t, pm.load_onto_pad(m, 0, tone(r, "a.wav", 440, 3)), fc.Error.None)
+		v := m.project.pads[0].voice
+		v.mode, v.glide = mode, 0.1
+		pm.set_voice(m, 0, 99, "Voice Mode", v)
+		pm.add_note(m, 0, {start = 0, length = 2, pad = 0, pitch = 0, velocity = 0.9, probability = 1})
+		pm.add_note(m, 0, {start = 1, length = 1, pad = 0, pitch = 12, velocity = 0.9, probability = 1})
+		pm.play(&m.engine)
+		out := render(r, 45_600) // to 0.95 s: the second note began at 0.5 s
+		late := out[0][36_000:45_600]
+		return kit.tone_amplitude(late, SR, 440), kit.tone_amplitude(late, SR, 880), r
+	}
+	lo, hi, r := play(t, .Legato)
+	testing.expectf(t, hi > 0.05 && lo < 0.1 * hi, "legato: slid up to 880 Hz, 440 gone (%v, %v)", lo, hi)
+	testing.expect_value(t, pm.model_save(&r.m), fc.Error.None)
+	r2 := rig_make(t, "sampler_legato_load")
+	testing.expect_value(t, pm.model_load(&r2.m, r.m.project.dir), fc.Error.None)
+	got := r2.m.project.pads[0].voice
+	testing.expect(t, got.mode == .Legato && got.glide == 0.1, "saved")
+	rig_destroy(r2)
+	rig_destroy(r)
+	plo, phi, pr := play(t, .Poly)
+	testing.expectf(t, plo > 0.05 && phi > 0.05, "poly: both (%v, %v)", plo, phi)
+	rig_destroy(pr)
 }

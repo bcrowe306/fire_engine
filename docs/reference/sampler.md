@@ -373,6 +373,52 @@ SAMPLER_PARAM_TRANSPOSE : core.Param_Id : core.Param_Id(7)
 
 Parameter id of a transposition of every note, in semitones (−48..48, default 0).
 
+### SAMPLER_PARAM_VOICE_MODE
+
+```odin
+SAMPLER_PARAM_VOICE_MODE : core.Param_Id : core.Param_Id(SAMPLER_PARAM_ROUTE_SOURCE + MOD_ROUTES * ROUTE_PARAMS)
+```
+
+Parameter id of how notes share voices: 0 poly, 1 mono (each note
+starts its sample again), 2 legato (a note played while another is
+held slides the sounding voice to it, starting nothing).
+
+### SAMPLER_PARAM_GLIDE
+
+```odin
+SAMPLER_PARAM_GLIDE : core.Param_Id : core.Param_Id(SAMPLER_PARAM_VOICE_MODE + 1)
+```
+
+Parameter id of the glide time, in seconds (0..5, default 0): mono and
+legato notes slide from the last note's pitch to theirs.
+
+### SAMPLER_PARAM_GLIDE_ALWAYS
+
+```odin
+SAMPLER_PARAM_GLIDE_ALWAYS : core.Param_Id : core.Param_Id(SAMPLER_PARAM_VOICE_MODE + 2)
+```
+
+Parameter id of whether every mono note glides (1), or only those
+played while another is held (0, the default).
+
+### SAMPLER_PARAM_GLIDE_OCTAVES
+
+```odin
+SAMPLER_PARAM_GLIDE_OCTAVES : core.Param_Id : core.Param_Id(SAMPLER_PARAM_VOICE_MODE + 3)
+```
+
+Parameter id of whether a glide takes its time an octave (1: leaps take
+longer), or the same time however far (0, the default).
+
+### SPARE_VOICES
+
+```odin
+SPARE_VOICES :: 4
+```
+
+Voices a sampler keeps beyond its polyphony, for stolen ones to fade
+out on while the notes that stole them start.
+
 ### MAX_SPEED
 
 ```odin
@@ -647,6 +693,18 @@ Settings for `sampler_create`.
 | `voices` | 0 = 32 |
 | `quality` | default Cubic |
 
+### Voice_Mode
+
+```odin
+Voice_Mode :: enum u8 {
+	Poly,
+	Mono,
+	Legato,
+}
+```
+
+How a sampler's notes share its voices (`SAMPLER_PARAM_VOICE_MODE`).
+
 ### Sampler
 
 ```odin
@@ -810,7 +868,7 @@ Their names: "4 bars".."1/32", then triplets.
 ### sampler_params
 
 ```odin
-sampler_params: [56]core.Param_Info
+sampler_params: [60]core.Param_Info
 ```
 
 Parameter table of the sampler node, as returned by `node_params`. Read-only.
