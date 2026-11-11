@@ -43,6 +43,7 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 		for c in 0 ..< 2 do graph.connect(g, id, c, n.voice, c)
 	}
 	n.holds = {}
+	if pad.frozen do return // (no input: it plays its renderings)
 	// The input: a pair of channels, or one on both sides.
 	ins := g.settings.input_channels
 	first := int(pad.input.channel)
@@ -140,7 +141,8 @@ place_audio :: proc(e: ^Engine, beat: f64) {
 give :: proc(e: ^Engine, n: ^Pad_Nodes, pad, k: int, run: Audio_Run) {
 	if n.players[k] == nil do return
 	n.holds[k] = run
-	c := e.project.clips[run.slot][pad] if run.valid else {}
+	c: Clip
+	if run.valid do c = e.project.freezes[run.slot][pad] if e.project.pads[pad].frozen else e.project.clips[run.slot][pad]
 	muted := run.valid && run.step >= 0 && run.step < e.project.song.count && e.project.song.steps[run.step].mute
 	src := source_of(e, c.sample)
 	if src == nil || !(c.bpm > 0) || muted {

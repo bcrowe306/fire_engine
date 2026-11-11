@@ -34,10 +34,11 @@ Linux, ARM and Windows, and pushed.
      in/out; the loop button loops it in song mode (the whole song when
      unset).
 4. **Freeze, groups, sidechain**
-   - [ ] Freeze a track: its instrument through its inserts (before its
+   - [x] Freeze a track: its instrument through its inserts (before its
      fader, sends and pan) rendered over the song (or its sequences),
      tails included, and played instead; mixer moves still work; unfrozen
-     to edit; flatten to an audio pad.
+     to edit; flatten to an audio pad. (Rendered per sequence it plays
+     in, so it follows pattern mode, the song and the tempo lane.)
    - [x] Track groups are buses: grouping pads routes them to a new bus
      named for the group; the mixer folds a group's pads under its strip.
    - [x] Sidechain: the compressor and gate keyed from any pad's or bus's

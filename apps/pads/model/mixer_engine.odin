@@ -109,6 +109,7 @@ Mixer_Nodes :: struct {
 	buses:  [BUSES + 1]Bus_Nodes, // the last is main
 	built:  bool,
 	any_solo, any_bus_solo: bool,
+	freeze_tap: graph.Node_Id, // a freeze rendering: what feeds the output instead of main
 }
 
 // [control] The node that plays an effect slot (wrapped for a click-free
@@ -322,14 +323,17 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 			structural = true
 		}
 		// Inserts: new nodes when their kind changed, then the chain again.
+		// (Frozen: none; they are in its renderings.)
+		inserts := pad.inserts
+		if pad.frozen do inserts = {}
 		changed := false
 		for &f, k in st.inserts {
 			old := f
-			if build_slot(e, &f, pad.inserts[k]) {
+			if build_slot(e, &f, inserts[k]) {
 				changed = true
 				if old.has do structural = true
 			}
-			apply_slot(g, &f, pad.inserts[k], false)
+			apply_slot(g, &f, inserts[k], false)
 		}
 		if changed || st.dest < 0 {
 			unwire_chain(g, n.eq, st.inserts[:], st.gain)
@@ -441,8 +445,37 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		bn.sent = true
 	}
 	if sync_keys(e) do structural = true
+	if sync_freeze_tap(e) do structural = true
 	e.mix_dirty = false
 	return
+}
+
+// [control] While a freeze renders pad `export_solo.index`, the output is
+// that pad's sound before its fader (after its last insert), not main's.
+// True if wires changed.
+@(private)
+sync_freeze_tap :: proc(e: ^Engine) -> bool {
+	g := e.host.graph
+	mx := &e.mixer
+	main := mx.buses[BUSES].meter_id
+	want: graph.Node_Id
+	if e.export_solo.kind == .Freeze {
+		i := e.export_solo.index
+		if i >= 0 && i < PADS && mx.strips[i].built {
+			want = e.nodes[i].eq
+			for f in mx.strips[i].inserts do if f.has do want = f.key_filter if f.key.listen && f.key_filter != {} else f.id
+		}
+	}
+	if want == mx.freeze_tap do return false
+	if mx.freeze_tap != {} {
+		for c in 0 ..< 2 do graph.disconnect(g, mx.freeze_tap, c, graph.OUTPUT, c)
+	} else {
+		for c in 0 ..< 2 do graph.disconnect(g, main, c, graph.OUTPUT, c)
+	}
+	src := want if want != {} else main
+	for c in 0 ..< 2 do graph.connect(g, src, c, graph.OUTPUT, c)
+	mx.freeze_tap = want
+	return true
 }
 
 // [control] Each keyed slot's key wired from its source's output (after

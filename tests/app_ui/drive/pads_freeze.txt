@@ -1,0 +1,21 @@
+# Freeze: the kick through a filter insert frozen (rendered, played
+# instead), its device page; then flattened to an audio pad.
+size 1440 900
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+note 0 0 0.25 1
+note 0 2 0.25 1
+insert 0 0 filter
+select 0
+command pad.freeze pad 0
+wait 30
+expect undo Freeze
+play
+wait 20
+expect level pad 0 above -30
+screenshot freeze_frozen
+stop
+command pad.flatten pad 0
+wait 5
+expect undo Flatten to Audio
+screenshot freeze_flattened

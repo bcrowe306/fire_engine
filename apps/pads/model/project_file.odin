@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 25 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups
+PROJECT_VERSION :: 26 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -523,6 +523,17 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_bool(w, b.group)
 		fc.write_bool(w, b.folded)
 	}
+	// v26: frozen pads, and every pad's renderings (as the clips are).
+	for pad in p.pads do fc.write_bool(w, pad.frozen)
+	nf := 0
+	for row in p.freezes do for c in row do if c.sample != 0 do nf += 1
+	fc.write_int(w, nf)
+	for row, slot in p.freezes do for c, pad in row do if c.sample != 0 {
+		fc.write_u8(w, u8(slot))
+		fc.write_u8(w, u8(pad))
+		fc.write_u64(w, u64(c.sample))
+		fc.write_f64(w, c.bpm)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -874,6 +885,17 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			for &b in p.buses {
 				b.group = fc.read_bool(r)
 				b.folded = fc.read_bool(r)
+			}
+		}
+		if version >= 26 {
+			for &pad in p.pads do pad.frozen = fc.read_bool(r)
+			n := fc.read_int(r)
+			if n < 0 || n > SLOTS * PADS do return
+			for _ in 0 ..< n {
+				slot, pad := int(fc.read_u8(r)), int(fc.read_u8(r))
+				c := Clip{sample = app.Id(fc.read_u64(r)), bpm = fc.read_f64(r)}
+				if slot >= SLOTS || pad >= PADS || app.store_get(&p.samples, c.sample) == nil || !(c.bpm > 0) do continue
+				p.freezes[slot][pad] = c
 			}
 		}
 	} else {

@@ -166,6 +166,15 @@ register_commands :: proc(a: ^App) {
 		},
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Synth }})
+	add(c, {id = "pad.freeze", label = "Freeze", icon = ui.ICON_SNOWFLAKE, kinds = {.Pad}, group = 2,
+		run = proc(a: ^App, t: Target) { start_freeze(a, t.index) },
+		enabled = proc(a: ^App, t: Target) -> bool { return pm.can_freeze(&a.m.project, t.index) }})
+	add(c, {id = "pad.unfreeze", label = "Unfreeze", icon = ui.ICON_SNOWFLAKE, kinds = {.Pad}, group = 2,
+		run = proc(a: ^App, t: Target) { pm.set_frozen(&a.m, t.index, false) },
+		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].frozen }})
+	add(c, {id = "pad.flatten", label = "Flatten to Audio", icon = ui.ICON_SNOWFLAKE, kinds = {.Pad}, group = 2,
+		run = proc(a: ^App, t: Target) { pm.flatten(&a.m, t.index) },
+		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].frozen }})
 	add(c, {id = "pad.group", label = "Group Selected Pads", icon = ui.ICON_GROUP, kinds = {.Pad}, group = 2, keys = "Cmd+G",
 		run = proc(a: ^App, t: Target) { group_selected(a, t.index) }, enabled = pad_has})
 	add(c, {id = "bus.ungroup", label = "Ungroup", icon = ui.ICON_GROUP, kinds = {.Bus}, group = 1,

@@ -222,6 +222,7 @@ Pad :: struct {
 	synth:      Synth_Patch, // a synth's sound (kept when it is something else again)
 	instrument: Effect_Slot, // a plug-in pad's CLAP instrument (kind .Plugin; kept likewise)
 	plugin_lanes: [PLUGIN_LANES]Plugin_Lane, // what each Plugin_N lane moves
+	frozen:     bool, // it plays its renderings (`Project.freezes`) instead of its device and inserts
 }
 
 // A sample the project holds: a file in its folder.
@@ -256,6 +257,7 @@ Project :: struct {
 	view:    View_State, // how the app was left: kept with the project, so it opens as it was
 	sequences: [SLOTS]Sequence,
 	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence
+	freezes: [SLOTS][PADS]Clip, // frozen pads' renderings, per sequence (see `freeze_begin`)
 	slot:    int, // the current sequence: what plays and is edited
 	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key N plays pad N (A1 = 0, H16 = 127)
 	perform: Perform, // the arpeggiator and note repeat (`set_perform`)

@@ -126,6 +126,7 @@ Pad_Nodes :: struct {
 	rec_id:     graph.Node_Id,
 	rec:        ^record.Audio_Recorder,
 	rec_on, monitor_on: bool, // as sent
+	audio_sent: bool, // its settings have been sent since it was built
 }
 
 // Adds the router, the sequencer and the metronome to the host's graph and
@@ -242,9 +243,9 @@ sync :: proc(e: ^Engine) {
 		e.router.slicers[i] = {base = pad.slicer.base, mono = pad.slicer.mono}
 		if pad.kind == .Synth || pad.kind == .Plugin do e.router.slicers[i] = {base = 60} // (a note's pitch is its key's distance from C3)
 		midi_ports_of(e, i, pad)
-		audio := pad.kind == .Audio
-		is_synth := pad.kind == .Synth
-		is_plugin := pad.kind == .Plugin
+		audio := pad.kind == .Audio || pad.frozen // (frozen: it plays its renderings as takes)
+		is_synth := pad.kind == .Synth && !pad.frozen
+		is_plugin := pad.kind == .Plugin && !pad.frozen
 		want := src != nil || audio || is_synth || is_plugin
 		// A pad that changes kind (or an audio pad its input, a plug-in pad
 		// its plug-in) is built again.
@@ -339,9 +340,11 @@ sync :: proc(e: ^Engine) {
 			continue
 		}
 		if n.audio {
-			fresh := n.built.kind != .Audio || e.resend
+			fresh := !n.audio_sent || e.resend
+			n.audio_sent = true
 			if fresh || n.built.volume != pad.volume do graph.set_param(g, n.fader, dsp.GAIN_PARAM_DB, f64(pad.volume))
-			if fresh || n.built.pan != pad.pan do graph.set_param(g, n.voice, dsp.PAN_PARAM_POSITION, f64(pad.pan))
+			pan := 0 if pad.frozen else pad.pan // (a rendering has its pan)
+			if fresh || n.built.pan != pad.pan || n.built.frozen != pad.frozen do graph.set_param(g, n.voice, dsp.PAN_PARAM_POSITION, f64(pan))
 			for b in 0 ..< 3 do if fresh || n.built.eq[b] != pad.eq[b] do graph.set_param(g, n.eq, dsp.eq_band_param(b, .Gain_Db), f64(pad.eq[b]))
 			n.built = pad
 			continue
@@ -412,14 +415,14 @@ sync_sequencer :: proc(e: ^Engine) {
 	tr := p.transport
 	beat_now, playing_now, _ := transport.timeline_status(e.host.clock, e.timeline)
 	counting := playing_now && f64(beat_now) < 0
-	click := e.metronome && (!tr.metro_rec_only || e.recording || counting)
+	click := e.metronome && (!tr.metro_rec_only || e.recording || counting) && !e.export_once // (never into an export)
 	if e.metro_on != click {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_ON, 1 if click else 0)
 		e.metro_on = click
 	}
-	if e.count_click_on != e.count_in_click {
-		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_COUNT_IN, 1 if e.count_in_click else 0)
-		e.count_click_on = e.count_in_click
+	if want := e.count_in_click && !e.export_once; e.count_click_on != want {
+		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_COUNT_IN, 1 if want else 0)
+		e.count_click_on = want
 	}
 	if e.metro_click != tr.click || e.metro_accent != !tr.no_accent || !e.metro_click_sent {
 		graph.set_param(e.host.graph, e.metro_id, dsp.METRONOME_PARAM_SOUND, f64(tr.click))

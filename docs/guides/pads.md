@@ -332,6 +332,19 @@ for other toggles.
   plug-in that can't be found plays nothing and says so. A pad's volume
   is its fader, after its inserts; the volume lane of a sequence moves it.
 
+  **Freeze** (a pad's right-click menu) renders the pad's sound (its
+  instrument through its inserts, before its fader, sends and pan) for
+  each sequence it has notes in, once each, into the project's samples,
+  then plays those instead, as an audio pad plays its takes. Its device
+  and inserts leave the graph, CPU and all (a heavy plug-in or synth
+  costs nothing while frozen); its fader, sends and output still work,
+  and the tempo lane still moves it. Its device page says it is frozen,
+  with **Unfreeze** (back as it was: its plug-ins' state is kept) and
+  **Flatten to Audio** (an audio pad whose takes are the renderings).
+  While frozen, editing its inserts changes nothing you hear. Freeze,
+  Unfreeze and Flatten are each one undo step. Exports never have the
+  metronome in them.
+
   A **Compressor** or **Gate** in a pad's insert or a bus slot has a
   **Sidechain**: it can listen to another pad's or a bus's output (after
   its fader) instead of what goes through it, as a bass ducking under the
@@ -1093,6 +1106,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
+| `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
 | `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a tempo point on the tempo lane, undo |

@@ -214,7 +214,7 @@ device_tabs :: proc(a: ^App) {
 		i := tr.index
 		pad := &m.project.pads[i]
 		name := pm.pad_name(pad) if pm.pad_used(&m.project, i) else ""
-		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_MIC if pad.kind == .Audio else (ui.ICON_PLUG if pad.kind == .Plugin else ui.ICON_LAYOUT_GRID), pm.pad_label(i), " " if name != "" else "", name, pad_device_name(pad.kind))
+		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_SNOWFLAKE if pad.frozen else (ui.ICON_MIC if pad.kind == .Audio else (ui.ICON_PLUG if pad.kind == .Plugin else ui.ICON_LAYOUT_GRID)), pm.pad_label(i), " " if name != "" else "", name, fmt.tprintf("%s (frozen)", pad_device_name(pad.kind)) if pad.frozen else pad_device_name(pad.kind))
 		tab(st, instr, {.Instrument, 0})
 		item_menu(a, pad_target(i), "##instmenu")
 		tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0})
@@ -240,6 +240,10 @@ device_content :: proc(a: ^App) {
 	pm.watch_slot(&m.engine, {}) // the effect in front is watched (below)
 	switch st.device.kind {
 	case .Instrument:
+		if tr.kind == .Pad && a.m.project.pads[tr.index].frozen {
+			draw_frozen(a, tr.index)
+			return
+		}
 		if tr.kind == .Pad {
 			#partial switch a.m.project.pads[tr.index].kind {
 			case .Synth:  draw_synth_tabs(a)
@@ -323,4 +327,20 @@ draw_sampler_tabs :: proc(a: ^App) {
 			im.EndTabItem()
 		}
 	}
+}
+
+// A frozen pad's device: what it is, and the way back (or on).
+@(private)
+draw_frozen :: proc(a: ^App, i: int) {
+	t := ui.theme()
+	im.Spacing()
+	im.TextColored(transmute(im.Vec4)t.accent, "%s", fmt.ctprintf("%s  Frozen", ui.ICON_SNOWFLAKE))
+	im.TextWrapped("%s", fmt.ctprintf("%s plays its renderings (one a sequence): its device and inserts are off, its fader, sends and output still work. Unfreeze it to edit its sound.", pm.pad_label(i)))
+	im.Spacing()
+	if im.Button(fmt.ctprintf("%s  Unfreeze###unfreeze", ui.ICON_SNOWFLAKE)) do pm.set_frozen(&a.m, i, false)
+	ui.name("unfreeze")
+	im.SameLine()
+	if im.Button("Flatten to Audio") do pm.flatten(&a.m, i)
+	ui.name("flatten")
+	if im.IsItemHovered() do im.SetTooltip("An audio pad whose takes are its renderings (its device and inserts go)")
 }

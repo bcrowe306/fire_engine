@@ -225,6 +225,18 @@ start_resample :: proc(a: ^App) {
 	st.exporting, st.progress = true, 0
 }
 
+// Freezes pad `i` (its renderings made a slice a frame, as an export).
+start_freeze :: proc(a: ^App, i: int) {
+	st := &a.proj
+	if st.exporting do return
+	pm.export_destroy(&st.export)
+	if !pm.freeze_begin(&a.m, &st.export, i) {
+		ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("%s has nothing to freeze (no notes, or an audio pad)", pm.pad_label(i)))
+		return
+	}
+	st.exporting, st.progress = true, 0
+}
+
 // Each frame: an export's next slice, autosave, the window's title.
 project_frame :: proc(a: ^App) {
 	st := &a.proj
@@ -235,6 +247,7 @@ project_frame :: proc(a: ^App) {
 			st.exporting = false
 			if st.export.failed do ui.toast(&a.ws.toasts, .Error, "The export failed")
 			else if st.export.to_pad >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Resampled onto %s", pm.pad_label(st.export.to_pad)))
+			else if st.export.freeze >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s frozen", pm.pad_label(st.export.freeze)))
 			else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d file%s", len(files), "" if len(files) == 1 else "s"))
 		}
 	}

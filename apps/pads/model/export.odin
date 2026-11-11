@@ -45,12 +45,14 @@ Export_Settings :: struct {
 Export_Pass :: struct {
 	path:  string,
 	solo:  Export_Solo,
+	slot:  int, // a freeze: the sequence it renders (-1: as the settings say)
+	frames: int, // engine frames it renders (0: the export's)
 }
 
 // What a pass lets through the mixer.
 Export_Solo :: struct {
-	kind:  enum u8 {All, Pad, Bus},
-	index: int, // the pad, or the bus (0 = what goes straight to main)
+	kind:  enum u8 {All, Pad, Bus, Freeze},
+	index: int, // the pad (Pad, Freeze: its sound before its fader), or the bus (0 = what goes straight to main)
 }
 
 // An export under way: render a slice each frame with `export_step`
@@ -72,6 +74,8 @@ Export :: struct {
 	files:    [dynamic]string, // written
 	written:  int, // frames of this pass written (at the export rate)
 	to_pad:   int, // resample to pad: where the result goes (-1: not that)
+	freeze:   int, // a freeze: the pad (-1: not that)
+	slot_was: int, // the sequence that was current (a freeze picks each in turn)
 }
 
 // Starts exporting to `path` (a .wav; for stems, a folder). Closes the
@@ -80,7 +84,7 @@ Export :: struct {
 export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: string) -> bool {
 	p := &m.project
 	e := &m.engine
-	x^ = {settings = settings, to_pad = -1}
+	x^ = {settings = settings, to_pad = -1, freeze = -1, slot_was = p.slot}
 	if x.settings.rate <= 0 do x.settings.rate = e.host.graph.settings.sample_rate
 	beats := song_beats(p) if settings.source == .Song else seq_beats(p, p.sequences[p.slot])
 	if beats <= 0 do return false
@@ -92,11 +96,11 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 	x.files = make([dynamic]string)
 	stem :: proc(x: ^Export, dir, name: string, solo: Export_Solo) {
 		f, _ := filepath.join({dir, strings.concatenate({name, ".wav"}, context.temp_allocator)})
-		append(&x.passes, Export_Pass{f, solo})
+		append(&x.passes, Export_Pass{f, solo, -1, 0})
 	}
 	switch settings.stems {
 	case .None:
-		append(&x.passes, Export_Pass{strings.clone(path), {}})
+		append(&x.passes, Export_Pass{strings.clone(path), {}, -1, 0})
 	case .Pads:
 		os.make_directory_all(path)
 		for _, i in p.pads do if pad_used(p, i) {
@@ -113,6 +117,16 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 		}
 	}
 	if len(x.passes) == 0 do return false
+	export_open(m, x)
+	start_pass(m, x)
+	return true
+}
+
+// Closes the device for an export and makes its buffers.
+@(private)
+export_open :: proc(m: ^Model, x: ^Export) {
+	e := &m.engine
+	rate := e.host.graph.settings.sample_rate
 	preview_stop(e) // not into the export
 	x.was_open = e.host.running
 	app.host_close(e.host)
@@ -122,8 +136,6 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 		x.buf[c] = make([]f32, e.host.settings.max_block)
 		x.out[c] = make([]f32, int(f64(e.host.settings.max_block) / x.speed) + 64)
 	}
-	start_pass(m, x)
-	return true
 }
 
 // Exports the current sequence once into a new sample on the next empty
@@ -151,6 +163,8 @@ start_pass :: proc(m: ^Model, x: ^Export) {
 	pass := x.passes[x.pass]
 	e.export_solo = pass.solo
 	e.mix_dirty = true
+	if pass.slot >= 0 do e.project.slot = pass.slot
+	if pass.frames > 0 do x.frames = pass.frames
 	s := audiofile.default_writer_settings(x.settings.rate, 2)
 	switch x.settings.encoding {
 	case .Int16:   s.encoding, s.dither = .Int16, true
@@ -249,8 +263,10 @@ export_finish :: proc(m: ^Model, x: ^Export) -> []string {
 	x.writer = nil
 	stop(e)
 	e.export_solo, e.export_once = {}, false
+	e.project.slot = x.slot_was
 	e.mix_dirty = true
 	sync(e)
+	if x.freeze >= 0 && !x.failed do freeze_finish(m, x)
 	if x.to_pad >= 0 && !x.failed && len(x.files) > 0 {
 		path := x.files[0]
 		r, err := audiofile.open(path)
