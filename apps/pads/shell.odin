@@ -194,6 +194,7 @@ setup_workspace :: proc(a: ^App) {
 		w.sizes[.Bottom] = 0.44
 	w.toolbar, w.toolbar_user, w.toolbar_h = draw_toolbar, a, TOOLBAR_H
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
+	ui.panel_add(w, {id = "devices", title = "Devices", icon = ui.ICON_BLOCKS, open = true, draw = draw_devices, user = a}, .Left)
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Center)
 	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Center)
 	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Center)

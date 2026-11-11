@@ -52,8 +52,8 @@ def test_outputs_and_inserts(app, fixtures):
     app.click("Bus C")
     assert app.pad(0)["bus"] == 3
     app.click("A1 slot 1", window="mixer")  # empty: the chain's + tab, to fill it
-    app.click("add Low-pass", window="detail")
-    assert app.pad(0)["inserts"][0] == "Low-pass"
+    app.click("add Filter", window="detail")
+    assert app.pad(0)["inserts"][0] == "Filter"
     assert app.state()["detail_tab"] == "Effect"  # its device, in front
     app.click("A1 eq", window="mixer")
     assert app.state()["detail_tab"] == "EQ"

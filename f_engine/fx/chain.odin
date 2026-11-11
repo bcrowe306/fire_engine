@@ -61,12 +61,13 @@ Chain :: struct {
 	was_on:     bit_set[Effect],
 }
 
-// Control thread. Makes the effects' lines for rates up to `max_rate`.
-chain_make :: proc(c: ^Chain, max_rate: f64, allocator := context.allocator) -> core.Error {
-	delay_make(&c.delay, max_rate, allocator) or_return
-	chorus_make(&c.chorus, max_rate, allocator) or_return
-	flanger_make(&c.flanger, max_rate, allocator) or_return
-	reverb_make(&c.reverb, max_rate, allocator) or_return
+// Control thread. Makes the effects' lines for rates up to `max_rate`
+// (only those of `only`: an effect without its lines renders nothing).
+chain_make :: proc(c: ^Chain, max_rate: f64, allocator := context.allocator, only := ~bit_set[Effect]{}) -> core.Error {
+	if .Delay in only do delay_make(&c.delay, max_rate, allocator) or_return
+	if .Chorus in only do chorus_make(&c.chorus, max_rate, allocator) or_return
+	if .Flanger in only do flanger_make(&c.flanger, max_rate, allocator) or_return
+	if .Reverb in only do reverb_make(&c.reverb, max_rate, allocator) or_return
 	return .None
 }
 

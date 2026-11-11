@@ -229,6 +229,17 @@ Sample :: struct {
 	channels: int,
 }
 
+// How the app was left with a project (written by the app, saved with
+// the project, put back when it opens): how the pads play, the bank and
+// pad selected, the sequence pads' bank.
+View_State :: struct {
+	play_mode: Play_Mode,
+	keys:      Keys,
+	bank:      int,
+	selected:  int,
+	seq_bank:  int,
+}
+
 // A project.
 Project :: struct {
 	ids:     app.Ids,
@@ -236,6 +247,8 @@ Project :: struct {
 	pads:    [PADS]Pad,
 	samples: app.Store(Sample),
 	wave_docs: app.Store(Wave_Doc), // the project's own wavetables (the wavetable editor's)
+	launch_hold: bool, // sequence pads play while held (back to the one before when let go), else launch
+	view:    View_State, // how the app was left: kept with the project, so it opens as it was
 	sequences: [SLOTS]Sequence,
 	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence
 	slot:    int, // the current sequence: what plays and is edited

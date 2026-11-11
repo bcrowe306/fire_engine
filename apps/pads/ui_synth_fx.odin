@@ -116,7 +116,7 @@ draw_synth_effects :: proc(a: ^App) {
 // The rate of a synced effect as a knob: its frequency when free, else
 // its tempo division.
 rate_knob :: proc(a: ^App, label: cstring, sync, hz, tempo: fc.Param_Id) -> Knob {
-	free := int(math.round(pm.synth_value(&a.m, a.selected, sync))) == 0
+	free := int(math.round(host_value(a, sync))) == 0
 	return {label, hz if free else tempo}
 }
 
@@ -128,16 +128,31 @@ knob_row_height :: proc() -> f32 { return im.GetTextLineHeight() * 2 + ui.KNOB_S
 draw_synth_effect :: proc(a: ^App, e: fx.Effect, x0, w, bottom: f32) {
 	m := &a.m
 	i := a.selected
-	sy := &m.project.pads[i].synth
 	name := synth.EFFECT_NAMES[e]
 	sr := a.host.graph.settings.sample_rate if a.host.graph.settings.sample_rate > 0 else 48_000
 	bpm := m.project.bpm if m.project.bpm > 0 else 120
-	cp := synth.effect_chain_params(sy.values[:], sy.fx_order, bpm)
-	chain := pm.synth_chain(&m.engine, i)
-	color := ui.rgb(m.project.pads[i].color)
+	cp: fx.Chain_Params
+	chain: ^fx.Chain
+	color: ui.Color
+	if a.param_host.slot {
+		// An effect slot: its values over the defaults; on as the slot is.
+		values := make([]f32, synth.PARAM_SLOTS, context.temp_allocator)
+		for spec in synth.PARAMS do values[spec.id] = spec.default
+		s, _ := pm.target_slot(m, a.param_host.t)
+		for p in s.params[:s.count] do if int(p.id) < synth.PARAM_SLOTS do values[p.id] = p.value
+		cp = synth.effect_chain_params(values, fx.CHAIN_ORDER, bpm)
+		cp.on = {e} if s.on || a.param_host.t.kind == .Perf else {}
+		chain = pm.slot_chain(&m.engine, a.param_host.t)
+		color = ui.theme().accent
+	} else {
+		sy := &m.project.pads[i].synth
+		cp = synth.effect_chain_params(sy.values[:], sy.fx_order, bpm)
+		chain = pm.synth_chain(&m.engine, i)
+		color = ui.rgb(m.project.pads[i].color)
+	}
 	on := e in cp.on
 	if !on do color = ui.mix(ui.PLOT_BG, color, 0.45)
-	synth_toggle(a, fmt.ctprintf("%s##fxon", name), effect_on(e))
+	if !a.param_host.slot do synth_toggle(a, fmt.ctprintf("%s##fxon", name), effect_on(e)) // (a slot's own switch is beside its name: its choices go on that line)
 	knobs := make([dynamic]Knob, context.temp_allocator)
 	knobs2 := make([dynamic]Knob, context.temp_allocator)
 	p :: synth.effect_param
@@ -245,8 +260,8 @@ draw_synth_effect :: proc(a: ^App, e: fx.Effect, x0, w, bottom: f32) {
 		ev := ui.response_plot("synth fx filter response", {{db = c.db[:], color = color, fill = true, width = 2.5}}, &handle, size)
 		if ev.changed {
 			hz := ui.x_freq(handle[0])
-			pm.set_synth_value(m, i, synth.effect_param(.Filter, synth.Fx_Filter_Field.Cutoff), 69 + 12 * math.log2(hz / 440), "FX Filter Cutoff")
-			pm.set_synth_value(m, i, synth.effect_param(.Filter, synth.Fx_Filter_Field.Resonance), clamp(handle[1] / 24, 0, 1), "FX Filter Cutoff")
+			host_set(a, synth.effect_param(.Filter, synth.Fx_Filter_Field.Cutoff), 69 + 12 * math.log2(hz / 440), "FX Filter Cutoff")
+			host_set(a, synth.effect_param(.Filter, synth.Fx_Filter_Field.Resonance), clamp(handle[1] / 24, 0, 1), "FX Filter Cutoff")
 		}
 		if ev.ended do app.seal(&m.history)
 	case .Distortion: draw_distortion_view(&cp.distortion, size, color, sr)

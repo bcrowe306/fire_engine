@@ -291,6 +291,7 @@ build_params :: proc "contextless" () {
 		add(r(n, .Key_Tune), name(n, "Key Tune"), -1, 1, 0)
 	}
 	build_fx_params()
+	build_effect_node_infos()
 	for p in PARAMS do append(&node_params, core.Param_Info{id = p.id, name = p.name, unit = p.unit, min = f64(p.min), max = f64(p.max), default = f64(p.default), flags = {.Automatable}})
 }
 

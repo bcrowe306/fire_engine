@@ -20,7 +20,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 19 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide
+PROJECT_VERSION :: 20 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written)
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -204,7 +204,8 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_bool(w, pad.monitor)
 		write_voice(w, pad.voice)
 	}
-	// Sequences.
+	// Sequences (how many first: v20).
+	fc.write_int(w, SLOTS)
 	for s in p.sequences {
 		fc.write_int(w, s.bars)
 		fc.write_f32(w, s.swing)
@@ -352,6 +353,16 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		if !sy.set do continue
 		write_synth_patch(w, sy)
 	}
+	fc.write_bool(w, p.launch_hold) // v20
+	v := p.view // how the app was left (v20)
+	fc.write_u8(w, u8(v.play_mode))
+	fc.write_u8(w, u8(v.keys.scale))
+	fc.write_int(w, v.keys.root)
+	fc.write_int(w, v.keys.octave)
+	fc.write_u8(w, u8(v.keys.chord))
+	fc.write_int(w, v.bank)
+	fc.write_int(w, v.selected)
+	fc.write_int(w, v.seq_bank)
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -402,7 +413,7 @@ read_slot :: proc(r: ^fc.State_Reader, p: ^Project) -> (s: Effect_Slot) {
 	s.plugin_path = intern(p, fc.read_string(r))
 	s.plugin_id = intern(p, fc.read_string(r))
 	s.plugin_name = intern(p, fc.read_string(r))
-	return
+	return convert_slot(s) // (the app's old effects as the synth's)
 }
 
 @(private)
@@ -471,7 +482,10 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		}
 		if version >= 7 do pad.voice = read_voice(r, version)
 	}
-	for &s in p.sequences {
+	// How many sequences the file has (32 before v20).
+	seqs := 32
+	if version >= 20 do seqs = clamp(fc.read_int(r), 0, SLOTS)
+	for &s in p.sequences[:seqs] {
 		s.bars = clamp(fc.read_int(r), 1, MAX_BARS)
 		s.swing = clamp(fc.read_f32(r), 0, 1)
 		s.swing_grid = Grid(min(fc.read_u8(r), u8(max(Grid))))
@@ -542,7 +556,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		}
 	}
 	if version >= 8 {
-		for &s in p.sequences {
+		for &s in p.sequences[:seqs] {
 			s.name = {}
 			copy(s.name[:len(s.name) - 1], fc.read_string(r))
 			b := fc.read_f64(r)
@@ -551,7 +565,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	}
 	if version >= 9 do for &x in p.perf_intensity do x = clamp(fc.read_f32(r), 0, 1)
 	if version >= 10 {
-		for &s in p.sequences {
+		for &s in p.sequences[:seqs] {
 			s.color = fc.read_u32(r) & 0xffffff
 			for &pt in s.points do pt.curve = clamp(fc.read_f32(r), -1, 1)
 		}
@@ -627,6 +641,18 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			if !fc.read_bool(r) do continue
 			sy := &pad.synth
 			read_synth_patch(r, version, p, sy)
+		}
+		if version >= 20 {
+			p.launch_hold = fc.read_bool(r)
+			v := &p.view
+			v.play_mode = Play_Mode(min(fc.read_u8(r), u8(max(Play_Mode))))
+			v.keys.scale = Scale(min(fc.read_u8(r), u8(max(Scale))))
+			v.keys.root = clamp(fc.read_int(r), 0, 11)
+			v.keys.octave = clamp(fc.read_int(r), -3, 3)
+			v.keys.chord = Chord(min(fc.read_u8(r), u8(max(Chord))))
+			v.bank = clamp(fc.read_int(r), 0, PADS / PADS_PER_BANK - 1)
+			v.selected = clamp(fc.read_int(r), 0, PADS - 1)
+			v.seq_bank = clamp(fc.read_int(r), 0, 3)
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES

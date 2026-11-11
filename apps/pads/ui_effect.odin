@@ -56,7 +56,7 @@ draw_effect :: proc(user: rawptr) {
 	im.SetNextItemWidth(200)
 	if ui.combo("##kind", fmt.ctprintf("%s", pm.slot_name(s))) {
 		for k in pm.Effect_Kind {
-			if k == .Plugin do continue
+			if k == .Plugin || pm.effect_kind_legacy(k) do continue
 			if t.kind == .Perf && k == .None do continue
 			if im.Selectable(pm.EFFECT_NAMES[k], k == s.kind && s.kind != .Plugin) && k != s.kind {
 				ns := pm.new_effect(k)
@@ -98,6 +98,18 @@ draw_effect :: proc(user: rawptr) {
 	}
 	if pm.slot_failed(&m.engine, t.index if t.kind == .Pad else -1, t.index if t.kind == .Bus else -1, t.slot) {
 		im.TextColored(transmute(im.Vec4)ui.theme().danger, "%s", fmt.ctprintf("Could not load %s", s.plugin_path))
+		return
+	}
+	// The synth's effects: their own page (its choices on this line, then
+	// its picture and knobs).
+	if e, twin := pm.synth_twin(s.kind); twin {
+		a.param_host = {slot = true, t = t}
+		defer a.param_host = {}
+		x0 := im.GetCursorScreenPos().x
+		avail := im.GetContentRegionAvail()
+		top := im.GetCursorScreenPos().y
+		if e != .Reverb do im.SameLine(0, 0) // (the reverb has no choices to put there)
+		draw_synth_effect(a, e, x0, avail.x - im.GetStyle().ScrollbarSize, top + max(avail.y - 6, 240))
 		return
 	}
 	im.Spacing()

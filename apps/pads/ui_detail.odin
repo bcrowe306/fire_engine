@@ -262,7 +262,7 @@ device_content :: proc(a: ^App) {
 		im.Spacing()
 		n := 0
 		for k in pm.Effect_Kind {
-			if k == .None || k == .Plugin do continue
+			if k == .None || k == .Plugin || pm.effect_kind_legacy(k) do continue
 			if n % 6 != 0 do im.SameLine()
 			n += 1
 			if im.Button(fmt.ctprintf("%s###add%d", pm.EFFECT_NAMES[k], int(k)), {110, 0}) {

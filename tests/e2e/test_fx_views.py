@@ -13,45 +13,44 @@ def chain(app, fixtures, kind):
     app.wait(3)
 
 
+# The synth's effects' parameter ids (synth.effect_param): 700 + 32 x the effect + the field.
+FILTER_CUTOFF = 700 + 32 * 5 + 3
+DELAY_SYNC, DELAY_HZ, DELAY_TEMPO = 700 + 32 * 2 + 2, 700 + 32 * 2 + 3, 700 + 32 * 2 + 4
+
+
+def fx_param(app, pid):
+    return dict((int(i), v) for i, v in app.state()["fx_params"]).get(pid)
+
+
 def test_a_filter_effect_drags_by_its_response(app, fixtures):
-    chain(app, fixtures, "lowpass")
-    x0, y0, x1, y1 = [i for i in app.items("effect response", "detail") if i["label"] == "effect response"][0]["rect"]
-    # Drag on it, left: the cutoff falls (parameter 2 of a filter).
-    app.drag_by("effect response", -200, 0, window="detail")
-    cut = dict((int(i), v) for i, v in app.state()["fx_params"]).get(2)
-    assert cut is not None and cut < 15000, app.state()["fx_params"]
+    chain(app, fixtures, "lowpass")  # (the synth's filter, as a low-pass)
+    before = fx_param(app, FILTER_CUTOFF)
+    # Its handle, dragged left: the cutoff falls.
+    x0, y0, x1, y1 = [i for i in app.items("synth fx filter response", "detail") if i["label"] == "synth fx filter response"][0]["rect"]
+    app.drag_by("synth fx filter response", -150, 0, window="detail")
+    cut = fx_param(app, FILTER_CUTOFF)
+    assert cut is not None and before is not None and cut < before, (before, cut)
     app.screenshot("lowpass")
 
 
 def test_dynamics_delay_and_reverb_pictures(app, fixtures):
     chain(app, fixtures, "compressor")
-    app.expect_item("effect curve", window="detail")
-    app.expect_item("gain reduction", window="detail")
-    app.cmd("insert 0 0 delay")
-    app.wait(2)
-    app.expect_item("effect echoes", window="detail")
-    app.cmd("insert 0 0 reverb")
-    app.wait(2)
-    app.expect_item("effect decay", window="detail")
-    for kind, item in (("comb", "effect response"), ("chorus", "effect sweep"), ("cutter", "effect slices"), ("pitch", "effect pitch"), ("bitcrush", "effect curve")):
+    app.expect_item("synth compressor view", window="detail")
+    for kind, item in (("delay", "synth delay view"), ("reverb", "synth reverb view"), ("chorus", "synth sweep view"),
+                       ("bitcrush", "synth distortion view"), ("comb", "effect response"), ("cutter", "effect slices"), ("pitch", "effect pitch")):
         app.cmd(f"insert 0 0 {kind}")
         app.wait(2)
         app.expect_item(item, window="detail")
 
 
-def test_the_delay_syncs_to_note_values_and_shows_its_tone(app, fixtures):
+def test_the_delay_syncs_to_note_values(app, fixtures):
     chain(app, fixtures, "delay")
+    assert fx_param(app, DELAY_SYNC) == 1  # to the tempo, to start
     app.expect_item("Time", window="detail")
-    app.expect_no_item("Note", window="detail")
-    app.click("Sync", window="detail")
-    app.expect_item("Note", window="detail")  # note values, not milliseconds
-    app.expect_no_item("Time", window="detail")
-    beats = lambda: dict((int(i), v) for i, v in app.state()["fx_params"]).get(3)
-    app.drag_by("Note", 0, -30, window="detail")  # up: longer
-    b = beats()
-    notes = [0.0625, 1 / 12, 0.125, 1 / 6, 0.25, 1 / 3, 0.375, 0.5, 2 / 3, 0.75, 1, 4 / 3, 1.5, 2, 3, 4, 8]
-    assert b is not None and any(abs(b - n) < 1e-4 for n in notes) and b > 0.75, b
-    app.expect_item("delay tone", window="detail")  # its cuts, over what it puts out
-    app.drag_by("Low cut", 0, -200, window="detail")  # all the way up
-    low = dict((int(i), v) for i, v in app.state()["fx_params"]).get(7)
-    assert low is not None and low > 2000, low  # the wider range reaches past 2 kHz
+    app.click("##dsync", window="detail")
+    app.click("Hz")
+    assert fx_param(app, DELAY_SYNC) == 0
+    before = fx_param(app, DELAY_HZ)
+    app.drag_by("Time", 0, -30, window="detail")
+    assert fx_param(app, DELAY_HZ) > before
+    app.expect_item("synth delay view", window="detail")

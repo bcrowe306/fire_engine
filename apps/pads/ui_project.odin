@@ -123,6 +123,7 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 	}
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1
+	view_restore(a) // (as it was left)
 	a.proj.last_save = time.tick_now()
 	a.proj.untitled = false
 	recent_add(a, dir)

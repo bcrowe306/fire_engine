@@ -129,6 +129,33 @@ param_text :: proc(spec: ^synth.Param_Spec, plain: f32) -> string {
 	return fmt.tprintf("%.0f%%", (v - spec.min) / (spec.max - spec.min) * 100) if spec.max - spec.min <= 2 && spec.min >= 0 else fmt.tprintf("%.2f", v)
 }
 
+// Where the synth's controls read and set their values: the selected
+// pad's synth, or (`slot`) an effect slot playing a synth effect.
+Param_Host :: struct {
+	slot: bool,
+	t:    pm.Fx_Target,
+}
+
+// Parameter `id`'s plain value where the controls are pointed.
+host_value :: proc(a: ^App, id: fc.Param_Id) -> f32 {
+	if !a.param_host.slot do return pm.synth_value(&a.m, a.selected, id)
+	s, ok := pm.target_slot(&a.m, a.param_host.t)
+	spec := synth.param_spec(id)
+	def: f32 = spec.default if spec != nil else 0
+	return pm.slot_value(s, id, def) if ok else def
+}
+
+// Sets parameter `id` where the controls are pointed (`name`: its undo step's).
+host_set :: proc(a: ^App, id: fc.Param_Id, v: f32, name: string) {
+	if !a.param_host.slot {
+		pm.set_synth_value(&a.m, a.selected, id, v, name)
+		return
+	}
+	spec := synth.param_spec(id)
+	x := clamp(v, spec.min, spec.max) if spec != nil else v
+	pm.set_target_param(&a.m, a.param_host.t, id, x)
+}
+
 // A knob for synth parameter `id` of the selected pad, labelled `label`:
 // its plain value turned, its curved value shown; modulation rings, a
 // drop target for sources, and each ring's handle to drag.
@@ -137,10 +164,16 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 	i := a.selected
 	spec := synth.param_spec(id)
 	if spec == nil do return
-	v := pm.synth_value(m, i, id)
+	v := host_value(a, id)
 	pos := im.GetCursorScreenPos()
 	shown := fmt.ctprintf("%s", param_text(spec, v))
 	step: f32 = 1 if spec.curve == .Indexed else 0
+	if a.param_host.slot { // (an effect slot: no modulation)
+		e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step)
+		if e.changed do host_set(a, id, v, spec.name)
+		if e.ended do app.seal(&m.history)
+		return
+	}
 	routes := pm.synth_routes_to(m, i, id)
 	e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, overlap = len(routes) > 0)
 	knob_id := im.GetItemID()
@@ -245,11 +278,11 @@ wrap_in :: proc(col, w, need, gap: f32) {
 // `prefix`).
 synth_choice :: proc(a: ^App, id: fc.Param_Id, names: []string, width: f32, label: cstring, prefix := "") {
 	m := &a.m
-	v := int(math.round(pm.synth_value(m, a.selected, id)))
+	v := int(math.round(host_value(a, id)))
 	im.SetNextItemWidth(width)
 	if ui.combo(label, fmt.ctprintf("%s%s", prefix, names[clamp(v, 0, len(names) - 1)])) {
 		for n, k in names do if im.Selectable(fmt.ctprintf("%s###c%d", n, k), k == v) {
-			pm.set_synth_value(m, a.selected, id, f32(k), names[k])
+			host_set(a, id, f32(k), names[k])
 			app.seal(&m.history)
 		}
 		im.EndCombo()
@@ -262,18 +295,18 @@ synth_drag :: proc(a: ^App, id: fc.Param_Id, format: cstring, scale: f64, width:
 	m := &a.m
 	spec := synth.param_spec(id)
 	if spec == nil do return
-	v := f64(pm.synth_value(m, a.selected, id)) * scale
+	v := f64(host_value(a, id)) * scale
 	if e := ui.number_drag(fmt.ctprintf("%s", spec.name), &v, f64(spec.min) * scale, f64(spec.max) * scale, (f64(spec.max) - f64(spec.min)) * scale / 200, 0.1, format, width); e.changed {
-		pm.set_synth_value(m, a.selected, id, f32(v / scale), spec.name)
+		host_set(a, id, f32(v / scale), spec.name)
 	} else if e.ended do app.seal(&m.history)
 }
 
 // An on/off parameter as a toggle.
 synth_toggle :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 	m := &a.m
-	on := pm.synth_value(m, a.selected, id) > 0.5
+	on := host_value(a, id) > 0.5
 	if ui.toggle(label, &on) {
-		pm.set_synth_value(m, a.selected, id, 1 if on else 0, string(label))
+		host_set(a, id, 1 if on else 0, string(label))
 		app.seal(&m.history)
 	}
 }

@@ -16,6 +16,11 @@ Perf_State :: struct {
 	sent, received: u64, // MIDI counts last frame
 	in_lit, out_lit: f32, // seconds the activity lights stay on
 	menu_fx: int, // the performance effect whose menu is open
+	seq_bank: int, // the sequence pads' bank shown (0..3)
+	holding: bool, // a sequence pad is held in Hold
+	held_seq: int, // which
+	held_from: int, // the sequence playing before it (to go back to)
+	keys_here: bool, // the Perform panel is in front: the pad keys play sequence pads
 }
 
 // Step lengths, as the UI shows them.
@@ -42,17 +47,27 @@ draw_perform :: proc(user: rawptr) {
 	// A panel of its own: a column for how the pads play and MIDI, one for
 	// note repeat and the arpeggiator, one for the performance effects
 	// (narrow, one after another).
-	draw_launcher(a)
-	im.Spacing()
-	im.Separator()
+	// Wide: the sequence pads a column of their own, beside the rest;
+	// narrow, above them.
 	wide := im.GetContentRegionAvail().x >= 900
-	if wide && !im.BeginTable("##perform", 3, {.BordersInnerV, .PadOuterX}) do wide = false
+	beside := im.GetContentRegionAvail().x >= 1000
+	if !beside {
+		draw_launcher(a)
+		im.Spacing()
+		im.Separator()
+	}
+	if wide && !im.BeginTable("##perform", 4 if beside else 3, {.BordersInnerV, .PadOuterX}) do wide, beside = false, false
 	defer if wide do im.EndTable()
 	if wide {
+		if beside do im.TableSetupColumn("s", {.WidthFixed}, 4 * 68 + 3 * 6 + 8)
 		im.TableSetupColumn("a", {.WidthStretch}, 1)
 		im.TableSetupColumn("b", {.WidthStretch}, 1)
 		im.TableSetupColumn("c", {.WidthStretch}, 1.3)
 		im.TableNextColumn()
+		if beside {
+			draw_launcher(a)
+			im.TableNextColumn()
+		}
 	}
 
 	section(a, "Play the pads as", !wide)
@@ -329,85 +344,122 @@ intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
 	im.DrawList_AddLine(dl, {lo.x + 6, oy}, {lo.x + 18, oy}, ui.col(ui.with_alpha(t.text, 0.6)), 2)
 }
 
-// The sequences to play live: every one in use (and the current one) as
-// a cell, in its state: playing (a bar runs across it), queued (it pulses
-// and counts down), the one shown. Click to launch it (when stopped it
-// starts playing); Shift-click only to show it. When a switch lands: the
-// project's launch setting (in the toolbar).
+// Sequence pads in banks of 16 (A to D: 64 sequences), as the pads are:
+// press one to launch it at the switch point set (it blinks while
+// queued), or (Hold) to play it only while held, the one before coming
+// back when let go. With the Perform panel in front the computer's pad
+// keys play the bank shown.
 draw_launcher :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
+	st := &a.perf
 	t := ui.theme()
-
 	beat, playing := pm.position(&m.engine)
 	tl, _ := pm.timeline_beat(&m.engine)
 	next, in_beats, queued := pm.pending_switch(&m.engine)
-	clock := a.transport.clock
-	w: f32 = 132
-	h: f32 = 58
+	// The bank, how pads launch, and when.
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Sequences")
+	im.SameLine(0, 10)
+	if ui.segmented("seq_bank", {"A", "B", "C", "D"}, &st.seq_bank) {}
+	ui.name("sequence bank")
+	ui.flow(150, 14)
+	hold := 1 if p.launch_hold else 0
+	if ui.segmented("launch_mode", {"Launch", "Hold"}, &hold) do pm.set_launch_hold(m, hold == 1)
+	ui.name("launch mode")
+	if im.IsItemHovered() do im.SetTooltip("Launch: a press switches to it; Hold: it plays while held, then the one before")
+	ui.flow(230, 14)
+	at := int(p.switch_at)
+	im.AlignTextToFramePadding()
+	im.TextDisabled("at")
+	im.SameLine()
+	if ui.segmented("launch_quantize", {"End", "Bar", "Beat", "Now"}, &at) do p.switch_at = pm.Switch_At(at)
+	if im.IsItemHovered() do im.SetTooltip("When a pad's sequence takes over: the end of the one playing, the next bar or beat, or now")
+	ui.name("launch quantize")
+	// The pads: four rows of four, the top row the bank's last four.
 	gap: f32 = 6
-	avail := im.GetContentRegionAvail().x
-	per_row := max(int((avail + gap) / (w + gap)), 1)
-	shown := 0
-	dl := im.GetWindowDrawList()
-	for k in 0 ..< pm.SLOTS {
-		if !pm.slot_used(m, k) && k != p.slot do continue
-		if shown % per_row != 0 do im.SameLine(0, gap)
-		shown += 1
-		im.PushIDInt(i32(9000 + k))
-		pos := im.GetCursorScreenPos()
-		clicked := im.InvisibleButton("##cell", {w, h})
-		ui.name(fmt.tprintf("launch %d", k + 1))
-		item_menu(a, seq_target(k), "##cellmenu")
-		hovered := im.IsItemHovered()
-		is_cur := k == p.slot
-		is_playing := is_cur && playing
-		is_next := queued && next == k
-		sc := ui.rgb(pm.sequence_color(p, k))
-		bg := ui.mix(t.raised, sc, 0.12)
-		if is_playing do bg = ui.mix(t.raised, sc, 0.55)
-		else if is_cur do bg = ui.mix(t.raised, sc, 0.28)
-		if hovered do bg = ui.lighten(bg, 0.06)
-		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
-		// Queued: a border that pulses with the beat.
-		if is_next {
-			pulse := f32(0.5 + 0.5 * math.cos(math.TAU * tl))
-			im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.warn, 0.5 + 0.5 * pulse)), t.radius, 2.5)
+	avail := im.GetContentRegionAvail()
+	// (as big as fits half the panel's height: the rest of Perform is below)
+	// (beside the rest, the panel's height; above it, half)
+	share: f32 = 1 if im.GetContentRegionAvail().x < 520 else 0.55
+	size := clamp(min((min(avail.x, 520) - gap * 3) / 4, (avail.y * share - gap * 3 - im.GetFrameHeight() - 12) / 4), 44, 80)
+	origin := im.GetCursorScreenPos()
+	for k in 0 ..< pm.PADS_PER_BANK {
+		slot := st.seq_bank * pm.PADS_PER_BANK + k
+		row, col := 3 - k / 4, k % 4 // (as the pad grid: 1 at the bottom left)
+		im.SetCursorScreenPos({origin.x + f32(col) * (size + gap), origin.y + f32(row) * (size + gap)})
+		im.PushIDInt(i32(9000 + slot))
+		used := pm.slot_used(m, slot)
+		is_cur := slot == p.slot
+		is_next := queued && next == slot
+		s := p.sequences[slot]
+		middle := fmt.tprintf("%d bar%s", s.bars, "" if s.bars == 1 else "s") if used else "empty"
+		if is_next do middle = fmt.tprintf("in %.1f", max(in_beats, 0))
+		pulse := f32(0.5 + 0.5 * math.cos(math.TAU * tl))
+		face := ui.Pad_Face{
+			label     = fmt.tprintf("launch %d", slot + 1),
+			name      = pm.sequence_name(p, slot) if s.name[0] != 0 else fmt.tprintf("Seq %d", slot + 1),
+			middle    = middle,
+			tint      = ui.rgb(pm.sequence_color(p, slot)),
+			has_sound = used || is_cur,
+			lit       = (is_cur && playing) || (is_next && pulse > 0.5),
+			selected  = is_cur,
 		}
-		im.DrawList_AddRectFilled(dl, pos, {pos.x + 4, pos.y + h}, ui.col(sc), 2)
-		s := p.sequences[k]
-		fg := t.text
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7}, ui.col(fg), fmt.ctprintf("%s", pm.sequence_name(p, k)))
-		info := fmt.ctprintf("%d bar%s%s", s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "")
-		if is_next do info = fmt.ctprintf("in %.1f beats", max(in_beats, 0))
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 7 + im.GetTextLineHeightWithSpacing()}, ui.col(t.warn if is_next else (t.text if is_playing else t.text_dim)), info)
+		hit := ui.pad("##seqpad", face, {size, size})
+		if hit.menu do im.OpenPopup("##cellmenu")
+		item_menu(a, seq_target(slot), "##cellmenu")
+		if hit.pressed do seq_pad_press(a, slot, false)
+		if hit.released do seq_pad_release(a, slot)
 		// Playing: where in it the playhead is.
-		if is_playing {
+		if is_cur && playing {
+			pos := im.GetItemRectMin()
 			f := f32(beat / max(pm.seq_beats(p, s), 1e-6))
-			im.DrawList_AddRectFilled(dl, {pos.x + 4, pos.y + h - 6}, {pos.x + 4 + (w - 8) * f, pos.y + h - 3}, ui.col(t.text), 2)
-		}
-		if clicked {
-			if im.GetIO().KeyShift {
-				if !playing do pm.select_slot(m, k)
-			} else {
-				pm.select_slot(m, k)
-				if !playing do pm.play(&m.engine)
-			}
+			dl := im.GetWindowDrawList()
+			im.DrawList_AddRectFilled(dl, {pos.x + 6, pos.y + size - 7}, {pos.x + 6 + (size - 12) * clamp(f, 0, 1), pos.y + size - 4}, ui.col(t.text), 2)
 		}
 		im.PopID()
 	}
-	// A new one: the next empty sequence, shown (to record into).
-	if shown % per_row != 0 do im.SameLine(0, gap)
+	// Beside (or under, if narrow): go to the next empty one (to record into).
+	if avail.x >= 4 * (size + gap) + 90 do im.SetCursorScreenPos({origin.x + 4 * (size + gap) + 8, origin.y})
+	else do im.SetCursorScreenPos({origin.x, origin.y + 4 * (size + gap)})
 	if e := pm.next_empty_slot(m, p.slot); e >= 0 {
-		pos := im.GetCursorScreenPos()
-		if im.InvisibleButton("##newcell", {w, h}) do pm.select_slot(m, e)
+		if im.Button(fmt.ctprintf("%s  New", ui.ICON_PLUS)) {
+			pm.select_slot(m, e)
+			st.seq_bank = e / pm.PADS_PER_BANK
+		}
 		ui.name("new sequence")
 		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Go to %s (empty) to make a new one", pm.sequence_name(p, e)))
-		im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.text, 0.25)), t.radius, 1.5)
-		pl := im.CalcTextSize("+  New")
-		im.DrawList_AddText(dl, {pos.x + (w - pl.x) / 2, pos.y + (h - pl.y) / 2}, ui.col(t.text_dim), "+  New")
 	}
-	_ = clock
+	im.SetCursorScreenPos({origin.x, origin.y + 4 * (size + gap) + im.GetFrameHeight() + 4})
+	im.Dummy({1, 1})
+	// The keys play these while this panel is in front.
+	st.keys_here = im.IsWindowFocused({.RootWindow, .ChildWindows})
+}
+
+// A sequence pad pressed (or its key): launched, or (Hold) played while
+// held, remembering the one to come back to.
+seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
+	m := &a.m
+	st := &a.perf
+	_, playing := pm.position(&m.engine)
+	if m.project.launch_hold {
+		if !st.holding do st.held_from = m.project.slot
+		st.holding, st.held_seq = true, slot
+	}
+	if !from_key && im.GetIO().KeyShift {
+		if !playing do pm.select_slot(m, slot) // (Shift: go to it, not start it)
+		return
+	}
+	pm.select_slot(m, slot)
+	if !playing do pm.play(&m.engine)
+}
+
+// A sequence pad let go: in Hold, back to the sequence before.
+seq_pad_release :: proc(a: ^App, slot: int) {
+	st := &a.perf
+	if !a.m.project.launch_hold || !st.holding || st.held_seq != slot do return
+	st.holding = false
+	pm.select_slot(&a.m, st.held_from)
 }
 
 // How the pads play: each its sound, a keyboard of the selected one, or

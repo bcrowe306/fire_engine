@@ -83,6 +83,8 @@ App :: struct {
 	slicer_ui: Slicer_State, // the slicer page's selected slice
 	wte:       Wave_Editor,  // the wavetable editor's window
 	presets:   Preset_Ui,    // the synth's Save Preset dialog
+	devices:   Devices_Ui,   // the Devices panel
+	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
 	seq:      Seq_State,
 	capture:  pm.Capture,
@@ -181,6 +183,7 @@ main :: proc() {
 	project_defaults_apply(a)
 	if f, _ := filepath.join({project, pm.PROJECT_FILE}, context.temp_allocator); os.exists(f) {
 		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project)
+		else do view_restore(a)
 	} else {
 		pm.model_new(&a.m, project)
 	}
@@ -278,6 +281,9 @@ frame :: proc(a: ^App) {
 	// Which editor has the keyboard: the one drawn focused this frame says
 	// so (a hidden one keeps none).
 	a.seq.focused, a.song_ui.focused = false, false
+	a.perf.keys_here = false // (the Perform panel says so again if drawn in front)
+	// How the app is left goes with the project when it saves.
+	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank}
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
@@ -400,6 +406,14 @@ PAD_KEYS := [16]im.Key{.Z, .X, .C, .V, .A, .S, .D, .F, .Q, .W, .E, .R, ._1, ._2,
 play_keys :: proc(a: ^App) {
 	io := im.GetIO()
 	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt do return
+	if a.perf.keys_here { // the Perform panel in front: its sequence pads
+		for k, i in PAD_KEYS {
+			slot := a.perf.seq_bank * pm.PADS_PER_BANK + i
+			if im.IsKeyPressed(k, false) do seq_pad_press(a, slot, true)
+			if im.IsKeyReleased(k) do seq_pad_release(a, slot)
+		}
+		return
+	}
 	for k, i in PAD_KEYS {
 		index := a.bank * pm.PADS_PER_BANK + i
 		if im.IsKeyPressed(k, false) do press(a, index, 0.85)
@@ -427,6 +441,12 @@ handle_drops :: proc(a: ^App) {
 			ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(d.path)))
 		}
 	}
+}
+
+// Puts the app as the project was left (after opening one).
+view_restore :: proc(a: ^App) {
+	v := a.m.project.view
+	a.play_mode, a.keys, a.bank, a.selected, a.perf.seq_bank = v.play_mode, v.keys, v.bank, v.selected, v.seq_bank
 }
 
 // Draws `frames` frames back to back and prints the CPU time per frame.

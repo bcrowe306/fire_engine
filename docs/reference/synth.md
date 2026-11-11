@@ -306,6 +306,30 @@ shapes and additive recipes; none is copied from anywhere.
 | `Sync_Saw` | a saw hard-synced from 1× to 8× its rate |
 | `Drawbars` | organ registrations, flute to full |
 
+### Effect_Node
+
+```odin
+Effect_Node :: struct {
+	effect: fx.Effect,
+	values: [988]f32,
+	chain: fx.Chain,
+	sample_rate: f64,
+	bpm: f64,
+	allocator: mem.Allocator,
+}
+```
+
+A synth effect node's state (from `effect_node_create`).
+
+| Field | Description |
+|-------|-------------|
+| `effect` |  |
+| `values` | plain values by id (only the effect's are read) |
+| `chain` | the one effect's state (for drawing: read while it plays) |
+| `sample_rate` |  |
+| `bpm` |  |
+| `allocator` |  |
+
 ### Chorus_Field
 
 ```odin
@@ -1713,6 +1737,30 @@ builtin_table :: proc(which: Builtin_Table, allocator: mem.Allocator = context.a
 
 Control thread. Makes built-in table `which` (free with
 `wavetable_destroy`).
+
+### effect_node_create
+
+```odin
+effect_node_create :: proc(e: fx.Effect, allocator: mem.Allocator = context.allocator) -> (node: core.Node, n: ^Effect_Node)
+```
+
+Control thread. A node playing effect `e` at its defaults.
+
+### effect_node_params
+
+```odin
+effect_node_params :: proc(e: fx.Effect) -> []core.Param_Info
+```
+
+The parameters an effect's node has.
+
+### effect_of_param
+
+```odin
+effect_of_param :: proc "contextless"(id: core.Param_Id) -> (e: fx.Effect, ok: bool)
+```
+
+Which effect a synth parameter id belongs to (false: none).
 
 ### effect_param
 

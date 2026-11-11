@@ -990,10 +990,11 @@ keep its feedback in a band, and its last output.
 ### chain_make
 
 ```odin
-chain_make :: proc(c: ^Chain, max_rate: f64, allocator: mem.Allocator = context.allocator) -> core.Error
+chain_make :: proc(c: ^Chain, max_rate: f64, allocator: mem.Allocator = context.allocator, only: bit_set[Effect] = ~bit_set[Effect]{}) -> core.Error
 ```
 
-Control thread. Makes the effects' lines for rates up to `max_rate`.
+Control thread. Makes the effects' lines for rates up to `max_rate`
+(only those of `only`: an effect without its lines renders nothing).
 
 ### chain_destroy
 

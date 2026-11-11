@@ -6,6 +6,8 @@ import "core:strings"
 
 import app "app:core"
 import fc "fire:core"
+import fx_pkg "fire:fx"
+import "fire:synth"
 import "fire:dsp"
 
 // Insert slots on each pad.
@@ -21,7 +23,7 @@ DEFAULT_BUSES :: 4
 // Performance effects (applied to main while held).
 PERF_FX :: 16
 // Parameters an effect slot keeps.
-MAX_EFFECT_PARAMS :: 16
+MAX_EFFECT_PARAMS :: 24
 
 // What an effect slot holds.
 Effect_Kind :: enum u8 {
@@ -45,6 +47,9 @@ Effect_Kind :: enum u8 {
 	Cutter,
 	Stutter,
 	Plugin, // a CLAP plug-in: `plugin_path` and `plugin_id`
+	Distortion, // the synth's (as are Compressor, Delay, Reverb, Chorus, Flanger, Phaser: see `synth_twin`)
+	Eq,
+	Filter,
 }
 
 // Effect names, as the UI shows them.
@@ -53,6 +58,7 @@ EFFECT_NAMES := [Effect_Kind]cstring{
 	.Compressor = "Compressor", .Gate = "Gate", .Limiter = "Limiter", .Saturation = "Saturation", .Bitcrush = "Bit-crusher",
 	.Delay = "Delay", .Reverb = "Reverb", .Chorus = "Chorus", .Flanger = "Flanger", .Phaser = "Phaser",
 	.Ring_Mod = "Ring mod", .Comb = "Comb", .Pitch = "Pitch shift", .Cutter = "Cutter", .Stutter = "Stutter", .Plugin = "Plug-in",
+	.Distortion = "Distortion", .Eq = "EQ", .Filter = "Filter",
 }
 
 // One parameter value an effect slot keeps.
@@ -95,7 +101,8 @@ slot_set :: proc(s: ^Effect_Slot, id: fc.Param_Id, value: f32) {
 // The built-in parameter table of an effect kind (nil for none and
 // plug-ins: theirs come from the plug-in).
 effect_params :: proc(k: Effect_Kind) -> []fc.Param_Info {
-	switch k {
+	if e, ok := synth_twin(k); ok do return synth.effect_node_params(e)
+	#partial switch k {
 	case .None, .Plugin: return nil
 	case .Low_Pass, .High_Pass, .Band_Pass: return dsp.filter_params[1:3] // cutoff and Q (the mode is the kind)
 	case .Compressor: return dsp.compressor_params[:]
@@ -117,7 +124,8 @@ effect_params :: proc(k: Effect_Kind) -> []fc.Param_Info {
 	return nil
 }
 
-// A slot holding a new `kind` effect at its defaults, on.
+// A slot holding a new `kind` effect at its defaults, on (one of the
+// app's old kinds: the synth effect it became, set as it was).
 new_effect :: proc(kind: Effect_Kind) -> Effect_Slot {
 	s := Effect_Slot{kind = kind, on = kind != .None}
 	for p in effect_params(kind) do slot_set(&s, p.id, f32(p.default))
@@ -126,6 +134,7 @@ new_effect :: proc(kind: Effect_Kind) -> Effect_Slot {
 	case .High_Pass: slot_set(&s, dsp.FILTER_PARAM_CUTOFF_HZ, 1200)
 	case .Band_Pass: slot_set(&s, dsp.FILTER_PARAM_CUTOFF_HZ, 1000); slot_set(&s, dsp.FILTER_PARAM_Q, 2)
 	}
+	if effect_kind_legacy(kind) do return convert_slot(s)
 	return s
 }
 
@@ -270,8 +279,9 @@ default_perf_fx :: proc() -> [PERF_FX]Effect_Slot {
 		fx[i] = new_effect(k)
 		fx[i].on = false // the slot is set up; holding its pad turns it on
 	}
-	slot_set(&fx[0], dsp.FILTER_PARAM_CUTOFF_HZ, 500)
-	slot_set(&fx[1], dsp.FILTER_PARAM_CUTOFF_HZ, 2000)
+	f :: synth.Fx_Filter_Field
+	slot_set(&fx[0], synth.effect_param(.Filter, f.Cutoff), hz_key(500))
+	slot_set(&fx[1], synth.effect_param(.Filter, f.Cutoff), hz_key(2000))
 	slot_set(&fx[4], dsp.STUTTER_PARAM_BEATS, 0.5)
 	slot_set(&fx[5], dsp.STUTTER_PARAM_BEATS, 0.25)
 	slot_set(&fx[6], dsp.STUTTER_PARAM_BEATS, 0.125)
@@ -279,10 +289,10 @@ default_perf_fx :: proc() -> [PERF_FX]Effect_Slot {
 	slot_set(&fx[8], dsp.CUTTER_PARAM_BEATS, 0.25)
 	slot_set(&fx[11], dsp.PITCH_PARAM_SEMITONES, 12)
 	slot_set(&fx[12], dsp.PITCH_PARAM_SEMITONES, -12)
-	slot_set(&fx[13], dsp.DELAY_PARAM_SYNC, 1)
-	slot_set(&fx[13], dsp.DELAY_PARAM_MIX, 0.5)
-	slot_set(&fx[14], dsp.REVERB_PARAM_MIX, 0.5)
-	slot_set(&fx[15], dsp.SATURATION_PARAM_DRIVE_DB, 18)
+	slot_set(&fx[13], synth.effect_param(.Delay, synth.Delay_Field.Sync), f32(fx_pkg.Sync.Tempo))
+	slot_set(&fx[13], synth.effect_param(.Delay, synth.Delay_Field.Wet), 0.5)
+	slot_set(&fx[14], synth.effect_param(.Reverb, synth.Reverb_Field.Wet), 0.5)
+	slot_set(&fx[15], synth.effect_param(.Distortion, synth.Distortion_Field.Drive), 18)
 	return fx
 }
 
@@ -294,6 +304,11 @@ perf_label :: proc(s: Effect_Slot) -> string {
 	case .Pitch:
 		st := slot_value(s, dsp.PITCH_PARAM_SEMITONES, 12)
 		return "Pitch up" if st > 0 else "Pitch down"
+	case .Filter:
+		b := slot_value(s, synth.effect_param(.Filter, synth.Fx_Filter_Field.Blend), 0)
+		return "Low-pass" if b < 0.5 else ("High-pass" if b > 1.5 else "Band-pass")
+	case .Distortion:
+		if fx_pkg.Distortion_Type(int(slot_value(s, synth.effect_param(.Distortion, synth.Distortion_Field.Type), 0))) == .Bit_Crush do return "Bit-crusher"
 	}
 	return slot_name(s)
 }

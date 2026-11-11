@@ -274,6 +274,7 @@ Pad_Hit :: struct {
 	solo:     bool, // its Solo button was clicked
 	dropped:  string, // a drag-and-drop payload of `Pad_Face.drop_type` let go on it (temporary allocator)
 	drop_slicer: bool, // ... let go with Alt held, or on the Slicer half of a pad with drop zones
+	dropped_device: string, // a `device_type` payload let go on it (temporary allocator)
 }
 
 // What a pad shows: its name centred at the top (clipped to the pad), a
@@ -295,6 +296,7 @@ Pad_Face :: struct {
 	badge:     string,  // a small tag at the top right (its choke group: "C2"; "": none)
 	armed:     bool,    // a red dot at the bottom centre: it records what comes in
 	drop_zones: bool,   // while a payload is over it: two halves, Sampler (top) and Slicer (bottom)
+	device_type: cstring, // a second payload it takes (a device to put on it: see `Pad_Hit.dropped_device`)
 }
 
 // Where a pad's drop zones meet, down from its top: a little below the
@@ -315,11 +317,16 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	if face.label != "" do name(face.label)
 	io := im.GetIO()
 	drop_over, drop_lower := false, false
-	if face.drop_type != nil && im.BeginDragDropTarget() {
-		drop_over, drop_lower = true, io.MousePos.y >= pos.y + size.y * DROP_SPLIT
-		if payload := im.AcceptDragDropPayload(face.drop_type); payload != nil {
+	if (face.drop_type != nil || face.device_type != nil) && im.BeginDragDropTarget() {
+		held := im.GetDragDropPayload()
+		is_file := face.drop_type != nil && held != nil && im.Payload_IsDataType(held, face.drop_type)
+		drop_over, drop_lower = is_file, io.MousePos.y >= pos.y + size.y * DROP_SPLIT
+		if face.drop_type != nil do if payload := im.AcceptDragDropPayload(face.drop_type); payload != nil {
 			hit.dropped = strings.clone(strings.string_from_ptr((^u8)(payload.Data), int(payload.DataSize)), context.temp_allocator)
 			hit.drop_slicer = io.KeyAlt || (face.drop_zones && drop_lower)
+		}
+		if face.device_type != nil do if payload := im.AcceptDragDropPayload(face.device_type); payload != nil {
+			hit.dropped_device = strings.clone(strings.string_from_ptr((^u8)(payload.Data), int(payload.DataSize)), context.temp_allocator)
 		}
 		im.EndDragDropTarget()
 	}

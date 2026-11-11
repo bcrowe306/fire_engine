@@ -3,6 +3,8 @@ package pads_model
 import "core:math"
 
 import fc "fire:core"
+import "fire:fx"
+import "fire:synth"
 import "fire:clap"
 import "fire:dsp"
 import "fire:graph"
@@ -104,7 +106,11 @@ Mixer_Nodes :: struct {
 @(private)
 effect_node :: proc(e: ^Engine, s: Effect_Slot) -> (node: fc.Node, plugin: ^clap.Plugin, ok: bool) {
 	inner: fc.Node
-	switch s.kind {
+	if e, twin := synth_twin(s.kind); twin {
+		inner, _ = synth.effect_node_create(e)
+		return dsp.wet_create(inner, 1 if s.on else 0), nil, true
+	}
+	#partial switch s.kind {
 	case .None:       return {}, nil, false
 	case .Low_Pass:   inner = dsp.filter_create(.Lowpass)
 	case .High_Pass:  inner = dsp.filter_create(.Highpass)
@@ -177,7 +183,9 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 	f.has, f.id, f.plugin = true, id, plugin
 	// Dynamics say how much they turn down (read by `slot_reduction`).
 	#partial switch s.kind {
-	case .Compressor, .Gate, .Limiter: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind
+	case .Gate, .Limiter: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind
+	case .Compressor, .Delay, .Reverb, .Chorus, .Flanger, .Phaser, .Distortion, .Eq, .Filter:
+		f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (a `synth.Effect_Node`)
 	}
 	apply_slot(g, f, s, true)
 	return true
@@ -482,12 +490,15 @@ perf_effective :: proc(p: ^Project, k: int, live: f32) -> (s: Effect_Slot, mix: 
 	x := clamp(live if live >= 0 else p.perf_intensity[k], 0, 1)
 	mix = 1
 	#partial switch s.kind {
-	case .Low_Pass:
-		c := slot_value(s, dsp.FILTER_PARAM_CUTOFF_HZ, 500)
-		slot_set(&s, dsp.FILTER_PARAM_CUTOFF_HZ, 20_000 * math.pow(c / 20_000, x))
-	case .High_Pass:
-		c := slot_value(s, dsp.FILTER_PARAM_CUTOFF_HZ, 2000)
-		slot_set(&s, dsp.FILTER_PARAM_CUTOFF_HZ, 20 * math.pow(c / 20, x))
+	case .Filter:
+		// A low-pass closes from the top toward its cutoff, a high-pass
+		// opens from the bottom toward it; a band-pass blends in.
+		cut_id := synth.effect_param(.Filter, synth.Fx_Filter_Field.Cutoff)
+		c := slot_value(s, cut_id, 60)
+		b := slot_value(s, synth.effect_param(.Filter, synth.Fx_Filter_Field.Blend), 0)
+		if b < 0.5 do slot_set(&s, cut_id, 136 + (c - 136) * x)
+		else if b > 1.5 do slot_set(&s, cut_id, 8 + (c - 8) * x)
+		else do mix = x
 	case .Stutter:
 		b := slot_value(s, dsp.STUTTER_PARAM_BEATS, 0.25)
 		slot_set(&s, dsp.STUTTER_PARAM_BEATS, b * math.pow(2, math.round((1 - x) * 2)))
@@ -503,13 +514,25 @@ perf_effective :: proc(p: ^Project, k: int, live: f32) -> (s: Effect_Slot, mix: 
 	return
 }
 
+// The synth effect slot `t` plays, as it runs (for drawing its sweeps
+// and meters; read while it plays), or nil.
+slot_chain :: proc(e: ^Engine, t: Fx_Target) -> ^fx.Chain {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil do return nil
+	if _, ok := synth_twin(f.kind); !ok do return nil
+	return &(^synth.Effect_Node)(f.inner).chain
+}
+
 // How much the effect in slot `t` turns its input down now, in dB (a
 // compressor, gate or limiter), for a meter; false for others.
 slot_reduction :: proc(e: ^Engine, t: Fx_Target) -> (db: f64, ok: bool) {
 	f := target_node(e, t)
 	if f == nil || !f.has || f.inner == nil do return 0, false
 	#partial switch f.kind {
-	case .Compressor: return dsp.compressor_gain_reduction_db((^dsp.Compressor)(f.inner)), true
+	case .Compressor:
+		// The synth's: its middle band's level in against out (all one band, as converted ones are).
+		lv := (^synth.Effect_Node)(f.inner).chain.compressor.levels[1]
+		return 10 * math.log10(max(f64(lv[0]), 1e-12) / max(f64(lv[1]), 1e-12)), true
 	case .Gate:       return dsp.gate_reduction_db((^dsp.Gate)(f.inner)), true
 	case .Limiter:    return dsp.limiter_gain_reduction_db((^dsp.Limiter)(f.inner)), true
 	}

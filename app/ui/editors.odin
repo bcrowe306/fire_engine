@@ -75,6 +75,7 @@ Wave_Options :: struct {
 	overview:      bool, // a strip under it: the whole sound and the part shown (drag it to pan)
 	editable:      bool, // double-click adds a marker (`add_at`), right-click one takes it away (`remove`)
 	gains:         []Wave_Gain, // level lines (a slice's), dragged up and down
+	pyramid:       ^Peak_Pyramid, // the sound's peaks at every zoom: drawn at the resolution of the pixels shown (else `peaks`, stretched)
 }
 
 // A level line over part of a waveform: `db` (-24..+6) from `from` to `to`.
@@ -255,7 +256,30 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		x1 := to_x(f64(selection[1]), view^, pos, size)
 		im.DrawList_AddRectFilled(dl, {x0, pos.y}, {x1, pos.y + size.y}, col(with_alpha(color, 0.18)))
 	}
-	if len(peaks) > 0 && frames > 0 {
+	if opts.pyramid != nil && len(opts.pyramid.samples) > 0 && frames > 0 {
+		// At the pixels' own resolution: a peak a pixel from the level that
+		// fits, or (zoomed in past a frame a pixel) the samples joined up.
+		pyr := opts.pyramid
+		cols := int(size.x)
+		h := size.y / 2 - 2
+		fpp := span / f64(max(cols, 1))
+		if fpp < 1 {
+			a := clamp(int(math.floor(view.start)), 0, len(pyr.samples) - 1)
+			b := clamp(int(math.ceil(view.end)) + 1, a + 1, len(pyr.samples))
+			pts := make([]im.Vec2, b - a, context.temp_allocator)
+			for k in a ..< b do pts[k - a] = {to_x(f64(k), view^, pos, size), mid - pyr.samples[k] * h}
+			im.DrawList_AddPolyline(dl, &pts[0], i32(len(pts)), col(color), 1.5)
+			if fpp < 0.125 do for q in pts do im.DrawList_AddCircleFilled(dl, q, 2, col(color)) // (each sample, when they are far apart)
+		} else {
+			for x in 0 ..< cols {
+				f0 := view.start + f64(x) / f64(cols) * span
+				f1 := view.start + f64(x + 1) / f64(cols) * span
+				lo, hi, ok := peak_range(pyr, f0, f1)
+				if !ok do continue
+				im.DrawList_AddLine(dl, {pos.x + f32(x) + 0.5, mid - hi * h}, {pos.x + f32(x) + 0.5, mid - lo * h + 1}, col(color), 1)
+			}
+		}
+	} else if len(peaks) > 0 && frames > 0 {
 		per := f64(frames) / f64(len(peaks))
 		cols := int(size.x)
 		for x in 0 ..< cols {

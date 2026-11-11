@@ -8,7 +8,7 @@ import app "app:core"
 import "fire:clip"
 
 // Sequence slots in a project.
-SLOTS :: 32
+SLOTS :: 64
 // The longest a sequence can be, in bars.
 MAX_BARS :: 64
 // Beats in a bar (Pads is in 4/4).
@@ -464,6 +464,16 @@ select_slot :: proc(m: ^Model, slot: int) {
 	if slot < 0 || slot >= SLOTS do return
 	queue_slot(&m.engine, slot)
 }
+
+// Sets whether sequence pads play while held (else they launch), undoably.
+set_launch_hold :: proc(m: ^Model, on: bool) {
+	app.set_value(&m.history, "Launch Mode", {app.Id(LAUNCH_HOLD_KEY), 0}, m.project.launch_hold, on, proc(ctx: rawptr, k: app.Key, v: bool) {
+		(^Model)(ctx).project.launch_hold = v
+	})
+	app.seal(&m.history)
+}
+
+@(private) LAUNCH_HOLD_KEY :: 0x7fff_0001
 
 // Whether slot `slot` holds anything: notes, automation, an audio take, a
 // name or a tempo of its own.

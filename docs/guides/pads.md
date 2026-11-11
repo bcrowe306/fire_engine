@@ -37,7 +37,8 @@ port.
 
 The **transport toolbar** runs across the top, under the menus, whatever
 panel or tab is in front (see [The transport](#the-transport)). Below it
-the layout follows Ableton Live's: the **Browser** down the left; the
+the layout follows Ableton Live's: the **Browser** down the left (with
+**Devices** in a tab beside it: see below); the
 **Sequence**, **Song**, **Mixer** and **Perform** as tabs in the middle;
 and along the bottom, the device view (as Ableton's): across its top,
 where a panel's tab would be, a tab for each device of a track; below,
@@ -253,14 +254,19 @@ for other toggles.
   while it is on). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
   the sequencer plays them.
-- **Perform** (a panel beside the Mixer): at its top, the **launcher**:
-  every sequence in use as a cell (its name, bars, its own tempo). Click
-  one to launch it — stopped, it starts playing; playing, it takes over
-  **at once**, on the **next beat**, the **next bar** or at the **sequence
-  end** (the toolbar's **launch** setting). The playing cell runs a
-  bar across; a queued one pulses with the beat and counts down; Shift-
-  click only shows a sequence; **+ New** goes to the next empty one;
-  right-click a cell for the sequence's commands. A sequence's own tempo
+- **Perform** (a panel beside the Mixer): at its top, the **sequence
+  pads**: the project's 64 sequences as four banks (A–D) of 16 pads,
+  laid out like the pad grid (1 at the bottom left). In **Launch**, press
+  one to launch it. Stopped, it starts playing; playing, it takes over
+  **Now**, on the next **Beat**, the next **Bar** or at the **Sequence
+  end**, as the setting beside says (the toolbar's launch setting). In
+  **Hold**, a sequence plays only while its pad is held, at that same
+  quantize, and the one before comes back when you let go. The playing
+  pad is lit and runs a bar along its foot; a queued one blinks with the
+  beat and counts down; Shift-click only shows a sequence. **+ New** goes
+  to the next empty one; right-click a pad for the sequence's commands.
+  While the Perform panel is in front, the computer's pad keys play the
+  bank of sequence pads shown. A sequence's own tempo
   takes over where it does. Below, how the pads play — **Pads**, each its
   own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
   triads, sevenths, power chords) on the selected pad, from any root and
@@ -299,10 +305,20 @@ for other toggles.
     it back round to itself can't be picked);
   - the name on the pad's colour (click to select the pad).
 
-  Click a slot to edit it in the **Effects** tab: what it holds
-  (filters, dynamics, saturation, bit-crusher, delay, reverb, chorus,
-  flanger, phaser, ring mod, comb, pitch shift, cutter, stutter, or a CLAP
-  plug-in), on or off (a 15 ms fade), and a knob for each setting. A
+  Click a slot to edit it in the **Effects** tab: what it holds, on or
+  off (a 15 ms fade), and its settings. The effects are:
+  - **the synth's own** (the same algorithms, pictures and knobs as a
+    synth's Effects tab): Chorus, Compressor, Delay, Distortion, EQ,
+    Filter, Flanger, Phaser, Reverb;
+  - **Gate, Limiter, Ring mod, Comb, Pitch shift, Cutter, Stutter**, as
+    before;
+  - **a CLAP plug-in**.
+
+  Projects from before open with their old effects converted to the
+  nearest settings of the synth's. The low-, high- and band-pass become
+  the Filter, the saturation and bit-crusher become the Distortion, and
+  the delay, reverb, compressor, chorus, flanger and phaser keep their
+  times, feedback, mix and tone. They sound close, not identical. A
   plug-in that can't be found plays nothing and says so. A pad's volume
   is its fader, after its inserts; the volume lane of a sequence moves it.
 - **Performance effects** (in the Perform panel): 16 effects on main, each
@@ -361,6 +377,20 @@ Delete clears the pad; View > Light Theme switches theme.
   while playing takes over **at the end of the playing sequence**, **at
   the next bar**, **at the next beat** or **at once** — exactly there; the
   Sequence panel shows what comes next and when.
+
+### The Devices panel
+
+A tab beside the Browser: the devices there are, in a tree (type to
+find one).
+- **Instruments**: Synth, Sampler, Slicer, Audio track, then the synth's
+  presets by kind (yours too).
+- **Effects**: the synth's (Sound) and the rest (Rhythm and pitch).
+- **Plug-ins**: the CLAP effects found (Settings > Plug-ins), by vendor.
+
+Drag one onto a pad. An instrument becomes the pad's, and a preset loads
+onto a synth (making the pad one). An effect goes in the pad's first
+empty insert and opens in front. Double-click one to put it on the
+selected pad. Each is one undo step.
 
 ## Commands and right-click menus
 
@@ -466,7 +496,12 @@ first tab):
   +6 dB). The waveform shows dB down the left side (a line at -6 dB), and
   time or bars along the bottom. The wheel zooms around the mouse,
   Shift+wheel pans, and the strip underneath shows the whole sample with
-  the visible part as a window you can drag. Markers are placed in the
+  the visible part as a window you can drag. However far you zoom, the
+  wave is drawn at the screen's own resolution: a peak each pixel, read
+  from peaks kept at every zoom (so it stays quick). Zoomed in past a
+  sample a pixel, it draws the samples themselves joined by a line, and
+  as dots when they are far apart. The Sample tab's and an audio take's
+  waveforms do the same. Markers are placed in the
   sample, so they stay put when the sample is warped or stretched.
 - Under the waveform, the selected slice: **play** it, and set its own
   **level**, **pitch**, **pan** and **Reverse**.
@@ -733,6 +768,13 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
   **Save As…** (Cmd+Shift+S: a name and a place; it becomes the folder
   `<name>.pads`, the samples copied there), **Rename Project…** (its
   folder renamed beside where it is).
+- Everything a project holds is saved with it: every pad's and track's
+  settings, devices, inserts and sends, the buses and performance
+  effects, the sequences and the song, the synths' patches and their own
+  wavetables, the transport. How the app was left is saved too: how the
+  pads play (and Keyboard mode's scale, root, octave and chord), the bank
+  and pad selected, and the sequence pads' bank. A test sets every
+  setting to new values, saves, loads, and checks each one came back.
 - Changes are saved on their own every minute, and on quitting. The
   window's title shows the project, with a dot while it has unsaved
   changes. Opening a project starts a new undo history.
@@ -915,6 +957,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
+| `test_devices_panel.py` | the Devices panel: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (back to the one before when let go), their banks |
 | `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
 | `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
@@ -932,7 +975,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
-| `test_live.py` | the launcher (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
+| `test_live.py` | the sequence pads (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
 | `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song chain and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |

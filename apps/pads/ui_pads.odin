@@ -54,6 +54,7 @@ draw_pads :: proc(user: rawptr) {
 			solo      = pad.solo,
 			buttons   = has,
 			drop_type = "PADS_FILE",
+			device_type = PADS_DEVICE_PAYLOAD,
 			badge     = fmt.tprintf("C%d", pad.choke) if pad.choke > 0 && has else "",
 			armed     = pm.track_armed(&a.m, index),
 			drop_zones = !has,
@@ -106,6 +107,7 @@ draw_pads :: proc(user: rawptr) {
 		}
 		// A file from the browser dropped on it: into a slicer (with Alt, on
 		// an empty pad's lower half, or onto a slicer), else a sampler.
+		if hit.dropped_device != "" do put_device(a, index, hit.dropped_device) // (from the Devices panel)
 		if hit.dropped != "" {
 			if hit.drop_slicer || pad.kind == .Slicer {
 				load_into_slicer(a, index, hit.dropped)

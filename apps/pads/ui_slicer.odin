@@ -174,7 +174,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 	beat := 0.0
 	if pad.warp.on || pad.warp.bpm > 0 do beat = s.rate * 60 / pm.pad_bpm(m, i)
 	inspector_h: f32 = 34
-	opts := ui.Wave_Options{rate = s.rate, beat_frames = beat, beats_per_bar = m.project.transport.time_sig.num, scale = true, overview = true, editable = true, gains = gains[:]}
+	opts := ui.Wave_Options{rate = s.rate, beat_frames = beat, beats_per_bar = m.project.transport.time_sig.num, scale = true, overview = true, editable = true, gains = gains[:], pyramid = &w.pyramid}
 	e := ui.waveform("slices", w.peaks, w.frames, &w.view, markers[:], nil, {avail.x, max(avail.y - inspector_h - 8, 120)}, ui.rgb(pad.color), head if playing else -1, opts)
 	if e.moved {
 		switch e.marker {
@@ -337,12 +337,14 @@ wave_peaks :: proc(a: ^App, i: int) {
 	if s == nil || w.sample == pad.sample do return
 	delete(w.peaks)
 	w.peaks = nil
+	ui.peak_pyramid_destroy(&w.pyramid)
 	w.sample, w.frames = pad.sample, s.frames
 	w.view, w.selection = {}, {}
 	if audio, ok := pm.pad_audio(m, i); ok && len(audio.channels) > 0 {
 		mono := make([]f32, len(audio.channels[0]), context.temp_allocator)
 		for ch in audio.channels do for &v, k in mono do v += ch[k] / f32(len(audio.channels))
 		w.peaks = ui.peaks_of(mono, 4096)
+		w.pyramid = ui.peak_pyramid_make(mono) // (every zoom, at the pixels' resolution)
 	}
 }
 

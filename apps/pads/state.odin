@@ -53,6 +53,8 @@ State :: struct {
 	note_list:  [dynamic]State_Note, // its notes (in order)
 	muted_notes: int,
 	launch:     string, // when a sequence picked while playing takes over: Now, Beat, Bar, End
+	launch_hold: bool,  // sequence pads play while held
+	seq_bank:   int,    // the sequence pads' bank shown (0..3)
 	silences:   int,    // times Stop silenced every voice
 	theme:      string, // the theme in use
 	zoom:       f32,
@@ -290,6 +292,7 @@ state_json :: proc(a: ^App) -> string {
 		if n.muted do s.muted_notes += 1
 	}
 	s.launch = enum_name(p.switch_at)
+	s.launch_hold, s.seq_bank = p.launch_hold, a.perf.seq_bank
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
 	s.clock_out, s.sync = a.settings.clock_out, enum_name(a.settings.sync) // (the setting: with no output port open nothing is sent)

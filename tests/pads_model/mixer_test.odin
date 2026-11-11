@@ -4,11 +4,14 @@ import "core:log"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
+import "core:math"
 
 import app "app:core"
 import fc "fire:core"
 import pm "../../apps/pads/model"
 import "fire:dsp"
+import "fire:synth"
+import "fire:fx"
 import kit "fire:testkit"
 
 // A rig with a long 1 kHz tone on pad 0, played: its level after `frames`.
@@ -74,8 +77,9 @@ inserts_shape_a_pad_and_undo :: proc(t: ^testing.T) {
 	m := &r.m
 	pm.hit(&m.engine, 0, true)
 	open, _ := level(r)
-	lp := pm.new_effect(.Low_Pass)
-	pm.slot_set(&lp, dsp.FILTER_PARAM_CUTOFF_HZ, 300)
+	lp := pm.new_effect(.Low_Pass) // (the synth's filter now, as a low-pass)
+	testing.expect_value(t, lp.kind, pm.Effect_Kind.Filter)
+	pm.slot_set(&lp, synth.effect_param(.Filter, synth.Fx_Filter_Field.Cutoff), f32(69 + 12 * math.log2(300.0 / 440)))
 	pm.set_insert(m, 0, 0, lp)
 	pm.sync(&m.engine)
 	render(r, 4800)
@@ -330,4 +334,53 @@ buses_added_routed_and_deleted :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(pm.send_db(p.pads[0].sends[4]) + 3) < 0.01, "the send moved with it")
 	app.undo(&m.history)
 	testing.expect(t, p.bus_count == 6 && p.pads[0].bus == 5 && pm.bus_name(p, 6) == "Drums", "one undo step")
+}
+
+// The app's old effects, as saved: each converted to the synth effect
+// nearest it (a delay's time, feedback and mix; a low-pass's cutoff);
+// a swapped insert plays (a reverb rings on after its pad stops).
+@(test)
+old_effects_convert_and_play :: proc(t: ^testing.T) {
+	old := pm.Effect_Slot{kind = .Delay, on = true}
+	pm.slot_set(&old, dsp.DELAY_PARAM_TIME_MS, 250)
+	pm.slot_set(&old, dsp.DELAY_PARAM_FEEDBACK, 60)
+	pm.slot_set(&old, dsp.DELAY_PARAM_MIX, 40)
+	pm.slot_set(&old, dsp.DELAY_PARAM_PING_PONG, 1)
+	testing.expect(t, pm.slot_is_legacy(old), "old settings seen")
+	d := pm.convert_slot(old)
+	f :: synth.Delay_Field
+	hz := math.pow(2, pm.slot_value(d, synth.effect_param(.Delay, f.Hz), 0))
+	testing.expectf(t, abs(hz - 4) < 1e-3, "250 ms: 4 repeats a second (%v)", hz)
+	testing.expect_value(t, pm.slot_value(d, synth.effect_param(.Delay, f.Feedback), 0), 0.6)
+	testing.expect_value(t, pm.slot_value(d, synth.effect_param(.Delay, f.Wet), 0), 0.4)
+	testing.expect_value(t, pm.slot_value(d, synth.effect_param(.Delay, f.Style), 0), f32(fx.Delay_Style.Ping_Pong))
+	testing.expect(t, !pm.slot_is_legacy(d) && d.on, "converted, still on")
+	lp := pm.Effect_Slot{kind = .Low_Pass, on = true}
+	pm.slot_set(&lp, dsp.FILTER_PARAM_CUTOFF_HZ, 880)
+	c := pm.convert_slot(lp)
+	testing.expect_value(t, c.kind, pm.Effect_Kind.Filter)
+	testing.expectf(t, abs(pm.slot_value(c, synth.effect_param(.Filter, synth.Fx_Filter_Field.Cutoff), 0) - 81) < 1e-3, "880 Hz: key 81")
+
+	r := rig_make(t, "mix_synth_fx")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "short.wav", 1000, 0.2)) // (a fifth of a second)
+	render(r, 256)
+	rv := pm.new_effect(.Reverb)
+	pm.slot_set(&rv, synth.effect_param(.Reverb, synth.Reverb_Field.Wet), 0.6)
+	pm.slot_set(&rv, synth.effect_param(.Reverb, synth.Reverb_Field.Decay), 2)
+	pm.set_insert(m, 0, 0, rv)
+	pm.sync(&m.engine)
+	pm.hit(&m.engine, 0, true)
+	render(r, 9_600)
+	pm.hit(&m.engine, 0, false)
+	out := render(r, 24_000) // from 0.2 s on: the sound over
+	testing.expectf(t, kit.rms(out[0][12_000:]) > 1e-3, "a reverb tail after the pad stops (%v)", kit.rms(out[0][12_000:]))
+	// Saved and loaded: the same slot.
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	r2 := rig_make(t, "mix_synth_fx_load")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
+	got := r2.m.project.pads[0].inserts[0]
+	testing.expect(t, got.kind == .Reverb && pm.slot_value(got, synth.effect_param(.Reverb, synth.Reverb_Field.Wet), 0) == 0.6, "saved")
 }

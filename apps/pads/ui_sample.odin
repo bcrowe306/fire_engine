@@ -12,6 +12,7 @@ import im "deps:imgui"
 Wave_State :: struct {
 	sample:    app.Id, // whose peaks these are
 	peaks:     []ui.Peak,
+	pyramid:   ui.Peak_Pyramid, // the same sound at every zoom
 	frames:    i64,
 	view:      ui.Wave_View,
 	selection: [2]i64,
@@ -49,12 +50,14 @@ draw_sample :: proc(user: rawptr) {
 	if w.sample != pad.sample {
 		delete(w.peaks)
 		w.peaks = nil
+		ui.peak_pyramid_destroy(&w.pyramid)
 		w.sample, w.frames = pad.sample, s.frames
 		w.view, w.selection = {}, {}
 		if audio, ok := pm.pad_audio(m, i); ok && len(audio.channels) > 0 {
 			mono := make([]f32, len(audio.channels[0]), context.temp_allocator)
 			for ch in audio.channels do for &v, k in mono do v += ch[k] / f32(len(audio.channels))
 			w.peaks = ui.peaks_of(mono, 4096)
+		w.pyramid = ui.peak_pyramid_make(mono) // (every zoom, at the pixels' resolution)
 		}
 	}
 	draw_playback(a)
@@ -80,7 +83,7 @@ draw_sample :: proc(user: rawptr) {
 	head, playing := pm.pad_playhead(&m.engine, i)
 	wave_at := im.GetCursorScreenPos()
 	wave_size := im.Vec2{avail.x, max(avail.y - 4, 80)}
-	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, wave_size, ui.rgb(pad.color), head if playing else -1)
+	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, wave_size, ui.rgb(pad.color), head if playing else -1, {pyramid = &w.pyramid})
 	// Warped: the sample's own beats over it (bars stronger), from its
 	// start, so you see what the tempo will follow.
 	if pad.warp.on && pad.warp.bpm > 0 && w.view.end > w.view.start {
@@ -216,12 +219,14 @@ draw_take :: proc(a: ^App, i: int) {
 	if w.sample != c.sample {
 		delete(w.peaks)
 		w.peaks = nil
+		ui.peak_pyramid_destroy(&w.pyramid)
 		w.sample, w.frames = c.sample, s.frames
 		w.view, w.selection = {}, {}
 		if audio, ok := pm.sample_audio(m, c.sample); ok && len(audio.channels) > 0 {
 			mono := make([]f32, len(audio.channels[0]), context.temp_allocator)
 			for ch in audio.channels do for &v, k in mono do v += ch[k] / f32(len(audio.channels))
 			w.peaks = ui.peaks_of(mono, 4096)
+		w.pyramid = ui.peak_pyramid_make(mono) // (every zoom, at the pixels' resolution)
 		}
 	}
 	im.AlignTextToFramePadding()
@@ -232,6 +237,6 @@ draw_take :: proc(a: ^App, i: int) {
 	head: i64 = -1
 	if rel, playing := pm.position(&m.engine); playing do head = i64(rel * s.rate * 60 / c.bpm) % max(s.frames, 1)
 	avail := im.GetContentRegionAvail()
-	ui.waveform("wave", w.peaks, w.frames, &w.view, nil, &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head)
+	ui.waveform("wave", w.peaks, w.frames, &w.view, nil, &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head, {pyramid = &w.pyramid})
 	item_menu(a, {kind = .Take, index = i}, "##takemenu")
 }

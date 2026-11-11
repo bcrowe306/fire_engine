@@ -1,5 +1,6 @@
 package test_synth
 
+import "core:fmt"
 import "core:testing"
 
 import "fire:core"
@@ -138,4 +139,47 @@ morphs_in_a_voice :: proc(t: ^testing.T) {
 	testing.expectf(t, kit.tone_amplitude(lp, SR, 220) > 0.05 && kit.tone_amplitude(lp, SR, 440) < 0.01 * kit.tone_amplitude(lp, SR, 220), "low-pass: 220 Hz alone (%v, %v)", kit.tone_amplitude(lp, SR, 220), kit.tone_amplitude(lp, SR, 440))
 	sh := play(t, .Shepard_Tone, 1)
 	testing.expectf(t, kit.tone_amplitude(sh, SR, 220) < 0.01 && kit.tone_amplitude(sh, SR, 440) > 0.05, "Shepard: an octave up (%v at 220, %v at 440)", kit.tone_amplitude(sh, SR, 220), kit.tone_amplitude(sh, SR, 440))
+}
+
+// Each effect as a node of its own: clean (finite, nothing allocated on
+// the audio thread), the same in any blocks, and its settings heard (the
+// reverb's mix at 0 leaves the input as it was).
+@(test)
+effect_nodes :: proc(t: ^testing.T) {
+	Args :: struct { e: fx.Effect }
+	for e in fx.Effect {
+		args := Args{e}
+		factory := kit.Node_Factory{create = proc(user: rawptr) -> core.Node {
+			a := (^Args)(user)
+			n, x := synth.effect_node_create(a.e)
+			x.values[synth.effect_param(a.e, synth.Chorus_Field.On)] = 1 // (ignored: a node is on)
+			return n
+		}, user = &args}
+		input := kit.buffer_make(2, 24_000, SR, context.temp_allocator)
+		kit.white_noise(input.channels[0], 1, 0.3)
+		kit.white_noise(input.channels[1], 2, 0.3)
+		cfg := kit.default_render_config()
+		node := factory.create(&args)
+		out, rep := kit.render(&node, input, cfg, context.temp_allocator)
+		kit.expect_clean_render(t, rep)
+		kit.render_report_destroy(&rep)
+		core.node_destroy(&node)
+		testing.expectf(t, kit.peak(out.channels[0]) > 0.01, "%v: sounds", e)
+		patterns := kit.standard_block_patterns(cfg.max_block)
+		kit.expect_block_invariant(t, factory, input, cfg, patterns[:], 1e-4, fmt.tprintf("%v node", e))
+		testing.expectf(t, len(synth.effect_node_params(e)) > 3, "%v: its parameters", e)
+	}
+	// The reverb with no mix: the input untouched.
+	n, _ := synth.effect_node_create(.Reverb)
+	defer core.node_destroy(&n)
+	input := kit.buffer_make(2, 9_600, SR, context.temp_allocator)
+	kit.sine(input.channels[0], SR, 440, 0.5)
+	kit.sine(input.channels[1], SR, 440, 0.5)
+	cfg := kit.default_render_config()
+	cfg.events = {{0, core.Param_Value{synth.effect_param(.Reverb, synth.Reverb_Field.Wet), 0}}}
+	out, rep := kit.render(&n, input, cfg, context.temp_allocator)
+	kit.render_report_destroy(&rep)
+	worst: f32 = 0
+	for i in 2_400 ..< 9_600 do worst = max(worst, abs(out.channels[0][i] - input.channels[0][i]))
+	testing.expectf(t, worst < 1e-3, "reverb at no mix: the input as it was (%v)", worst)
 }
