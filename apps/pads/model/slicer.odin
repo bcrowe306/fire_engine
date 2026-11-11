@@ -204,7 +204,9 @@ slice_to_pad :: proc(m: ^Model, index: int, k: int) -> int {
 	np.kind = .Sampler
 	np.start, np.end = s.start, slice_end(m, index, k)
 	np.loop_start, np.loop_end, np.slice_count = 0, 0, 0
-	np.pitch += s.pitch
+	whole := math.round(s.pitch) // (Transpose takes whole semitones; the rest goes to Fine)
+	np.pitch += whole
+	np.voice.fine = clamp(np.voice.fine + (s.pitch - whole) * 100, -100, 100)
 	np.pan = clamp(np.pan + s.pan, -1, 1)
 	np.volume += s.gain_db
 	np.reverse = s.reverse

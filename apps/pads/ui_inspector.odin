@@ -251,10 +251,10 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 
 // A knob for one f32 field of the selected pad, as an undoable edit.
 @(private)
-knob_f32 :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, default: f32, format: cstring, field: pm.Pad_Field, step: string, log_scale := false) {
+knob_f32 :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, default: f32, format: cstring, field: pm.Pad_Field, step: string, log_scale := false, snap: f32 = 0) {
 	m := &a.m
 	v := value^
-	e := ui.knob(label, &v, lo, hi, default, format, log_scale = log_scale)
+	e := ui.knob(label, &v, lo, hi, default, format, log_scale = log_scale, step = snap)
 	if e.changed {
 		p := m.project.pads[a.selected]
 		set_field(&p, field, v)

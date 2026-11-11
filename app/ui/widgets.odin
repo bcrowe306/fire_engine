@@ -44,8 +44,10 @@ col :: proc "contextless" (c: Color) -> u32 {
 // to reset to `default`. Shows `format` of the value under it, and the
 // label above. With `log_scale` (min_v > 0) it turns in ratios: times and
 // frequencies, where the small end needs room. `shown_value` shows instead
-// of the formatted value (a note value's name, say).
-knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false, shown_value: cstring = nil) -> (e: Edit) {
+// of the formatted value (a note value's name, say). With `step` > 0 it
+// lands only on multiples of it (whole semitones: 1); a drag still moves
+// smoothly underneath, and each wheel notch is a step.
+knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false, shown_value: cstring = nil, step: f32 = 0) -> (e: Edit) {
 	im.PushID(label)
 	defer im.PopID()
 	t := current
@@ -70,6 +72,20 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		e = drag_value(&u, 0, 1, math.ln(clamp(default, min_v, max_v) / min_v) / span, size * 3)
 		if e.changed do value^ = min_v * math.exp(u * span)
 		frac = u
+	} else if step > 0 {
+		// The drag moves an unsnapped value (kept while this knob is held);
+		// what it shows and sets is that value to the nearest step.
+		@(static) raw: f32
+		@(static) raw_id: im.ID
+		id := im.GetItemID()
+		r := raw if raw_id == id && im.IsItemActive() else value^
+		e = drag_value(&r, min_v, max_v, default, size * 3)
+		if im.IsItemActive() do raw, raw_id = r, id
+		v := snap_step(r, step, min_v, max_v)
+		if !im.IsItemActive() && r != value^ && v == value^ do v = snap_step(value^ + (step if r > value^ else -step), step, min_v, max_v) // (a wheel notch: a step at least)
+		e.changed = v != value^
+		value^ = v
+		frac = (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
 	} else {
 		e = drag_value(value, min_v, max_v, default, size * 3)
 		frac = (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
@@ -86,7 +102,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		if im.IsWindowAppearing() do typed = value^
 		im.SetNextItemWidth(120)
 		if im.InputFloat("##type", &typed, 0, 0, "%.3f", {.EnterReturnsTrue}) {
-			value^ = clamp(typed, min_v, max_v)
+			value^ = snap_step(typed, step, min_v, max_v) if step > 0 else clamp(typed, min_v, max_v)
 			e.changed, e.ended = true, true
 			im.CloseCurrentPopup()
 		}
@@ -118,6 +134,12 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	im.SetCursorScreenPos(pos)
 	im.Dummy({w, label_h + 4 + size + 2 + label_h})
 	return
+}
+
+// `v` to the nearest multiple of `step`, within min_v..max_v.
+@(private)
+snap_step :: proc(v, step, min_v, max_v: f32) -> f32 {
+	return clamp(math.round(v / step) * step, min_v, max_v)
 }
 
 // Vertical drag and scroll over the last item, mapped onto value: the

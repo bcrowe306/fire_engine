@@ -495,7 +495,7 @@ draw_global :: proc(a: ^App) {
 	im.SameLine(0, 14)
 	knob_f32(a, "Pan", &pad.pan, -1, 1, 0, "%+.2f", .Pan, "Set Pan")
 	im.SameLine(0, 14)
-	knob_f32(a, "Transpose", &pad.pitch, -24, 24, 0, "%+.1f st", .Pitch, "Set Pitch")
+	knob_f32(a, "Transpose", &pad.pitch, -24, 24, 0, "%+.0f st", .Pitch, "Set Pitch", snap = 1) // (whole semitones: Fine is for cents)
 	im.SameLine(0, 14)
 	voice_knob(a, "Fine", &a.voice_edit.fine, -100, 100, 0, "%+.0f ct", int(Voice_Key.Fine), "Fine Tune")
 

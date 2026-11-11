@@ -91,3 +91,23 @@ def test_global_and_an_audio_pads_tabs(app, fixtures):
     app.expect_item("EQ", window="detail")
     app.key("cmd+z")
     app.expect_item("Filter", window="detail")
+
+
+def test_transpose_moves_in_whole_semitones(app, fixtures):
+    # On a sampler and on a slicer: a drag lands on whole semitones (small
+    # moves add up underneath), a wheel notch is one semitone.
+    loaded(app, fixtures)
+    app.cmd(f"slicer 1 {os.path.join(fixtures, 'loop.wav')}")
+    for pad in (0, 1):
+        app.cmd(f"select {pad}")
+        app.click("Global", window="detail")
+        app.drag_by("Transpose", 0, -9, window="detail", steps=18)  # half a pixel a frame
+        p = app.pad(pad)["pitch"]
+        assert p >= 1 and p == int(p), p
+        app.hover("Transpose", window="detail")
+        app.cmd("scroll 0 1")
+        app.wait(3)
+        assert app.pad(pad)["pitch"] == p + 1
+        app.cmd("scroll 0 -2")
+        app.wait(3)
+        assert app.pad(pad)["pitch"] == p - 1
