@@ -14,9 +14,22 @@ plan before it is built.
   from a base note; the sampler's voice (envelopes, filter, pitch, LFOs),
   warp; mono/poly, thru, gate; fades; per-slice volume; velocity
   sensitivity (Ableton Simpler's Slice mode is the reference for feel).
-- **Synth** — a synthesizer with the capabilities of Vital (wavetable
-  oscillators, unison, filters, modulation matrix, effects). Vital's code
-  is GPL-3.0: a design reference only, written anew (as with JUCE).
+- **Synth** — in progress (plan: docs/design/synth.md). A wavetable synth
+  with Vital's features, written anew (Vital is a reference only, as JUCE
+  is; none of its name, presets or wavetables ship). Tabs: Osc, Filter,
+  Env, LFO, Mod, Effects, Macro, Global.
+  1. A playable voice: 3 wavetable oscs + sample osc, unison, warp modes,
+     2 filters (8 models), 6 envelopes, 8 LFOs, matrix (drag to assign),
+     macros, voices, glide, oversampling, live visuals.
+  2. The nine effects (chorus, compressor, delay, distortion, EQ, filter,
+     flanger, phaser, reverb) in `fire:fx`, sounding as Vital's do.
+  3. Spectral morphs, spectral unison, the four random modulators.
+  4. The wavetable editor.
+  5. Presets (our own format, a built-in bank).
+  - Later: MPE (per-note bend, slide, lift) and microtuning (.scl/.kbm/.tun).
+- **Effects from the synth as inserts** — the nine `fire:fx` effects
+  (milestone 2 above) offered in Pads' insert and bus effect slots too,
+  alongside the existing ones.
 - **Plug-in** — a CLAP instrument as the pad's device (CLAP effects are
   already hosted in effect slots); its parameters, its window, its state.
 - **Audio clip** — records into and plays a clip in the pad, looping by
