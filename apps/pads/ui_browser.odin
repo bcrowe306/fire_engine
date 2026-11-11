@@ -92,7 +92,10 @@ draw_browser :: proc(user: rawptr) {
 			}
 		}
 		if searching && pm.search_done(&b.search) && len(rows) >= pm.SEARCH_MAX_RESULTS do im.TextDisabled("(the first %d)", i32(pm.SEARCH_MAX_RESULTS))
-		if im.IsWindowFocused() do browser_keys(a, rows)
+		if im.IsWindowFocused() {
+			browser_keys(a, rows)
+			a.browser_has_keys = true // (its arrows are its own)
+		}
 	}
 	im.EndChild()
 	draw_preview(a)
@@ -331,7 +334,7 @@ browser_keys :: proc(a: ^App, rows: []pm.Browser_Entry) {
 // A file was selected: preview it (with auto-play, or when asked).
 @(private)
 preview_selected :: proc(a: ^App, e: pm.Browser_Entry, auto: bool) {
-	if e.is_dir do return
+	if e.is_dir || pm.is_midi(e.path) do return // (a MIDI file isn't heard: drag it onto a pad)
 	if auto && !a.m.engine.preview.auto_play do return
 	pm.preview_play(&a.m.engine, e.path)
 }
@@ -339,6 +342,7 @@ preview_selected :: proc(a: ^App, e: pm.Browser_Entry, auto: bool) {
 // Loads file `e` onto the selected pad.
 @(private)
 load_selected :: proc(a: ^App, e: pm.Browser_Entry) {
+	if drop_midi(a, e.path, a.selected) do return // (a MIDI file: its notes on the pad)
 	if pm.load_onto_pad(&a.m, a.selected, e.path) == .None {
 		ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.path), pm.pad_label(a.selected)))
 	} else {

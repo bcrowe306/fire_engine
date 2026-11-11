@@ -34,6 +34,7 @@ package pads
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 import "core:slice"
 import "core:strconv"
 import "core:time"
@@ -83,6 +84,8 @@ App :: struct {
 	slicer_ui: Slicer_State, // the slicer page's selected slice
 	wte:       Wave_Editor,  // the wavetable editor's window
 	presets:   Preset_Ui,    // the synth's Save Preset dialog
+	leave:     Leave_State,
+	status:    Status_State, // the status bar's lights and load  // leaving a project with changes: the prompt; a crash's backup to offer
 	devices:   Devices_Ui,   // the Devices panel
 	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
@@ -94,6 +97,8 @@ App :: struct {
 	frame:    int,
 	play_mode: pm.Play_Mode,
 	keys:     pm.Keys,
+	pads_bank: int, // the bank the pads were on before Keyboard mode moved it
+	browser_has_keys: bool, // the browser's list had the keyboard last frame (its arrows)
 	grid_held: [pm.PADS_PER_BANK]Grid_Held,
 	perf:     Perf_State,
 	mixer:    Mixer_State,
@@ -163,6 +168,7 @@ main :: proc() {
 	}
 	defer ui.platform_destroy(p)
 	appearance_apply(a)
+	p.confirm_quit = true // (closing asks to save first: draw_leave)
 	app.bus_init(&a.bus)
 	defer app.bus_destroy(&a.bus)
 	if !open_engine(a, fake) {
@@ -189,6 +195,12 @@ main :: proc() {
 	}
 	a.proj.untitled = untitled
 	a.proj.last_save = time.tick_now()
+	a.proj.last_backup = time.tick_now()
+	// Stopped last time without closing: its backup, offered.
+	if drive == "" {
+		if crashed := session_crashed(a); crashed != "" do a.leave.recover = strings.clone(crashed)
+		session_mark(a)
+	}
 	sync_apply(a)
 	defer plugin_choice_clear(&a.plugin_choice)
 	a.seq.selected, a.seq.grid = -1, .Sixteenth
@@ -246,8 +258,8 @@ main :: proc() {
 		p.running, p.driver, p.fixed_dt = true, nil, 0
 		run_profile(a, profile)
 	}
-	// Leaving: what changed is kept (as an autosave would).
-	if pm.model_dirty(&a.m) && drive == "" do pm.model_save(&a.m)
+	// Leaving (asked first, when there were changes): a clean exit.
+	if drive == "" do session_unmark(a)
 	if drive != "" {
 		for s in a.driver.shots do fmt.println("screenshot:", s)
 		if a.driver.failed do os.exit(1)
@@ -276,18 +288,21 @@ frame :: proc(a: ^App) {
 	update_meters(a)
 	if a.settings.recording == "" do ui.handle_shortcuts(&a.actions) // (not while a new shortcut is pressed)
 	if a.settings.recording == "" do play_keys(a)
+	if a.settings.recording == "" do pad_arrows(a)
 	plugins_scan_step(a)
 	track_io_frame(a)
 	// Which editor has the keyboard: the one drawn focused this frame says
 	// so (a hidden one keeps none).
 	a.seq.focused, a.song_ui.focused = false, false
 	a.perf.keys_here = false // (the Perform panel says so again if drawn in front)
+	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
 	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank}
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
 	draw_preset_save(a)
+	draw_leave(a)
 	draw_export(a)
 	draw_settings(a)
 	draw_rename_project(a)
@@ -362,7 +377,7 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 // Keyboard mode: the scale's degrees from the bank's start (bank A the
 // first 16 from the root, B the next 16...), or for a slicer its slice.
 keyboard_notes :: proc(a: ^App, k: int, out: ^[4]int) -> []int {
-	degree := a.bank * pm.PADS_PER_BANK + k
+	degree := a.bank * pm.PADS_PER_BANK + k - keyboard_bottom(a)
 	if a.m.project.pads[a.selected].kind == .Slicer {
 		out[0] = degree
 		return out[:1]
@@ -370,9 +385,24 @@ keyboard_notes :: proc(a: ^App, k: int, out: ^[4]int) -> []int {
 	return pm.keyboard_pitches(a.keys, degree, out)
 }
 
-// Whether every pitch can be played (within four octaves either way).
+// Keyboard mode's degrees below the pad's own note that bank A's first pad
+// starts at: the root five octaves down (the bottom of the MIDI range,
+// whatever the octave set). A slicer's keys start at its first slice.
+keyboard_bottom :: proc(a: ^App) -> int {
+	if a.m.project.pads[a.selected].kind == .Slicer do return 0
+	n := pm.scale_size(a.keys.scale)
+	return n * (5 + a.keys.octave)
+}
+
+// The bank Keyboard mode opens on: the one holding the pad's own note.
+keyboard_home_bank :: proc(a: ^App) -> int {
+	return clamp(keyboard_bottom(a) / pm.PADS_PER_BANK, 0, pm.PADS / pm.PADS_PER_BANK - 1)
+}
+
+// Whether every pitch can be played: the MIDI range (the pad's own note
+// is key 60).
 keyboard_in_range :: proc(ps: []int) -> bool {
-	for p in ps do if p < -48 || p > 48 do return false
+	for p in ps do if p < -60 || p > 67 do return false
 	return len(ps) > 0
 }
 
@@ -421,6 +451,33 @@ play_keys :: proc(a: ^App) {
 	}
 }
 
+// The arrow keys move the selection between pads: Left and Right the
+// previous and next, Up and Down the pad above and below in the grid (on
+// to the next bank at its edge). Not while a text field, the browser's
+// list or the piano roll's selected notes have them; in the sequence
+// editor (no notes selected) Up and Down step to the next row's pad.
+pad_arrows :: proc(a: ^App) {
+	io := im.GetIO()
+	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt || a.browser_has_keys do return
+	if a.seq.focused && len(a.seq.sel) > 0 do return
+	step := 0
+	if im.IsKeyPressed(.LeftArrow) do step = -1
+	if im.IsKeyPressed(.RightArrow) do step = 1
+	up, down := im.IsKeyPressed(.UpArrow), im.IsKeyPressed(.DownArrow)
+	if a.seq.focused {
+		if up do step = 1
+		if down do step = -1
+	} else {
+		if up do step = 4
+		if down do step = -4
+	}
+	if step == 0 do return
+	i := (a.selected + step + pm.PADS) % pm.PADS
+	a.selected = i
+	if a.play_mode != .Keyboard do a.bank = i / pm.PADS_PER_BANK // (Keyboard mode's banks are notes)
+	show_pad_chain(a, i)
+}
+
 // The pad of the current bank drawn at `pos`, or -1.
 pad_at :: proc(a: ^App, pos: im.Vec2) -> int {
 	for r, i in a.pad_rects {
@@ -433,6 +490,7 @@ pad_at :: proc(a: ^App, pos: im.Vec2) -> int {
 handle_drops :: proc(a: ^App) {
 	for d in a.platform.drops {
 		index := pad_at(a, d.pos)
+		if drop_midi(a, d.path, index) do continue
 		if index < 0 do index = a.selected
 		if pm.load_onto_pad(&a.m, index, d.path) == .None {
 			a.selected = index

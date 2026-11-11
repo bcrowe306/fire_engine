@@ -394,6 +394,7 @@ draw_launcher :: proc(a: ^App) {
 		is_next := queued && next == slot
 		s := p.sequences[slot]
 		middle := fmt.tprintf("%d bar%s", s.bars, "" if s.bars == 1 else "s") if used else "empty"
+		if used && len(s.notes) > 0 do middle = "" // (its notes show instead: the bars in its tooltip)
 		if is_next do middle = fmt.tprintf("in %.1f", max(in_beats, 0))
 		pulse := f32(0.5 + 0.5 * math.cos(math.TAU * tl))
 		face := ui.Pad_Face{
@@ -404,8 +405,10 @@ draw_launcher :: proc(a: ^App) {
 			has_sound = used || is_cur,
 			lit       = (is_cur && playing) || (is_next && pulse > 0.5),
 			selected  = is_cur,
+			notes     = seq_minis(a, slot), // (its notes, small, behind)
 		}
 		hit := ui.pad("##seqpad", face, {size, size})
+		if im.IsItemHovered() && used do im.SetTooltip("%s", fmt.ctprintf("%s · %d bar%s%s", pm.sequence_name(p, slot), s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else ""))
 		if hit.menu do im.OpenPopup("##cellmenu")
 		item_menu(a, seq_target(slot), "##cellmenu")
 		if hit.pressed do seq_pad_press(a, slot, false)
@@ -467,5 +470,14 @@ seq_pad_release :: proc(a: ^App, slot: int) {
 set_play_mode :: proc(a: ^App, mode: pm.Play_Mode) {
 	if a.play_mode == mode do return
 	for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
+	// Keyboard mode's banks run up the scale from the lowest note: it opens
+	// on the one holding the pad's own; leaving it, the pads' bank again.
+	if mode == .Keyboard {
+		a.pads_bank = a.bank
+		a.play_mode = mode
+		a.bank = keyboard_home_bank(a)
+		return
+	}
+	if a.play_mode == .Keyboard do a.bank = a.pads_bank
 	a.play_mode = mode
 }

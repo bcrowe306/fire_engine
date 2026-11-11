@@ -1004,7 +1004,7 @@ page_project :: proc(a: ^App) -> (changed: bool) {
 		}
 	}
 	hint("Where Save starts for a new project.")
-	label("Autosave")
+	label("Autosave (a backup)")
 	im.SetNextItemWidth(160)
 	if ui.combo("##autosave", fmt.ctprintf("%s", "Off" if s.autosave_min == 0 else fmt.tprintf("Every %d min", s.autosave_min))) {
 		for m in ([]int{0, 1, 2, 5, 10}) do if im.Selectable(fmt.ctprintf("%s", "Off" if m == 0 else fmt.tprintf("Every %d min", m)), m == s.autosave_min) {
@@ -1013,6 +1013,7 @@ page_project :: proc(a: ^App) -> (changed: bool) {
 		}
 		im.EndCombo()
 	}
+	hint("A copy of unsaved changes beside the project, for if Pads stops without closing; the project itself saves only when you save.")
 	label("On start")
 	if ui.toggle("Open the last project", &s.open_last) do changed = true
 	im.SeparatorText("Export")

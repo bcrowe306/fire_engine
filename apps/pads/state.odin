@@ -133,6 +133,7 @@ State_Pad :: struct {
 	index:   int,
 	label:   string,
 	name:    string,
+	color:   u32,
 	mode:    string,
 	volume:  f32,
 	pan:     f32,
@@ -363,6 +364,7 @@ state_json :: proc(a: ^App) -> string {
 		}
 		sp.midi_in_notes, _ = pm.midi_activity(&m.engine, i)
 		sp.attack, sp.release, sp.voice = pad.attack, pad.release, pad.voice
+		sp.color = pad.color
 		if l, live := pm.pad_live(&m.engine, i); live do sp.cutoff_now = l.cutoff
 		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames
 		append(&s.pads, sp)

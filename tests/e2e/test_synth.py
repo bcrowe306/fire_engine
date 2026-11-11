@@ -87,7 +87,7 @@ def test_keyboard_mode_banks_and_recording(app):
     app.wait(3)
     a = app.state()["keyboard"]
     assert a[0] != "" and a[15] != "", a
-    app.click("B", window="detail")
+    app.click("E", window="detail")  # (it opens on the bank holding C3: D, chromatic)
     b = app.state()["keyboard"]
     assert b[0] != a[0] and b[0] not in a, (a, b)  # the next 16 notes
     # A computer key plays the bank's note, and it records at that pitch.
@@ -100,7 +100,7 @@ def test_keyboard_mode_banks_and_recording(app):
     app.wait(5)
     notes = app.state()["note_list"]
     assert len(notes) == 1, notes
-    assert notes[0]["pitch"] >= 16, notes  # bank B: 16 degrees up at least (a semitone a degree or more)
+    assert notes[0]["pitch"] == 4, notes  # bank E's first pad: MIDI 64, four above C3 (chromatic: banks from C-2)
     app.cmd("mode pads")
 
 

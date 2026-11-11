@@ -71,6 +71,9 @@ Keys :: struct {
 	chord:  Chord,
 }
 
+// Notes an octave of `s` has.
+scale_size :: proc "contextless" (s: Scale) -> int { return len(scale_steps(s)) }
+
 // The pitch (semitones from the pad's own) of scale degree `degree` (0 =
 // the root; 7 in a 7-note scale is the root an octave up).
 degree_pitch :: proc "contextless" (k: Keys, degree: int) -> int {

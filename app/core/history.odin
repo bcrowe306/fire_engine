@@ -162,6 +162,12 @@ redo_name :: proc(h: ^History) -> string {
 	return h.redo[len(h.redo) - 1].name if len(h.redo) > 0 else ""
 }
 
+// Tells the history's listeners it changed (after its fields were set
+// from outside: a document loaded with unsaved changes, say).
+changed_history :: proc(h: ^History) {
+	changed(h)
+}
+
 // Records that the model as it is now has been saved.
 mark_saved :: proc(h: ^History) {
 	h.saved = len(h.undo)

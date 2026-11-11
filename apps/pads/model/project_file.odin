@@ -3,6 +3,7 @@ package pads_model
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:time"
 
 import app "app:core"
 import fc "fire:core"
@@ -71,10 +72,60 @@ model_move :: proc(m: ^Model, dir: string) -> fc.Error {
 	return model_save(m)
 }
 
+// The folder in a project's folder its backups (autosaves) go in.
+BACKUP_DIR :: ".autosave"
+
+// Where project folder `dir`'s backup is.
+model_backup_path :: proc(dir: string) -> string {
+	p, _ := filepath.join({dir, BACKUP_DIR, PROJECT_FILE}, context.temp_allocator)
+	return p
+}
+
+// Saves a backup of the project (an autosave) beside it, in its folder's
+// `.autosave/`: the project itself, and whether it has unsaved changes,
+// stay as they are.
+model_save_backup :: proc(m: ^Model) -> fc.Error {
+	p := &m.project
+	dir, _ := filepath.join({p.dir, BACKUP_DIR}, context.temp_allocator)
+	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return .Device_Error
+	return session.save({}, model_backup_path(p.dir), project_chunks(p))
+}
+
+// Whether project folder `dir` has a backup newer than its project (what
+// an app that stopped without saving left).
+model_backup_newer :: proc(dir: string) -> bool {
+	b, berr := os.stat(model_backup_path(dir), context.temp_allocator)
+	if berr != nil do return false
+	main, _ := filepath.join({dir, PROJECT_FILE}, context.temp_allocator)
+	f, ferr := os.stat(main, context.temp_allocator)
+	if ferr != nil do return true
+	return time.diff(f.modification_time, b.modification_time) > 0
+}
+
+// Throws project folder `dir`'s backup away.
+model_discard_backup :: proc(dir: string) {
+	b, _ := filepath.join({dir, BACKUP_DIR}, context.temp_allocator)
+	os.remove_all(b)
+}
+
+// Loads project folder `dir` from its backup: as it was when last
+// autosaved, its changes unsaved (save to keep them).
+model_load_backup :: proc(m: ^Model, dir: string) -> fc.Error {
+	load_from(m, dir, model_backup_path(dir)) or_return
+	m.history.saved = -1 // (unsaved: the project file is older)
+	app.changed_history(&m.history)
+	return .None
+}
+
 // Loads the project in folder `dir` into `m`, replacing what it had (and
 // its undo history): the engine is built again from it.
 model_load :: proc(m: ^Model, dir: string) -> fc.Error {
 	path, _ := filepath.join({dir, PROJECT_FILE}, context.temp_allocator)
+	return load_from(m, dir, path)
+}
+
+@(private)
+load_from :: proc(m: ^Model, dir, path: string) -> fc.Error {
 	l, err := session.load({}, path, nil, context.temp_allocator)
 	if err != .None do return err
 	defer session.loaded_destroy(&l)

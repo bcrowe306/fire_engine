@@ -21,6 +21,7 @@ RECENT :: 8
 Project_State :: struct {
 	recent:     [dynamic]string,
 	last_save:  time.Tick,
+	last_backup: time.Tick, // the last autosave (a backup beside the project)
 	title:      string, // the window's, as last set
 	export:     pm.Export,
 	exporting:  bool,
@@ -127,19 +128,20 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 	a.proj.last_save = time.tick_now()
 	a.proj.untitled = false
 	recent_add(a, dir)
+	session_mark(a)
 	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Opened %s", filepath.base(dir)))
 	return true
 }
 
-// A new, empty project (in the temporary folder until saved somewhere);
-// what was open is saved first.
+// A new, empty project (in the temporary folder until saved somewhere).
+// (`leave` asks to save what was open first.)
 new_project :: proc(a: ^App) {
-	if pm.model_dirty(&a.m) do pm.model_save(&a.m)
 	dir, _ := os.make_directory_temp("", "Untitled.pads", context.temp_allocator)
 	if pm.model_new(&a.m, dir) != .None do ui.toast(&a.ws.toasts, .Error, "Could not start a new project")
 	a.proj.untitled = true
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1
+	session_mark(a)
 }
 
 // The system's folder or file dialog; the choice comes back on the bus.
@@ -189,8 +191,10 @@ subscribe_project :: proc(a: ^App) {
 		a := (^App)(user)
 		defer delete(e.path)
 		switch e.what {
-		case .Open: open_project(a, e.path)
-		case .Save_As: save_project_as(a, e.path)
+		case .Open: leave(a, .Open, e.path)
+		case .Save_As:
+			if save_project_as(a, e.path) do session_mark(a)
+			leave_after_save(a)
 		case .Export:
 			path := e.path
 			if a.proj.settings.stems == .None && !strings.has_suffix(path, ".wav") do path = strings.concatenate({path, ".wav"}, context.temp_allocator)
@@ -234,10 +238,7 @@ project_frame :: proc(a: ^App) {
 			else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d file%s", len(files), "" if len(files) == 1 else "s"))
 		}
 	}
-	every := time.Duration(a.settings.autosave_min) * time.Minute
-	if every > 0 && pm.model_dirty(&a.m) && time.tick_since(st.last_save) > every && !st.exporting && !st.untitled {
-		if pm.model_save(&a.m) == .None do st.last_save = time.tick_now()
-	}
+	autosave_frame(a) // (backups: the project saves only when asked)
 	title := fmt.tprintf("%s%s — Pads", project_name(a), " •" if pm.model_dirty(&a.m) else "")
 	if title != st.title {
 		delete(st.title)

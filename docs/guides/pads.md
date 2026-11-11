@@ -266,13 +266,16 @@ for other toggles.
   beat and counts down; Shift-click only shows a sequence. **+ New** goes
   to the next empty one; right-click a pad for the sequence's commands.
   While the Perform panel is in front, the computer's pad keys play the
-  bank of sequence pads shown. A sequence's own tempo
+  bank of sequence pads shown. Each pad draws its sequence's notes small
+  (its rows bottom to top, its bars across), as do the song's steps. A sequence's own tempo
   takes over where it does. Below, how the pads play — **Pads**, each its
   own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
   triads, sevenths, power chords) on the selected pad, from any root and
   octave, the bottom-left pad the root (the bank buttons, A–H, pick which
-  16 notes: A the first 16 from the root, B the next 16, and on; the
-  computer keyboard's pad keys follow); **Velocity**, the selected pad at
+  16 notes, from the bottom of the MIDI range up: A starts at the root's
+  lowest octave (C-2 for C) and each bank goes on from the last. It opens
+  on the bank holding the pad's own note (C3), and back in Pads mode the
+  pads' own bank returns; the computer keyboard's pad keys follow); **Velocity**, the selected pad at
   16 velocities. Under note repeat and the arpeggiator, a bar of their steps lights the one playing (bright while it is on). **Note repeat** retriggers held pads on the grid;
   the **arpeggiator** walks held notes (up, down, up-down, random, as
   played; 1–4 octaves; gate; latch). MIDI: activity lights, **Learn**
@@ -377,6 +380,27 @@ Delete clears the pad; View > Light Theme switches theme.
   while playing takes over **at the end of the playing sequence**, **at
   the next bar**, **at the next beat** or **at once** — exactly there; the
   Sequence panel shows what comes next and when.
+
+### The status bar
+
+Along the bottom of the window:
+- the audio engine: running or not, its device, rate and buffer (click
+  for Settings > Audio);
+- its load, a bar that warms as it fills, and the dropouts since start;
+- MIDI in and out lights;
+- the track selected, in its colour;
+- at the right, the newest message (click it for the recent ones).
+
+**Moving between pads**: the arrow keys move the selection, Left and
+Right to the previous and next pad, Up and Down to the pad above and
+below in the grid (on to the next bank at its edge). They don't while
+typing, while the browser's list has the keyboard, or while the piano
+roll has notes selected (its arrows move them). With the sequence editor
+in front and nothing selected, Up and Down step to the row above or
+below. A row's name, clicked, selects its pad too.
+
+A pad given its first sound gets a colour of its own: the one fewest
+pads have, and not its neighbours'.
 
 ### The Devices panel
 
@@ -763,6 +787,13 @@ there), so a project moves as one folder.
 Projects saved before there were 128 pads open with their 64 pads in
 banks A–D, and keep their own MIDI map (where key 36 played A1).
 
+- **MIDI files**: **File > Import MIDI File…** reads one into the
+  current sequence as General MIDI drums (key 36 is A1). Dropping a .mid
+  on a pad (from the Finder or the browser, which lists them) puts its
+  notes all on that pad, pitched; dropped on the window, it goes in as
+  drums. **Export Sequence as MIDI…** and **Export Song as MIDI…** write a
+  track a pad, named after it, on General MIDI drum keys (the song: its
+  steps in order, with their repeats, parts, transposes and tempos).
 - **File > New** (Cmd+N), **Open…** (Cmd+O, a folder), **Open Recent**
   (the last 8, kept in the user's preferences folder), **Save** (Cmd+S),
   **Save As…** (Cmd+Shift+S: a name and a place; it becomes the folder
@@ -775,9 +806,19 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
   pads play (and Keyboard mode's scale, root, octave and chord), the bank
   and pad selected, and the sequence pads' bank. A test sets every
   setting to new values, saves, loads, and checks each one came back.
-- Changes are saved on their own every minute, and on quitting. The
-  window's title shows the project, with a dot while it has unsaved
-  changes. Opening a project starts a new undo history.
+- A project saves when you save it. The window's title shows the
+  project, with a dot while it has unsaved changes. Quitting, closing
+  the window, **New**, **Open** and **Open Recent** ask first when there
+  are changes: **Save**, **Don't Save** or **Cancel** (an untitled
+  project's Save asks for its name and place, then goes on). Opening a
+  project starts a new undo history; **Edit > History** lists its steps,
+  newest first, with any undone ones above. Choose one to go back to
+  just after it, or forward to an undone one.
+- **Autosave** (Settings, every minute to start with) keeps a backup of
+  unsaved changes beside the project, in its folder's `.autosave/`; the
+  project itself stays as last saved. If Pads stops without closing (a
+  crash, power lost), the next start offers to **Recover** them, or
+  **Discard** them. Recovered changes are unsaved until you save.
 - A new project is "Untitled" and lives in the temporary folder: **Save**
   asks for its name and place (Documents to start with), as Save As
   does.
@@ -958,6 +999,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
 | `test_devices_panel.py` | the Devices panel: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (back to the one before when let go), their banks |
+| `test_app_gaps.py` | the arrow keys moving between pads; Keyboard mode opening on C3's bank and bank A at C-2; the status bar; Edit > History jumping back and forward; MIDI exported and read back; new pads' own colours |
 | `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
 | `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |

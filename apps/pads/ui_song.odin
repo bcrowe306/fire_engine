@@ -524,6 +524,9 @@ draw_song_steps :: proc(a: ^App) {
 		label := pm.step_label(&st)
 		name := pm.sequence_name(p, int(st.slot))
 		im.DrawList_PushClipRect(dl, pos, {pos.x + w - 4, pos.y + h}, true)
+		// Its sequence's notes, small, along the bottom half.
+		lh := im.GetTextLineHeightWithSpacing()
+		ui.mini_notes(dl, seq_minis(a, int(st.slot)), {pos.x + 10, pos.y + 8 + 2 * lh}, {pos.x + w - 8, pos.y + h - 8}, ui.with_alpha(ui.mix(c, t.text, 0.5), 0.7))
 		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6}, ui.col(t.text), fmt.ctprintf("%s", label if label != "" else name))
 		part := "" if st.start == 0 && st.length == 0 else fmt.tprintf(" · part")
 		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6 + im.GetTextLineHeightWithSpacing()}, ui.col(t.text_dim), fmt.ctprintf("×%d · %g beats%s", st.repeats, pm.step_period(p, st), part))

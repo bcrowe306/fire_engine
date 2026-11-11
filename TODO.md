@@ -40,9 +40,26 @@ plan before it is built.
      the settings folder, twelve built in, the preset bar. Later: more of
      the bank; tags and search; an audio keyframe's sound carried along.
   - Later: MPE (per-note bend, slide, lift) and microtuning (.scl/.kbm/.tun).
-- **Effects from the synth as inserts** — the nine `fire:fx` effects
-  (milestone 2 above) offered in Pads' insert and bus effect slots too,
-  alongside the existing ones.
+- **What a DAW is expected to have, still missing** (found in the
+  November review; the save prompts, backups and recovery, the status
+  bar, Edit > History, MIDI files in and out, sequence miniatures, arrow
+  keys between pads, new pads' colours and Keyboard mode's full range are
+  done):
+  - CLAP instruments as a pad's device (see Plug-in, below).
+  - Tempo automation (a tempo lane in the song) and time-signature
+    changes partway through.
+  - Locators and a loop range in the song (loop a few bars of it).
+  - Freeze or bounce a track in place (to its audio, its CPU freed).
+  - Track groups (a bus a group of pads share, folded in the mixer) and
+    sidechain inputs for the compressor.
+  - MIDI learn for any knob (today: pads only), and MIDI CC lanes.
+  - Project templates (a new project from a saved one).
+  - Plug-in delay compensation shown, and a metronome sound choice.
+  - The message log written to a file (the status bar keeps the last
+    200 only).
+- **Effects from the synth as inserts** — done: the synth's effects
+  replaced their twins in inserts and performance effects (old projects
+  converted to the nearest settings).
 - **Plug-in** — a CLAP instrument as the pad's device (CLAP effects are
   already hosted in effect slots); its parameters, its window, its state.
 - **Audio clip** — records into and plays a clip in the pad, looping by

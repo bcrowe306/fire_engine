@@ -4,6 +4,7 @@ import "core:log"
 import "core:math"
 import "core:os"
 import "core:path/filepath"
+import "core:fmt"
 import "core:testing"
 import "core:time"
 
@@ -346,4 +347,76 @@ a_pad_plays_alone :: proc(t: ^testing.T) {
 	x = out[0][2400:]
 	a1, _ = pm.pad_level(&m.engine, 0)
 	testing.expect(t, kit.tone_amplitude(x, SR, 660) > 0.2 && a1[0] == 0, "H16 (note 127) alone")
+}
+
+// Autosaves are backups beside the project: the project file stays as
+// last saved; a backup newer than it is what a crash leaves, loaded with
+// its changes unsaved; thrown away, it is gone.
+@(test)
+backups_keep_unsaved_changes :: proc(t: ^testing.T) {
+	r := rig_make(t, "backup")
+	defer rig_destroy(r)
+	m := &r.m
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	time.sleep(20 * time.Millisecond)
+	m.project.bpm = 97
+	pad := m.project.pads[3]
+	pad.volume = -9
+	pm.set_pad(m, 3, .Whole, "Volume", pad)
+	testing.expect_value(t, pm.model_save_backup(m), fc.Error.None)
+	testing.expect(t, pm.model_dirty(m), "still unsaved")
+	testing.expect(t, pm.model_backup_newer(m.project.dir), "a backup newer than the project")
+	// What a fresh start finds: the project as saved, the backup with the changes.
+	r2 := rig_make(t, "backup_open")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
+	testing.expect(t, r2.m.project.pads[3].volume != -9, "the project as last saved")
+	testing.expect_value(t, pm.model_load_backup(&r2.m, m.project.dir), fc.Error.None)
+	testing.expect(t, r2.m.project.pads[3].volume == -9 && pm.model_dirty(&r2.m), "recovered, unsaved")
+	pm.model_discard_backup(m.project.dir)
+	testing.expect(t, !pm.model_backup_newer(m.project.dir), "thrown away")
+}
+
+// A pad given its first sound gets a colour of its own: three new pads,
+// three colours (a colour set by hand is kept).
+@(test)
+new_pads_get_their_own_colours :: proc(t: ^testing.T) {
+	r := rig_make(t, "colours")
+	defer rig_destroy(r)
+	m := &r.m
+	for k in 0 ..< 3 do testing.expect_value(t, pm.load_onto_pad(m, k, tone(r, fmt.tprintf("c%d.wav", k), 440, 0.1)), fc.Error.None)
+	pm.make_synth(m, 3)
+	c := [4]u32{m.project.pads[0].color, m.project.pads[1].color, m.project.pads[2].color, m.project.pads[3].color}
+	for i in 0 ..< 4 do for j in i + 1 ..< 4 do testing.expectf(t, c[i] != c[j], "pads %d and %d differ (%x)", i, j, c)
+	pad := pm.default_pad()
+	pad.color = 0x123456
+	pad.kind = .Synth
+	pm.set_pad(m, 9, .Whole, "Synth", pad)
+	testing.expect_value(t, m.project.pads[9].color, u32(0x123456))
+}
+
+// MIDI out and back in: a sequence exported, then read as drums,
+// is the same notes; the song exported is its steps one after another.
+@(test)
+midi_files_export_and_import :: proc(t: ^testing.T) {
+	r := rig_make(t, "midi_export")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.add_note(m, 0, {start = 0, length = 0.5, pad = 0, velocity = 0.8, probability = 1})
+	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 5, velocity = 0.5, probability = 1}) // (pitched notes go out that many keys off the pad's: another pad's, read back as drums)
+	pm.add_note(m, 0, {start = 2.5, length = 1, pad = 17, velocity = 1, probability = 1})
+	path, _ := filepath.join({r.dir, "out.mid"}, context.temp_allocator)
+	testing.expect_value(t, pm.export_midi(m, path, 0), 3)
+	testing.expect_value(t, pm.import_midi(m, path, 4, .Drums), 3)
+	a, b := m.project.sequences[0].notes, m.project.sequences[4].notes
+	for n in a {
+		found := false
+		for x in b do found ||= x.pad == n.pad && x.pitch == n.pitch && abs(x.start - n.start) < 1e-3 && abs(x.length - n.length) < 1e-3
+		testing.expectf(t, found, "note on %d at %v back", n.pad, n.start)
+	}
+	// The song: sequence 1 twice, then sequence 5 (the same notes).
+	m.project.song.count = 2
+	m.project.song.steps[0] = {slot = 0, repeats = 2}
+	m.project.song.steps[1] = {slot = 4, repeats = 1}
+	testing.expect_value(t, pm.export_midi(m, path, -1), 9)
 }

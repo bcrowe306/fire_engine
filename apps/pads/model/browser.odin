@@ -238,7 +238,7 @@ list_dir :: proc(dir: string, allocator := context.allocator) -> []Browser_Entry
 		full, _ := filepath.join({dir, fi.name}, context.temp_allocator)
 		is_dir := fi.type == .Directory
 		if fi.type == .Symlink do is_dir = os.is_dir(full) // follow links to folders
-		if !is_dir && !is_audio(fi.name) do continue
+		if !is_dir && !is_listed(fi.name) do continue
 		append(&out, Browser_Entry{name = strings.clone(fi.name, allocator), path = strings.clone(full, allocator), is_dir = is_dir})
 	}
 	slice.sort_by(out[:], proc(x, y: Browser_Entry) -> bool {
@@ -248,7 +248,19 @@ list_dir :: proc(dir: string, allocator := context.allocator) -> []Browser_Entry
 	return out[:]
 }
 
-// Whether `name` is an audio file the browser lists.
+// Whether the browser lists a file: a sound, or a MIDI file (to drag onto
+// a pad or the sequence).
+is_listed :: proc(name: string) -> bool {
+	return is_audio(name) || is_midi(name)
+}
+
+// Whether a file is a MIDI file (by its name).
+is_midi :: proc(name: string) -> bool {
+	ext := strings.to_lower(filepath.ext(name), context.temp_allocator)
+	return ext == ".mid" || ext == ".midi"
+}
+
+// Whether `name` is an audio file (by its name).
 is_audio :: proc(name: string) -> bool {
 	ext := strings.to_lower(filepath.ext(name), context.temp_allocator)
 	return slice.contains(AUDIO_EXTS, ext)
@@ -482,7 +494,7 @@ search_run :: proc(s: ^Search) {
 				continue
 			}
 			lower := strings.to_lower(fi.name, context.temp_allocator)
-			if is_dir || !is_audio(fi.name) || !strings.contains(lower, needle) {
+			if is_dir || !is_listed(fi.name) || !strings.contains(lower, needle) {
 				delete(full)
 				continue
 			}

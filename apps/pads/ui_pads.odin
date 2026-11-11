@@ -108,6 +108,7 @@ draw_pads :: proc(user: rawptr) {
 		// A file from the browser dropped on it: into a slicer (with Alt, on
 		// an empty pad's lower half, or onto a slicer), else a sampler.
 		if hit.dropped_device != "" do put_device(a, index, hit.dropped_device) // (from the Devices panel)
+		if hit.dropped != "" && drop_midi(a, hit.dropped, index) do hit.dropped = "" // (a MIDI file: its notes on this pad)
 		if hit.dropped != "" {
 			if hit.drop_slicer || pad.kind == .Slicer {
 				load_into_slicer(a, index, hit.dropped)

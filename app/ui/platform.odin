@@ -41,6 +41,8 @@ Platform_Settings :: struct {
 // The window, the GPU device and the ImGui context. Fields are read-only.
 Platform :: struct {
 	settings:     Platform_Settings,
+	confirm_quit: bool, // the window's close and the system's quit only set `quit_requested` (the app decides)
+	quit_requested: bool,
 	window:       ^sdl.Window,
 	device:       ^sdl.GPUDevice,
 	claimed:      bool, // the window has a swapchain
@@ -195,9 +197,13 @@ frame_begin :: proc(p: ^Platform) -> bool {
 		case .DROP_FILE:
 			if e.drop.data != nil do append(&p.drops, Drop{strings.clone(string(e.drop.data)), {e.drop.x, e.drop.y}})
 		case .QUIT:
-			p.running = false
+			if p.confirm_quit do p.quit_requested = true
+			else do p.running = false
 		case .WINDOW_CLOSE_REQUESTED:
-			if e.window.windowID == sdl.GetWindowID(p.window) do p.running = false
+			if e.window.windowID == sdl.GetWindowID(p.window) {
+				if p.confirm_quit do p.quit_requested = true
+				else do p.running = false
+			}
 		}
 	}
 	if !p.running do return false

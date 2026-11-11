@@ -28,7 +28,7 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { app.redo(&(^App)(u).m.history) },
 		enabled = proc(u: rawptr) -> bool { return len((^App)(u).m.history.redo) > 0 }})
 	add(acts, {id = "new", label = "New Project", icon = ui.ICON_FILE_PLUS, chord = ui.MOD_CMD | i32(im.Key.N), user = a,
-		run = proc(u: rawptr) { new_project((^App)(u)) }})
+		run = proc(u: rawptr) { leave((^App)(u), .New) }})
 	add(acts, {id = "open", label = "Open Project…", icon = ui.ICON_FOLDER_OPEN, chord = ui.MOD_CMD | i32(im.Key.O), user = a,
 		run = proc(u: rawptr) { project_dialog((^App)(u), .Open) }})
 	add(acts, {id = "save", label = "Save", icon = ui.ICON_SAVE, chord = ui.MOD_CMD | i32(im.Key.S), user = a,
@@ -48,6 +48,11 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { open_import_dialog((^App)(u)) }})
 	add(acts, {id = "import_midi", label = "Import MIDI File…", icon = ui.ICON_MUSIC, user = a,
 		run = proc(u: rawptr) { open_midi_dialog((^App)(u)) }})
+	add(acts, {id = "export_midi", label = "Export Sequence as MIDI…", icon = ui.ICON_MUSIC, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); open_midi_export(a, a.m.project.slot) }})
+	add(acts, {id = "export_midi_song", label = "Export Song as MIDI…", icon = ui.ICON_MUSIC, user = a,
+		run = proc(u: rawptr) { open_midi_export((^App)(u), -1) },
+		enabled = proc(u: rawptr) -> bool { return (^App)(u).m.project.song.count > 0 }})
 	add(acts, {id = "clear_pad", label = "Clear Pad", icon = ui.ICON_ERASER, chord = i32(im.Key.Delete), user = a,
 		run = proc(u: rawptr) {
 			a := (^App)(u)
@@ -110,7 +115,7 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "clear_sequence", label = "Clear Sequence", icon = ui.ICON_TRASH_2, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,
-		run = proc(u: rawptr) { ui.quit(&(^App)(u).platform) }})
+		run = proc(u: rawptr) { leave((^App)(u), .Quit) }})
 	register_commands(a)
 	register_selection_actions(a, acts)
 }
@@ -126,6 +131,35 @@ bank_actions := [pm.BANKS]proc(u: rawptr) {
 	proc(u: rawptr) { (^App)(u).bank = 7 },
 }
 
+// Edit > History: every step that can be undone (the newest first) and
+// redone; choose one to go back (or forward) to just after it.
+draw_history_menu :: proc(a: ^App) {
+	h := &a.m.history
+	if !im.BeginMenu("History", len(h.undo) > 0 || len(h.redo) > 0) do return
+	defer im.EndMenu()
+	// Redoable, the furthest first (dimmed: undone).
+	for k := 0; k < len(h.redo); k += 1 {
+		step := h.redo[k]
+		ahead := len(h.redo) - k // redos to reach it
+		im.PushStyleColorVec4(.Text, transmute(im.Vec4)ui.theme().text_dim)
+		clicked := im.MenuItem(fmt.ctprintf("%s###redo%d", step.name, k))
+		ui.name(fmt.tprintf("history redo %d", ahead))
+		im.PopStyleColor()
+		if clicked do for _ in 0 ..< ahead do app.redo(h)
+	}
+	if len(h.redo) > 0 do im.Separator()
+	for k := len(h.undo) - 1; k >= 0; k -= 1 {
+		step := h.undo[k]
+		back := len(h.undo) - 1 - k // undos to be just after it
+		label := fmt.ctprintf("%s%s###undo%d", step.name, "  (now)" if back == 0 else "", k)
+		clicked := im.MenuItem(label, nil, back == 0)
+		ui.name(fmt.tprintf("history %d", k + 1))
+		if clicked do for _ in 0 ..< back do app.undo(h)
+	}
+	im.Separator()
+	im.TextDisabled("%s", fmt.ctprintf("%d step%s; Cmd+Z undoes one", len(h.undo), "" if len(h.undo) == 1 else "s"))
+}
+
 set_dark :: proc(a: ^App, dark: bool) {
 	a.settings.theme = ui.theme_dark() if dark else ui.theme_light()
 	appearance_apply(a)
@@ -138,7 +172,7 @@ draw_menu :: proc(user: rawptr) {
 		ui.menu_action(&a.actions, "new")
 		ui.menu_action(&a.actions, "open")
 		if im.BeginMenu("Open Recent", len(a.proj.recent) > 0) {
-			for r in a.proj.recent do if im.MenuItem(fmt.ctprintf("%s", filepath.base(r))) do open_project(a, r)
+			for r in a.proj.recent do if im.MenuItem(fmt.ctprintf("%s", filepath.base(r))) do leave(a, .Open, r)
 			im.EndMenu()
 		}
 		ui.menu_action(&a.actions, "save")
@@ -148,6 +182,8 @@ draw_menu :: proc(user: rawptr) {
 		ui.menu_action(&a.actions, "import")
 		ui.menu_action(&a.actions, "import_midi")
 		ui.menu_action(&a.actions, "export")
+		ui.menu_action(&a.actions, "export_midi")
+		ui.menu_action(&a.actions, "export_midi_song")
 		ui.menu_action(&a.actions, "resample")
 		im.Separator()
 		ui.menu_action(&a.actions, "settings")
@@ -157,6 +193,7 @@ draw_menu :: proc(user: rawptr) {
 	if im.BeginMenu("Edit") {
 		ui.menu_action(&a.actions, "undo")
 		ui.menu_action(&a.actions, "redo")
+		draw_history_menu(a)
 		im.Separator()
 		ui.menu_action(&a.actions, "clear_pad")
 		im.Separator()
@@ -193,6 +230,7 @@ setup_workspace :: proc(a: ^App) {
 	w.sizes[.Left] = 0.18
 		w.sizes[.Bottom] = 0.44
 	w.toolbar, w.toolbar_user, w.toolbar_h = draw_toolbar, a, TOOLBAR_H
+	w.statusbar, w.statusbar_h = draw_statusbar, STATUS_H
 	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
 	ui.panel_add(w, {id = "devices", title = "Devices", icon = ui.ICON_BLOCKS, open = true, draw = draw_devices, user = a}, .Left)
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Center)
@@ -232,6 +270,39 @@ Midi_Chosen :: struct {
 	path: string,
 }
 
+// Where a MIDI export goes (and what: a sequence, or -1 the song).
+Midi_Export_Chosen :: struct {
+	path: string,
+	slot: int,
+}
+
+// The save dialog for a MIDI export of sequence `slot` (-1: the song).
+open_midi_export :: proc(a: ^App, slot: int) {
+	@(static) pending: int
+	pending = slot
+	filters := [1]sdl.DialogFileFilter{{name = "MIDI", pattern = "mid"}}
+	name := fmt.ctprintf("%s.mid", project_name(a) if slot < 0 else pm.sequence_name(&a.m.project, slot))
+	sdl.ShowSaveFileDialog(proc "c" (user: rawptr, files: [^]cstring, filter: i32) {
+		if files == nil || files[0] == nil do return
+		a := (^App)(user)
+		context = runtime.default_context()
+		app.post_any_thread(&a.bus, Midi_Export_Chosen{strings.clone(string(files[0])), pending})
+	}, a, a.platform.window, &filters[0], 1, name)
+}
+
+// A .mid file dropped (on pad `pad`, or -1 the window): on a pad, its notes
+// all on that pad, pitched; else as drums by the MIDI map, into the
+// current sequence. True if it was one.
+drop_midi :: proc(a: ^App, path: string, pad: int) -> bool {
+	lower := strings.to_lower(path, context.temp_allocator)
+	if !strings.has_suffix(lower, ".mid") && !strings.has_suffix(lower, ".midi") do return false
+	slot := a.m.project.slot
+	n := pm.import_midi(&a.m, path, slot, .On_Pad if pad >= 0 else .By_Map, max(pad, 0))
+	if n < 0 do ui.toast(&a.ws.toasts, .Error, "Could not read that MIDI file")
+	else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%d notes into %s%s", n, pm.sequence_name(&a.m.project, slot), fmt.tprintf(", on %s", pm.pad_label(pad)) if pad >= 0 else ""))
+	return true
+}
+
 // A file chosen in the import dialog.
 Import_Chosen :: struct {
 	path: string,
@@ -248,6 +319,14 @@ subscribe_imports :: proc(a: ^App) {
 		a := (^App)(user)
 		defer delete(e.path)
 		choose_plugin(a, e.path, a.plugin_choice.target)
+	}, a)
+	app.subscribe(&a.bus, Midi_Export_Chosen, proc(user: rawptr, e: ^Midi_Export_Chosen) {
+		a := (^App)(user)
+		defer delete(e.path)
+		path := e.path if strings.has_suffix(strings.to_lower(e.path, context.temp_allocator), ".mid") else strings.concatenate({e.path, ".mid"}, context.temp_allocator)
+		n := pm.export_midi(&a.m, path, e.slot)
+		if n < 0 do ui.toast(&a.ws.toasts, .Error, "Could not write that MIDI file")
+		else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d notes to %s", n, filepath.base(path)))
 	}, a)
 	app.subscribe(&a.bus, Midi_Chosen, proc(user: rawptr, e: ^Midi_Chosen) {
 		a := (^App)(user)
@@ -433,9 +512,9 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "mode":
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "pads":     a.play_mode = .Pads
-		case "keys":     a.play_mode = .Keyboard
-		case "velocity": a.play_mode = .Velocity
+		case "pads":     set_play_mode(a, .Pads)
+		case "keys":     set_play_mode(a, .Keyboard)
+		case "velocity": set_play_mode(a, .Velocity)
 		case: return false
 		}
 		return true
@@ -531,6 +610,10 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			break
 		}
 		return true
+	case "export_midi": // export_midi SLOT|song PATH: a sequence (1..) or the song as a MIDI file
+		if len(w) < 3 do return false
+		slot := -1 if w[1] == "song" else num(w, 1) - 1
+		return pm.export_midi(&a.m, strings.join(w[2:], " ", context.temp_allocator), slot) >= 0
 	case "import_midi":
 		if len(w) < 2 do return false
 		if pm.import_midi(&a.m, strings.join(w[1:], " ", context.temp_allocator), a.m.project.slot) < 0 do return drive_fail(a, "could not read the MIDI file")

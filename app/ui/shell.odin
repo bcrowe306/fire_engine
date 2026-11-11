@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:strings"
+import "core:time"
 import "core:unicode"
 
 import im "deps:imgui"
@@ -221,7 +222,18 @@ Toast_Kind :: enum u8 {
 // Short notices in the bottom right corner that fade after a few seconds.
 Toasts :: struct {
 	items: [dynamic]Toast,
+	log:   [dynamic]Log_Entry, // every toast's message, the newest last (the last `LOG_KEEP`)
 }
+
+// A message as the log keeps it.
+Log_Entry :: struct {
+	kind: Toast_Kind,
+	text: string, // allocated
+	at:   time.Time,
+}
+
+// Messages a log keeps.
+LOG_KEEP :: 200
 
 @(private)
 Toast :: struct {
@@ -243,12 +255,25 @@ toast_texts :: proc(ts: ^Toasts) -> (texts: []string, kinds: []Toast_Kind) {
 
 toast :: proc(ts: ^Toasts, kind: Toast_Kind, text: string, seconds: f32 = 3.5) {
 	append(&ts.items, Toast{kind = kind, text = strings.clone(text), life = seconds})
+	log_add(ts, kind, text)
+}
+
+// Adds a message to the log without showing it (a status bar shows the
+// newest).
+log_add :: proc(ts: ^Toasts, kind: Toast_Kind, text: string) {
+	if len(ts.log) >= LOG_KEEP {
+		delete(ts.log[0].text)
+		ordered_remove(&ts.log, 0)
+	}
+	append(&ts.log, Log_Entry{kind, strings.clone(text), time.now()})
 }
 
 // Frees every toast.
 toasts_destroy :: proc(ts: ^Toasts) {
 	for x in ts.items do delete(x.text)
 	delete(ts.items)
+	for x in ts.log do delete(x.text)
+	delete(ts.log)
 }
 
 // Draws the toasts and ages them by this frame's time.
@@ -331,6 +356,10 @@ Workspace :: struct {
 	toolbar:      proc(user: rawptr),
 	toolbar_user: rawptr,
 	toolbar_h:    f32,
+	// A bar along the bottom of the window (a status bar): drawn by
+	// `statusbar(toolbar_user)`, `statusbar_h` tall.
+	statusbar:    proc(user: rawptr),
+	statusbar_h:  f32,
 }
 
 // Prepares a workspace.
@@ -383,6 +412,11 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 	if w.toolbar != nil {
 		flags := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking}
 		if im.BeginViewportSideBar("##toolbar", im.GetMainViewport(), .Up, w.toolbar_h, flags) do w.toolbar(w.toolbar_user)
+		im.End()
+	}
+	if w.statusbar != nil {
+		flags := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking}
+		if im.BeginViewportSideBar("##statusbar", im.GetMainViewport(), .Down, w.statusbar_h, flags) do w.statusbar(w.toolbar_user)
 		im.End()
 	}
 	w.dock_id = im.DockSpaceOverViewport(0, im.GetMainViewport(), {.PassthruCentralNode})

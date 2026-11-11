@@ -109,7 +109,45 @@ set_pad :: proc(m: ^Model, index: int, field: Pad_Field, name: string, new: Pad)
 	if index < 0 || index >= PADS do return
 	old := m.project.pads[index]
 	if old == new do return
+	// A pad given its first sound gets a colour of its own (unless this
+	// edit sets one).
+	new := new
+	if !pad_in_use(old) && pad_in_use(new) && new.color == old.color do new.color = next_pad_color(&m.project, index)
 	app.set_value(&m.history, name, {app.Id(index + 1), int(field)}, old, new, apply_pad)
+}
+
+// Whether a pad (not yet in a project) has a sound.
+@(private)
+pad_in_use :: proc(pad: Pad) -> bool {
+	return pad.sample != 0 || pad.kind == .Audio || pad.kind == .Slicer || pad.kind == .Synth
+}
+
+// The colours new pads take, in turn.
+PAD_COLORS := [12]u32{0xff5f57, 0xff9f43, 0xffe066, 0x7bd88f, 0x3fc7c4, 0x58a6ff, 0x7c6cff, 0xc77dff, 0xff6fae, 0xd4a373, 0x5ad1a5, 0x4fc3f7}
+
+// The colour for pad `index`'s first sound: the one fewest pads have
+// (and, of those, unlike the pads beside it), starting where its place
+// in the grid falls in the palette.
+next_pad_color :: proc(p: ^Project, index: int) -> u32 {
+	n := len(PAD_COLORS)
+	uses: [len(PAD_COLORS)]int
+	for k in 0 ..< PADS do if k != index && pad_used(p, k) {
+		for c, j in PAD_COLORS do if p.pads[k].color == c do uses[j] += 1
+	}
+	neighbour :: proc(p: ^Project, index: int, c: u32) -> bool {
+		for d in ([]int{-1, 1, -4, 4}) {
+			k := index + d
+			if k >= 0 && k < PADS && k / PADS_PER_BANK == index / PADS_PER_BANK && pad_used(p, k) && p.pads[k].color == c do return true
+		}
+		return false
+	}
+	best, score := index % n, max(int)
+	for o in 0 ..< n {
+		j := (index + o) % n
+		s := uses[j] * 2 + (1 if neighbour(p, index, PAD_COLORS[j]) else 0)
+		if s < score do best, score = j, s
+	}
+	return PAD_COLORS[best]
 }
 
 @(private)

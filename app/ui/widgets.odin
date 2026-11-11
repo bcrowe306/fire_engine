@@ -289,6 +289,7 @@ Pad_Face :: struct {
 	lit:       bool, // playing
 	selected:  bool,
 	peaks:     []Peak, // the waveform behind (nil: none)
+	notes:     []Mini_Note, // a sequence's notes behind, small (nil: none)
 	mute:      bool,
 	solo:      bool,
 	buttons:   bool, // show Mute and Solo
@@ -297,6 +298,24 @@ Pad_Face :: struct {
 	armed:     bool,    // a red dot at the bottom centre: it records what comes in
 	drop_zones: bool,   // while a payload is over it: two halves, Sampler (top) and Slicer (bottom)
 	device_type: cstring, // a second payload it takes (a device to put on it: see `Pad_Hit.dropped_device`)
+}
+
+// A note in a miniature: where it starts and ends across (0..1) and its
+// height (0 the bottom, 1 the top).
+Mini_Note :: struct {
+	x0, x1, y: f32,
+}
+
+// Draws `notes` small in the rect from `lo` to `hi`, in `c`.
+mini_notes :: proc(dl: ^im.DrawList, notes: []Mini_Note, lo, hi: im.Vec2, c: Color) {
+	h := hi.y - lo.y
+	bar := clamp(h / 24, 1.5, 3)
+	for n in notes {
+		x0 := lo.x + (hi.x - lo.x) * clamp(n.x0, 0, 1)
+		x1 := max(lo.x + (hi.x - lo.x) * clamp(n.x1, 0, 1), x0 + 1.5)
+		y := hi.y - bar - (h - bar) * clamp(n.y, 0, 1)
+		im.DrawList_AddRectFilled(dl, {x0, y}, {x1, y + bar}, col(c), 1)
+	}
 }
 
 // Where a pad's drop zones meet, down from its top: a little below the
@@ -351,6 +370,9 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	if face.lit || hit.held do fill = mix(fill, face.tint if face.has_sound else t.accent, 0.7)
 	r := t.radius + 2
 	im.DrawList_AddRectFilled(dl, pos, max_, col(fill), r)
+	if len(face.notes) > 0 {
+		mini_notes(dl, face.notes, {pos.x + 7, pos.y + size.y * 0.42}, {pos.x + size.x - 7, pos.y + size.y - 9}, with_alpha(mix(face.tint, t.text, 0.55), 0.9))
+	}
 	if len(face.peaks) > 0 {
 		inset: f32 = 6
 		w := size.x - 2 * inset
@@ -398,7 +420,7 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		mc := strings.clone_to_cstring(face.middle, context.temp_allocator)
 		ms := im.CalcTextSize(mc)
 		at := im.Vec2{math.round(pos.x + max((size.x - ms.x) / 2, pad_x)), math.round(pos.y + (size.y - ms.y) / 2)}
-		if len(face.peaks) > 0 { // readable over the waveform: a faint backing just its size
+		if len(face.peaks) > 0 || len(face.notes) > 0 { // readable over the waveform (or notes): a faint backing just its size
 			im.DrawList_AddRectFilled(dl, {at.x - 3, at.y}, {at.x + ms.x + 3, at.y + ms.y}, col(with_alpha(fill, 0.55)), 3)
 		}
 		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.85) if face.lit || hit.held || face.has_sound else t.text_dim), mc)
