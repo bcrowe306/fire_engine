@@ -251,6 +251,13 @@ slice_on :: proc "contextless" (r: ^Router, i: int, offset: u32, id: fc.Note_Id,
 	track_push(r, i, {offset, fc.Note_On{id = id, key = key, velocity = velocity}})
 }
 
+// [rt] Whether track `i` plays a key a note (a slicer's slices, a synth's
+// pitches) rather than its one key.
+@(private)
+keyed :: #force_inline proc "contextless" (r: ^Router, i: int) -> bool {
+	return r.kinds[i] == .Slicer || r.kinds[i] == .Synth
+}
+
 // [rt] The key slice `slice` of slicer track `i` plays on.
 @(private)
 slice_key :: proc "contextless" (r: ^Router, i: int, slice: int) -> u8 {
@@ -288,7 +295,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 			r.next_id += 1
 			if r.keys_id[v.key] != 0 do track_push(r, i, {e.offset, fc.Note_Off{id = r.keys_id[v.key], key = pad_key(i)}})
 			r.keys_id[v.key] = id
-			if r.kinds[i] == .Slicer { // the key's distance from C3: which slice
+			if keyed(r, i) { // the key's distance from C3: which slice
 				slice_on(r, i, e.offset, id, int(v.key) - KEYS_CENTER, v.velocity)
 			} else {
 				track_push(r, i, {e.offset, fc.Note_On{id = id, key = pad_key(i), velocity = v.velocity}})
@@ -300,7 +307,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 		i := pad_of_key(v.key)
 		if i < 0 do return
 		if !strike(r, out, e.offset, i) do return
-		if r.kinds[i] == .Slicer {
+		if keyed(r, i) {
 			if v.id == fc.NOTE_ID_ANY {
 				slice_on(r, i, e.offset, fc.NOTE_ID_ANY, 0, v.velocity) // the pad hit: its first slice
 			} else { // the sequencer's: which slice comes in its pitch, next
@@ -317,7 +324,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 		if v.channel == KEYS_CHANNEL {
 			i := int(r.keys_pad[v.key])
 			if id := r.keys_id[v.key]; id != 0 {
-				if r.modes[i] == .Gate || r.modes[i] == .Loop || r.kinds[i] == .Slicer do track_push(r, i, {e.offset, fc.Note_Off{id = id, key = pad_key(i)}})
+				if r.modes[i] == .Gate || r.modes[i] == .Loop || keyed(r, i) do track_push(r, i, {e.offset, fc.Note_Off{id = id, key = pad_key(i)}})
 				r.keys_id[v.key] = 0
 			}
 			midi_send(r, out, e.offset, i, false, 0)
@@ -327,7 +334,7 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 		if i < 0 do return
 		x := v
 		x.channel = 0
-		if r.kinds[i] == .Slicer {
+		if keyed(r, i) {
 			// (A note-off before its pitch came: it starts first.)
 			if r.waiting[i].set && r.waiting[i].id == v.id {
 				slice_on(r, i, r.waiting[i].offset, v.id, 0, r.waiting[i].velocity)
@@ -344,13 +351,13 @@ sound :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, e: fc.Event) {
 	case fc.Note_Expression:
 		i := pad_of_key(v.key)
 		// A slicer's waiting note: its pitch is which slice.
-		if i >= 0 && r.kinds[i] == .Slicer && v.kind == .Tuning && r.waiting[i].set && r.waiting[i].id == v.id {
+		if i >= 0 && keyed(r, i) && v.kind == .Tuning && r.waiting[i].set && r.waiting[i].id == v.id {
 			w := r.waiting[i]
 			slice_on(r, i, w.offset, w.id, int(math.round(v.value)), w.velocity)
 			r.waiting[i].set = false
 			return
 		}
-		if i >= 0 && r.kinds[i] == .Slicer && v.kind == .Tuning do return // (pitch picks the slice, not the tuning)
+		if i >= 0 && keyed(r, i) && v.kind == .Tuning do return // (pitch picks the slice, not the tuning)
 		track_push(r, i, e)
 	case fc.Note_Choke:
 		if v.key == fc.NOTE_KEY_ALL {

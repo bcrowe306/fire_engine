@@ -1251,6 +1251,8 @@ Patch :: struct {
 	shape_tables: [8][2048]f32,
 	used_envs: bit_set[int],
 	used_lfos: bit_set[int],
+	values: [648]f32,
+	has_values: bool,
 }
 ```
 
@@ -1267,6 +1269,8 @@ whoever made the patch; they must outlive it.
 | `shape_tables` | Each LFO's shape rendered, and the envelopes and LFOs some route uses (filled by `patch_prepare`; the rest aren't run). |
 | `used_envs` |  |
 | `used_lfos` |  |
+| `values` | Parameter values to take with the patch (by id), when `has_values`: every parameter set at once, beyond what parameter events can carry in one block. |
+| `has_values` |  |
 
 ### Sample
 

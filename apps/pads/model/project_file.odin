@@ -10,6 +10,7 @@ import "fire:perform"
 import "fire:sampler"
 import "fire:session"
 import "fire:stretch"
+import "fire:synth"
 
 // The project file in a project folder.
 PROJECT_FILE :: "project.fire"
@@ -18,7 +19,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 14 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity
+PROJECT_VERSION :: 15 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -340,6 +341,44 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_bool(w, s.reverse)
 		}
 	}
+	// v15: each pad's synth patch (if it ever was a synth).
+	for &pad in p.pads {
+		sy := &pad.synth
+		fc.write_bool(w, sy.set)
+		if !sy.set do continue
+		// Parameters as id and value, so ones added later read as their defaults.
+		fc.write_int(w, len(synth.PARAMS))
+		for spec in synth.PARAMS {
+			fc.write_u32(w, u32(spec.id))
+			fc.write_f32(w, sy.values[spec.id])
+		}
+		fc.write_int(w, sy.route_count)
+		for r in sy.routes[:sy.route_count] {
+			fc.write_u8(w, u8(r.source))
+			fc.write_u32(w, u32(r.dest))
+			fc.write_f32(w, r.amount)
+			fc.write_f32(w, r.power)
+			fc.write_bool(w, r.bipolar)
+			fc.write_bool(w, r.stereo)
+			fc.write_bool(w, r.bypass)
+		}
+		for sh in sy.shapes {
+			fc.write_int(w, sh.count)
+			fc.write_bool(w, sh.smooth)
+			for k in 0 ..< sh.count {
+				fc.write_f32(w, sh.points[k][0])
+				fc.write_f32(w, sh.points[k][1])
+				fc.write_f32(w, sh.powers[k])
+			}
+		}
+		for t in sy.tables {
+			fc.write_u8(w, t.builtin)
+			fc.write_u64(w, u64(t.sample))
+		}
+		fc.write_u8(w, sy.sample.builtin)
+		fc.write_u64(w, u64(sy.sample.sample))
+		for &name in sy.macro_names do fc.write_string(w, strings.truncate_to_byte(string(name[:]), 0))
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -603,6 +642,49 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 				s.pitch = clamp(fc.read_f32(r), -48, 48)
 				s.pan = clamp(fc.read_f32(r), -1, 1)
 				s.reverse = fc.read_bool(r)
+			}
+		}
+		if version >= 15 do for &pad in p.pads {
+			if !fc.read_bool(r) do continue
+			sy := &pad.synth
+			sy^ = default_synth_patch()
+			n := clamp(fc.read_int(r), 0, synth.PARAM_SLOTS)
+			for _ in 0 ..< n {
+				id := fc.Param_Id(fc.read_u32(r))
+				v := fc.read_f32(r)
+				if spec := synth.param_spec(id); spec != nil do sy.values[id] = clamp(v, spec.min, spec.max)
+			}
+			sy.route_count = clamp(fc.read_int(r), 0, synth.MAX_ROUTES)
+			for &x in sy.routes[:sy.route_count] {
+				x.source = synth.Mod_Source(min(fc.read_u8(r), u8(max(synth.Mod_Source))))
+				x.dest = fc.Param_Id(fc.read_u32(r))
+				if synth.param_spec(x.dest) == nil do x.source = .None
+				x.amount = clamp(fc.read_f32(r), -1, 1)
+				x.power = clamp(fc.read_f32(r), -20, 20)
+				x.bipolar = fc.read_bool(r)
+				x.stereo = fc.read_bool(r)
+				x.bypass = fc.read_bool(r)
+			}
+			for &sh in sy.shapes {
+				sh = {}
+				sh.count = clamp(fc.read_int(r), 0, synth.LFO_MAX_POINTS)
+				sh.smooth = fc.read_bool(r)
+				for k in 0 ..< sh.count {
+					sh.points[k] = {clamp(fc.read_f32(r), 0, 1), clamp(fc.read_f32(r), 0, 1)}
+					sh.powers[k] = clamp(fc.read_f32(r), -20, 20)
+				}
+			}
+			read_source :: proc(r: ^fc.State_Reader, p: ^Project) -> (s: Synth_Source) {
+				s.builtin = fc.read_u8(r)
+				s.sample = app.Id(fc.read_u64(r))
+				if s.sample != 0 && app.store_get(&p.samples, s.sample) == nil do s.sample = 0
+				return
+			}
+			for &t in sy.tables do t = read_source(r, p)
+			sy.sample = read_source(r, p)
+			for &name in sy.macro_names {
+				name = {}
+				copy(name[:len(name) - 1], fc.read_string(r))
 			}
 		}
 	} else {

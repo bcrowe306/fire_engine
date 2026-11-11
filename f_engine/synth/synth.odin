@@ -206,6 +206,7 @@ adopt_patch :: proc "contextless" (s: ^Synth) {
 	}
 	if !got do return
 	s.old, s.patch = s.patch, newest
+	if newest.has_values do for spec in PARAMS do s.values[spec.id] = clamp(newest.values[spec.id], spec.min, spec.max)
 }
 
 @(private)

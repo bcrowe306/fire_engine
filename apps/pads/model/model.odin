@@ -41,6 +41,7 @@ Pad_Kind :: enum u8 {
 	Sampler, // plays its sample (its region), pitched by key
 	Audio,   // records its input into clips and plays them
 	Slicer,  // its sample sliced in place, a slice on each key from its base note
+	Synth,   // a wavetable synth (see `Synth_Patch`)
 }
 
 // Slices a slicer can have.
@@ -212,6 +213,7 @@ Pad :: struct {
 	voice:      Voice,       // a sampler pad's voice (envelopes, filter, pitch, LFOs)
 	warp:       Warp,        // following the tempo (see `Warp`)
 	slicer:     Slicer,      // a slicer's slices and settings (kept when it is a sampler again)
+	synth:      Synth_Patch, // a synth's sound (kept when it is something else again)
 }
 
 // A sample the project holds: a file in its folder.
@@ -320,7 +322,7 @@ intern :: proc(p: ^Project, s: string) -> string {
 // pad.
 pad_used :: proc(p: ^Project, index: int) -> bool {
 	pad := &p.pads[index]
-	return pad.sample != 0 || pad.kind == .Audio || pad.kind == .Slicer
+	return pad.sample != 0 || pad.kind == .Audio || pad.kind == .Slicer || pad.kind == .Synth
 }
 
 // A pad's name.

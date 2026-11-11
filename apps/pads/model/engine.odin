@@ -11,6 +11,7 @@ import "fire:graph"
 import "fire:record"
 import "fire:rt"
 import "fire:sampler"
+import "fire:synth"
 import "fire:stream"
 import tb "fire:timebase"
 import "fire:transport"
@@ -77,6 +78,13 @@ Engine :: struct {
 	tap_id:     graph.Node_Id,
 	watch:      Fx_Target,
 	watch_node: graph.Node_Id, // the node connected to the tap
+	synth_cache: Synth_Cache,  // synths' wavetables and samples
+}
+
+// Sets a parameter when it changed (or always, when `fresh`).
+@(private)
+set :: proc(g: ^graph.Graph, id: graph.Node_Id, p: fc.Param_Id, old, new: f32, fresh: bool) {
+	if fresh || old != new do graph.set_param(g, id, p, f64(new))
 }
 
 // What a pad has in the graph.
@@ -85,6 +93,7 @@ Pad_Nodes :: struct {
 	voice:   graph.Node_Id, // the sampler
 	eq:      graph.Node_Id,
 	handle:  ^sampler.Sampler,
+	synth:   ^synth.Synth, // a synth pad's node (`voice`), instead of the sampler
 	built:   Pad, // the pad as the engine has it
 	zone_src: ^stream.Source, // what its zone plays (its sample, or its warp's rendering)
 	track_in: graph.Node_Id,  // its own stream from the router (see `Track_In`)
@@ -176,6 +185,7 @@ engine_destroy :: proc(e: ^Engine) {
 	warp_clear(e)
 	delete(e.warp_sources)
 	delete(e.warp_jobs)
+	synth_cache_destroy(&e.synth_cache)
 }
 
 // The engine must look at pad `index` again.
@@ -218,11 +228,13 @@ sync :: proc(e: ^Engine) {
 		e.router.midi_out[i] = pad.midi_out
 		e.router.kinds[i] = pad.kind
 		e.router.slicers[i] = {base = pad.slicer.base, mono = pad.slicer.mono}
+		if pad.kind == .Synth do e.router.slicers[i] = {base = 60} // (a note's pitch is its key's distance from C3)
 		midi_ports_of(e, i, pad)
 		audio := pad.kind == .Audio
-		want := src != nil || audio
+		is_synth := pad.kind == .Synth
+		want := src != nil || audio || is_synth
 		// A pad that changes kind (or an audio pad its input) is built again.
-		if n.live && (!want || n.audio != audio || (audio && n.built.input != pad.input) || (!audio && n.built.sample != 0 && n.built.voice.voices != pad.voice.voices)) {
+		if n.live && (!want || n.audio != audio || (n.synth != nil) != is_synth || (audio && n.built.input != pad.input) || (!audio && n.built.sample != 0 && n.built.voice.voices != pad.voice.voices)) {
 			remove_pad_nodes(g, n)
 			structural = true
 		}
@@ -231,6 +243,9 @@ sync :: proc(e: ^Engine) {
 			voice: fc.Node
 			if audio {
 				voice = dsp.pan_create() // what the players and the monitor sum into (panned: a sampler's zone pans)
+			} else if is_synth {
+				node, handle := synth.synth_create()
+				n.synth, n.handle, voice = handle, nil, node
 			} else {
 				node, handle := sampler.sampler_create({voices = clamp(pad.voice.voices, 1, 32), quality = .Sinc_Low})
 				n.handle, voice = handle, node
@@ -273,6 +288,14 @@ sync :: proc(e: ^Engine) {
 			n.built.sample = 0
 			n.built.input = pad.input
 		}
+		if n.synth != nil {
+			fresh := n.built.kind != .Synth || e.resend
+			set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
+			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
+			sync_synth(e, i, n, &pad, fresh)
+			n.built = pad
+			continue
+		}
 		if n.audio {
 			fresh := n.built.kind != .Audio || e.resend
 			if fresh || n.built.volume != pad.volume do graph.set_param(g, n.fader, dsp.GAIN_PARAM_DB, f64(pad.volume))
@@ -291,10 +314,6 @@ sync :: proc(e: ^Engine) {
 				sampler.sample_map_release(m)
 			}
 			n.zone_src, n.warp_scale = zsrc, scale
-		}
-		// Parameters: smoothed changes.
-		set :: proc(g: ^graph.Graph, id: graph.Node_Id, p: fc.Param_Id, old, new: f32, fresh: bool) {
-			if fresh || old != new do graph.set_param(g, id, p, f64(new))
 		}
 		fresh := n.built.sample == 0 || e.resend
 		set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)

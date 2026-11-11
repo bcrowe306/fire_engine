@@ -62,6 +62,11 @@ Patch :: struct {
 	shape_tables: [LFOS][LFO_RESOLUTION]f32,
 	used_envs:    bit_set[0 ..< ENVS],
 	used_lfos:    bit_set[0 ..< LFOS],
+	// Parameter values to take with the patch (by id), when `has_values`:
+	// every parameter set at once, beyond what parameter events can carry
+	// in one block.
+	values:       [PARAM_SLOTS]f32,
+	has_values:   bool,
 }
 
 // Control thread. Renders a patch's LFO shapes (call after changing them,
