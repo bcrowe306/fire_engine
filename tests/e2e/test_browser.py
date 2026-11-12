@@ -103,3 +103,23 @@ def test_favourites_from_the_star_and_the_tab(app, library):
     app.click("tab library", window="browser", right=True)
     app.click("Remove")
     assert app.state()["browser"]["favorites"] == ["Documents", "Project"]
+
+
+def test_loading_onto_the_selected_or_the_next_empty_pad(app, library, fixtures):
+    """Enter (or the foot's first button) loads onto the selected pad;
+    Shift+Enter (or the second) onto the next empty one."""
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.cmd("select 0")
+    open_library(app, library)
+    app.click("Kick 808.wav", window="browser")
+    app.key("shift+enter")  # A1 is used: the next empty is A2
+    assert app.pad(1)["name"] == "Kick 808"
+    assert app.pad(0)["name"] == "kick"
+    app.click("Closed Hat.wav", window="browser")
+    app.click("load to the next empty pad", window="browser")
+    assert app.pad(2)["name"] == "Closed Hat"
+    app.click("Kick 808.wav", window="browser")
+    app.click("load to the selected pad", window="browser")
+    assert app.pad(0)["name"].startswith("Kick 808"), app.pad(0)["name"]  # replaced on A1, the selected pad (a second copy: "Kick 808 2")
+    app.key("cmd+z")
+    assert app.pad(0)["name"] == "kick"

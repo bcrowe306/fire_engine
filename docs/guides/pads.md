@@ -97,19 +97,26 @@ records.
     click any part to go there. **Refresh** reads the folders again.
   - The **tree**: click a folder to open it in place (its icon shows it open),
     double-click to go into it. Links to folders work. Only audio files
-    (WAV, AIFF, FLAC, MP3, Ogg) and folders show.
+    (WAV, AIFF, FLAC, MP3, Ogg) and folders show. Each WAV or AIFF shows
+    its length at the right of its row (read from the file's header the
+    first time its row shows; other formats show none yet).
   - **Search** finds file names (any case) in every folder under the one
     shown, on a background thread; the results list the path under it.
-  - Click a file to select it, double-click (or Enter) to put it on the
-    selected pad, or drag it onto a pad. With the list focused, the arrow
-    keys move up and down (and preview what they land on); Right and
-    Left open and close a folder.
+  - Click a file to select it (with auto-play, it plays at once), or drag
+    it onto a pad. **Double-click** it, or press **Enter**, to put it on
+    the selected pad; with **Shift** (Shift+Enter, Shift and
+    double-click), on the **next empty pad** (the selected pad if it is
+    empty, else the first empty one after it). The two buttons under the
+    preview do the same and say where: **To A3**, **To next empty: A5**.
+    With the list focused, the arrow keys move up and down (and preview
+    what they land on); Right and Left open and close a folder.
   - The **preview**, at the bottom: the file's waveform with a playhead;
     play/stop (the icon turns to a stop while it plays); **auto-play**
     (on at first: selecting a file plays it); **sync** (while the
     sequencer plays, a loop of about 1, 2, 4… 64 beats is stretched to
     the project's tempo, pitch unchanged, and shows its beats; one-shots
-    play as they are); and the preview's own volume. It plays straight to
+    play as they are); and the preview's own volume (a value bar: drag
+    it, or double-click to type). It plays straight to
     the output, past the mixer and main's effects, and never into an
     export.
 - **Pads** (bottom left): 128 pads in 8 banks (A–H) of 16, numbered from
@@ -572,7 +579,7 @@ or scroll it); **Fine** is for anything in between, in cents.
 
 Ways to make one:
 
-- In the browser, **Shift+Enter** slices the selected file onto the
+- In the browser, **Alt+Enter** slices the selected file onto the
   selected pad if it is empty, else the next empty one;
   **Cmd+Shift+Enter** slices it onto the selected pad. The file's
   right-click menu has both (**Slice onto Next Empty Pad**, **Slice onto
@@ -1145,7 +1152,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 
 | File | What it uses |
 |---|---|
-| `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, dragging files and search results onto pads |
+| `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, loading onto the selected pad or the next empty one (Shift+Enter, the foot's buttons), dragging files and search results onto pads |
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
@@ -1161,7 +1168,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
 | `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
-| `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
+| `test_slicer.py` | slicing from the browser (Alt+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_layout.py` | the default window at the Comfortable size (the other tests run at Compact, `--control-size compact`, the size their positions were written for): the pads area folded to a bar and unfolded by a pad and by its button, one search finding a file and a device, Cmd+L, the control size in Settings |

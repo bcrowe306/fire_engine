@@ -16,6 +16,38 @@ Browser_View :: struct {
 	rename:    [64]u8,
 	renaming:  int, // the favourite being renamed (-1: none)
 	scroll_to: bool,
+	lengths:   map[string]f64, // each file's length in seconds (-1: not known), as its row first showed
+}
+
+// The most files whose lengths are read in one frame (the rest wait for
+// the next, so a big folder doesn't stall the window).
+@(private) LENGTHS_A_FRAME :: 12
+
+// Frees what the browser view keeps.
+browser_view_destroy :: proc(v: ^Browser_View) {
+	for k in v.lengths do delete(k)
+	delete(v.lengths)
+}
+
+// File `path`'s length as its row shows it ("0.6 s", "1:05"; "" if it is
+// not known yet or can't be), read from its header the first time.
+@(private)
+row_length :: proc(v: ^Browser_View, path: string, budget: ^int) -> string {
+	secs, known := v.lengths[path]
+	if !known {
+		if budget^ <= 0 do return ""
+		budget^ -= 1
+		if len(v.lengths) > 5000 { // (a long session's worth of folders: start again)
+			for k in v.lengths do delete(k)
+			clear(&v.lengths)
+		}
+		secs = pm.audio_seconds(path)
+		v.lengths[strings.clone(path)] = secs
+	}
+	if secs < 0 do return ""
+	if secs < 10 do return fmt.tprintf("%.1f s", secs)
+	if secs < 60 do return fmt.tprintf("%.0f s", secs)
+	return fmt.tprintf("%d:%02d", int(secs) / 60, int(secs) % 60)
 }
 
 // Height of a row in the browser's list.
@@ -53,7 +85,7 @@ draw_browser :: proc(user: rawptr) {
 	find := strings.to_lower(b.search.query, context.temp_allocator)
 
 	// The sections (the preview below them).
-	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + im.GetFrameHeight() + 3 * im.GetStyle().ItemSpacing.y + 6)
+	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + 2 * im.GetFrameHeight() + 4 * im.GetStyle().ItemSpacing.y + 6)
 	// No ImGui keyboard navigation in the list: its keys are the browser's
 	// own (Enter would otherwise also press the row last clicked).
 	if im.BeginChild("##list", {0, max(list_h, 80)}, {}, {.NoNavInputs}) {
@@ -253,6 +285,8 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			break
 		}
 	}
+	budget := LENGTHS_A_FRAME
+	if v.lengths == nil do v.lengths = make(map[string]f64)
 	clipper: im.ListClipper
 	im.ListClipper_Begin(&clipper, i32(len(rows)), BROWSER_ROW)
 	defer im.ListClipper_End(&clipper)
@@ -275,6 +309,7 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			hovered := im.IsItemHovered()
 			if hovered && im.IsMouseDoubleClicked(.Left) {
 				if e.is_dir do go_into = e.path
+				else if im.GetIO().KeyShift do load_next_empty(a, e)
 				else do load_selected(a, e)
 			}
 			if !e.is_dir && im.BeginDragDropSource() {
@@ -301,8 +336,21 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			if e.is_dir && b.expanded[e.path] do icon = ui.ICON_FOLDER_OPEN
 			im.DrawList_AddText(dl, {x, ty}, ui.col(t.warn if e.is_dir else t.accent), fmt.ctprintf("%s", icon))
 			x += 22
+			// A file's length at the right, the name clipped short of it.
 			// (A search result's name is its path under the tab.)
-			im.DrawList_PushClipRect(dl, pos, {pos.x + w - 4, pos.y + BROWSER_ROW}, true)
+			right := pos.x + w - 4
+			if !e.is_dir && pm.is_audio(e.path) {
+				if text := row_length(v, e.path, &budget); text != "" {
+					ui.text_push(.Caption)
+					ct := fmt.ctprintf("%s", text)
+					ls := im.CalcTextSize(ct)
+					right = pos.x + w - 8 - ls.x
+					im.DrawList_AddText(dl, {right, pos.y + (BROWSER_ROW - ls.y) / 2}, ui.col(t.text_dim), ct)
+					right -= 8
+					ui.text_pop()
+				}
+			}
+			im.DrawList_PushClipRect(dl, pos, {right, pos.y + BROWSER_ROW}, true)
 			im.DrawList_AddText(dl, {x, ty}, ui.col(t.text), fmt.ctprintf("%s", e.name))
 			im.DrawList_PopClipRect(dl)
 		}
@@ -342,8 +390,9 @@ browser_keys :: proc(a: ^App, rows: []pm.Browser_Entry) {
 		io := im.GetIO()
 		switch {
 		case current.is_dir: pm.browser_go(b, strings.clone(current.path, context.temp_allocator))
-		case io.KeyShift && (io.KeySuper || io.KeyCtrl): load_into_slicer(a, a.selected, current.path) // onto the selected pad
-		case io.KeyShift: slice_onto_next(a, current.path)
+		case io.KeyShift && (io.KeySuper || io.KeyCtrl): load_into_slicer(a, a.selected, current.path) // a slicer, on the selected pad
+		case io.KeyAlt: slice_onto_next(a, current.path) // a slicer, on the next empty pad
+		case io.KeyShift: load_next_empty(a, current)
 		case: load_selected(a, current)
 		}
 	}
@@ -356,6 +405,32 @@ preview_selected :: proc(a: ^App, e: pm.Browser_Entry, auto: bool) {
 	if e.is_dir || pm.is_midi(e.path) do return // (a MIDI file isn't heard: drag it onto a pad)
 	if auto && !a.m.engine.preview.auto_play do return
 	pm.preview_play(&a.m.engine, e.path)
+}
+
+// Loads file `e` onto the next empty pad: the selected one if it is
+// empty, else the first empty after it (or before it, from the start).
+@(private)
+load_next_empty :: proc(a: ^App, e: pm.Browser_Entry) {
+	to := next_empty_target(a)
+	if to < 0 {
+		ui.toast(&a.ws.toasts, .Warning, "No empty pad")
+		return
+	}
+	if drop_midi(a, e.path, to) do return
+	if pm.load_onto_pad(&a.m, to, e.path) == .None {
+		ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.path), pm.pad_label(to)))
+	} else {
+		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.path)))
+	}
+}
+
+// The pad "next empty" means: the selected one if it is empty, else the
+// first empty after it, else the first empty of all (-1: none).
+next_empty_target :: proc(a: ^App) -> int {
+	if !pm.pad_used(&a.m.project, a.selected) do return a.selected
+	to := pm.next_empty(&a.m, a.selected)
+	if to < 0 do to = pm.next_empty(&a.m, -1)
+	return to
 }
 
 // Loads file `e` onto the selected pad.
@@ -421,12 +496,26 @@ draw_preview :: proc(a: ^App) {
 		im.TextDisabled("%s", fmt.ctprintf("%d beats", int(pv.beats)))
 	}
 	im.SameLine(0, 8)
-	im.AlignTextToFramePadding()
-	im.TextDisabled("%s", cstring(ui.ICON_VOLUME_2))
-	im.SameLine(0, 4)
-	im.SetNextItemWidth(max(im.GetContentRegionAvail().x, 40))
-	vol := pv.volume
-	if im.SliderFloat("##pvol", &vol, -48, 6, "%.0f dB") do pv.volume = vol
-	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) do pv.volume = -6
-	if im.IsItemHovered({.DelayNormal}) do im.SetTooltip("The preview's volume (double-click: -6 dB)")
+	vol := f64(pv.volume)
+	if ui.value_bar("preview volume", ui.ICON_VOLUME_2, &vol, -48, 6, 1, 0.5, "%.0f dB", max(im.GetContentRegionAvail().x, 60)).changed do pv.volume = f32(vol)
+
+	// Where it goes without dragging: the selected pad (Enter, a
+	// double-click), or with Shift the next empty one.
+	entry := pm.Browser_Entry{name = filepath.base(b.selected), path = b.selected}
+	can := b.selected != "" && (pm.is_audio(b.selected) || pm.is_midi(b.selected))
+	gap := im.GetStyle().ItemSpacing.x
+	half := (im.GetContentRegionAvail().x - gap) / 2
+	im.BeginDisabled(!can)
+	if im.Button(fmt.ctprintf("%s  To %s###tosel", ui.ICON_ARROW_DOWN_TO_LINE, pm.pad_label(a.selected)), {half, 0}) do load_selected(a, entry)
+	ui.name("load to the selected pad")
+	if im.IsItemHovered({.AllowWhenDisabled}) do im.SetTooltip("Onto the selected pad (Enter, or double-click the file)")
+	im.SameLine(0, gap)
+	to := next_empty_target(a)
+	next_label := fmt.ctprintf("To next empty: %s###tonext", pm.pad_label(to)) if to >= 0 else cstring("No empty pad###tonext")
+	im.BeginDisabled(to < 0)
+	if im.Button(next_label, {half, 0}) do load_next_empty(a, entry)
+	im.EndDisabled()
+	ui.name("load to the next empty pad")
+	if im.IsItemHovered({.AllowWhenDisabled}) do im.SetTooltip("Onto the next empty pad (Shift+Enter, or Shift and double-click the file)")
+	im.EndDisabled()
 }

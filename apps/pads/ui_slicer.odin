@@ -302,8 +302,7 @@ load_into_slicer :: proc(a: ^App, i: int, path: string) -> bool {
 // Loads `path` into a slicer on the selected pad if it is empty, else the
 // next empty one after it (or the first). False if none is empty.
 slice_onto_next :: proc(a: ^App, path: string) -> bool {
-	to := a.selected if !pm.pad_used(&a.m.project, a.selected) else pm.next_empty(&a.m, a.selected)
-	if to < 0 do to = pm.next_empty(&a.m, -1)
+	to := next_empty_target(a)
 	if to < 0 {
 		ui.toast(&a.ws.toasts, .Warning, "No empty pad")
 		return false

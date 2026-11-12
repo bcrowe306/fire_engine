@@ -262,3 +262,15 @@ the_browser_preview_plays_stops_and_syncs :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(e.preview.frames - int(2.4 * SR)) < 2, "4 beats at 100 BPM (%v)", e.preview.frames)
 	pm.stop(e)
 }
+
+@(test)
+a_files_length_comes_from_its_header :: proc(t: ^testing.T) {
+	r := rig_make(t, "browser_length")
+	defer rig_destroy(r)
+	path := tone(r, "half.wav", 220, 0.5)
+	testing.expect(t, math.abs(pm.audio_seconds(path) - 0.5) < 1e-3, "a 0.5 s file is 0.5 s long")
+	notes, _ := filepath.join({r.dir, "notes.txt"}, context.temp_allocator)
+	_ = os.write_entire_file(notes, transmute([]u8)string("not audio"))
+	testing.expect_value(t, pm.audio_seconds(notes), -1)
+	testing.expect_value(t, pm.audio_seconds("no such file.wav"), -1)
+}

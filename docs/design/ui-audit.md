@@ -206,6 +206,20 @@ each remembers its own panel sizes.
   room the folded bottom gives back.
 - Pattern | Song leaves the Song view (it is in the toolbar).
 
+### Find sounds: decided (2026-11-12)
+
+- **Option A, the Library's rows**: each sound's row shows its length
+  (a loop's in beats once its tempo is known is a later step); no
+  separate Sounds view.
+- **Auditioning**: a sound plays as soon as it is selected (with the
+  mouse or the arrow keys), straight away, as auto-play does now.
+- **Loading without dragging** (Enter, a double-click, or the buttons at
+  the Library's foot): onto the **selected pad**; with **Shift**, onto the
+  **next empty pad**. The foot names where it goes ("To A3", "To next
+  empty: A5").
+- Preview-and-chop before loading (option B) was not chosen: chopping
+  stays on the pad's Sample page.
+
 ## Order of the redesign
 
 1. **The window layout**: Sequence as home, where the browser, device

@@ -149,3 +149,15 @@ clear_clip :: proc(m: ^Model, index: int) {
 	set_clip(m, m.project.slot, index, "Clear Clip", {})
 	app.seal(&m.history)
 }
+
+// How long the audio file at `path` is, in seconds, from its header (a WAV
+// or AIFF; -1 for anything else, or a file that won't open). Cheap: no
+// audio is read.
+audio_seconds :: proc(path: string) -> f64 {
+	r, err := audiofile.open(path, context.temp_allocator)
+	if err != .None do return -1
+	defer audiofile.close(r)
+	info := audiofile.info(r)
+	if info.sample_rate <= 0 do return -1
+	return f64(info.frames) / info.sample_rate
+}

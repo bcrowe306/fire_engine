@@ -162,6 +162,7 @@ main :: proc() {
 	defer {
 		for _, p in a.peaks do delete(p)
 		delete(a.peaks)
+		browser_view_destroy(&a.bview)
 	}
 	a.prefs = prefs
 	// The settings first: the device, the look, the last project.

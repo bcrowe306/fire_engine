@@ -1,5 +1,5 @@
 """The slicer device, used by mouse and keys: a sample sliced onto the
-next empty pad from the browser (Shift+Enter, Cmd+Shift+Enter, the
+next empty pad from the browser (Alt+Enter, Cmd+Shift+Enter, the
 context menu, Alt-drag, an empty pad's Slicer half), an empty slicer
 filled by a drop, slice markers dragged, added and taken away, a slice's
 level line dragged, the slices made a sequence or a pad of their own,
@@ -43,12 +43,12 @@ def sliced_loop(app, fixtures):
     return slicer(app, 0)
 
 
-def test_shift_enter_slices_onto_the_next_empty_pad(app, library, fixtures):
+def test_alt_enter_slices_onto_the_next_empty_pad(app, library, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
     app.cmd("select 0")
     open_loops(app, library)
     app.click("Loop 120.wav", window="browser")
-    app.key("shift+enter")
+    app.key("alt+enter")
     sl = slicer(app, 1)
     assert len(sl["starts"]) > 1, sl  # sliced at its transients
     assert sl["by"] == "Transients" and sl["base"] == 60
