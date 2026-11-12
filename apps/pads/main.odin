@@ -343,7 +343,7 @@ frame :: proc(a: ^App) {
 	a.seq.focused, a.song_ui.focused = false, false
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
-	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys}
+	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
@@ -556,6 +556,7 @@ handle_drops :: proc(a: ^App) {
 view_restore :: proc(a: ^App) {
 	v := a.m.project.view
 	a.play_mode, a.keys, a.bank, a.selected, a.perf.seq_bank, a.perf.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_bank, v.seq_keys
+	a.seq.mode = v.seq_mode
 }
 
 // Draws `frames` frames back to back and prints the CPU time per frame.

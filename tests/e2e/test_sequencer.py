@@ -68,8 +68,9 @@ def test_the_lanes(app, fixtures):
     loaded(app, fixtures)
     app.tool("Draw")
     app.click("seq", window="sequence", at=(0.5, 0.97))
-    app.click("Chance", window="sequence")
+    app.click("lane kind", window="sequence")
+    app.click("Chance")
     app.expect_item("lane", window="sequence")
-    app.click("Automation", window="sequence")
+    app.click("Automation", window="sequence")  # the Automation tab
     app.click("auto", window="sequence", at=(0.5, 0.5))  # a point on the selected pad's volume
     assert app.state()["points"] == 1

@@ -306,6 +306,26 @@ Auto_Lane_Point :: struct {
 	curve: f32,
 }
 
+// The tools of a full automation view (`auto_lane`'s `tool`): Select
+// clicks a point in where there is none and drags one; Draw draws
+// freehand (Shift: a straight line); Line drags a straight line; Curve
+// drags a segment up or down to bend it; Erase sweeps points away. Ctrl
+// bends a segment with any of them.
+Auto_Tool :: enum u8 {
+	Select,
+	Draw,
+	Line,
+	Curve,
+	Erase,
+}
+
+// A note drawn grey under an automation's curve, for timing: from `beat`
+// for `length`, between `y0` and `y1` (0 the top, 1 the bottom).
+Ghost_Note :: struct {
+	beat, length: f64,
+	y0, y1:       f32,
+}
+
 // What the user did to an automation lane this frame.
 Auto_Lane_Edit :: struct {
 	add:      bool, // a point at `at` (Select: a click on empty space)
@@ -320,6 +340,7 @@ Auto_Lane_Edit :: struct {
 	swept:    bool, // Erase swept across beats `swept_lo`..`swept_hi` (done): delete the points there
 	swept_lo, swept_hi: f64,
 	menu:     int,  // a point right-clicked, or -1
+	hover:    int,  // the point under the mouse, or -1
 }
 
 // The value an automation lane has at `beat`: as its points join (lines,
@@ -348,10 +369,10 @@ auto_lane_value :: proc(points: []Auto_Lane_Point, beat: f64) -> f32 {
 // under it), Erase (click or sweep removes points); with any, Ctrl-drag a
 // segment to bend it. `now` (a beat, or -1) marks where it plays, with a
 // dot at its value.
-auto_lane :: proc(id: cstring, points: []Auto_Lane_Point, beat0, beats: f64, snap: f64, size: im.Vec2, tool: Grid_Tool, tint: Color = {}, now: f64 = -1) -> (e: Auto_Lane_Edit) {
+auto_lane :: proc(id: cstring, points: []Auto_Lane_Point, beat0, beats: f64, snap: f64, size: im.Vec2, tool: Auto_Tool, tint: Color = {}, now: f64 = -1, ghosts: []Ghost_Note = nil) -> (e: Auto_Lane_Edit) {
 	im.PushID(id)
 	defer im.PopID()
-	e.moving, e.bend, e.erase, e.menu = -1, -1, -1, -1
+	e.moving, e.bend, e.erase, e.menu, e.hover = -1, -1, -1, -1, -1
 	t := current
 	color := tint if tint != {} else t.accent
 	dl := im.GetWindowDrawList()
@@ -375,6 +396,7 @@ auto_lane :: proc(id: cstring, points: []Auto_Lane_Point, beat0, beats: f64, sna
 	seg := -1 // the segment under the mouse
 	for k in 1 ..< len(points) do if mb >= points[k - 1].beat && mb < points[k].beat do seg = k - 1
 	if hovered && im.IsMouseClicked(.Right) && hit >= 0 do e.menu = hit
+	if hovered do e.hover = hit
 
 	Gesture :: enum u8 { None, Move, Draw, Line, Bend, Sweep }
 	@(static) g: Gesture
@@ -390,18 +412,18 @@ auto_lane :: proc(id: cstring, points: []Auto_Lane_Point, beat0, beats: f64, sna
 		g = .None
 		start = {f32(mb), mv}
 		clear(&stroke)
-		if ctrl_down() && seg >= 0 && hit < 0 {
+		if (ctrl_down() || tool == .Curve) && seg >= 0 && hit < 0 {
 			g, bend_seg, bend0 = .Bend, seg, points[seg].curve
 		} else {
 			switch tool {
-			case .Select, .Move:
+			case .Select, .Curve:
 				if hit >= 0 {
 					g, drag = .Move, hit
-				} else {
+				} else if tool == .Select {
 					e.add, e.at = true, {max(snapped(mb, snap), 0), mv, 0}
 				}
-			case .Draw:
-				g = .Line if io.KeyShift else .Draw
+			case .Draw, .Line:
+				g = .Line if io.KeyShift || tool == .Line else .Draw
 				append(&stroke, Auto_Lane_Point{max(snapped(mb, snap), 0), mv, 0})
 			case .Erase:
 				g = .Sweep
@@ -448,6 +470,14 @@ auto_lane :: proc(id: cstring, points: []Auto_Lane_Point, beat0, beats: f64, sna
 	// drawn, and now: a line and a dot at its value.
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(PLOT_BG), t.radius)
 	for k in 1 ..< 4 do im.DrawList_AddLine(dl, {pos.x, pos.y + size.y * f32(k) / 4}, {pos.x + size.x, pos.y + size.y * f32(k) / 4}, col(mix(PLOT_BG, t.text, 0.07)), 1)
+	// The notes underneath, grey, for timing only.
+	ghost := col(mix(PLOT_BG, t.text, 0.13))
+	for n in ghosts {
+		x0, x1 := sx(n.beat, pos, beat0, bw), sx(n.beat + n.length, pos, beat0, bw)
+		if x1 < pos.x || x0 > pos.x + size.x do continue
+		y0, y1 := pos.y + n.y0 * size.y, pos.y + n.y1 * size.y
+		im.DrawList_AddRectFilled(dl, {max(x0, pos.x) + 1, y0}, {min(x1, pos.x + size.x) - 1, max(y1, y0 + 2)}, ghost, 2)
+	}
 	shown := make([dynamic]Auto_Lane_Point, 0, len(points), context.temp_allocator)
 	append(&shown, ..points)
 	if e.moving >= 0 && e.moving < len(shown) do shown[e.moving] = e.to

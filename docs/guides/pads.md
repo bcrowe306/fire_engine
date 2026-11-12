@@ -237,11 +237,15 @@ records.
   **Own tempo** (it plays at its own tempo, which takes over exactly where
   the sequence does, in the song or switching live); **Copy Bars to…**
   (from its menu or the palette: bars, every pad or one or a bank, into
-  another sequence at a bar, replacing or laid over). Its length (1–64 bars, ×2 doubles with the notes); the
-  grid (1/4 to 1/64, triplets) and Quantize (Cmd+U, the notes there);
-  swing (on 1/8 or 1/16). Below, the current bank's pads (pad
+  another sequence at a bar, replacing or laid over). Its length (1–64 bars, ×2 doubles with the notes);
+  swing (on 1/8 or 1/16). Under that, two tabs: **Notes** (the default)
+  and **Automation**, each with its tools on the same line. The tab you
+  pick stays as you move around the app, and is saved with the project.
+
+  In **Notes**: the grid (1/4 to 1/64, triplets) and Quantize (Cmd+U,
+  the notes there), input quantize. Below, the current bank's pads (pad
   1 at the bottom, as on the grid) as
-  rows, edited with four tools (on the row over the editor, or the keys
+  rows, edited with four tools (on the tab's line, or the keys
   while it has the keyboard; Escape: back to Select):
   - **Select** (V): click a note (Shift-click adds or takes away), drag on
     empty space to box-select, drag selected notes to move them, their
@@ -273,16 +277,27 @@ records.
   scrolls the rows when they don't all fit. Notes of one pad (and pitch) never overlap: a note cuts short the
   one before it, replaces one that starts with it, and takes over one it
   covers (a note it reaches into keeps the part after it), however it got
-  there (drawn, moved, pasted, recorded, imported). Under the rows, a lane: each note's velocity, its chance (the
-  probability it plays each time round), or the selected pad's
-  automation (volume, pitch or an EQ band), one lane at a time. With
-  **Select** a click adds a point and a drag moves one; with **Draw** a
-  drag draws freehand (a point each grid step) and **Shift**-drag a
-  straight line; **Ctrl**-drag on a line bends it into a curve (up bends
-  it in, down out; the engine plays the same curve); **Erase** sweeps away
-  every point in the columns it crosses; right-click a point to delete it.
-  Each stroke is one undo step, and a dot rides the line at the value
-  playing. The **magnet** (Snap) puts notes and points on the grid; off,
+  there (drawn, moved, pasted, recorded, imported). Under the rows, a
+  slim lane (drag its top edge for more): each note's velocity or its
+  chance (the probability it plays each time round; a new note's is
+  100%), as its name at the left picks.
+
+  In **Automation**: one automation at a time across the whole view, its
+  value scale at the left, the notes drawn grey beneath it for timing
+  (**Notes** turns them off). The menu at the left of the tab's line
+  picks which: the automations this sequence has, or **New automation**
+  (a pad, then a parameter: volume, pitch, an EQ band, cutoff,
+  resonance, a plug-in pad's lanes). Its tools (or their keys):
+  **Select** (V) a click adds a point and a drag moves one; **Draw** (B)
+  draws freehand (a point each grid step; **Shift**: a straight line);
+  **Line** (L) drags a straight line; **Curve** (C) drags a segment up or
+  down to bend it (up bends it in, down out; **Ctrl**-drag does with any
+  tool; the engine plays the same curve); **Erase** (E) sweeps away every
+  point in the columns it crosses; right-click a point to delete it. The
+  point under the mouse says where it is and its value. Each stroke is
+  one undo step, and a dot rides the curve at the value playing.
+
+  The **magnet** (Snap) puts notes and points on the grid; off,
   they go anywhere (hold Cmd on macOS, Alt elsewhere, to place one freely
   while it is on). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
@@ -1173,6 +1188,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
 | `test_slicer.py` | slicing from the browser (Alt+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
+| `test_sequence_tabs.py` | the Sequence view's Notes (the default) and Automation tabs, the tab kept while moving around and saved with the project; Line and Curve; a new automation from the menu; the notes under the curve off and on; a drawn note at 100% chance |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_layout.py` | the default window at the Comfortable size (the other tests run at Compact, `--control-size compact`, the size their positions were written for): the pads area folded to a bar and unfolded by a pad and by its button, one search finding a file and a device, Cmd+L, the control size in Settings |
 | `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |

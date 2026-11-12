@@ -16,9 +16,13 @@ ROW_MIN :: 17
 Seq_State :: struct {
 	view:     ui.Roll_View,
 	grid:     pm.Grid, // snap and quantize
-	lane:     int,     // 0 = velocity, 1 = chance, 2 = automation
-	lane_hs:  [2]f32,  // the lane's height (dragged): velocity and chance, automation (0: its default)
-	param:    pm.Lane_Param, // the automation lane shown (of the selected pad)
+	mode:     pm.Seq_Mode, // the tab: Notes (the default) or Automation (kept as you move around, saved with the project)
+	lane:     int,     // the Notes tab's lane: 0 = velocity, 1 = chance
+	lane_hs:  [2]f32,  // the lane's height (dragged; [0] the Notes tab's, 0: its default)
+	param:    pm.Lane_Param, // the automation the Automation tab shows ...
+	auto_pad: int,     // ... of this pad (-1: the selected pad's)
+	auto_tool: ui.Auto_Tool, // the Automation tab's tool
+	hide_notes: bool,  // the Automation tab draws no notes under the curve
 	selected: int,     // the note the lanes edit (an index into the sequence), or -1
 	sel:      [dynamic]pm.Seq_Note, // the selected notes (by value: they survive edits that keep them)
 	slot_was: int,
@@ -111,7 +115,7 @@ draw_sequence :: proc(user: rawptr) {
 	st.focused = im.IsWindowFocused({.RootWindow, .ChildWindows})
 	draw_transport(a)
 	im.Spacing()
-	draw_editor_tools(a)
+	draw_mode_bar(a)
 	t := ui.theme()
 
 	// The rows: the bank's pads (the first at the bottom, as on the grid),
@@ -184,10 +188,15 @@ draw_sequence :: proc(user: rawptr) {
 	length := pm.seq_beats(&m.project, s)
 	beat, playing := pm.position(&m.engine)
 	avail := im.GetContentRegionAvail()
+	if st.mode == .Automation {
+		snap := pm.grid_beats(st.grid) if !st.free && !ui.free_down() else 0
+		draw_automation_view(a, s, notes[:], len(rows), ui.roll_rows_width(rows), length, snap)
+		return
+	}
 	// The lane's height: dragged by the bar between it and the grid (each
 	// kind keeps its own; automation starts with room to draw).
-	li := 1 if st.lane == 2 else 0
-	if st.lane_hs[li] <= 0 do st.lane_hs[li] = 120 if li == 1 else 56
+	li := 0
+	if st.lane_hs[li] <= 0 do st.lane_hs[li] = 44 // (slim: drag its top for more)
 	SPLIT :: 8
 	lane_h := clamp(st.lane_hs[li], 32, max(avail.y * 0.6, 40))
 	roll_h := max(avail.y - lane_h - SPLIT - im.GetStyle().ItemSpacing.y - 4, 4 * ROW_MIN)
@@ -244,18 +253,28 @@ draw_sequence :: proc(user: rawptr) {
 		im.Dummy({avail.x, lane_h})
 		return
 	}
-	// The lane, lined up under the grid: velocity, chance, or the selected
-	// pad's automation.
-	if st.lane == 2 {
-		draw_automation(a, s, length, snap, {avail.x, lane_h}, ui.roll_rows_width(rows))
-		return
-	}
+	// The lane, lined up under the grid: the notes' velocity or chance (its
+	// name, where the rows' names are, picks which).
 	bars := make([]ui.Lane_Bar, len(notes), context.temp_allocator)
 	for n, k in notes {
 		sn := s.notes[which[k]]
 		bars[k] = {beat = n.start, value = sn.velocity if st.lane == 0 else sn.probability, color = ui.with_alpha(n.color, 0.3) if n.muted else n.color, selected = n.selected}
 	}
-	le := ui.value_lane("lane", bars, 0, length, {avail.x, lane_h}, ui.roll_rows_width(rows))
+	left := ui.roll_rows_width(rows)
+	lane_at := im.GetCursorScreenPos()
+	im.SetCursorScreenPos({lane_at.x + 2, lane_at.y + 2})
+	ui.text_push(.Label)
+	if im.Button(fmt.ctprintf("%s %s###lanekind", "Velocity" if st.lane == 0 else "Chance", ui.ICON_CHEVRON_DOWN), {left - 6, 0}) do im.OpenPopup("##lanekinds")
+	ui.text_pop()
+	ui.name("lane kind")
+	if im.IsItemHovered() do im.SetTooltip("What the lane shows: the notes' velocity or their chance")
+	if im.BeginPopup("##lanekinds") {
+		if im.Selectable("Velocity", st.lane == 0) do st.lane = 0
+		if im.Selectable("Chance", st.lane == 1) do st.lane = 1
+		im.EndPopup()
+	}
+	im.SetCursorScreenPos({lane_at.x + left, lane_at.y})
+	le := ui.value_lane("lane", bars, 0, length, {avail.x - left, lane_h}, 0)
 
 	if le.index >= 0 && le.changed {
 		i := which[le.index]
@@ -272,32 +291,76 @@ draw_sequence :: proc(user: rawptr) {
 	if le.ended do app.seal(&m.history)
 }
 
-// The selected pad's automation lane for `a.seq.param`, edited with the
-// editor's tool: Select clicks a point in and drags one, Draw draws
-// freehand (Shift: a straight line), Erase sweeps; Ctrl-drag bends a
-// segment. A dot rides it where it plays.
-draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec2, left: f32) {
+// The pad the Automation tab shows (the one chosen in its menu, else the
+// selected pad).
+auto_target_pad :: proc(a: ^App) -> int {
+	return a.seq.auto_pad if a.seq.auto_pad >= 0 && a.seq.auto_pad < pm.PADS else a.selected
+}
+
+// The Automation tab's view: one automation (`auto_target_pad`'s
+// `a.seq.param`) across the whole view, its value scale where the rows'
+// names are, the notes grey beneath it for timing (unless hidden).
+// Edited with the tab's tool: Select clicks a point in and drags one,
+// Draw draws freehand (Shift: a straight line), Line drags a straight
+// line, Curve bends a segment (Ctrl does with any tool), Erase sweeps.
+// The point under the mouse says its time and value; a dot rides the
+// curve where it plays.
+draw_automation_view :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, n_rows: int, left: f32, length, snap: f64) {
 	m := &a.m
 	st := &a.seq
+	t := ui.theme()
 	slot := m.project.slot
-	pad := a.selected
+	pad := auto_target_pad(a)
 	points, first := pm.lane_points(s, pad, st.param)
 	lo, hi := pm.lane_range(st.param)
 	norm :: proc(v, lo, hi: f32) -> f32 { return (v - lo) / (hi - lo) }
 	value_of :: proc(n, lo, hi: f32) -> f32 { return lo + clamp(n, 0, 1) * (hi - lo) }
 	view := make([]ui.Auto_Lane_Point, len(points), context.temp_allocator)
 	for p, i in points do view[i] = {beat = p.beat, value = norm(p.value, lo, hi), curve = p.curve}
-	// The lane's label (and its value now) where the editor's row names are.
+	// The notes beneath: only the rows that have some, each a band of the
+	// height (the first at the bottom, as in the grid).
+	ghosts := make([dynamic]ui.Ghost_Note, 0, len(notes), context.temp_allocator)
+	if !st.hide_notes && len(notes) > 0 {
+		used := make([]int, max(n_rows, 1), context.temp_allocator) // each row's band (+1), 0: none
+		for n in notes do if n.key >= 0 && n.key < len(used) do used[n.key] = 1
+		bands := 0
+		for &u in used do if u > 0 { bands += 1; u = bands }
+		for n in notes {
+			if n.key < 0 || n.key >= len(used) do continue
+			k := f32(used[n.key] - 1)
+			band := 1 / f32(bands)
+			append(&ghosts, ui.Ghost_Note{beat = n.start, length = n.length, y0 = 1 - (k + 0.7) * band, y1 = 1 - (k + 0.3) * band})
+		}
+	}
+	avail := im.GetContentRegionAvail()
 	pos := im.GetCursorScreenPos()
 	beat, playing := pm.position(&m.engine)
 	dl := im.GetWindowDrawList()
-	im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4}, ui.col(ui.theme().text_dim), fmt.ctprintf("%s %s", pm.pad_label(pad), lane_label(a, pad, st.param)))
+	// The scale, where the rows' names are: the top, the middle and the
+	// bottom of the range, in the parameter's units; the value now.
+	ui.text_push(.Caption)
+	h := avail.y
+	for k in 0 ..= 2 {
+		v := hi - (hi - lo) * f32(k) / 2
+		text := fmt.ctprintf("%s", lane_value_text(st.param, v))
+		ts := im.CalcTextSize(text)
+		y := pos.y + 4 + (h - 8) * f32(k) / 2 - ts.y / 2
+		y = clamp(y, pos.y, pos.y + h - ts.y)
+		im.DrawList_AddText(dl, {pos.x + left - ts.x - 8, y}, ui.col(t.text_dim), text)
+	}
+	ui.text_pop()
 	if len(view) > 0 && playing {
 		v := value_of(ui.auto_lane_value(view, beat), lo, hi)
-		im.DrawList_AddText(dl, {pos.x + 4, pos.y + 4 + im.GetTextLineHeightWithSpacing()}, ui.col(ui.theme().text), fmt.ctprintf("%.1f", v))
+		im.DrawList_AddText(dl, {pos.x + 4, pos.y + h / 2 + 12}, ui.col(t.text), fmt.ctprintf("%s", lane_value_text(st.param, v)))
 	}
 	im.SetCursorScreenPos({pos.x + left, pos.y})
-	e := ui.auto_lane("auto", view, 0, length, snap, {size.x - left, size.y}, st.tool, ui.rgb(m.project.pads[pad].color), beat if playing else -1)
+	color := ui.rgb(m.project.pads[pad].color) if pm.pad_used(&m.project, pad) else t.accent
+	e := ui.auto_lane("auto", view, 0, length, snap, {avail.x - left, h}, st.auto_tool, color, beat if playing else -1, ghosts[:])
+	if e.hover >= 0 && e.hover < len(points) && e.moving < 0 {
+		p := points[e.hover]
+		bar, bt, six := pm.position_of(&m.project, p.beat)
+		im.SetTooltip("%s", fmt.ctprintf("bar %d.%d.%d · %s", bar, bt, six, lane_value_text(st.param, p.value)))
+	}
 	if e.add && e.at.beat <= length {
 		pm.add_point(m, slot, {pad = u8(pad), param = st.param, beat = e.at.beat, value = value_of(e.at.value, lo, hi)})
 		app.seal(&m.history)
@@ -306,6 +369,8 @@ draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec
 		p := points[e.moving]
 		p.beat, p.value = clamp(e.to.beat, 0, length), value_of(e.to.value, lo, hi)
 		pm.set_point(m, slot, first + e.moving, p)
+		bar, bt, six := pm.position_of(&m.project, p.beat)
+		im.SetTooltip("%s", fmt.ctprintf("bar %d.%d.%d · %s", bar, bt, six, lane_value_text(st.param, p.value)))
 	}
 	if e.bend >= 0 && e.bend < len(points) {
 		p := points[e.bend]
@@ -330,10 +395,134 @@ draw_automation :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec
 	}
 }
 
-// Play, stop, record and the click; the slot; its length, grid and swing.
-draw_transport :: proc(a: ^App) {
+// A value of lane parameter `p` as the scale and the tooltips show it, in
+// its units.
+lane_value_text :: proc(p: pm.Lane_Param, v: f32) -> string {
+	#partial switch p {
+	case .Volume, .Eq_Low, .Eq_Mid, .Eq_High: return fmt.tprintf("%+.1f dB", v)
+	case .Pitch:     return fmt.tprintf("%+.0f st", v)
+	case .Cutoff:    return fmt.tprintf("%.1f kHz", v / 1000) if v >= 1000 else fmt.tprintf("%.0f Hz", v)
+	}
+	return fmt.tprintf("%.0f%%", v)
+}
+
+// The tab bar of the Sequence view, and the tab's tools: Notes (the note
+// tools, the view, snap and the grid, Quantize, input quantize) or
+// Automation (which automation, its tools, snap and the grid, the notes
+// beneath shown or not).
+draw_mode_bar :: proc(a: ^App) {
+	st := &a.seq
+	mode := int(st.mode)
+	if ui.segmented("seq mode", {"Notes", "Automation"}, &mode) do st.mode = pm.Seq_Mode(mode)
+	ui.name("sequence mode")
+	im.SameLine(0, 16)
+	if st.mode == .Notes {
+		draw_editor_tools(a)
+		draw_grid_controls(a, quantize = true)
+	} else {
+		draw_automation_tools(a)
+		draw_grid_controls(a, quantize = false)
+		ui.flow(ui.button_width("Notes") + 24, 16)
+		show := !st.hide_notes
+		if ui.toggle("Notes##shownotes", &show) do st.hide_notes = !show
+		ui.name("show notes")
+		if im.IsItemHovered() do im.SetTooltip("The notes, grey under the curve, for timing")
+	}
+}
+
+// The grid (where notes and points snap), and with `quantize` the
+// sequence's Quantize and input quantize.
+@(private)
+draw_grid_controls :: proc(a: ^App, quantize: bool) {
 	m := &a.m
 	st := &a.seq
+	ui.flow(84, 14)
+	im.SetNextItemWidth(84)
+	if ui.combo("##grid", pm.GRID_NAMES[st.grid]) {
+		for g in pm.Grid do if im.Selectable(pm.GRID_NAMES[g], g == st.grid) {
+			st.grid = g
+		}
+		im.EndCombo()
+	}
+	if im.IsItemHovered() do im.SetTooltip("Grid: where notes and points snap, and what Quantize uses")
+	if !quantize do return
+	q :: ui.ICON_MAGNET + "  Quantize"
+	ui.flow(ui.button_width(q))
+	if im.Button(q) do pm.quantize_sequence(m, m.project.slot, st.grid)
+	if im.IsItemHovered() do im.SetTooltip("Move the sequence's notes to the grid")
+	// Input quantize: notes recorded from now on, moved as they come in.
+	ui.flow(im.GetFrameHeight() * 2 + im.CalcTextSize("1/16T").x)
+	draw_input_quantize(a)
+}
+
+// The Automation tab's tools: which automation (the menu: those in this
+// sequence, then a new one), Select, Draw, Line, Curve, Erase, and snap.
+// V, B, L, C and E pick the tools while the editor has the keyboard.
+@(private)
+draw_automation_tools :: proc(a: ^App) {
+	m := &a.m
+	st := &a.seq
+	s := pm.current_sequence(m)
+	pad := auto_target_pad(a)
+	im.SetNextItemWidth(220)
+	if ui.combo("##autotarget", fmt.ctprintf("%s · %s", pm.pad_label(pad), lane_label(a, pad, st.param))) {
+		// The automations this sequence has.
+		seen := make(map[[2]int]bool, context.temp_allocator)
+		for pt in s.points {
+			key := [2]int{int(pt.pad), int(pt.param)}
+			if seen[key] do continue
+			seen[key] = true
+			on := int(pt.pad) == pad && pt.param == st.param
+			if im.Selectable(fmt.ctprintf("%s · %s###at%d_%d", pm.pad_label(int(pt.pad)), lane_label(a, int(pt.pad), pt.param), pt.pad, pt.param), on) {
+				st.auto_pad, st.param = int(pt.pad), pt.param
+			}
+		}
+		if len(seen) == 0 do im.TextDisabled("No automation in this sequence yet")
+		im.Separator()
+		new_open := im.BeginMenu(ui.ICON_PLUS + "  New automation")
+		ui.name("new automation")
+		if new_open {
+			for i in 0 ..< pm.PADS do if pm.pad_used(&m.project, i) || i == a.selected {
+				if im.BeginMenu(fmt.ctprintf("%s  %s###np%d", pm.pad_label(i), pm.pad_name(&m.project.pads[i]) if pm.pad_used(&m.project, i) else "", i)) {
+					for lp in pm.Lane_Param do if lane_shown(a, i, lp) {
+						if im.MenuItem(fmt.ctprintf("%s###nl%d", lane_label(a, i, lp), int(lp))) do st.auto_pad, st.param = i, lp
+					}
+					im.EndMenu()
+				}
+			}
+			im.EndMenu()
+		}
+		im.EndCombo()
+	}
+	ui.name("automation")
+	tools := [5]struct { tool: ui.Auto_Tool, icon: string, tip: cstring }{
+		{.Select, ui.ICON_MOUSE_POINTER_2, "Select (V): click to add a point, drag one to move it"},
+		{.Draw, ui.ICON_PENCIL, "Draw (B): draw freehand (Shift: a straight line)"},
+		{.Line, ui.ICON_SLASH, "Line (L): drag a straight line"},
+		{.Curve, ui.ICON_SPLINE, "Curve (C): drag a segment up or down to bend it (Ctrl does with any tool)"},
+		{.Erase, ui.ICON_ERASER, "Erase (E): sweep across points to remove them"},
+	}
+	im.SameLine(0, 14)
+	for tl, k in tools {
+		if k > 0 do im.SameLine(0, 2)
+		if ui.icon_button(tl.icon, tl.tip, on = st.auto_tool == tl.tool) do st.auto_tool = tl.tool
+	}
+	im.SameLine(0, 10)
+	if ui.icon_button(ui.ICON_MAGNET, "Snap: on (to the grid; hold " + ui.FREE_KEY + " to place freely)" if !st.free else "Snap: off (anywhere)", on = !st.free) do st.free = !st.free
+	if st.focused && !im.GetIO().WantTextInput {
+		if im.IsKeyPressed(.V, false) do st.auto_tool = .Select
+		if im.IsKeyPressed(.B, false) do st.auto_tool = .Draw
+		if im.IsKeyPressed(.L, false) do st.auto_tool = .Line
+		if im.IsKeyPressed(.C, false) do st.auto_tool = .Curve
+		if im.IsKeyPressed(.E, false) do st.auto_tool = .Erase
+		if im.IsKeyPressed(.Escape, false) do st.auto_tool = .Select
+	}
+}
+
+// The sequence's own settings, the same in both tabs: its name, length
+// and ×2, swing, and clearing it.
+draw_transport :: proc(a: ^App) {
+	m := &a.m
 	slot := m.project.slot
 	s := pm.current_sequence(m)
 	t := ui.theme()
@@ -359,23 +548,7 @@ draw_transport :: proc(a: ^App) {
 	if im.Button("×2") do pm.double_sequence(m, slot)
 	if im.IsItemHovered() do im.SetTooltip("Double the sequence (its notes repeat)")
 
-	// Grid (snap), quantize, swing.
-	ui.flow(84, 20)
-	im.SetNextItemWidth(84)
-	if ui.combo("##grid", pm.GRID_NAMES[st.grid]) {
-		for g in pm.Grid do if im.Selectable(pm.GRID_NAMES[g], g == st.grid) {
-			st.grid = g
-		}
-		im.EndCombo()
-	}
-	if im.IsItemHovered() do im.SetTooltip("Grid: where notes snap, and what Quantize uses")
-	q :: ui.ICON_MAGNET + "  Quantize"
-	ui.flow(ui.button_width(q))
-	if im.Button(q) do pm.quantize_sequence(m, slot, st.grid)
-	if im.IsItemHovered() do im.SetTooltip("Move the sequence's notes to the grid")
-	// Input quantize: notes recorded from now on, moved as they come in.
-	ui.flow(im.GetFrameHeight() * 2 + im.CalcTextSize("1/16T").x)
-	draw_input_quantize(a)
+	// Swing.
 	ui.flow(120, 20)
 	im.SetNextItemWidth(120)
 	sw := s.swing * 100
@@ -388,21 +561,7 @@ draw_transport :: proc(a: ^App) {
 		app.seal(&m.history)
 	}
 
-	// The lane's value, and clearing.
-	ui.flow(ui.button_width("Velocity") + ui.button_width("Chance") + ui.button_width("Automation"), 20)
-	ui.segmented("lane", {"Velocity", "Chance", "Automation"}, &st.lane)
-	if st.lane == 2 {
-		ui.flow(110)
-		im.SetNextItemWidth(110)
-		if !lane_shown(a, a.selected, st.param) do st.param = .Volume
-		if ui.combo("##param", lane_label(a, a.selected, st.param)) {
-			for lp in pm.Lane_Param {
-				if !lane_shown(a, a.selected, lp) do continue
-				if im.Selectable(lane_label(a, a.selected, lp), lp == st.param) do st.param = lp
-			}
-			im.EndCombo()
-		}
-	}
+	// Clearing.
 	ui.flow(im.GetFrameHeight())
 	if ui.icon_button(ui.ICON_TRASH_2, "Clear the sequence") do pm.clear_sequence(m, slot)
 	_ = t

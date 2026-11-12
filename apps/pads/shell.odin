@@ -626,13 +626,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// lane velocity|chance|automation [volume|pitch|low|mid|high]
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "velocity":   a.seq.lane = 0
-		case "chance":     a.seq.lane = 1
-		case "automation": a.seq.lane = 2
+		case "velocity":   a.seq.lane, a.seq.mode = 0, .Notes
+		case "chance":     a.seq.lane, a.seq.mode = 1, .Notes
+		case "automation": a.seq.mode = .Automation // (the Automation tab)
 		case: return false
 		}
 		if len(w) > 2 do for lp in pm.Lane_Param do if strings.has_prefix(strings.to_lower(string(pm.LANE_NAMES[lp]), context.temp_allocator), w[2]) || (w[2] == "low" && lp == .Eq_Low) || (w[2] == "mid" && lp == .Eq_Mid) || (w[2] == "high" && lp == .Eq_High) {
-			a.seq.param = lp
+			a.seq.param, a.seq.auto_pad = lp, -1
 			break
 		}
 		return true

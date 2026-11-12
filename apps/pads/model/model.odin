@@ -245,6 +245,14 @@ View_State :: struct {
 	selected:  int,
 	seq_bank:  int,
 	seq_keys:  bool, // the pad keys play the sequence pads
+	seq_mode:  Seq_Mode, // the Sequence view's tab: Notes or Automation
+}
+
+// The Sequence view's two tabs: notes (and their velocity, chance and CC),
+// or one automation at a time.
+Seq_Mode :: enum u8 {
+	Notes,
+	Automation,
 }
 
 // A project.
