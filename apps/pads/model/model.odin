@@ -264,6 +264,7 @@ Project :: struct {
 	samples: app.Store(Sample),
 	wave_docs: app.Store(Wave_Doc), // the project's own wavetables (the wavetable editor's)
 	launch_hold: bool, // sequence pads play while held (back to the one before when let go), else launch
+	launch_continue: bool, // a launched sequence carries on where the playhead is (its column's pass so far, modulo its length), else from its top
 	view:    View_State, // how the app was left: kept with the project, so it opens as it was
 	sequences: [SLOTS]Sequence,
 	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence

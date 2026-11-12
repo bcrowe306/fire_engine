@@ -18,14 +18,15 @@ launch_col :: proc "contextless" (slot: int) -> int {
 }
 
 // A launcher column: what it plays (-1: nothing) and since when (timeline
-// beat), and what takes over at `at` (`next` -1: it stops; `queued` false:
-// nothing).
+// beat its passes count from), and what takes over at `at` (`next` -1: it
+// stops; `queued` false: nothing; `cont`: it continues from the playhead).
 Launch_Col :: struct {
 	slot:   int,
 	since:  f64,
 	queued: bool,
 	next:   int,
 	at:     f64,
+	cont:   bool,
 }
 
 // The launcher's columns.
@@ -94,7 +95,7 @@ queue_slot :: proc(e: ^Engine, slot: int, solo := true) {
 	b := launch_at(e, col, beat)
 	for &c, k in l.cols {
 		if k == col {
-			c.queued, c.next, c.at = true, slot, b
+			c.queued, c.next, c.at, c.cont = true, slot, b, p.launch_continue
 		} else if solo && (c.slot >= 0 || (c.queued && c.next >= 0)) {
 			c.queued, c.next, c.at = true, -1, b
 		}
@@ -145,13 +146,35 @@ launch_row :: proc(m: ^Model, bank, row: int) {
 @(private)
 launch_apply :: proc(e: ^Engine, b: f64) {
 	p := e.project
+	before := e.launch.cols
 	for &c, k in e.launch.cols do if c.queued && c.at <= b + 1e-9 {
-		c.slot, c.since, c.queued = c.next, c.at, false
-		if e.rec_open do append(&e.rec_log, Launch_Event{k, c.slot, c.at, c.at})
+		c.slot, c.since, c.queued = c.next, launch_since(p, before, k), false
+		if e.rec_open do append(&e.rec_log, Launch_Event{k, c.slot, c.at, c.since})
 		if c.slot >= 0 do p.slot = c.slot // (the editor shows the one launched last)
 	}
 	e.plan.at = b
 	e.seq_dirty = true
+}
+
+// Where column `k`'s queued sequence counts its passes from, as `cols` were
+// just before it takes over: there (from its top); or, continuing, so that
+// it carries on where the playhead is in its column's sequence (or, with
+// none, the leading column's) — that pass so far, modulo its own length.
+@(private)
+launch_since :: proc(p: ^Project, cols: [LAUNCH_COLS]Launch_Col, k: int) -> f64 {
+	c := cols[k]
+	if !c.cont || c.next < 0 do return c.at
+	ref := c
+	if ref.slot < 0 do for x in cols do if x.slot >= 0 {
+		ref = x
+		break
+	}
+	if ref.slot < 0 do return c.at
+	lr := seq_beats(p, p.sequences[ref.slot])
+	ln := seq_beats(p, p.sequences[c.next])
+	if lr <= 0 || ln <= 0 do return c.at
+	into := math.mod(math.mod(c.at - ref.since, lr) + lr, lr)
+	return c.at - math.mod(into, ln)
 }
 
 // [control] Starting to play: every column from the top (and, with none
@@ -206,8 +229,9 @@ plan_launch :: proc(p: ^Project, l: ^Launcher, at: f64) -> (pl: Plan) {
 	from := at
 	if e < math.F64_MAX {
 		for c, k in cols do if c.slot >= 0 do col_segments(p, &pl, c.slot, k, c.since, at, e)
-		for &c in cols do if c.queued && c.at <= e + 1e-9 {
-			c.slot, c.since, c.queued = c.next, c.at, false
+		before := cols
+		for &c, k in cols do if c.queued && c.at <= e + 1e-9 {
+			c.slot, c.since, c.queued = c.next, launch_since(p, before, k), false
 		}
 		from = e
 	}
@@ -277,10 +301,10 @@ editing_slot :: proc(m: ^Model) -> int {
 }
 
 // Launches sequence `slot` in its column (the launcher: the other columns
-// play on); stopped, it starts playing, alone.
-launch_slot :: proc(m: ^Model, slot: int) {
+// play on; `alone`: they stop then); stopped, it starts playing, alone.
+launch_slot :: proc(m: ^Model, slot: int, alone := false) {
 	_, playing, _ := transport.timeline_status(m.engine.host.clock, m.engine.timeline)
-	queue_slot(&m.engine, slot, solo = !playing)
+	queue_slot(&m.engine, slot, solo = alone || !playing)
 	if !playing do play(&m.engine)
 }
 

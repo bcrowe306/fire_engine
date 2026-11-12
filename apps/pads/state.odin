@@ -104,6 +104,7 @@ State :: struct {
 	queued:     int, // the sequence about to take over (1-based; 0: none)
 	columns:    [4]int, // what each launcher column plays (1-based; 0: nothing)
 	launch_record: bool, // Record to Song is armed
+	launch_continue: bool, // launches carry on where the playhead is
 	main_volume: f32, // main's fader (dB)
 	fx_params:  [dynamic][2]f32, // the effect being edited: its settings, (id, value) each
 	pads:       [dynamic]State_Pad, // the ones with a sound
@@ -372,6 +373,7 @@ state_json :: proc(a: ^App) -> string {
 		s.columns[k] = cs + 1
 	}
 	s.launch_record = pm.launch_recording(m)
+	s.launch_continue = p.launch_continue
 	s.main_volume = p.main.volume
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open

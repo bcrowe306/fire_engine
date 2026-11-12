@@ -1,6 +1,7 @@
 package pads
 
 import "base:runtime"
+import "base:intrinsics"
 import "core:fmt"
 import "core:path/filepath"
 import "core:os"
@@ -476,9 +477,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// crash segv|assert|bounds: the crash reporter's own test (scripts and harnesses only)
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "segv":
-			p: ^int = nil
-			p^ = 1
+		case "segv": // (a volatile store: the optimizer may not drop a write through nil)
+			intrinsics.volatile_store((^int)(nil), 1)
 		case "assert": assert(false, "crash assert")
 		case "bounds":
 			xs := []int{1, 2}

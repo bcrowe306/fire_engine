@@ -344,7 +344,11 @@ records.
     only while its pad is held, its column going back to what it played
     when you let go); **at** End, Bar, Beat or Now (when a launch
     happens: when its column's sequence comes round, or the next bar,
-    beat, at once); **Record to Song** (armed, what you launch is
+    beat, at once); **Continue** (on, a launched sequence carries on
+    where the playhead is in what played — its column's sequence, or with
+    none the leading column's: that pass so far, modulo the new one's
+    length — for seamless changes; off, it starts from its top);
+    **Record to Song** (armed, what you launch is
     written into the Song as clips, column k into lane k, from where
     each starts to where it is replaced or stopped; the take goes in
     when you stop, or disarm, as one undo step, over the clips that began
@@ -356,8 +360,10 @@ records.
     alone. A pad shows its sequence's notes, a bar filling across while it
     plays, a countdown while queued ("in 2.2"), "stops" when its column is
     about to; empty pads are nearly invisible (a + on hover: click one to
-    make a new sequence there). Shift-click only goes to a sequence (to
-    edit it); right-click one for its commands. At each row's right, an
+    make a new sequence there). **Shift-click** launches a sequence
+    alone: the other columns stop when it takes over. **Option-click**
+    only goes to a sequence (to edit it); right-click one for its
+    commands. At each row's right, an
     arrow launches the row (its sequences together, a scene); under each
     column a square stops it; the last one stops them all. The loop goes
     round a length every column fits a whole number of times. Recording
@@ -368,8 +374,8 @@ records.
     Keyboard or Velocity as the MIDI page sets).
   - **Effects**: the 16 performance effects, coloured by kind (filters
     violet, rhythm teal, pitch pink, space blue, drive coral; see below).
-  - **Levels**: main's meter and fader, and the cue (headphones) level
-    (Settings sets where the cue plays).
+  - **Levels**: main's fader and meter (the mixer's own), and the cue
+    (headphones) level (Settings sets where the cue plays).
 - **A pad's MIDI page** (the **MIDI** tab, first in its chain in the
   bottom area, before its sound; it reads **MIDI · Repeat** or **MIDI ·
   Arp** when one is on): how the 16 pads play — **Pads**, each its own
@@ -1284,7 +1290,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
-| `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Record to Song writing the launches into lanes, the main fader |
+| `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Shift-click launching alone, Continue, Option-click not launching, Record to Song writing the launches into lanes, the main fader |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
 | `test_perform_song.py` | a pad's MIDI page (play modes, its note repeat and arpeggiator), holding performance effects, the song and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |

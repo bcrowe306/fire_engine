@@ -126,3 +126,47 @@ launches_are_recorded_into_the_song :: proc(t: ^testing.T) {
 	pm.launch_record_poll(m)
 	testing.expect_value(t, s.count, 3)
 }
+
+@(test)
+continue_carries_on_where_the_playhead_is :: proc(t: ^testing.T) {
+	r := two_columns(t, "launch_continue")
+	defer rig_destroy(r)
+	m := &r.m
+	s := m.project.sequences[4]
+	s.bars = 2
+	pm.set_sequence(m, 4, .Bars, "Bars", s) // sequence 5: 8 beats, column 1
+	pm.add_note(m, 4, {start = 6, length = 0.25, pad = 0, velocity = 1})
+	pm.set_launch_continue(m, true)
+	m.project.switch_at = .Now
+	pm.launch_slot(m, 0) // sequence 1 (4 beats) from the top
+	render_synced(r, 48_000 * 2 + 24_000) // 5 beats in: beat 1 of its second pass
+	pm.launch_slot(m, 4) // continues: 1 beat into its 8
+	c := m.engine.launch.cols[0]
+	beat, _ := pm.timeline_beat(&m.engine)
+	into := beat - c.since
+	testing.expectf(t, c.slot == 4 && abs(into - 1) < 0.05, "a beat into sequence 5 (%v)", into)
+	// Shift: launched alone, the others stop.
+	pm.launch_slot(m, 1) // column 2, beside it
+	pm.launch_slot(m, 0, alone = true)
+	render_synced(r, 2400)
+	s0, _, _, _, _ := pm.column_state(&m.engine, 0)
+	s1, _, _, _, _ := pm.column_state(&m.engine, 1)
+	testing.expectf(t, s0 == 0 && s1 == -1, "alone (%v %v)", s0, s1)
+	// Into a longer one from a shorter: by the modulo of its length.
+	pm.set_launch_continue(m, true)
+	render_synced(r, 48_000 * 3) // sequence 1 some way into a pass
+	b0, _ := pm.timeline_beat(&m.engine)
+	ref := m.engine.launch.cols[0]
+	want := mod4(b0 - ref.since)
+	pm.launch_slot(m, 4)
+	c = m.engine.launch.cols[0]
+	testing.expectf(t, abs(mod4(b0 - c.since) - want) < 0.05 && b0 - c.since < 8, "the same place in the pass (%v, %v)", b0 - c.since, want)
+}
+
+@(private = "file")
+mod4 :: proc(x: f64) -> f64 {
+	y := x
+	for y >= 4 do y -= 4
+	for y < 0 do y += 4
+	return y
+}

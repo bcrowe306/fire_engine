@@ -30,6 +30,15 @@ Status: built (all five steps). Limits for later: a loop of columns whose length
    (its track I/O, where its MIDI in is); the status bar keeps the
    activity lights.
 
+## Added after (asked, 2026-11-12)
+
+- **Shift-click** a sequence pad launches it alone (the other columns
+  stop then); Option-click goes to it to edit it.
+- **Continue**: a launched sequence carries on where the playhead is in
+  what played (its column's sequence, else the leading column's: that
+  pass so far, modulo the new one's length), for seamless changes.
+- The **levels** use the mixer's meter (smoothed, held peaks) and fader.
+
 ## The engine: columns playing together
 
 - Pattern mode's plan becomes one segment per playing column, each

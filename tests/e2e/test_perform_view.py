@@ -46,6 +46,23 @@ def test_columns_rows_and_stops(app, fixtures):
     assert app.state()["columns"] == [0, 0, 0, 0]
 
 
+def test_shift_launches_alone_and_continue(app, fixtures):
+    three(app, fixtures)
+    app.click("launch quantize", window="perform", at=(0.9, 0.5))  # Now
+    app.click("Launch row 1: its sequences together", window="perform")
+    app.until(lambda s: s["playing"], what="playing")
+    app.cmd("hold shift")
+    app.click("launch 2", window="perform")  # alone: the others stop
+    app.cmd("let shift")
+    assert app.state()["columns"] == [0, 2, 0, 0], app.state()["columns"]
+    app.click("launch continue", window="perform")
+    assert app.state()["launch_continue"]
+    app.cmd("hold alt")
+    app.click("launch 3", window="perform")  # Option: playing, it isn't launched
+    app.cmd("let alt")
+    assert app.state()["columns"] == [0, 2, 0, 0]
+
+
 def test_record_to_song(app, fixtures):
     three(app, fixtures)
     app.click("launch quantize", window="perform", at=(0.9, 0.5))  # Now
@@ -66,5 +83,5 @@ def test_record_to_song(app, fixtures):
 
 def test_main_level(app, fixtures):
     three(app, fixtures)
-    app.drag_by("Main", 0, 60, window="perform")  # down: quieter
+    app.drag_by("Main fader", 0, 60, window="perform")  # down: quieter
     assert app.state()["main_volume"] < -3

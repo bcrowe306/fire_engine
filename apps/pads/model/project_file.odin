@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 31 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own)
+PROJECT_VERSION :: 32 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -594,6 +594,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_f32(w, fx.arp.gate)
 		fc.write_bool(w, fx.arp.latch)
 	}
+	fc.write_bool(w, p.launch_continue) // v32
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -1104,6 +1105,7 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 			fx.arp.gate = clamp(fc.read_f32(r), 0, 1)
 			fx.arp.latch = fc.read_bool(r)
 		}
+		if version >= 32 do p.launch_continue = fc.read_bool(r)
 	} else {
 		p.bus_count = DEFAULT_BUSES
 	}

@@ -644,6 +644,15 @@ set_launch_hold :: proc(m: ^Model, on: bool) {
 
 @(private) LAUNCH_HOLD_KEY :: 0x7fff_0001
 
+// Sets whether a launched sequence carries on where the playhead is (else
+// it starts from its top), undoably.
+set_launch_continue :: proc(m: ^Model, on: bool) {
+	app.set_value(&m.history, "Launch Continue", {app.Id(LAUNCH_HOLD_KEY), 1}, m.project.launch_continue, on, proc(ctx: rawptr, k: app.Key, v: bool) {
+		(^Model)(ctx).project.launch_continue = v
+	})
+	app.seal(&m.history)
+}
+
 // Whether slot `slot` holds anything: notes, automation, an audio take, a
 // name or a tempo of its own.
 slot_used :: proc(m: ^Model, slot: int) -> bool {

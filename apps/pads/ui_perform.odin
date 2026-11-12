@@ -28,7 +28,6 @@ Perf_State :: struct {
 	seq_keys: bool, // the pad keys play the sequence pads shown (the Keys switch)
 	shown_frame: i32, // the frame it last showed (it folds the pads area)
 	folded_it:   bool,
-	main_hold:   f32, // main's held peak
 }
 
 // Step lengths, as the UI shows them.
@@ -50,7 +49,7 @@ draw_perform :: proc(user: rawptr) {
 	draw_perform_bar(a)
 	im.Spacing()
 	avail := im.GetContentRegionAvail()
-	levels_w: f32 = 92
+	levels_w := inner_w() + 44 // (main's fader and meter as in the mixer, and the cue's fader)
 	gap: f32 = 14
 	col_w := max((avail.x - levels_w - 3 * gap) / 3, 160)
 	h := avail.y
@@ -104,6 +103,11 @@ draw_perform_bar :: proc(a: ^App) {
 	if ui.segmented("launch_quantize", {"End", "Bar", "Beat", "Now"}, &at) do p.switch_at = pm.Switch_At(at)
 	if im.IsItemHovered() do im.SetTooltip("When a launch happens: when its column's sequence comes round, the next bar or beat, or now")
 	ui.name("launch quantize")
+	im.SameLine(0, 10)
+	cont := p.launch_continue
+	if ui.toggle("Continue", &cont) do pm.set_launch_continue(m, cont)
+	ui.name("launch continue")
+	if im.IsItemHovered() do im.SetTooltip("Continue: a launched sequence carries on where the playhead is in what played (that pass so far, modulo its length), for seamless changes; off, it starts from its top")
 	im.SameLine(0, 14)
 	rec := pm.launch_recording(m)
 	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record to Song: what you launch is written into the Song (column 1 into lane 1...)", on = rec, color = ui.theme().danger) do pm.set_launch_record(m, !rec)
@@ -126,7 +130,9 @@ draw_perform_bar :: proc(a: ^App) {
 }
 
 // The sequence launcher: the bank's 16 sequences as four columns, each a
-// lane playing one at a time (all together); the row's arrow launches the
+// lane playing one at a time (all together); Shift-click launches one
+// alone (the other columns stop then; Option-click only goes to it, to
+// edit it); the row's arrow launches the
 // row, the column's square stops it, the last one stops them all. A
 // sequence pad shows its notes, a bar filling across while it plays (a
 // queued one counts down); an empty one is nearly invisible (click it to
@@ -186,10 +192,11 @@ draw_launcher :: proc(a: ^App) {
 			notes     = seq_minis(a, slot), // (its notes, small, behind)
 		}
 		hit := ui.pad("##seqpad", face, {size, size})
-		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s · %d bar%s%s · column %d", pm.sequence_name(p, slot), s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "", col + 1))
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s · %d bar%s%s · column %d\nClick: launch it in its column · Shift-click: launch it alone · Option-click: edit it", pm.sequence_name(p, slot), s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "", col + 1))
 		if hit.menu do im.OpenPopup("##cellmenu")
 		item_menu(a, seq_target(slot), "##cellmenu")
 		if hit.pressed do seq_pad_press(a, slot, false)
+		if hit.selected && !hit.menu && im.GetIO().KeyShift do pm.launch_slot(m, slot, alone = true) // (Shift-click: alone)
 		if hit.released do seq_pad_release(a, slot)
 		// Playing: a bar filling across as it goes round.
 		if playing_here do im.DrawList_AddRectFilled(dl, {pos.x + 6, pos.y + size - 7}, {pos.x + 6 + (size - 12) * f32(clamp(frac, 0, 1)), pos.y + size - 4}, ui.col(t.text), 2)
@@ -296,36 +303,35 @@ draw_perf_fx :: proc(a: ^App) {
 	im.Dummy({1, 1})
 }
 
-// Main's level (its meter and its fader) and the cue's (the headphones'
-// level: Settings sets where it plays).
+// Main's level (its fader and meter, as in the mixer) and the cue's (the
+// headphones' level: Settings sets where it plays).
 @(private)
 draw_perf_levels :: proc(a: ^App) {
 	m := &a.m
-	st := &a.perf
 	perf_title("Levels")
 	avail := im.GetContentRegionAvail()
-	h := max(avail.y - 3 * im.GetTextLineHeightWithSpacing() - 12, 80)
-	peak, rms := pm.bus_level(&m.engine, pm.BUSES)
-	pk := max(peak[0], peak[1])
-	st.main_hold = max(pk, st.main_hold - im.GetIO().DeltaTime * 0.3)
-	ui.meter("main meter", pk, max(rms[0], rms[1]), st.main_hold, {10, h})
-	im.SameLine(0, 4)
+	h := max(avail.y - 2 * im.GetTextLineHeightWithSpacing() - 12, 80)
 	b := m.project.main
 	vol := b.volume
-	if e := ui.fader("Main", &vol, -60, 6, 0, {28, h}); e.changed || e.ended {
+	im.BeginGroup()
+	strip_name = "Main" // (its fader: "Main fader", as in the mixer)
+	if e := fader_meter(a, &vol, &a.mixer.buses[pm.BUSES], h); e.changed || e.ended {
 		b.volume = vol
 		if e.changed do pm.set_bus(m, pm.BUSES, 0, "Main Volume", b)
 		if e.ended do app.seal(&m.history)
 	}
-	im.SameLine(0, 10)
+	im.TextDisabled("%s", fmt.ctprintf("Main %.1f", vol))
+	im.EndGroup()
+	im.SameLine(0, 8)
+	im.BeginGroup()
 	cue := a.settings.audio.cue_db
 	has_cue := m.engine.outputs.cue >= 0
-	if e := ui.fader("Cue", &cue, -60, 6, 0, {28, h}); e.changed {
+	if e := ui.fader("Cue", &cue, -60, 6, 0, {20, h}); e.changed {
 		a.settings.audio.cue_db = cue
 		outputs_apply(a)
 	}
 	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("The cue (headphones) level%s", "" if has_cue else ": set a cue output in Settings to hear it"))
-	im.TextDisabled("%s", fmt.ctprintf("%.1f dB", vol))
+	im.EndGroup()
 }
 
 // A combo of step lengths.
@@ -388,15 +394,17 @@ intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
 	im.DrawList_AddLine(dl, {lo.x + 6, oy}, {lo.x + 18, oy}, ui.col(ui.with_alpha(t.text, 0.6)), 2)
 }
 
-// A sequence pad pressed (or its key): launched in its column, or (Hold)
-// played while held, remembering what its column played to come back to.
-// Shift-click only goes to it (to edit), stopped.
+// A sequence pad pressed (or its key): launched in its column (a
+// Shift-click launches it alone: see `draw_launcher`), or (Hold) played while held,
+// remembering what its column played to come back to. Option-click only
+// goes to a sequence (to edit it), stopped.
 seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
 	m := &a.m
 	st := &a.perf
 	_, playing := pm.position(&m.engine)
-	if !from_key && im.GetIO().KeyShift {
-		if !playing do pm.select_slot(m, slot) // (Shift: go to it, not start it)
+	io := im.GetIO()
+	if !from_key && io.KeyAlt {
+		if !playing do pm.select_slot(m, slot) // (Option: go to it, not start it)
 		return
 	}
 	if m.project.launch_hold {
