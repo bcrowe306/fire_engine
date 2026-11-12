@@ -975,7 +975,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "effect", "effects": show_device(a, a.fx)
 		case "eq":                show_eq(a)
 		case "pads":              a.ws.bottom_folded = false
-		case "browser", "library", "devices": a.ws.left_shown = true
+		case "browser", "library": library_show(a, 0)
+		case "devices":            library_show(a, 1)
 		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 		}
 		return true

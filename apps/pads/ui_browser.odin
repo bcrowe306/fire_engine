@@ -17,6 +17,9 @@ Browser_View :: struct {
 	renaming:  int, // the favourite being renamed (-1: none)
 	scroll_to: bool,
 	lengths:   map[string]f64, // each file's length in seconds (-1: not known), as its row first showed
+	tab:       int,  // the tab shown: 0 Browser, 1 Devices
+	tab_set:   bool, // `tab` was chosen in code: bring it to the front
+	device_query: [64]u8, // the Devices tab's search
 }
 
 // The most files whose lengths are read in one frame (the rest wait for
@@ -60,29 +63,57 @@ favorites_path :: proc(a: ^App) -> string {
 	return prefs_file(a, "favorites.txt")
 }
 
-// The Library panel: one search box, then sections that open and close:
-// Favourites (the favourite folders and the project's, as tabs), Folders
-// (back, forward, up, favourite and refresh; the path; the folder's rows,
-// or the search's results as Files), Instruments, Effects and Plug-ins
-// (see `draw_device_sections`); and the preview at its foot. Click a file to select it (and, with auto-play, hear
-// it), double-click to load it onto the selected pad, or drag it onto a
-// pad. The arrow keys move through the list (Right opens a folder, Left
-// closes it), Enter loads or opens (Shift+Enter: into a slicer on the next
-// empty pad; Cmd+Shift+Enter: on the selected pad), Backspace goes up.
+// The Library panel: two tabs, **Browser** and **Devices**, and a search
+// box that searches the tab shown. Browser: sections that open and close,
+// Favourites (the favourite folders and the project's, as pills) and
+// Folders (back, forward, up, favourite and refresh; the path; the
+// folder's rows, or the search's results as Files), and the preview at
+// its foot. Devices: Instruments, Effects and Plug-ins (see
+// `draw_device_sections`). Click a file to select it (and, with
+// auto-play, hear it), double-click or Enter to load it onto the selected
+// pad (with Shift: the next empty pad), or drag it onto a pad. The arrow
+// keys move through the list (Right opens a folder, Left closes it),
+// Alt+Enter slices it onto the next empty pad, Cmd+Shift+Enter onto the
+// selected pad, Backspace goes up.
 draw_browser :: proc(user: rawptr) {
 	a := (^App)(user)
 	b := &a.browser
 	v := &a.bview
 	pm.browser_set_project(b, a.m.project.dir)
 
-	// One search for the whole library: files (under the folder shown) and
-	// devices.
+	// The tabs.
+	if im.BeginTabBar("##library_tabs") {
+		tabs := [2]string{"Browser", "Devices"}
+		icons := [2]string{ui.ICON_FOLDER, ui.ICON_BLOCKS}
+		for name, k in tabs {
+			flags: im.TabItemFlags = {.SetSelected} if v.tab_set && v.tab == k else {}
+			if im.BeginTabItem(fmt.ctprintf("%s  %s###lib%s", icons[k], name, name), nil, flags) {
+				if !v.tab_set do v.tab = k
+				im.EndTabItem()
+			}
+			ui.name(fmt.tprintf("%s tab", name))
+		}
+		v.tab_set = false
+		im.EndTabBar()
+	}
+
+	// The search: files under the folder shown, or devices by name.
 	im.SetNextItemWidth(-1)
-	if im.InputTextWithHint("##search", fmt.ctprintf("%s  Search sounds and devices", ui.ICON_SEARCH), cstring(&v.query[0]), len(v.query)) {
-		pm.browser_search(b, string(cstring(&v.query[0])))
+	if v.tab == 0 {
+		if im.InputTextWithHint("##search", fmt.ctprintf("%s  Search %s", ui.ICON_SEARCH, filepath.base(b.root) if b.root != "" else "sounds"), cstring(&v.query[0]), len(v.query)) {
+			pm.browser_search(b, string(cstring(&v.query[0])))
+		}
+	} else {
+		im.InputTextWithHint("##search", fmt.ctprintf("%s  Find a device", ui.ICON_SEARCH), cstring(&v.device_query[0]), len(v.device_query))
+	}
+
+	if v.tab == 1 {
+		find := strings.to_lower(string(cstring(&v.device_query[0])), context.temp_allocator)
+		if im.BeginChild("##devices", {0, 0}) do draw_device_sections(a, find)
+		im.EndChild()
+		return
 	}
 	searching := b.search.query != ""
-	find := strings.to_lower(b.search.query, context.temp_allocator)
 
 	// The sections (the preview below them).
 	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + 2 * im.GetFrameHeight() + 4 * im.GetStyle().ItemSpacing.y + 6)
@@ -105,7 +136,6 @@ draw_browser :: proc(user: rawptr) {
 			}
 			if searching && pm.search_done(&b.search) && len(rows) >= pm.SEARCH_MAX_RESULTS do im.TextDisabled("(the first %d)", i32(pm.SEARCH_MAX_RESULTS))
 		}
-		draw_device_sections(a, find)
 		if im.IsWindowFocused() {
 			browser_keys(a, rows)
 			a.browser_has_keys = true // (its arrows are its own)
@@ -113,6 +143,12 @@ draw_browser :: proc(user: rawptr) {
 	}
 	im.EndChild()
 	draw_preview(a)
+}
+
+// Shows the Library's tab `tab` (0 Browser, 1 Devices), and the Library.
+library_show :: proc(a: ^App, tab: int) {
+	a.bview.tab, a.bview.tab_set = tab, true
+	a.ws.left_shown = true
 }
 
 // A section of the library: a header that opens and closes (open at

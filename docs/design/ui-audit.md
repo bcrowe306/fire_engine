@@ -206,6 +206,10 @@ each remembers its own panel sizes.
   room the folded bottom gives back.
 - Pattern | Song leaves the Song view (it is in the toolbar).
 
+Changed later (2026-11-12): the Library keeps two tabs, **Browser**
+(Favourites, Folders, the preview) and **Devices** (Instruments, Effects,
+Plug-ins), each with its own search, instead of one tree for both.
+
 ### Find sounds: decided (2026-11-12)
 
 - **Option A, the Library's rows**: each sound's row shows its length

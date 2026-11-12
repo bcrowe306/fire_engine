@@ -23,7 +23,7 @@ def scanned(app):
 
 def test_plugin_instrument_dragged_onto_a_pad(scanned):
     app = scanned
-    app.library_find("fire test sine")
+    app.library_find("fire test sine", tab="Devices")
     app.wait(3)
     app.drag("device Fire Test Sine", "pad A1", to_window="detail")
     p = app.pad(0)

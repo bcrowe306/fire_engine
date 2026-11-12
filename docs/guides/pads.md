@@ -37,8 +37,8 @@ port.
 
 The **transport toolbar** runs across the top, under the menus, whatever
 panel or tab is in front (see [The transport](#the-transport)). Below it,
-the **Library** runs the full height on the left (sounds and devices in
-one tree: see below; drag its right edge to make it wider, View >
+the **Library** runs the full height on the left (its **Browser** and
+**Devices** tabs: see below; drag its right edge to make it wider, View >
 Library or Cmd+L to hide it); the **Sequence**, **Song**, **Mixer** and
 **Perform** are tabs in the middle; and along the bottom, beside the
 Library, is the **pads area**, the device view (as Ableton's). Drag its
@@ -84,12 +84,13 @@ dark or too light to stand out is lightened or darkened for the accent
 (the pad keeps its own). Record is always red and blinks while it
 records.
 
-- **Library** (left): for finding sounds and devices fast. One search
-  box at its top finds both: the files under the folder shown (listed as
-  **Files**) and the devices by name. Below it, sections that open and
-  close (click a section's header): **Favourites**, **Folders**,
-  **Instruments**, **Effects**, **Plug-ins** (see [The Library's
-  devices](#the-librarys-devices)), and the preview at its foot.
+- **Library** (left): for finding sounds and devices fast, in two tabs,
+  each with a search box at its top. **Browser**: sections that open and
+  close (click a section's header), **Favourites** and **Folders** (the
+  search finds files under the folder shown, listed as **Files**), and the
+  preview at its foot. **Devices**: **Instruments**, **Effects** and
+  **Plug-ins** (see [The Library's devices](#the-librarys-devices)),
+  found by name.
   - **Favourites** are favourite folders, as tabs. A new install has **Documents** and
     **Project** (the open project's samples). The **+** tab, or the
     star, adds the folder shown; right-click a folder for **Add to
@@ -500,8 +501,8 @@ pads have, and not its neighbours'.
 
 ### The Library's devices
 
-The Library's last sections: the devices there are, in a tree (the
-search box finds them by name).
+The Library's Devices tab: the devices there are, in a tree (its search
+box finds them by name).
 - **Instruments**: Synth, Sampler, Slicer, Audio track, then the synth's
   presets by kind (yours too), then the CLAP instruments found.
 - **Effects**: the synth's (Sound) and the rest (Rhythm and pitch).

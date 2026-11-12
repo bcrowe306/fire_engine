@@ -16,17 +16,17 @@ def devices(app):
 def test_drag_devices_onto_pads(app, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
     devices(app)
-    app.library_find("reverb")
+    app.library_find("reverb", tab="Devices")
     app.drag("device Reverb", "pad A1", to_window="detail")
     assert app.pad(0)["inserts"][0] == "Reverb", app.pad(0)["inserts"]
     assert app.state()["detail_tab"] == "Effect"  # opened in front
-    app.library_find("delay")
+    app.library_find("delay", tab="Devices")
     app.drag("device Delay", "pad A1", to_window="detail")
     assert app.pad(0)["inserts"][1] == "Delay"
-    app.library_find("synth")
+    app.library_find("synth", tab="Devices")
     app.drag("device Synth", "pad A2", to_window="detail")
     assert app.pad(1)["kind"] == "Synth"
-    app.library_find("wobble")
+    app.library_find("wobble", tab="Devices")
     app.drag("device Wobble Bass", "pad A3", to_window="detail")
     p = app.pad(2)
     assert p["kind"] == "Synth" and p["synth"]["preset"] == "Wobble Bass", p["kind"]
@@ -34,7 +34,7 @@ def test_drag_devices_onto_pads(app, fixtures):
     app.key("cmd+z")  # one step: the pad empty again
     assert not any(x["index"] == 2 for x in app.state()["pads"])
     # Typed: only what matches.
-    app.library_find("chor")
+    app.library_find("chor", tab="Devices")
     app.expect_item("device Chorus")
     app.expect_no_item("device Reverb")
     app.screenshot("devices")

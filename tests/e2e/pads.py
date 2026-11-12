@@ -169,9 +169,11 @@ class Pads:
         the name, so a menu of the same name isn't what is clicked)."""
         self.click("  " + name)
 
-    def library_find(self, text):
-        """Types `text` into the Library's search (what was there replaced):
-        its files and devices that match, at the top of its list."""
+    def library_find(self, text, tab="Browser"):
+        """Shows the Library's tab `tab` ("Browser" or "Devices") and types
+        `text` into its search (what was there replaced): what matches, at
+        the top of its list."""
+        self.click(f"{tab} tab", window="browser")
         self.click("##search", window="browser")
         self.key("cmd+a")
         self.type(text)

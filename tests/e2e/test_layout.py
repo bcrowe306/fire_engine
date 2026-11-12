@@ -1,6 +1,7 @@
 """The window as it is by default (layout D, at the Comfortable size, not
 the Compact one the other tests use): the Library beside everything, the
-pads area folding to a bar of pads and back, the toolbar's labelled
+pads area folding to a bar of pads and back, the Library's Browser and
+Devices tabs, the toolbar's labelled
 buttons, the control size in Settings."""
 
 import os
@@ -32,10 +33,10 @@ def test_the_pads_area_folds_and_the_library_finds(fixtures):
         assert app.state()["folded"]
         app.click("Unfold the pads and the sound (Cmd+J)", window="detail")
         assert not app.state()["folded"]
-        # One search finds sounds and devices.
+        # The Library's two tabs, each searched in its own way.
         app.library_find("kick")
         app.expect_item("kick.wav", window="browser")
-        app.library_find("reverb")
+        app.library_find("reverb", tab="Devices")
         app.expect_item("device Reverb", window="browser")
         app.expect_no_item("kick.wav", window="browser")
         # Cmd+L hides the Library and shows it again.
