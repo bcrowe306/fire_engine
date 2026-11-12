@@ -157,10 +157,11 @@ Slot :: struct {
 	pending_len:  int,
 	// Control thread: the last value set for each parameter (for `save`).
 	values:       [dynamic]core.Param_Value,
-	// Values a loaded node starts from, applied unsmoothed before anything
-	// else (written before the slot reaches a plan; then the audio thread
+	// Values the node starts from, applied unsmoothed before anything else:
+	// a loaded node's, and what `set_param` set before the node's first
+	// commit (written before the slot reaches a plan; then the audio thread
 	// reads them, advancing `initial_next`).
-	initial:      []core.Param_Value,
+	initial:      [dynamic]core.Param_Value,
 	initial_next: int,
 }
 
@@ -339,6 +340,13 @@ collect :: proc(g: ^Graph) {
 set_param :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, value: f64, at: i64 = 0) -> core.Error {
 	s := lookup(g, id) or_return
 	if s.kind != .Node do return .Invalid_Argument
+	// Not yet committed: the audio thread doesn't know the node, so a queued
+	// change would be dropped (on a device, before the plan with it is
+	// adopted). It starts from the value instead.
+	if s.plan_refs == 0 {
+		start_value(s, param, value)
+		return .None
+	}
 	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, value, at, -1}) {
 		return .Out_Of_Memory // queue full: the audio thread is not running or far behind
 	}
@@ -354,6 +362,10 @@ set_param_ramp :: proc(g: ^Graph, id: Node_Id, param: core.Param_Id, target: f64
 	if frames < 0 || frames > int(max(u32)) do return .Invalid_Argument
 	s := lookup(g, id) or_return
 	if s.kind != .Node do return .Invalid_Argument
+	if s.plan_refs == 0 { // (not yet committed: it starts at the target, as in `set_param`)
+		start_value(s, param, target)
+		return .None
+	}
 	if !rt.spsc_push(&g.params, Param_Change{s.index, s.generation, param, target, at, i64(frames)}) {
 		return .Out_Of_Memory
 	}
@@ -428,6 +440,7 @@ new_slot :: proc(g: ^Graph, kind: Slot_Kind, node: core.Node, in_channels, out_c
 	s.event_buffer = make([]core.Event, g.settings.max_events, g.allocator)
 	s.pending = make([]Param_Change, g.settings.max_pending_params, g.allocator)
 	s.values = make([dynamic]core.Param_Value, g.allocator)
+	s.initial = make([dynamic]core.Param_Value, g.allocator)
 	if (out_channels > 0 && s.outputs == nil) || (in_channels > 0 && s.scratch == nil) || s.event_buffer == nil || s.pending == nil {
 		return s, .Out_Of_Memory
 	}
@@ -454,7 +467,7 @@ slot_free_buffers :: proc(g: ^Graph, s: ^Slot) {
 	delete(s.event_buffer, g.allocator)
 	delete(s.pending, g.allocator)
 	delete(s.values)
-	delete(s.initial, g.allocator)
+	delete(s.initial)
 }
 
 // A removed slot whose last plan is gone: destroy the node, reuse the index.
@@ -498,6 +511,17 @@ reaches :: proc(g: ^Graph, from, to: u32) -> bool {
 		for c in g.conns do if c.src == n && !seen[c.dst] do append(&stack, c.dst)
 	}
 	return false
+}
+
+// A value node `s` starts from (it has not reached a plan yet), and remembered.
+@(private)
+start_value :: proc(s: ^Slot, param: core.Param_Id, value: f64) {
+	remember_value(s, param, value)
+	for &v in s.initial do if v.param == param {
+		v.value = value
+		return
+	}
+	append(&s.initial, core.Param_Value{param, value})
 }
 
 // The value a parameter was last set to, for saving.

@@ -231,13 +231,12 @@ load_node :: proc(g: ^Graph, c: core.Chunk, ctx: ^core.Load_Context, allocator: 
 	}
 	// Starting values for the parameters this node still has.
 	known := core.node_params(&s.node)
-	initial := make([dynamic]core.Param_Value, g.allocator)
+	clear(&s.initial)
 	for v in params {
 		if _, ok := core.find_param(known, v.param); !ok do continue
-		append(&initial, v)
+		append(&s.initial, v)
 		remember_value(s, v.param, v.value)
 	}
-	s.initial = initial[:]
 	return {id = id}, saved, .None
 }
 

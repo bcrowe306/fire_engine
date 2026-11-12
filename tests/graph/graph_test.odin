@@ -2,6 +2,7 @@ package test_graph
 
 import "base:intrinsics"
 import "core:mem"
+import "core:math"
 import "core:testing"
 
 import "fire:core"
@@ -392,4 +393,33 @@ graph_is_block_size_invariant :: proc(t: ^testing.T) {
 	cfg.events = []kit.Timed_Event{{1000, core.Param_Value{dsp.GAIN_PARAM_DB, -12}}, {3333, core.Param_Value{dsp.GAIN_PARAM_DB, 6}}}
 	patterns := kit.standard_block_patterns(MAX_BLOCK)
 	kit.expect_block_invariant(t, graph_factory, noise(2, 6000, 4), cfg, patterns[:], 0, "graph")
+}
+
+// A parameter set on a node just added (before the commit that adds it to
+// the audio thread's plan) is where it starts, though the audio thread
+// runs a block in between: on a device the audio thread may take the
+// change before it has the new plan. (It was dropped: a pad's fader at
+// 0 dB after a project opened.) It starts there at once, without a glide.
+@(test)
+a_parameter_set_before_its_node_is_committed_is_kept :: proc(t: ^testing.T) {
+	g := new_graph(t, 1)
+	defer graph.destroy(g)
+	expect_ok(t, graph.connect(g, graph.INPUT, 0, graph.OUTPUT, 0))
+	expect_ok(t, graph.commit(g))
+	in_ := kit.buffer_make(1, 2_000, SR, context.temp_allocator)
+	kit.dc(in_.channels[0], 1)
+	render(t, g, in_, render_cfg(1))
+	// The new node, its value, and a block of the old plan before the commit.
+	gain, _ := graph.add_node(g, dsp.gain_create(), 1, 1)
+	expect_ok(t, graph.set_param(g, gain, dsp.GAIN_PARAM_DB, -12))
+	render(t, g, in_, render_cfg(1))
+	expect_ok(t, graph.disconnect(g, graph.INPUT, 0, graph.OUTPUT, 0))
+	expect_ok(t, graph.connect(g, graph.INPUT, 0, gain, 0))
+	expect_ok(t, graph.connect(g, gain, 0, graph.OUTPUT, 0))
+	expect_ok(t, graph.commit(g))
+	out := render(t, g, in_, render_cfg(1))
+	want := f32(math.pow(10, -12.0 / 20))
+	testing.expectf(t, abs(out.channels[0][0] - want) < 1e-4, "from its first frame (%v)", out.channels[0][0])
+	testing.expectf(t, abs(out.channels[0][1999] - want) < 1e-4, "and on (%v)", out.channels[0][1999])
+	testing.expect_value(t, graph.stats(g).params_dropped, 0)
 }
