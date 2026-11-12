@@ -2,7 +2,8 @@
 # the release build, and the licences every package carries.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERSION="$(sed -n 's/^PADS_VERSION :: "\(.*\)"/\1/p' "$ROOT/apps/pads/version.odin")"
-COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+# (PADS_COMMIT when the tree has no .git: a copy on a build machine.)
+COMMIT="${PADS_COMMIT:-$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)}"
 DATE="$(date +%Y-%m-%d)"
 OUT="$ROOT/.build/release"
 mkdir -p "$OUT"
