@@ -76,7 +76,6 @@ draw_warp :: proc(a: ^App) {
 	i := a.selected
 	pad := m.project.pads[i]
 	if pm.pad_sample(m, i) == nil do return
-	t := ui.theme()
 	w := pad.warp
 	on := w.on
 	if ui.toggle("Warp", &on) {
@@ -92,6 +91,18 @@ draw_warp :: proc(a: ^App) {
 		return
 	}
 	im.SameLine(0, 16)
+	warp_settings(a)
+}
+
+// The selected pad's warp settings (when it is on): how, its sample's
+// tempo (guessed, or dragged or typed), Beats' cuts and gaps, and what it
+// does now. In a row.
+warp_settings :: proc(a: ^App) {
+	m := &a.m
+	i := a.selected
+	pad := m.project.pads[i]
+	t := ui.theme()
+	w := pad.warp
 	im.SetNextItemWidth(130)
 	if ui.combo("##warpmode", fmt.ctprintf("%s  %s", ui.ICON_AUDIO_WAVEFORM, pm.WARP_MODE_NAMES[w.mode])) {
 		tips := [stretch.Warp_Mode]cstring{

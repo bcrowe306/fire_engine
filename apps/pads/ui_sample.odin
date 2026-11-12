@@ -8,6 +8,7 @@ import app "app:core"
 import "app:ui"
 import pm "model"
 import im "deps:imgui"
+import "fire:sampler"
 
 // What the sample editor keeps between frames.
 Wave_State :: struct {
@@ -61,10 +62,8 @@ draw_sample :: proc(user: rawptr) {
 		w.pyramid = ui.peak_pyramid_make(mono) // (every zoom, at the pixels' resolution)
 		}
 	}
-	draw_playback(a)
-	draw_warp(a)
-	draw_tools(a)
-	im.Spacing()
+	// A toolbar on top, the waveform taking the room, the knobs at the foot.
+	draw_sample_bar(a)
 
 	start, end := pm.pad_region(m, i)
 	markers := make([dynamic]ui.Marker, context.temp_allocator)
@@ -83,8 +82,13 @@ draw_sample :: proc(user: rawptr) {
 	avail := im.GetContentRegionAvail()
 	head, playing := pm.pad_playhead(&m.engine, i)
 	wave_at := im.GetCursorScreenPos()
-	wave_size := im.Vec2{avail.x, max(avail.y - 4, 80)}
-	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, wave_size, ui.rgb(pad.color), head if playing else -1, {pyramid = &w.pyramid})
+	knobs_h := sample_knobs_height()
+	wave_size := im.Vec2{avail.x, max(avail.y - knobs_h - 8, 80)}
+	// While it plays: its sound's spectrum, faint in its colour, behind.
+	spec: []f32
+	pm.watch_sound(&m.engine, i)
+	if playing do spec = spectrum(a)
+	e := ui.waveform("wave", w.peaks, w.frames, &w.view, markers[:], &w.selection, wave_size, ui.rgb(pad.color), head if playing else -1, {pyramid = &w.pyramid, backdrop = spec})
 	// Warped: the sample's own beats over it (bars stronger), from its
 	// start, so you see what the tempo will follow.
 	if pad.warp.on && pad.warp.bpm > 0 && w.view.end > w.view.start {
@@ -121,82 +125,148 @@ draw_sample :: proc(user: rawptr) {
 	}
 	if e.released do app.seal(&m.history)
 	if e.clicked do w.selection = {}
+	// The knobs: what you reach for most.
+	im.SetCursorScreenPos({wave_at.x, wave_at.y + wave_size.y + 8})
+	draw_sample_knobs(a)
 }
 
-draw_tools :: proc(a: ^App) {
+// How tall the Sample page's knob row is.
+sample_knobs_height :: proc() -> f32 {
+	ui.text_push(.Label)
+	defer ui.text_pop()
+	return im.GetTextLineHeight() * 2 + ui.KNOB_SIZE + 8
+}
+
+// The Sample page's knobs: volume, pan, transpose, fine, attack, release
+// (the same as the Global and Env tabs': they move together).
+@(private)
+draw_sample_knobs :: proc(a: ^App) {
+	pad := &a.m.project.pads[a.selected]
+	row := spread_begin(6, im.GetContentRegionAvail().x)
+	spread_next(&row, "Volume")
+	knob_f32(a, "Volume", &pad.volume, -48, 12, 0, "%.1f dB", .Volume, "Set Volume")
+	spread_next(&row, "Pan")
+	knob_f32(a, "Pan", &pad.pan, -1, 1, 0, "%+.2f", .Pan, "Set Pan")
+	spread_next(&row, "Transpose")
+	knob_f32(a, "Transpose", &pad.pitch, -24, 24, 0, "%+.0f st", .Pitch, "Set Pitch", snap = 1)
+	spread_next(&row, "Fine")
+	a.voice_edit = pad.voice
+	voice_knob(a, "Fine", &a.voice_edit.fine, -100, 100, 0, "%+.0f ct", int(Voice_Key.Fine), "Fine Tune")
+	spread_next(&row, "Attack")
+	knob_f32(a, "Attack", &pad.attack, 0.0005, 10, 0.001, "%.3f s", .Attack, "Set Attack", log_scale = true)
+	spread_next(&row, "Release")
+	knob_f32(a, "Release", &pad.release, 0.005, 20, 0.05, "%.2f s", .Release, "Set Release", log_scale = true)
+}
+
+// The Sample page's toolbar, one line: how it plays (a dropdown, with
+// the loop's settings when it loops), Reverse, its choke group, Warp (its
+// settings behind the arrow), Chop (into pads, behind its arrow), record
+// onto it, and "…" for the edits and Stretch.
+@(private)
+draw_sample_bar :: proc(a: ^App) {
 	m := &a.m
 	i := a.selected
+	pad := m.project.pads[i]
+	s := pm.pad_sample(m, i)
+	if s == nil do return
 	tools := &a.tools
 	if tools.chop_parts == 0 do tools.chop_parts = 8
 	if tools.sensitivity == 0 do tools.sensitivity = 0.5
 	if tools.beats == 0 do tools.beats = 4
-	sel := a.wave.selection
-	has_sel := sel[1] > sel[0]
-	edit :: proc(a: ^App, e: pm.Audio_Edit, sel: [2]i64) {
-		if pm.edit_audio(&a.m, a.selected, e, sel) != .None do ui.toast(&a.ws.toasts, .Error, "That edit could not be made")
+	gap: f32 = 8
+	// How it plays.
+	modes := [4]cstring{"One-shot", "Gate", "Loop", "Hold"}
+	im.SetNextItemWidth(120)
+	if ui.combo("##playmode", fmt.ctprintf("%s  %s", ui.ICON_PLAY, modes[int(pad.mode)])) {
+		for name, k in modes {
+			if im.Selectable(name, int(pad.mode) == k) {
+				p := pad
+				p.mode = pm.Pad_Mode(k)
+				pm.set_pad(m, i, .Mode, "Set Mode", p)
+				app.seal(&m.history)
+			}
+		}
+		if pad.mode == .Loop || pad.mode == .Hold {
+			im.Separator()
+			im.TextDisabled("The loop")
+			lm := int(pad.loop_mode)
+			if ui.segmented("loop_mode", {"Forward", "Ping-pong"}, &lm) {
+				p := pad
+				p.loop_mode = sampler.Loop_Mode(lm)
+				pm.set_pad(m, i, .Loop_Mode, "Set Loop Mode", p)
+				app.seal(&m.history)
+			}
+			xf := f64(pad.crossfade) / s.rate * 1000
+			if e := ui.value_bar("crossfade", "Crossfade", &xf, 0, 500, 5, 1, "%.0f ms", 200); e.changed {
+				p := pad
+				p.crossfade = i64(xf * s.rate / 1000)
+				pm.set_pad(m, i, .Crossfade, "Set Crossfade", p)
+			} else if e.ended do app.seal(&m.history)
+		}
+		im.EndCombo()
 	}
-	// The edits, labelled (each named for tests by its tooltip).
-	tool :: proc(icon, label: string, tip: cstring) -> bool {
-		ui.text_push(.Label)
-		defer ui.text_pop()
-		text := fmt.ctprintf("%s  %s###%s", icon, label, tip)
-		ui.flow(ui.button_width(text), 4)
-		clicked := im.Button(text)
-		ui.name(string(tip))
-		if im.IsItemHovered({.AllowWhenDisabled}) do im.SetTooltip("%s", tip)
-		return clicked
+	ui.name("play mode")
+	if im.IsItemHovered() do im.SetTooltip("How it plays: once through (One-shot), while held (Gate), round its loop while held (Loop), or until hit again (Hold)")
+	im.SameLine(0, gap)
+	rev := pad.reverse
+	if ui.toggle("Reverse", &rev) {
+		p := pad
+		p.reverse = rev
+		pm.set_pad(m, i, .Reverse, "Reverse", p)
+		app.seal(&m.history)
 	}
-	if tool(ui.ICON_CROP, "Crop", "Crop to the selection (or region)") do edit(a, .Crop, sel)
-	im.BeginDisabled(!has_sel)
-	if tool(ui.ICON_SCISSORS, "Delete", "Delete the selection") do edit(a, .Delete, sel)
-	if tool(ui.ICON_VOLUME_X, "Silence", "Silence the selection") do edit(a, .Silence, sel)
-	im.EndDisabled()
-	if tool(ui.ICON_TRENDING_UP, "Fade in", "Fade in over the selection") do edit(a, .Fade_In, sel)
-	if tool(ui.ICON_TRENDING_DOWN, "Fade out", "Fade out over the selection") do edit(a, .Fade_Out, sel)
-	if tool(ui.ICON_MAXIMIZE_2, "Normalize", "Normalize") do edit(a, .Normalize, sel)
-	if tool(ui.ICON_ARROW_LEFT_RIGHT, "Reverse", "Reverse the audio") do edit(a, .Reverse, sel)
-	if tool(ui.ICON_SCAN_LINE, "Trim", "Trim silence from both ends") do edit(a, .Trim, sel)
-	im.BeginDisabled(!has_sel)
-	if tool(ui.ICON_COPY_PLUS, "To a pad", "Put the selection on the next empty pad") {
-		if b := pm.bounce_to_pad(m, i, sel); b >= 0 do a.selected = b
-	}
-	im.EndDisabled()
-
-	// Chop.
-	segw := ui.button_width("Transients") + ui.button_width("Equal") + 8
-	ui.flow(segw, 24)
-	ui.segmented("chop_mode", {"Transients", "Equal"}, &tools.chop_mode)
-	ui.flow(130)
+	im.SameLine(0, gap)
 	im.SetNextItemWidth(130)
-	if tools.chop_mode == 0 {
-		im.DragFloat("##sens", &tools.sensitivity, 0.005, 0.05, 1, "Sensitivity %.2f", {.ClampOnInput})
-	} else {
-		im.DragInt("##parts", &tools.chop_parts, 0.1, 2, 32, "%d parts", {.ClampOnInput})
+	if ui.combo("##choke", fmt.ctprintf("%s  %s", ui.ICON_SCISSORS, "No choke" if pad.choke == 0 else fmt.tprintf("Choke %d", pad.choke))) {
+		for g in 0 ..= pm.CHOKE_GROUPS {
+			if im.Selectable(fmt.ctprintf("%s###cg%d", "No choke group" if g == 0 else fmt.tprintf("Choke group %d", g), g), int(pad.choke) == g) do set_choke(a, selected_pads(a), g)
+		}
+		im.EndCombo()
 	}
-	chop_label :: ui.ICON_SLICE + "  Chop"
-	ui.flow(ui.button_width(chop_label))
-	if im.Button(chop_label) {
-		how: pm.Chop = pm.Chop_Transients{f64(tools.sensitivity)} if tools.chop_mode == 0 else pm.Chop_Equal{int(tools.chop_parts)}
-		n := pm.chop_to_pads(m, i, how)
-		ui.toast(&a.ws.toasts, .Success if n > 0 else .Warning, fmt.tprintf("Chopped into %d pads", n))
+	if im.IsItemHovered() do im.SetTooltip("Choke group: a pad's hit stops the others playing in its group (open and closed hi-hats)")
+	// Warp: on or off here, its settings behind the arrow.
+	im.SameLine(0, gap)
+	w := pad.warp
+	on := w.on
+	if ui.toggle("Warp", &on) {
+		w.on = on
+		pm.set_warp(m, i, w, "Warp On" if on else "Warp Off")
+		app.seal(&m.history)
 	}
-
-	// Stretch.
-	stretch_label :: ui.ICON_MOVE_HORIZONTAL + "  Stretch to beats"
-	ui.flow(100 + im.GetStyle().ItemSpacing.x + ui.button_width(stretch_label), 24)
-	im.SetNextItemWidth(100)
-	im.DragInt("##beats", &tools.beats, 0.1, 1, 64, "%d beats", {.ClampOnInput})
-	im.SameLine()
-	if im.Button(stretch_label) {
-		if pm.stretch_to_beats(m, i, f64(tools.beats)) == .None {
-			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Stretched to %d beats at %.0f BPM", tools.beats, m.project.bpm))
-		} else {
-			ui.toast(&a.ws.toasts, .Error, "Too short to stretch")
+	if im.IsItemHovered() do im.SetTooltip("Warp: the sample follows the tempo, at its own pitch (made longer or shorter)")
+	if w.on {
+		im.SameLine(0, 0)
+		if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Warp settings") do im.OpenPopup("##warpset")
+		if im.BeginPopup("##warpset") {
+			warp_settings(a)
+			im.EndPopup()
 		}
 	}
-
-	// Record onto the pad.
-	ui.flow(im.GetFrameHeight(), 24)
+	// Chop: how, behind its arrow.
+	im.SameLine(0, gap)
+	if im.Button(ui.ICON_SLICE + "  Chop") do im.OpenPopup("##chop")
+	ui.name("Chop")
+	if im.IsItemHovered() do im.SetTooltip("Chop it into pads: at its hits, or into equal parts")
+	if im.BeginPopup("##chop") {
+		ui.segmented("chop_mode", {"Transients", "Equal"}, &tools.chop_mode)
+		if tools.chop_mode == 0 {
+			sens := f64(tools.sensitivity)
+			if ui.value_bar("chop sensitivity", "Sensitivity", &sens, 0.05, 1, 0.05, 0.01, "%.2f", 200).changed do tools.sensitivity = f32(sens)
+		} else {
+			parts := f64(tools.chop_parts)
+			if ui.value_bar("chop parts", "Parts", &parts, 2, 32, 1, 1, "%.0f", 200).changed do tools.chop_parts = i32(parts)
+		}
+		if im.Button(ui.ICON_SLICE + "  Chop into pads") {
+			how: pm.Chop = pm.Chop_Transients{f64(tools.sensitivity)} if tools.chop_mode == 0 else pm.Chop_Equal{int(tools.chop_parts)}
+			n := pm.chop_to_pads(m, i, how)
+			ui.toast(&a.ws.toasts, .Success if n > 0 else .Warning, fmt.tprintf("Chopped into %d pads", n))
+			im.CloseCurrentPopup()
+		}
+		ui.name("chop into pads")
+		im.EndPopup()
+	}
+	// Record onto it.
+	im.SameLine(0, gap)
 	recording := a.rec.active
 	if ui.icon_button(ui.ICON_CIRCLE, "Record the input onto this pad", on = recording, color = ui.rgb(0xf0555a)) {
 		if recording {
@@ -204,6 +274,47 @@ draw_tools :: proc(a: ^App) {
 		} else if pm.record_start(m, &a.rec, i) != .None {
 			ui.toast(&a.ws.toasts, .Warning, "No audio input to record from")
 		}
+	}
+	// The rest: the edits and Stretch.
+	im.SameLine(0, gap)
+	if ui.icon_button(ui.ICON_ELLIPSIS, "More: the edits (crop, fades, normalize...) and Stretch") do im.OpenPopup("##sampletools")
+	ui.name("more sample tools")
+	if im.BeginPopup("##sampletools") {
+		sel := a.wave.selection
+		has_sel := sel[1] > sel[0]
+		edit :: proc(a: ^App, e: pm.Audio_Edit, sel: [2]i64) {
+			if pm.edit_audio(&a.m, a.selected, e, sel) != .None do ui.toast(&a.ws.toasts, .Error, "That edit could not be made")
+		}
+		item :: proc(icon, label: string, tip: cstring, enabled := true) -> bool {
+			clicked := im.MenuItem(fmt.ctprintf("%s  %s###%s", icon, label, tip), nil, false, enabled)
+			ui.name(label)
+			if im.IsItemHovered({.AllowWhenDisabled}) do im.SetTooltip("%s", tip)
+			return clicked
+		}
+		if item(ui.ICON_CROP, "Crop", "Crop to the selection (or region)") do edit(a, .Crop, sel)
+		if item(ui.ICON_SCISSORS, "Delete", "Delete the selection", has_sel) do edit(a, .Delete, sel)
+		if item(ui.ICON_VOLUME_X, "Silence", "Silence the selection", has_sel) do edit(a, .Silence, sel)
+		if item(ui.ICON_TRENDING_UP, "Fade in", "Fade in over the selection") do edit(a, .Fade_In, sel)
+		if item(ui.ICON_TRENDING_DOWN, "Fade out", "Fade out over the selection") do edit(a, .Fade_Out, sel)
+		if item(ui.ICON_MAXIMIZE_2, "Normalize", "Normalize") do edit(a, .Normalize, sel)
+		if item(ui.ICON_ARROW_LEFT_RIGHT, "Reverse audio", "Reverse the audio itself (a new file)") do edit(a, .Reverse, sel)
+		if item(ui.ICON_SCAN_LINE, "Trim", "Trim silence from both ends") do edit(a, .Trim, sel)
+		if item(ui.ICON_COPY_PLUS, "To a pad", "Put the selection on the next empty pad", has_sel) {
+			if b := pm.bounce_to_pad(m, i, sel); b >= 0 do a.selected = b
+		}
+		im.Separator()
+		beats := f64(tools.beats)
+		if ui.value_bar("stretch beats", "Beats", &beats, 1, 64, 1, 1, "%.0f", 160).changed do tools.beats = i32(beats)
+		im.SameLine()
+		if im.Button(ui.ICON_MOVE_HORIZONTAL + "  Stretch to beats") {
+			if pm.stretch_to_beats(m, i, f64(tools.beats)) == .None {
+				ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Stretched to %d beats at %.0f BPM", tools.beats, m.project.bpm))
+			} else {
+				ui.toast(&a.ws.toasts, .Error, "Too short to stretch")
+			}
+		}
+		ui.name("Stretch to beats")
+		im.EndPopup()
 	}
 }
 

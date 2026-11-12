@@ -86,6 +86,7 @@ Engine :: struct {
 	tap_id:     graph.Node_Id,
 	watch:      Fx_Target,
 	watch_node: graph.Node_Id, // the node connected to the tap
+	watch_pad:  int,           // or a pad's own sound (-1: none; see `watch_sound`)
 	synth_cache: Synth_Cache,  // synths' wavetables and samples
 	// Song mode: the timeline leads the clock, with the song's tempo map
 	// laid out `map_passes` times round (made again when the song changes).
@@ -140,6 +141,7 @@ Pad_Nodes :: struct {
 // Adds the router, the sequencer and the metronome to the host's graph and
 // marks every pad to be built.
 engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error {
+	e.watch_pad = -1
 	e.host, e.project = host, project
 	e.sources = make(map[app.Id]^stream.Source)
 	e.warp_sources = make(map[string]^stream.Source)
@@ -822,6 +824,14 @@ pad_live :: proc(e: ^Engine, index: int) -> (sampler.Sampler_Live, bool) {
 // puts out goes to the tap too, for a spectrum (`watch_read`).
 watch_slot :: proc(e: ^Engine, t: Fx_Target) {
 	e.watch = t
+	e.watch_pad = -1
+}
+
+// Watches pad `pad`'s own sound (its instrument's output, before its EQ
+// and effects) instead, for the spectrum behind its waveform.
+watch_sound :: proc(e: ^Engine, pad: int) {
+	e.watch = {}
+	e.watch_pad = pad
 }
 
 // The last `len(out)` frames the watched slot put out (oldest first), and
@@ -839,6 +849,7 @@ sync_watch :: proc(e: ^Engine) -> bool {
 	if e.tap == nil do return false
 	id: graph.Node_Id
 	if f := target_node(e, e.watch); f != nil && f.has do id = f.id
+	else if e.watch_pad >= 0 && e.watch_pad < PADS && e.nodes[e.watch_pad].live do id = e.nodes[e.watch_pad].voice
 	if id == e.watch_node do return false
 	g := e.host.graph
 	if e.watch_node != {} do for c in 0 ..< 2 do graph.disconnect(g, e.watch_node, c, e.tap_id, c) // (gone with its node, it fails: fine)

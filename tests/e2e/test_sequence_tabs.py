@@ -70,7 +70,9 @@ def test_line_and_curve_tools_and_a_new_automation(app, fixtures):
     app.click("automation", window="sequence")
     app.expect_item("A1 kick · Sound: Cutoff")
     app.key("esc")
-    # Main's volume, from the menu too.
+    # Main's volume, from the menu too (the device page on Filter: the
+    # Sample page has a Volume knob of its own).
+    app.cmd("panel filter")
     app.click("automation", window="sequence")
     app.click("new automation")
     app.click("Main")

@@ -200,43 +200,52 @@ records.
     every note glide from the last, not only notes played over a held
     one. **By octave** makes the time an octave's, so wider leaps take
     longer. A slicer has no glide: its keys are its slices.
-- **Sample** (bottom tab): how the pad plays — **One-shot** to the end,
-  **Gate** while held, **Loop** loops while held, **Hold** loops until hit
-  again; reverse; its **choke group** (a hit stops the others playing in
-  its group: open and closed hi-hats; the pads show theirs as a badge,
-  `C2`); a loop's direction and crossfade. Under that, **Warp**: on, the
-  sample follows the tempo at its own pitch, made longer or shorter
-  rather than played faster or slower. Pick how in its dropdown —
-  **Beats** (cut at its hits, or on a 1/16, 1/8 or 1/4 grid of its own
-  beats, each piece played as it was and moved to its new time: drums
-  and loops, attacks exact; **Fill gaps** loops a piece's tail when
-  slower instead of leaving silence), **Tones** (a spectral stretch of the
-  whole: voices, bass, pads), **Complex** (the spectral stretch started
-  again at each strong hit: full mixes, attacks kept crisp) or
-  **Re-pitch** (faster or slower, the pitch with it). Its own tempo is
-  guessed from its length (a whole number of beats; drag or type it, or
-  the wand guesses again); its beats are drawn over the waveform (bars
-  numbered). The warped sound is rendered in the background into the
-  project's `warped/` folder, kept there for the next time, and played
-  once ready (it shows "Rendering..." until then, the ratio after). All
-  this over the waveform, on black. Drag **S** and **E** (by
-  their tags or their lines) to set the region the pad plays, **L** for the
-  loop; drag the squares under the tags in from the region's ends to fade
-  it in and out (a ramp shows each fade; the fades are the pad's, so the
-  file is left alone); drag across the wave to select. While the pad
-  plays, a white playhead runs through the wave. The
-  toolbar (it wraps when narrow):
-  - edits, each a labelled button — **Crop**, **Delete**, **Silence**,
-    **Fade in** and **out**, **Normalize**, **Reverse**, **Trim** (silence
-    from both ends), and **To a pad** (the selection on the next empty
-    pad). Edits write
-    a new file into the project and leave the original alone, so they undo;
-  - **Chop** — at the transients (with a sensitivity) or into equal parts,
-    onto consecutive pads, each playing its slice of the same file;
-  - **Stretch to beats** — time-stretch the region to N beats at the
-    project tempo, pitch unchanged, as a new file (Warp does it without
-    touching the sample);
-  - record (the circle) — record the audio input onto the pad.
+- **Sample** (bottom tab): the waveform takes most of the page, with one
+  toolbar line above it and a row of knobs below.
+  - **The toolbar**, left to right:
+    - the **play mode** menu: **One-shot** to the end, **Gate** while held,
+      **Loop** loops while held, **Hold** loops until hit again; when
+      looping, the loop's direction (Forward, Ping-pong) and crossfade, in
+      the same menu;
+    - **Reverse**;
+    - the **choke group** (a hit stops the others playing in its group:
+      open and closed hi-hats; the pads show theirs as a badge, `C2`);
+    - **Warp**, and the chevron beside it for its settings (below);
+    - **Chop**: a popup with how (at the transients, with a sensitivity,
+      or into equal parts) and **Chop into pads**, onto consecutive pads,
+      each playing its slice of the same file;
+    - record (the circle): record the audio input onto the pad;
+    - **...**, the edits: **Crop**, **Delete**, **Silence**, **Fade in**
+      and **out**, **Normalize**, **Reverse audio**, **Trim** (silence
+      from both ends), **To a pad** (the selection on the next empty
+      pad), and **Stretch to beats** (time-stretch the region to N beats
+      at the project tempo, pitch unchanged, as a new file; Warp does it
+      without touching the sample). Edits write a new file into the
+      project and leave the original alone, so they undo.
+  - **Warp**: on, the sample follows the tempo at its own pitch, made
+    longer or shorter rather than played faster or slower. Its settings
+    (the chevron) pick how — **Beats** (cut at its hits, or on a 1/16,
+    1/8 or 1/4 grid of its own beats, each piece played as it was and
+    moved to its new time: drums and loops, attacks exact; **Fill gaps**
+    loops a piece's tail when slower instead of leaving silence),
+    **Tones** (a spectral stretch of the whole: voices, bass, pads),
+    **Complex** (the spectral stretch started again at each strong hit:
+    full mixes, attacks kept crisp) or **Re-pitch** (faster or slower,
+    the pitch with it). Its own tempo is guessed from its length (a
+    whole number of beats; drag or type it, or the wand guesses again);
+    its beats are drawn over the waveform (bars numbered). The warped
+    sound is rendered in the background into the project's `warped/`
+    folder, kept there for the next time, and played once ready (it
+    shows "Rendering..." until then, the ratio after).
+  - **The waveform**, on black: drag **S** and **E** (by their tags or
+    their lines) to set the region the pad plays, **L** for the loop;
+    drag the squares under the tags in from the region's ends to fade it
+    in and out (a ramp shows each fade; the fades are the pad's, so the
+    file is left alone); drag across the wave to select. While the pad
+    plays, a white playhead runs through the wave and the sound's
+    spectrum moves behind it, faint, in the pad's colour.
+  - **The knobs**: Volume, Pan, Transpose, Fine, Attack and Release (the
+    same as on the Global and Env tabs).
 
 - **Sequence** (middle tab): the sequencer, editing the sequence the
   toolbar picks. Its name (double-click it, press F2, or right-click it

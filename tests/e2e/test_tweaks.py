@@ -128,6 +128,7 @@ def test_warp(app, fixtures):
     app.click("Warp")
     s = [p for p in app.state()["pads"] if p["index"] == 2][0]
     assert s["warp"] == "Beats" and s["warp_bpm"] > 0, s["warp"]
+    app.click("Warp settings")
     app.click("##warpmode")
     app.click("Tones")
     assert [p for p in app.state()["pads"] if p["index"] == 2][0]["warp"] == "Tones"

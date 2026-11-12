@@ -76,6 +76,7 @@ Wave_Options :: struct {
 	editable:      bool, // double-click adds a marker (`add_at`), right-click one takes it away (`remove`)
 	gains:         []Wave_Gain, // level lines (a slice's), dragged up and down
 	pyramid:       ^Peak_Pyramid, // the sound's peaks at every zoom: drawn at the resolution of the pixels shown (else `peaks`, stretched)
+	backdrop:      []f32, // a spectrum to draw faint behind it, in its tint (dB, -60 at the floor, along a log frequency axis left to right; nil: none)
 }
 
 // A level line over part of a waveform: `db` (-24..+6) from `from` to `to`.
@@ -243,6 +244,24 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 
 	// Drawing: on black (in either theme), as audio editors show waves.
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(WAVE_BG), t.radius)
+	// The spectrum behind (playing): a column for each bin, from the
+	// bottom, faint in the tint, brighter at the top of each.
+	if n := len(opts.backdrop); n > 1 {
+		tint_c := tint if tint != {} else t.accent
+		fill := col(with_alpha(tint_c, 0.09))
+		edge := col(with_alpha(lighten(tint_c, 0.3), 0.3))
+		bottom := pos.y + size.y
+		prev: im.Vec2
+		for v, k in opts.backdrop {
+			x0 := pos.x + size.x * f32(k) / f32(n)
+			x1 := pos.x + size.x * f32(k + 1) / f32(n)
+			h := clamp((v + 48) / 60, 0, 1) * size.y * 0.9 // (the floor's -48 dB and below: nothing)
+			im.DrawList_AddRectFilled(dl, {x0, bottom - h}, {x1, bottom}, fill)
+			top := im.Vec2{(x0 + x1) / 2, bottom - h}
+			if k > 0 do im.DrawList_AddLine(dl, prev, top, edge, 1.5)
+			prev = top
+		}
+	}
 	im.DrawList_PushClipRect(dl, pos, {pos.x + size.x, pos.y + size.y}, true)
 	mid := pos.y + size.y / 2
 	im.DrawList_AddLine(dl, {pos.x, mid}, {pos.x + size.x, mid}, col(rgb(0x2a2c33)), 1) // the zero line

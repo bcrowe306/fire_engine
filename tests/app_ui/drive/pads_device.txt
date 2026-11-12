@@ -4,7 +4,8 @@ size 1440 900
 load 0 tests/app_ui/fixtures/loop.wav
 select 0
 panel sample
-click_item "Gate" in detail
+click_item "play mode" in detail
+click_item "Gate"
 panel env
 hit 0
 wait 20

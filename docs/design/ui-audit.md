@@ -233,6 +233,13 @@ Plug-ins), each with its own search, instead of one tree for both.
 - **A loaded pad shows**: its name, large; its waveform faint behind the
   name; mute and solo; its kind (sampler, synth, slicer, audio, plug-in).
   Not its note and number.
+- **The sampler's Sample page** (asked after): the waveform takes most of
+  the page; one toolbar line above it (the play mode as a menu, with the
+  loop's settings in it; Reverse; choke; Warp and its settings; Chop as a
+  popup; record; "..." for the edits and Stretch); a knob row below it
+  (Volume, Pan, Transpose, Fine, Attack, Release). While it plays, the
+  playhead runs and the sound's spectrum moves behind the wave, faint, in
+  the pad's colour.
 - **An empty pad shows** a drop hint ("+") and its key (Z, X, ...).
 - **An empty pad's page** offers buttons to start one: Browse, Record
   (an audio track), Synth, Slicer, Plug-in.

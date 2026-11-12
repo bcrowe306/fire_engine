@@ -58,7 +58,8 @@ def test_the_pad_face_mutes_solos_and_colours(app, fixtures):
 def test_playback_and_the_global_tab_edit_and_undo(app, fixtures):
     load(app, fixtures, 0, "kick.wav")
     app.click("Sample", window="detail")  # how it plays: over its wave
-    app.click("Gate", window="detail")
+    app.click("play mode", window="detail")  # the play modes' menu
+    app.click("Gate")
     assert app.pad(0)["mode"] == "Gate"
     app.click("Reverse", window="detail")
     app.click("Global", window="detail")
@@ -77,17 +78,21 @@ def test_the_sample_tab_edits_chops_and_stretches(app, fixtures):
     load(app, fixtures, 0, "loop.wav")
     app.click("Sample", window="detail")
     app.expect_item("wave", window="detail")
-    app.click("Normalize", window="detail")
+    app.click("more sample tools", window="detail")  # the "..." menu
+    app.click("Normalize")
     app.until(lambda s: s["undo"] == "Normalize", what="normalize")
-    app.click("Reverse the audio", window="detail")
+    app.click("more sample tools", window="detail")
+    app.click("Reverse audio")
     app.until(lambda s: s["undo"] == "Reverse", what="reverse")
-    app.click("Equal", window="detail")
-    app.click("Chop", window="detail")
+    app.click("Chop", window="detail")  # its popup: how, then chop
+    app.click("Equal")
+    app.click("chop into pads")
     s = app.until(lambda s: len(s["pads"]) > 1, what="the chop's pads")
     assert len(s["pads"]) >= 4
     app.key("cmd+z")
     assert len(app.state()["pads"]) == 1
-    app.click("Stretch to beats", window="detail")
+    app.click("more sample tools", window="detail")
+    app.click("Stretch to beats")
     app.until(lambda s: s["undo"] == "Stretch", what="the stretch")
 
 
