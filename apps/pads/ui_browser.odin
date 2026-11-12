@@ -28,9 +28,11 @@ favorites_path :: proc(a: ^App) -> string {
 	return prefs_file(a, "favorites.txt")
 }
 
-// The browser panel: favourite tabs; back, forward, up, favourite and
-// refresh; the path; a search box; the tree (or the search's results);
-// and the preview. Click a file to select it (and, with auto-play, hear
+// The Library panel: one search box, then sections that open and close:
+// Favourites (the favourite folders and the project's, as tabs), Folders
+// (back, forward, up, favourite and refresh; the path; the folder's rows,
+// or the search's results as Files), Instruments, Effects and Plug-ins
+// (see `draw_device_sections`); and the preview at its foot. Click a file to select it (and, with auto-play, hear
 // it), double-click to load it onto the selected pad, or drag it onto a
 // pad. The arrow keys move through the list (Right opens a folder, Left
 // closes it), Enter loads or opens (Shift+Enter: into a slicer on the next
@@ -39,12 +41,62 @@ draw_browser :: proc(user: rawptr) {
 	a := (^App)(user)
 	b := &a.browser
 	v := &a.bview
-	t := ui.theme()
 	pm.browser_set_project(b, a.m.project.dir)
 
-	draw_favorite_tabs(a)
+	// One search for the whole library: files (under the folder shown) and
+	// devices.
+	im.SetNextItemWidth(-1)
+	if im.InputTextWithHint("##search", fmt.ctprintf("%s  Search sounds and devices", ui.ICON_SEARCH), cstring(&v.query[0]), len(v.query)) {
+		pm.browser_search(b, string(cstring(&v.query[0])))
+	}
+	searching := b.search.query != ""
+	find := strings.to_lower(b.search.query, context.temp_allocator)
 
-	// Navigation.
+	// The sections (the preview below them).
+	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + im.GetFrameHeight() + 3 * im.GetStyle().ItemSpacing.y + 6)
+	// No ImGui keyboard navigation in the list: its keys are the browser's
+	// own (Enter would otherwise also press the row last clicked).
+	if im.BeginChild("##list", {0, max(list_h, 80)}, {}, {.NoNavInputs}) {
+		if library_section("Favourites") do draw_favorite_tabs(a)
+		rows := pm.search_results(&b.search) if searching else pm.browser_rows(b)
+		if library_section("Files" if searching else "Folders") {
+			if !searching do draw_folder_bar(a)
+			draw_rows(a, rows)
+			if len(rows) == 0 {
+				if searching {
+					im.TextDisabled("%s", cstring("Searching…") if !pm.search_done(&b.search) else cstring("Nothing found"))
+				} else if b.root == "" {
+					im.TextDisabled("Save the project to give it a folder")
+				} else {
+					im.TextDisabled("No audio files or folders here")
+				}
+			}
+			if searching && pm.search_done(&b.search) && len(rows) >= pm.SEARCH_MAX_RESULTS do im.TextDisabled("(the first %d)", i32(pm.SEARCH_MAX_RESULTS))
+		}
+		draw_device_sections(a, find)
+		if im.IsWindowFocused() {
+			browser_keys(a, rows)
+			a.browser_has_keys = true // (its arrows are its own)
+		}
+	}
+	im.EndChild()
+	draw_preview(a)
+}
+
+// A section of the library: a header that opens and closes (open at
+// first). True while open.
+library_section :: proc(title: string) -> bool {
+	open := im.CollapsingHeader(fmt.ctprintf("%s###sec%s", title, title), {.DefaultOpen})
+	ui.name(fmt.tprintf("section %s", title))
+	return open
+}
+
+// Above the folder's rows: back, forward, up, favourite and refresh, then
+// the path.
+@(private)
+draw_folder_bar :: proc(a: ^App) {
+	b := &a.browser
+	t := ui.theme()
 	if ui.icon_button(ui.ICON_ARROW_LEFT, "Back", disabled = len(b.back) == 0) do pm.browser_back(b)
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_ARROW_RIGHT, "Forward", disabled = len(b.forward) == 0) do pm.browser_forward(b)
@@ -65,40 +117,7 @@ draw_browser :: proc(user: rawptr) {
 	}
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_REFRESH_CW, "Read the folders again") do pm.browser_refresh(b)
-
 	draw_crumbs(a)
-
-	// Search.
-	im.SetNextItemWidth(-1)
-	if im.InputTextWithHint("##search", fmt.ctprintf("%s  Search %s", ui.ICON_SEARCH, filepath.base(b.root)), cstring(&v.query[0]), len(v.query)) {
-		pm.browser_search(b, string(cstring(&v.query[0])))
-	}
-	searching := b.search.query != ""
-
-	// The list (the preview below it).
-	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + im.GetFrameHeight() + 3 * im.GetStyle().ItemSpacing.y + 6)
-	// No ImGui keyboard navigation in the list: its keys are the browser's
-	// own (Enter would otherwise also press the row last clicked).
-	if im.BeginChild("##list", {0, max(list_h, 80)}, {}, {.NoNavInputs}) {
-		rows := pm.search_results(&b.search) if searching else pm.browser_rows(b)
-		draw_rows(a, rows)
-		if len(rows) == 0 {
-			if searching {
-				im.TextDisabled("%s", cstring("Searching…") if !pm.search_done(&b.search) else cstring("Nothing found"))
-			} else if b.root == "" {
-				im.TextDisabled("Save the project to give it a folder")
-			} else {
-				im.TextDisabled("No audio files or folders here")
-			}
-		}
-		if searching && pm.search_done(&b.search) && len(rows) >= pm.SEARCH_MAX_RESULTS do im.TextDisabled("(the first %d)", i32(pm.SEARCH_MAX_RESULTS))
-		if im.IsWindowFocused() {
-			browser_keys(a, rows)
-			a.browser_has_keys = true // (its arrows are its own)
-		}
-	}
-	im.EndChild()
-	draw_preview(a)
 }
 
 // The favourites, as tabs: click one to show it; right-click to rename,

@@ -52,6 +52,8 @@ Platform :: struct {
 	scale:        f32, // pixels per logical point (2 on a Retina display)
 	ui_scale:     f32, // the display's scale beyond that (1.5 on a Windows display at 150%)
 	zoom:         f32, // the user's zoom of the whole UI (1 = as designed; see `set_zoom`)
+	density:      Density, // how large controls are (see `set_density`)
+	base:         Theme, // the theme as set (before `set_accent` and the density)
 	running:      bool,
 	frame:        u64, // frames drawn
 	driver:       ^Driver, // when the UI runs from a script
@@ -297,10 +299,39 @@ frame_end :: proc(p: ^Platform) {
 // Makes `t` the UI's theme: ImGui's style, and the background behind
 // every window.
 set_theme :: proc(p: ^Platform, t: Theme) {
-	theme_apply(t, p.ui_scale)
-	p.clear = t.bg
-	current = t
+	p.base = t
+	u := t
+	u.control_h = DENSITY_HEIGHT[p.density]
+	if current_accent.a > 0 do u.accent, u.accent_text = accent_for(current_accent, u.surface)
+	theme_apply(u, p.ui_scale)
+	p.clear = u.bg
+	current = u
 }
+
+// Makes controls the size `d` gives them (the theme set again with it).
+set_density :: proc(p: ^Platform, d: Density) {
+	if d == p.density do return
+	p.density = d
+	set_theme(p, p.base)
+}
+
+// Draws the accent (selection, focus, the active tab, a knob's arc) in `c`
+// instead of the theme's: lightened or darkened until it stands out from
+// the surfaces, with text that reads on it. A colour with zero alpha goes
+// back to the theme's accent. Cheap when `c` is unchanged: call it every
+// frame with what should lead (the selected pad's colour).
+set_accent :: proc(p: ^Platform, c: Color) {
+	if c == current_accent do return
+	current_accent = c
+	if c.a > 0 {
+		current.accent, current.accent_text = accent_for(c, current.surface)
+	} else {
+		current.accent, current.accent_text = p.base.accent, p.base.accent_text
+	}
+	theme_apply_accent(current)
+}
+
+@(private) current_accent: Color // the colour `set_accent` was given (zero alpha: none)
 
 // Zooms the whole UI by `zoom` (0.5..3; 1 = as designed): everything is
 // drawn that much larger, fixed sizes included, as a browser zooms.

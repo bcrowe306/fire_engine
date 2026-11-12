@@ -23,10 +23,12 @@ Transport_State :: struct {
 // Height of the transport toolbar.
 TOOLBAR_H :: 46
 
-// The transport toolbar, under the menus whatever shows below: play, stop,
-// record, loop and count-in; where the playhead is; the sequence; the
-// tempo, tap tempo and time signature; the metronome; input quantize.
-// Centred; its buttons are icons whose colour shows their state.
+// The transport toolbar, under the menus whatever shows below: what is
+// needed while playing. Play and stop; record, loop and count-in; where
+// the playhead is; the sequence; pattern or song; the tempo, tap tempo
+// and time signature; the metronome. Centred. (Input quantize is in the
+// Sequence view, how the pads play in the bottom area's header, when a
+// sequence takes over in Perform.)
 draw_toolbar :: proc(user: rawptr) {
 	a := (^App)(user)
 	m := &a.m
@@ -62,9 +64,10 @@ draw_toolbar :: proc(user: rawptr) {
 		st.stopped_at = st.clock
 	}
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record (Cmd+R)", on = a.capture.armed, color = t.danger, size = big) do toggle_record(a)
+	// Record: red whatever the accent, and blinking while it records.
+	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = st.clock) do toggle_record(a)
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_REPEAT, "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", on = tr.loop, size = big) {
+	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
 		n := tr
 		n.loop = !n.loop
 		pm.set_transport(m, .Loop, "Loop", n)
@@ -72,16 +75,11 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	im.SameLine(0, 2)
 	ci_tip := fmt.ctprintf("Count-in: %s (click to change)", "off" if tr.count_in == 0 else fmt.tprintf("%d bar%s", tr.count_in, "" if tr.count_in == 1 else "s"))
-	if ui.icon_button(ui.ICON_TIMER if tr.count_in > 0 else ui.ICON_TIMER_OFF, ci_tip, on = tr.count_in > 0, size = big) {
+	if tool_toggle(ui.ICON_TIMER if tr.count_in > 0 else ui.ICON_TIMER_OFF, fmt.tprintf("Count-in %d", tr.count_in) if tr.count_in > 0 else "Count-in", ci_tip, tr.count_in > 0, t.accent, big) {
 		n := tr
 		n.count_in = (n.count_in + 1) % 3
 		pm.set_transport(m, .Count_In, "Count-in", n)
 		app.seal(&m.history)
-	}
-	if tr.count_in > 0 {
-		im.SameLine(0, 0)
-		im.AlignTextToFramePadding()
-		im.TextColored(transmute(im.Vec4)t.accent, "%s", fmt.ctprintf("%d", tr.count_in))
 	}
 
 	// Where the playhead is.
@@ -144,18 +142,12 @@ draw_toolbar :: proc(user: rawptr) {
 		e.seq_dirty = true
 	}
 	if im.IsItemHovered() do im.SetTooltip("Play the sequence shown (Pattern) or the song's steps one after another (Song)")
-	im.SameLine(0, 8)
-	im.SetNextItemWidth(156)
-	if ui.combo("##launch_at", fmt.ctprintf("%s  %s", ui.ICON_TIMER, LAUNCH_NAMES[p.switch_at])) {
-		for sw in LAUNCH_ORDER do if im.Selectable(LAUNCH_NAMES[sw], sw == p.switch_at) do p.switch_at = sw
-		im.EndCombo()
-	}
-	if im.IsItemHovered() do im.SetTooltip("Launch: when a sequence picked while playing takes over")
+	// (When a sequence picked while playing takes over is in Perform.)
 
 	// Tempo: drag by 1 (Shift: 0.1), tap, and the time signature.
 	im.SameLine(0, gap)
 	bpm := p.bpm
-	te := ui.number_drag("tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", 104)
+	te := ui.number_drag("tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", 104, fill = false)
 	if te.changed do pm.set_bpm(m, bpm)
 	if te.ended do app.seal(&m.history)
 	im.SameLine(0, 4)
@@ -220,26 +212,9 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("Time signature")
 
-	// MIDI activity: a light, green while MIDI comes in, blue while it
-	// goes out. Click it for the MIDI settings.
-	im.SameLine(0, gap)
-	{
-		lp := im.GetCursorScreenPos()
-		size: f32 = 14
-		if im.InvisibleButton("##midilight", {size + 4, big}) {
-			a.settings.open, a.settings.page = true, .Midi
-		}
-		ui.name("midi activity")
-		midi_light(im.GetWindowDrawList(), {lp.x + 2, lp.y + (big - size) / 2}, size, a.io.all_in_lit, a.io.all_out_lit)
-		if im.IsItemHovered() {
-			sent, received := app.host_midi_counts(&a.host)
-			im.SetTooltip("%s", fmt.ctprintf("MIDI: %d in, %d out (click for the MIDI settings)", received, sent))
-		}
-	}
-
 	// The metronome: on/off, and its settings.
 	im.SameLine(0, gap)
-	if ui.icon_button(ui.ICON_METRONOME, "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", on = e.metronome, size = big) do e.metronome = !e.metronome
+	if tool_toggle(ui.ICON_METRONOME, "Click", "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", e.metronome, t.accent, big) do e.metronome = !e.metronome
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Metronome settings") do im.OpenPopup("##metro")
 	if im.BeginPopup("##metro") {
@@ -286,10 +261,22 @@ draw_toolbar :: proc(user: rawptr) {
 		im.EndPopup()
 	}
 
+	st.width = im.GetItemRectMax().x - x0
+	// A line under the bar.
+	vp := im.GetWindowPos()
+	sz := im.GetWindowSize()
+	im.DrawList_AddLine(im.GetWindowDrawList(), {vp.x, vp.y + sz.y - 1}, {vp.x + sz.x, vp.y + sz.y - 1}, ui.col(t.border), 1)
+}
+
+// Input quantize (by the Sequence view's grid): on/off, its grid, and in
+// its menu the grid, strength and swing.
+draw_input_quantize :: proc(a: ^App) {
+	m := &a.m
+	tr := m.project.transport
+	t := ui.theme()
 	// Input quantize: on/off, and its grid, strength and swing.
-	im.SameLine(0, gap)
 	q := tr.quantize
-	if ui.icon_button(ui.ICON_MAGNET, "Input quantize: on (recorded notes move toward the grid)" if q.on else "Input quantize: off", on = q.on, size = big) {
+	if ui.icon_button(ui.ICON_MAGNET, "Input quantize: on (recorded notes move toward the grid)" if q.on else "Input quantize: off", on = q.on) {
 		n := tr
 		n.quantize.on = !q.on
 		pm.set_transport(m, .Quantize, "Input Quantize", n)
@@ -331,8 +318,12 @@ draw_toolbar :: proc(user: rawptr) {
 		im.EndPopup()
 	}
 
+}
+
+// How the pads play: as pads, as a keyboard of the selected pad, or as it
+// at 16 velocities (also in the Perform panel).
+draw_play_modes :: proc(a: ^App) {
 	// How the pads play (also in the Perform panel).
-	im.SameLine(0, gap)
 	modes := [3]struct { mode: pm.Play_Mode, icon: string, tip: cstring }{
 		{.Pads, ui.ICON_LAYOUT_GRID, "Play the pads as pads (each its sound)"},
 		{.Keyboard, ui.ICON_KEYBOARD_MUSIC, "Play the pads as a keyboard of the selected pad"},
@@ -340,14 +331,38 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	for md, k in modes {
 		if k > 0 do im.SameLine(0, 0)
-		if ui.icon_button(md.icon, md.tip, on = a.play_mode == md.mode, size = big) do set_play_mode(a, md.mode)
+		if ui.icon_button(md.icon, md.tip, on = a.play_mode == md.mode) do set_play_mode(a, md.mode)
 	}
 
-	st.width = im.GetItemRectMax().x - x0
-	// A line under the bar.
-	vp := im.GetWindowPos()
-	sz := im.GetWindowSize()
-	im.DrawList_AddLine(im.GetWindowDrawList(), {vp.x, vp.y + sz.y - 1}, {vp.x + sz.x, vp.y + sz.y - 1}, ui.col(t.border), 1)
+}
+
+// A toolbar button that turns something on and off, an icon and a label:
+// lit in `color` (a tint and an outline) when on, pulsing with `blink`.
+// Named for tests by `tip`, its tooltip.
+@(private = "file")
+tool_toggle :: proc(icon, label: string, tip: cstring, on: bool, color: ui.Color, h: f32, blink := false, time: f64 = 0) -> bool {
+	t := ui.theme()
+	ui.text_push(.Label)
+	defer ui.text_pop()
+	text := fmt.ctprintf("%s  %s", icon, label)
+	ts := im.CalcTextSize(text)
+	w := ts.x + 2 * t.pad.x
+	pos := im.GetCursorScreenPos()
+	clicked := im.InvisibleButton(tip, {w, h})
+	ui.name(string(tip))
+	hovered := im.IsItemHovered()
+	bg := t.pressed if im.IsItemActive() else (t.hover if hovered else t.raised)
+	if on {
+		f: f32 = 0.3
+		if blink do f = 0.15 + 0.4 * f32(0.5 + 0.5 * math.sin(time * 6))
+		bg = ui.mix(bg, color, f)
+	}
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
+	if on do im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(color), t.radius, 1)
+	im.DrawList_AddText(dl, {pos.x + t.pad.x, pos.y + (h - ts.y) / 2}, ui.col(t.text if on else t.text_dim), text)
+	if hovered do im.SetTooltip("%s", tip)
+	return clicked
 }
 
 // The launch settings, in the toolbar's order, and their short names.

@@ -130,13 +130,7 @@ draw_arrangement_bar :: proc(a: ^App) {
 		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
-	im.SameLine(0, 16)
-	mode := 1 if p.song_mode else 0
-	if ui.segmented("song_mode", {"Pattern", "Song"}, &mode) {
-		p.song_mode = mode == 1
-		m.engine.seq_dirty = true
-	}
-	im.SameLine(0, 16)
+	im.SameLine(0, 16) // (Pattern or Song: on the toolbar)
 	if im.Button(fmt.ctprintf("%s  Add %s###addseq", ui.ICON_PLUS, pm.sequence_name(p, p.slot))) do pm.song_add(m, p.slot)
 	ui.name("Add the current sequence")
 	im.SameLine()

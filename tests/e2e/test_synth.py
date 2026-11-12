@@ -109,6 +109,9 @@ def test_the_effects_chain(app):
     tab(app, "Effects")
     s = app.pad(0)["synth"]
     assert s["effects"][0] == "Chorus" and s["effects"][8] == "Reverb", s["effects"]
+    # The pads area made taller (its top edge dragged up), so all nine fit.
+    app.cmd('drag_by "bottom edge" 0 -80 in detail')
+    app.wait(3)
     # The reverb's switch: on, its page shown.
     app.click("effect Reverb on", window="detail")
     assert app.pad(0)["synth"]["params"]["Reverb On"] == 1

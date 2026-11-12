@@ -1,0 +1,86 @@
+# UI audit tour (docs/design/ui-audit.md): a small project, then every main screen.
+# .build/app/pads --headless --fake --prefs .build/ui_audit/prefs --drive tests/app_ui/drive/ui_audit.txt --out .build/ui_audit/shots
+size 1440 900
+wait 3
+screenshot 00_empty
+browse tests/app_ui/fixtures
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+slicer 2 tests/app_ui/fixtures/loop.wav
+synth 3
+note 0 0 0.25 1
+note 1 0.5 0.25 0.7
+note 0 1 0.25 1
+note 1 1.5 0.25 0.7
+note 0 2 0.25 1
+note 1 2.5 0.25 0.7
+note 0 3 0.25 1
+note 1 3.5 0.25 0.7
+route 1 1
+busfx 0 0 reverb
+song add 1 4
+song add 1 4
+song marker 0 Intro
+select 0
+panel sequence
+wait 4
+screenshot 01_sequence
+panel song
+wait 3
+screenshot 02_song
+panel mixer
+wait 3
+screenshot 03_mixer
+panel perform
+wait 3
+screenshot 04_perform
+panel sequence
+key cmd+j
+wait 4
+screenshot 05_folded
+key cmd+j
+wait 3
+panel sequence
+panel sample
+wait 3
+screenshot 10_sampler_sample
+panel env
+wait 2
+screenshot 11_sampler_env
+panel filter
+wait 2
+screenshot 12_sampler_filter
+panel global
+wait 2
+screenshot 13_sampler_global
+select 2
+wait 3
+screenshot 14_slicer
+select 3
+wait 3
+screenshot 15_synth
+synth_tab filter
+wait 2
+screenshot 16_synth_filter
+synth_tab mod
+wait 2
+screenshot 17_synth_mod
+synth_tab effects
+wait 2
+screenshot 18_synth_effects
+edit_fx bus 0 0
+wait 3
+screenshot 19_bus_effect
+select 0
+key cmd+k
+wait 3
+screenshot 20_palette
+key esc
+wait 2
+theme light
+panel sequence
+wait 3
+screenshot 30_light_sequence
+size 1100 760
+wait 4
+screenshot 31_narrow

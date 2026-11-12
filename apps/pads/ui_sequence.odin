@@ -372,6 +372,10 @@ draw_transport :: proc(a: ^App) {
 	q :: ui.ICON_MAGNET + "  Quantize"
 	ui.flow(ui.button_width(q))
 	if im.Button(q) do pm.quantize_sequence(m, slot, st.grid)
+	if im.IsItemHovered() do im.SetTooltip("Move the sequence's notes to the grid")
+	// Input quantize: notes recorded from now on, moved as they come in.
+	ui.flow(im.GetFrameHeight() * 2 + im.CalcTextSize("1/16T").x)
+	draw_input_quantize(a)
 	ui.flow(120, 20)
 	im.SetNextItemWidth(120)
 	sw := s.swing * 100

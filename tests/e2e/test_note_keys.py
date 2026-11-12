@@ -2,7 +2,7 @@
 delete) removes them, 0 mutes and unmutes them (they stay, hollow and
 silent), Cmd+A selects every note, the arrows nudge them a grid step
 (Shift: a bar) or a row, Cmd+C / Cmd+V / Cmd+D copy, paste and duplicate.
-And the toolbar's Pattern | Song switch and launch setting."""
+And the toolbar's Pattern | Song switch, and the launch setting (in Perform)."""
 
 import os
 
@@ -74,9 +74,8 @@ def test_the_toolbar_switches_mode_and_launch(app, fixtures):
     assert app.state()["song_mode"]
     app.click("Pattern", window="##toolbar")
     assert not app.state()["song_mode"]
-    app.click("##launch_at", window="##toolbar")
-    app.click("Next beat")
+    app.panel("Perform")
+    app.click("launch quantize", window="perform", at=(0.625, 0.5))  # Beat
     assert app.state()["launch"] == "Beat"
-    app.click("##launch_at", window="##toolbar")
-    app.click("At once")
+    app.click("launch quantize", window="perform", at=(0.875, 0.5))  # Now
     assert app.state()["launch"] == "Now"

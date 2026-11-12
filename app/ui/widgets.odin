@@ -43,6 +43,8 @@ col :: proc "contextless" (c: Color) -> u32 {
 // How wide `knob(label, ...)` is, `size` across: the knob or its label,
 // whichever is wider (to lay knobs out before drawing them).
 knob_width :: proc(label: cstring, size: f32 = KNOB_SIZE) -> f32 {
+	text_push(.Label)
+	defer text_pop()
 	return max(size, im.CalcTextSize(shown_label(label)).x)
 }
 
@@ -50,6 +52,8 @@ knob_width :: proc(label: cstring, size: f32 = KNOB_SIZE) -> f32 {
 // (for drawing on it: modulation rings).
 knob_geometry :: proc(label: cstring, pos: im.Vec2, size: f32 = KNOB_SIZE) -> (center: im.Vec2, radius: f32) {
 	w := knob_width(label, size)
+	text_push(.Label)
+	defer text_pop()
 	return {pos.x + w / 2, pos.y + im.GetTextLineHeight() + 4 + size / 2}, size / 2 - 3
 }
 
@@ -69,6 +73,8 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	t := current
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
+	text_push(.Label) // the label and the value
+	defer text_pop()
 	label_h := im.GetTextLineHeight()
 	shown := shown_label(label)
 	w := max(size, im.CalcTextSize(shown).x)
@@ -110,6 +116,8 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	// Its menu: back to the default, or a value typed.
 	@(static) typed: f32
 	if im.BeginPopupContextItem("##knobmenu") {
+		text_push(.Body)
+		defer text_pop()
 		if im.MenuItem("Reset to Default") {
 			value^ = default
 			e.changed, e.ended = true, true
@@ -483,7 +491,18 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 // every few points (Shift: by `fine`), scroll for a step, double-click to
 // type it. Shows `format` of it ("%.1f BPM"). The value is
 // kept on a `fine` grid.
-number_drag :: proc(id: cstring, value: ^f64, lo, hi, step, fine: f64, format: cstring, width: f32) -> (e: Edit) {
+number_drag :: proc(id: cstring, value: ^f64, lo, hi, step, fine: f64, format: cstring, width: f32, fill := true) -> (e: Edit) {
+	return value_bar(id, nil, value, lo, hi, step, fine, format, width, fill)
+}
+
+// A value bar: `label` at its left and `format` of the value at its right
+// (with no label, the value in the middle), and the bar filled in the
+// accent's tint as far as the value is from `lo` to `hi` (unless not
+// `fill`: a tempo, say, where how far along says nothing). For settings and
+// compact entry: drag across or up (Shift: by `fine`), scroll for a
+// `step`, double-click to type. The value is kept on a `fine` grid; `id`
+// names it for tests.
+value_bar :: proc(id: cstring, label: cstring, value: ^f64, lo, hi, step, fine: f64, format: cstring, width: f32, fill := true) -> (e: Edit) {
 	im.PushID(id)
 	defer im.PopID()
 	t := current
@@ -540,39 +559,60 @@ number_drag :: proc(id: cstring, value: ^f64, lo, hi, step, fine: f64, format: c
 		typing, typed = wid, value^
 	}
 	hovered := im.IsItemHovered() || im.IsItemActive()
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + width, pos.y + h}, col(t.hover if hovered else t.raised), t.radius)
-	label := fmt.ctprintf(string(format), value^) // (Odin's fmt reads C-style verbs: "%.1f")
-	ts := im.CalcTextSize(label)
-	im.DrawList_AddText(dl, {math.round(pos.x + (width - ts.x) / 2), math.round(pos.y + (h - ts.y) / 2)}, col(t.text), label)
+	bg := t.hover if hovered else t.raised
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + width, pos.y + h}, col(bg), t.radius)
+	if fill && hi > lo {
+		frac := f32(clamp((value^ - lo) / (hi - lo), 0, 1))
+		if frac > 0 {
+			im.DrawList_PushClipRect(dl, pos, {pos.x + width * frac, pos.y + h}, true)
+			im.DrawList_AddRectFilled(dl, pos, {pos.x + width, pos.y + h}, col(mix(bg, t.accent, 0.28)), t.radius)
+			im.DrawList_PopClipRect(dl)
+		}
+	}
+	shown := fmt.ctprintf(string(format), value^) // (Odin's fmt reads C-style verbs: "%.1f")
+	ts := im.CalcTextSize(shown)
+	ty := math.round(pos.y + (h - ts.y) / 2)
+	if label != nil {
+		im.DrawList_AddText(dl, {pos.x + t.pad.x, ty}, col(t.text_dim), label)
+		im.DrawList_AddText(dl, {math.round(pos.x + width - t.pad.x - ts.x), ty}, col(t.text), shown)
+	} else {
+		im.DrawList_AddText(dl, {math.round(pos.x + (width - ts.x) / 2), ty}, col(t.text), shown)
+	}
 	if hovered && !im.IsItemActive() do im.SetTooltip("Drag (Shift: finer), scroll, or double-click to type")
 	return
 }
 
-// An on/off switch with a label to its right. Returns true when toggled.
+// An on/off button: the label is the button, lit (a tint of the accent,
+// an accent outline and a light at its left) when on. A label of only
+// "##id" makes a square button with just the light. Returns true when
+// toggled.
 toggle :: proc(label: cstring, on: ^bool) -> bool {
 	im.PushID(label)
 	defer im.PopID()
 	t := current
 	dl := im.GetWindowDrawList()
-	h := im.GetFrameHeight() * 0.8
-	w := h * 1.8
+	text := shown_label(label)
+	h := im.GetFrameHeight()
+	dot := max(math.round(h * 0.2), 5)
+	w := h
+	if text != "" do w = math.round(t.pad.x + dot + t.pad.x * 0.75 + im.CalcTextSize(text).x + t.pad.x)
 	pos := im.GetCursorScreenPos()
-	y := pos.y + (im.GetFrameHeight() - h) / 2
-	clicked := im.InvisibleButton("##toggle", {w, im.GetFrameHeight()})
+	clicked := im.InvisibleButton("##toggle", {w, h})
 	name(widget_name(label, "toggle"))
 	if clicked do on^ = !on^
 	hovered := im.IsItemHovered()
-	bg := t.accent if on^ else (t.hover if hovered else t.raised)
-	im.DrawList_AddRectFilled(dl, {pos.x, y}, {pos.x + w, y + h}, col(bg), h / 2)
-	knob_x := pos.x + h / 2 + (w - h) * (1 if on^ else 0)
-	im.DrawList_AddCircleFilled(dl, {knob_x, y + h / 2}, h / 2 - 3, col(t.accent_text if on^ else t.text), 24)
-	// The label up to "##" (what follows only makes the id unique, as in ImGui).
-	text := string(label)
-	if i := strings.index(text, "##"); i >= 0 do text = text[:i]
+	held := im.IsItemActive()
+	bg := t.pressed if held else (t.hover if hovered else t.raised)
+	if on^ do bg = mix(bg, t.accent, 0.3)
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, col(bg), t.radius)
+	if on^ do im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, col(t.accent), t.radius, 1)
+	// The light.
+	cx := pos.x + (t.pad.x + dot / 2 if text != "" else w / 2)
+	cy := pos.y + h / 2
+	im.DrawList_AddCircleFilled(dl, {cx, cy}, dot / 2, col(t.accent if on^ else mix(t.raised, t.text_dim, 0.5)), 16)
 	if text != "" {
-		im.SameLine(0, t.gap.x)
-		im.AlignTextToFramePadding()
-		im.Text("%s", strings.clone_to_cstring(text, context.temp_allocator))
+		ts := im.CalcTextSize(text)
+		im.DrawList_AddText(dl, {math.round(pos.x + t.pad.x + dot + t.pad.x * 0.75), math.round(pos.y + (h - ts.y) / 2)}, col(t.text if on^ else t.text_dim), text)
 	}
 	return clicked
 }

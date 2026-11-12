@@ -1,5 +1,7 @@
 package ui
 
+import "core:math"
+
 import im "deps:imgui"
 
 // A colour, as linear 0..1 RGBA.
@@ -33,6 +35,42 @@ Theme :: struct {
 	window_pad:  im.Vec2,
 	border_size: f32, // around controls; 0 = flat: told apart by colour, not lines
 	window_border: f32, // around windows and panels
+	control_h:   f32, // a control's height in points (0: the font's height plus `pad.y` twice); `set_density` sets it
+}
+
+// How large controls are: a control's height is `DENSITY_HEIGHT` of it.
+// Compact suits a mouse on a small screen; Touch, a finger.
+Density :: enum u8 {
+	Compact,
+	Comfortable,
+	Touch,
+}
+
+// A control's height, in points, at each density.
+DENSITY_HEIGHT := [Density]f32{.Compact = 28, .Comfortable = 34, .Touch = 44}
+
+// The sizes text comes in: headings (a panel's or a device's title), body
+// (names, lists, values read), labels (under knobs, in dense rows) and
+// captions (units, hints).
+Text_Size :: enum u8 {
+	Heading,
+	Body,
+	Label,
+	Caption,
+}
+
+// Each text size in points.
+TEXT_SIZE := [Text_Size]f32{.Heading = 18, .Body = 15, .Label = 13, .Caption = 11}
+
+// Draws what follows at text size `size` (in the current font); pair with
+// `text_pop`.
+text_push :: proc(size: Text_Size) {
+	im.PushFontFloat(nil, TEXT_SIZE[size])
+}
+
+// Ends a `text_push`.
+text_pop :: proc() {
+	im.PopFont()
 }
 
 // The default theme: dark, flat, a single blue accent.
@@ -165,6 +203,7 @@ theme_apply :: proc(t: Theme, scale: f32 = 1) {
 	s := im.GetStyle()
 	s.WindowPadding = t.window_pad
 	s.FramePadding = t.pad
+	if t.control_h > 0 do s.FramePadding.y = max((t.control_h - FONT_SIZE) / 2, 2)
 	s.ItemSpacing = t.gap
 	s.ItemInnerSpacing = {t.gap.x * 0.75, t.gap.y * 0.75}
 	s.CellPadding = {t.pad.x * 0.6, t.pad.y * 0.6}
@@ -211,10 +250,6 @@ theme_apply :: proc(t: Theme, scale: f32 = 1) {
 	set(c, .ScrollbarGrab, t.raised)
 	set(c, .ScrollbarGrabHovered, t.hover)
 	set(c, .ScrollbarGrabActive, t.pressed)
-	set(c, .CheckMark, t.accent_text)
-	set(c, .CheckboxSelectedBg, t.accent)
-	set(c, .SliderGrab, t.accent)
-	set(c, .SliderGrabActive, lighten(t.accent, 0.12))
 	set(c, .Button, t.raised)
 	set(c, .ButtonHovered, t.hover)
 	set(c, .ButtonActive, t.pressed)
@@ -222,45 +257,94 @@ theme_apply :: proc(t: Theme, scale: f32 = 1) {
 	set(c, .HeaderHovered, t.hover)
 	set(c, .HeaderActive, t.pressed)
 	set(c, .Separator, t.border)
-	set(c, .SeparatorHovered, t.accent)
-	set(c, .SeparatorActive, t.accent)
 	set(c, .ResizeGrip, {0, 0, 0, 0})
-	set(c, .ResizeGripHovered, with_alpha(t.accent, 0.5))
-	set(c, .ResizeGripActive, t.accent)
 	set(c, .InputTextCursor, t.text)
 	set(c, .Tab, t.surface)
 	set(c, .TabHovered, t.hover)
 	set(c, .TabSelected, t.raised)
-	set(c, .TabSelectedOverline, t.accent)
 	set(c, .TabDimmed, t.surface)
 	set(c, .TabDimmedSelected, t.raised)
 	set(c, .TabDimmedSelectedOverline, {0, 0, 0, 0})
-	set(c, .DockingPreview, with_alpha(t.accent, 0.4))
 	set(c, .DockingEmptyBg, t.bg)
-	set(c, .PlotLines, t.accent)
-	set(c, .PlotLinesHovered, lighten(t.accent, 0.12))
-	set(c, .PlotHistogram, t.accent)
-	set(c, .PlotHistogramHovered, lighten(t.accent, 0.12))
 	set(c, .TableHeaderBg, t.raised)
 	set(c, .TableBorderStrong, t.border)
 	set(c, .TableBorderLight, t.border)
 	set(c, .TableRowBg, {0, 0, 0, 0})
 	set(c, .TableRowBgAlt, with_alpha(t.text, 0.03))
-	set(c, .TextLink, t.accent)
-	set(c, .TextSelectedBg, with_alpha(t.accent, 0.35))
 	set(c, .TreeLines, t.border)
-	set(c, .DragDropTarget, t.accent)
-	set(c, .DragDropTargetBg, with_alpha(t.accent, 0.12))
 	set(c, .UnsavedMarker, t.warn)
-	set(c, .NavCursor, t.accent)
-	set(c, .NavWindowingHighlight, t.accent)
 	set(c, .NavWindowingDimBg, {0, 0, 0, 0.4})
 	set(c, .ModalWindowDimBg, {0, 0, 0, 0.5})
+	theme_apply_accent(t)
 
 	if scale != 1 {
 		im.Style_ScaleAllSizes(s, scale)
 		s.FontScaleDpi = scale
 	}
+}
+
+// Sets the ImGui colours drawn in the accent from `t.accent` (and
+// `accent_text`): what `set_accent` changes, every frame if need be.
+@(private)
+theme_apply_accent :: proc(t: Theme) {
+	c := im.GetStyle()
+	set :: proc(s: ^im.Style, col: im.Col, v: Color) { s.Colors[int(col)] = transmute(im.Vec4)v }
+	set(c, .CheckMark, t.accent_text)
+	set(c, .CheckboxSelectedBg, t.accent)
+	set(c, .SliderGrab, t.accent)
+	set(c, .SliderGrabActive, lighten(t.accent, 0.12))
+	set(c, .SeparatorHovered, t.accent)
+	set(c, .SeparatorActive, t.accent)
+	set(c, .ResizeGripHovered, with_alpha(t.accent, 0.5))
+	set(c, .ResizeGripActive, t.accent)
+	set(c, .TabSelectedOverline, t.accent)
+	set(c, .DockingPreview, with_alpha(t.accent, 0.4))
+	set(c, .PlotLines, t.accent)
+	set(c, .PlotLinesHovered, lighten(t.accent, 0.12))
+	set(c, .PlotHistogram, t.accent)
+	set(c, .PlotHistogramHovered, lighten(t.accent, 0.12))
+	set(c, .TextLink, t.accent)
+	set(c, .TextSelectedBg, with_alpha(t.accent, 0.35))
+	set(c, .DragDropTarget, t.accent)
+	set(c, .DragDropTargetBg, with_alpha(t.accent, 0.12))
+	set(c, .NavCursor, t.accent)
+	set(c, .NavWindowingHighlight, t.accent)
+}
+
+// How much brighter the lighter of `a` and `b` is (WCAG's contrast ratio,
+// 1 to 21).
+contrast :: proc "contextless" (a, b: Color) -> f32 {
+	la, lb := luminance(a), luminance(b)
+	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+}
+
+// `c`'s relative luminance (0 black to 1 white), as WCAG defines it.
+luminance :: proc "contextless" (c: Color) -> f32 {
+	lin :: proc "contextless" (v: f32) -> f32 {
+		return v / 12.92 if v <= 0.04045 else math.pow((v + 0.055) / 1.055, 2.4)
+	}
+	return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+}
+
+// `c` made usable as the accent on `surface`: moved towards white (on a
+// dark surface) or black (on a light one) until it stands out from it by
+// a contrast of 3 (its hue kept); and the text that reads on it, white or
+// near-black.
+accent_for :: proc "contextless" (c, surface: Color) -> (accent, text: Color) {
+	accent = {c.r, c.g, c.b, 1}
+	dark := luminance(surface) < 0.5
+	for _ in 0 ..< 20 {
+		if contrast(accent, surface) >= 3 do break
+		accent = lighten(accent, 0.1) if dark else darken(accent, 0.1)
+	}
+	white, ink := Color{1, 1, 1, 1}, rgb(0x15161a)
+	text = white if contrast(white, accent) >= contrast(ink, accent) else ink
+	return
+}
+
+// `c` moved `amount` (0..1) towards black.
+darken :: proc "contextless" (c: Color, amount: f32) -> Color {
+	return {c.r * (1 - amount), c.g * (1 - amount), c.b * (1 - amount), c.a}
 }
 
 // ImGui's vector type for colours.

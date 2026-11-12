@@ -1,4 +1,4 @@
-"""The Devices panel (a tab beside the Browser): devices dragged onto pads
+"""The Library's devices (its Instruments, Effects and Plug-ins sections): devices dragged onto pads
 (an effect into the first empty insert, an instrument made the pad's, a
 synth preset loaded), double-clicked for the selected pad, found by
 typing. And the Perform panel's sequence pads: launched, held (back to
@@ -9,20 +9,24 @@ import os
 
 
 def devices(app):
-    app.click("  Devices")
+    app.cmd("panel library")  # (the Library is always beside the panels; this shows it if hidden)
     app.wait(3)
 
 
 def test_drag_devices_onto_pads(app, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
     devices(app)
+    app.library_find("reverb")
     app.drag("device Reverb", "pad A1", to_window="detail")
     assert app.pad(0)["inserts"][0] == "Reverb", app.pad(0)["inserts"]
     assert app.state()["detail_tab"] == "Effect"  # opened in front
+    app.library_find("delay")
     app.drag("device Delay", "pad A1", to_window="detail")
     assert app.pad(0)["inserts"][1] == "Delay"
+    app.library_find("synth")
     app.drag("device Synth", "pad A2", to_window="detail")
     assert app.pad(1)["kind"] == "Synth"
+    app.library_find("wobble")
     app.drag("device Wobble Bass", "pad A3", to_window="detail")
     p = app.pad(2)
     assert p["kind"] == "Synth" and p["synth"]["preset"] == "Wobble Bass", p["kind"]
@@ -30,9 +34,7 @@ def test_drag_devices_onto_pads(app, fixtures):
     app.key("cmd+z")  # one step: the pad empty again
     assert not any(x["index"] == 2 for x in app.state()["pads"])
     # Typed: only what matches.
-    app.click("device filter")
-    app.type("chor")
-    app.wait(2)
+    app.library_find("chor")
     app.expect_item("device Chorus")
     app.expect_no_item("device Reverb")
     app.screenshot("devices")

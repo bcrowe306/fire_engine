@@ -50,9 +50,11 @@ class Pads:
 
     headless: no window (default: E2E_HEADLESS=1, or not on macOS).
     fake: the simulated audio driver (default True: no sound card needed).
+    size: the control size ("compact", the size the tests' positions were
+    written for; None: as Settings says, Comfortable by default).
     """
 
-    def __init__(self, headless=None, fake=True, out_dir=None, project=None, prefs=None, extra=()):
+    def __init__(self, headless=None, fake=True, out_dir=None, project=None, prefs=None, extra=(), size="compact"):
         if headless is None:
             headless = os.environ.get("E2E_HEADLESS", "1" if platform.system() != "Darwin" else "0") == "1"
         self.tmp = tempfile.mkdtemp(prefix="pads_e2e_")
@@ -64,6 +66,8 @@ class Pads:
             args.append("--headless")
         if fake:
             args.append("--fake")
+        if size:
+            args += ["--control-size", size]  # (the tests' positions were written at Compact; None: as Settings says)
         args += list(extra)
         if not os.path.exists(EXE):
             raise FileNotFoundError(f"{EXE}: build it first (task app:pads OPT=none)")
@@ -161,9 +165,17 @@ class Pads:
 
     def panel(self, name):
         """Brings panel `name` to the front by clicking its tab ("Sequence",
-        "Song", "Mixer", "Perform", "Browser", "Pads"; their tabs show an icon before
+        "Song", "Mixer", "Perform"; their tabs show an icon before
         the name, so a menu of the same name isn't what is clicked)."""
         self.click("  " + name)
+
+    def library_find(self, text):
+        """Types `text` into the Library's search (what was there replaced):
+        its files and devices that match, at the top of its list."""
+        self.click("##search", window="browser")
+        self.key("cmd+a")
+        self.type(text)
+        self.wait(4)
 
     def hover(self, label, window=None):
         self.cmd(f"hover_item {self._target(label, window)}")

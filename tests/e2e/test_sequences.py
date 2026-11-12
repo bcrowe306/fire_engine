@@ -62,6 +62,8 @@ def test_copy_bars_dialog(app, fixtures):
 
 def test_mark_copy_and_paste(app, fixtures):
     loaded(app, fixtures)
+    app.key("cmd+j")  # the pads area folded: all 16 rows show
+    app.wait(3)
     roll = [i for i in app.items("seq", "sequence") if i["label"] == "seq"][0]["rect"]
     x0, y0, x1, y1 = roll
     # Box-select across the bottom two rows (A1, A2), the second half of the bar.

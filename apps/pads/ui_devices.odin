@@ -9,8 +9,8 @@ import "app:ui"
 import pm "model"
 import im "deps:imgui"
 
-// The Devices panel (a tab beside the Browser): the instruments, effects
-// and plug-ins there are, in a tree. Drag one onto a pad: an instrument
+// The Library's devices: the instruments, effects and plug-ins there
+// are, in sections. Drag one onto a pad: an instrument
 // becomes the pad's (a synth preset loads on a synth), an effect goes in
 // its first empty insert. Double-click one for the selected pad.
 
@@ -19,10 +19,6 @@ import im "deps:imgui"
 // an instrument plug-in).
 PADS_DEVICE_PAYLOAD :: "PADS_DEVICE"
 
-// The panel's state: the filter typed.
-Devices_Ui :: struct {
-	filter: [64]u8,
-}
 
 // What a device payload names.
 @(private = "file")
@@ -33,14 +29,9 @@ Device_Item :: struct {
 	tip:   string,
 }
 
-draw_devices :: proc(user: rawptr) {
-	a := (^App)(user)
-	st := &a.devices
-	im.SetNextItemWidth(-1)
-	im.InputTextWithHint("##devfilter", fmt.ctprintf("%s  Find a device", ui.ICON_SEARCH), cstring(&st.filter[0]), len(st.filter))
-	ui.name("device filter")
-	find := strings.to_lower(strings.truncate_to_byte(string(st.filter[:]), 0), context.temp_allocator)
-	im.Spacing()
+// The Library's device sections: Instruments, Effects and Plug-ins, each
+// device shown only if its name has `find` in it (lower case; "" all).
+draw_device_sections :: proc(a: ^App, find: string) {
 	group :: proc(a: ^App, title: string, items: []Device_Item, find: string) {
 		shown := 0
 		for it in items do if find == "" || strings.contains(strings.to_lower(it.label, context.temp_allocator), find) do shown += 1
@@ -63,8 +54,7 @@ draw_devices :: proc(user: rawptr) {
 		}
 		im.TreePop()
 	}
-	if im.TreeNodeEx("Instruments###dginst", {.DefaultOpen, .SpanAvailWidth}) {
-		ui.name("devices Instruments")
+	if library_section("Instruments") {
 		group(a, "Basic", {
 			{"Synth", ui.ICON_AUDIO_WAVEFORM, "inst synth", "A wavetable synth"},
 			{"Sampler", ui.ICON_LAYOUT_GRID, "inst sampler", "Plays the pad's sample"},
@@ -93,10 +83,8 @@ draw_devices :: proc(user: rawptr) {
 		insts := make([dynamic]Device_Item, context.temp_allocator)
 		for e, k in plugin_instruments(a) do append(&insts, Device_Item{e.name, ui.ICON_PLUG, fmt.tprintf("clapi %d", k), fmt.tprintf("%s %s (CLAP instrument)", e.vendor, e.version)})
 		if len(insts) > 0 do group(a, "Plug-ins", insts[:], find)
-		im.TreePop()
 	}
-	if im.TreeNodeEx("Effects###dgfx", {.DefaultOpen, .SpanAvailWidth}) {
-		ui.name("devices Effects")
+	if library_section("Effects") {
 		synth_fx := make([dynamic]Device_Item, context.temp_allocator)
 		other := make([dynamic]Device_Item, context.temp_allocator)
 		for k in pm.Effect_Kind {
@@ -107,10 +95,8 @@ draw_devices :: proc(user: rawptr) {
 		}
 		group(a, "Sound", synth_fx[:], find)
 		group(a, "Rhythm and pitch", other[:], find)
-		im.TreePop()
 	}
-	if im.TreeNodeEx("Plug-ins###dgclap", {.DefaultOpen, .SpanAvailWidth}) {
-		ui.name("devices Plug-ins")
+	if library_section("Plug-ins") {
 		entries := plugin_effects(a)
 		if len(entries) == 0 && len(plugin_instruments(a)) == 0 {
 			im.TextDisabled("None found yet")
@@ -128,7 +114,6 @@ draw_devices :: proc(user: rawptr) {
 			for e, k in entries do if e.vendor == v do append(&items, Device_Item{e.name, ui.ICON_PLUG, fmt.tprintf("clap %d", k), fmt.tprintf("%s %s (CLAP)", e.vendor, e.version)})
 			group(a, v if v != "" else "Other", items[:], find)
 		}
-		im.TreePop()
 	}
 }
 

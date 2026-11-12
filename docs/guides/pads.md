@@ -36,17 +36,25 @@ port.
 ## The window
 
 The **transport toolbar** runs across the top, under the menus, whatever
-panel or tab is in front (see [The transport](#the-transport)). Below it
-the layout follows Ableton Live's: the **Browser** down the left (with
-**Devices** in a tab beside it: see below); the
-**Sequence**, **Song**, **Mixer** and **Perform** as tabs in the middle;
-and along the bottom, the device view (as Ableton's): across its top,
-where a panel's tab would be, a tab for each device of a track; below,
+panel or tab is in front (see [The transport](#the-transport)). Below it,
+the **Library** runs the full height on the left (sounds and devices in
+one tree: see below; drag its right edge to make it wider, View >
+Library or Cmd+L to hide it); the **Sequence**, **Song**, **Mixer** and
+**Perform** are tabs in the middle; and along the bottom, beside the
+Library, is the **pads area**, the device view (as Ableton's). Drag its
+top edge to make it taller or shorter. **Fold** it (the arrow at the
+right of its header, View > Fold the Pads Area or Cmd+J) and it becomes a
+bar of the bank's 16 pads, each its name and colour, bright while it
+plays, so the view above gets the height (all 16 rows of a drum
+sequence fit): click a pad in the bar to select it and unfold on it.
+Files and devices drop onto the bar's pads as onto the grid. Across the
+pads area's top, where a panel's tab would be, is a tab for each device
+of a track, and at the right how the pads play (as pads, a keyboard, or
+velocities) and the fold button; below,
 the pad grid on the left (always there, to pick another pad), the device
 in front, and at the far right the track's channel strip (a pad's is the
 mixer's without its EQ, inserts and sends: output, pan, fader, meter,
-mute and solo). The bottom panel stays where it is (it has no tab of its
-own to drag). A pad is a sampler device: its chain starts with **A1 kick
+mute and solo). A pad is a sampler device: its chain starts with **A1 kick
 · Sampler** (with its own tabs:
 **Sample**, **Env**, **Filter**, **Pitch**, **LFO**, **Global**; an audio
 pad's is **· Audio**), its **EQ**, then each insert with an effect, and
@@ -59,18 +67,33 @@ either more room (double-click it to go back to a square grid). Panels
 are tabs that can be dragged elsewhere; **View > Reset Layout** puts
 them back.
 
-Buttons that are only an icon (play, record, the sample edits) have no
+Buttons that are only an icon (play, stop, the sample edits) have no
 frame: the icon is dimmed at rest, brightens under the mouse, and takes
-a colour when on — green while playing, red while recording, the accent
-for other toggles.
+a colour when on — green while playing, the accent for other toggles.
+Switches are lit buttons: the label is the button, with a light at its
+left, lit when on. Settings set once (lengths, swing, voices) are value
+bars: the name at the left, the value at the right, filled as far as the
+value goes; drag across them, scroll, or double-click to type.
 
-- **Browser** (left): for finding sounds fast.
-  - **Tabs** are favourite folders. A new install has **Documents** and
+The **accent** (selection, focus, the active tab, knobs' arcs, lit
+buttons) is the selected pad's colour, so the whole window says which
+pad you are on; on an empty pad it is the theme's own. A pad colour too
+dark or too light to stand out is lightened or darkened for the accent
+(the pad keeps its own). Record is always red and blinks while it
+records.
+
+- **Library** (left): for finding sounds and devices fast. One search
+  box at its top finds both: the files under the folder shown (listed as
+  **Files**) and the devices by name. Below it, sections that open and
+  close (click a section's header): **Favourites**, **Folders**,
+  **Instruments**, **Effects**, **Plug-ins** (see [The Library's
+  devices](#the-librarys-devices)), and the preview at its foot.
+  - **Favourites** are favourite folders, as tabs. A new install has **Documents** and
     **Project** (the open project's samples). The **+** tab, or the
     star, adds the folder shown; right-click a folder for **Add to
     favourites**; right-click a tab to rename it, move it or remove it.
     Favourites are kept with your preferences, not in the project.
-  - **Back**, **forward** and **up** (Backspace), and the folder's path:
+  - **Folders**: **back**, **forward** and **up** (Backspace), and the folder's path:
     click any part to go there. **Refresh** reads the folders again.
   - The **tree**: click a folder to open it in place (its icon shows it open),
     double-click to go into it. Links to folders work. Only audio files
@@ -259,7 +282,7 @@ for other toggles.
   laid out like the pad grid (1 at the bottom left). In **Launch**, press
   one to launch it. Stopped, it starts playing; playing, it takes over
   **Now**, on the next **Beat**, the next **Bar** or at the **Sequence
-  end**, as the setting beside says (the toolbar's launch setting). In
+  end**, as the setting beside says. In
   **Hold**, a sequence plays only while its pad is held, at that same
   quantize, and the one before comes back when you let go. The playing
   pad is lit and runs a bar along its foot; a queued one blinks with the
@@ -466,10 +489,10 @@ below. A row's name, clicked, selects its pad too.
 A pad given its first sound gets a colour of its own: the one fewest
 pads have, and not its neighbours'.
 
-### The Devices panel
+### The Library's devices
 
-A tab beside the Browser: the devices there are, in a tree (type to
-find one).
+The Library's last sections: the devices there are, in a tree (the
+search box finds them by name).
 - **Instruments**: Synth, Sampler, Slicer, Audio track, then the synth's
   presets by kind (yours too), then the CLAP instruments found.
 - **Effects**: the synth's (Sound) and the rest (Rhythm and pitch).
@@ -742,15 +765,17 @@ Plug-in effects have **Open editor** on their pages too.
 
 ## The transport
 
-The toolbar under the menus, centred, always showing. Its buttons are
-icons whose colour shows their state.
+The toolbar under the menus, centred, always showing: what is needed
+while playing. Play and stop are icons; Rec, Loop, Count-in and Click are
+labelled lit buttons.
 
 - **Play** (green while playing) and **Stop**, or Space for both. Press
   **Stop** twice (or when stopped) to silence every sound still ringing.
-  **Record** (red; Cmd+R) arms recording: from a stop it plays, after the
-  count-in.
+  **Rec** (red whatever the accent, blinking while it records; Cmd+R)
+  arms recording: from a stop it plays, after the count-in.
 - **Loop**: on, a sequence (or the song) goes round; off, it plays once
-  and stops. **Count-in** (the timer; click for off, 1 bar, 2 bars):
+  and stops. **Count-in** (click for off, 1 bar, 2 bars; the button says
+how many):
   bars of click before recording starts, with nothing played or recorded
   until the top (the position shows them as bar 0, in yellow). The
   count-in clicks even with the metronome off (a setting). A hit a little
@@ -761,9 +786,8 @@ icons whose colour shows their state.
 - The **sequence**: pick one of the 32 (those with notes are marked), or
   step with the arrows.
 - **Pattern | Song**: play the sequence shown, or the song's steps one
-  after another (the Song tab has the same switch). Beside it, **launch**:
-  when a sequence picked while playing takes over — **At once**, the
-  **Next beat**, the **Next bar** or at the **Sequence end**.
+  after another. (When a sequence picked while playing takes over is set
+  in the Perform panel: **End**, **Bar**, **Beat** or **Now**.)
 - **Tempo**: drag it (right or up) to change it by 1 BPM, with **Shift**
   by 0.1; scroll it; double-click to type it. **Tap** in time to set it: it
   flashes with each tap, and the fourth starts playback a beat later,
@@ -771,17 +795,20 @@ icons whose colour shows their state.
   taps only change the tempo; a pause of 2 s starts again). The **time signature** (4/4, 3/4, 6/8... or
   any beats and unit) sets a bar's length: sequences' bars, the grid's
   bars, the metronome's accent, exports.
-- The **metronome**: on/off, and (the arrow) its level, its sound
+- The **metronome** (**Click**): on/off, and (the arrow) its level, its sound
   (**Beep**, **Wood**, **Stick**, **Cowbell**), **Accent the bar** (the
   bar's first beat higher), **Only while recording** (and counting in),
   and the count-in. Saved with the project.
-- **Play modes** (at the toolbar's right): the pads as pads, as a
-  keyboard of the selected pad, or as it at 16 velocities — as in the
-  Perform panel.
-- **Input quantize** (the magnet): on, recorded notes move toward the
-  grid shown beside it; the arrow sets the grid (1/4–1/64, triplets), the
-  **strength** (100%: onto the grid; 50%: half way) and **swing** (the
-  grid's off-beats pushed later).
+
+Elsewhere, near what they change:
+- **Play modes** (at the right of the pads area's header): the pads as
+  pads, as a keyboard of the selected pad, or as it at 16 velocities — as
+  in the Perform panel.
+- **Input quantize** (the magnet in the Sequence view, beside its
+  **Quantize**): on, recorded notes move toward the grid shown beside it;
+  the arrow sets the grid (1/4–1/64, triplets), the **strength** (100%:
+  onto the grid; 50%: half way) and **swing** (the grid's off-beats
+  pushed later).
 
 These settings are saved with the project.
 
@@ -797,7 +824,7 @@ For an audio track, its **audio input**: a channel of the interface (In 1,
 In 2...) or a stereo pair (In 1/2...), with its level along the row. A
 sampler track's light flashes green as its MIDI comes in and blue as its
 **MIDI out** (Perform panel: on, channel, note, and its own output port)
-goes out; the toolbar's light (click it for the MIDI settings) does the
+goes out; the status bar's MIDI lights do the
 same for all MIDI.
 
 **Arming**: every strip has **R**, and an armed pad a red dot. Selecting a
@@ -819,13 +846,15 @@ Linux `~/.config/pads`), or beside the app when a `settings.ini` is
 already there (a portable install, on a stick); the window shows which.
 It is a plain text file: what you write in it by hand (comments too)
 stays when Pads writes it back. The recent projects, browser favourites,
-plug-in list (`plugins.ini`) and window layout (`layout.ini`) sit beside
+plug-in list (`plugins.ini`) and window layout (`layout2.ini`) sit beside
 it.
 
 - **Appearance**: the theme (Dark, Light, Midnight, Graphite, Paper, and
   your own), every one of its colours (click a swatch), **Save as
   preset**; the **zoom** (50–300%: everything drawn larger or smaller, as
-  a browser zooms); the pads' waveforms; whether the layout is
+  a browser zooms); the **control size** (Auto, Compact 28 pt,
+  Comfortable 34 pt, Touch 44 pt: how tall buttons and fields are; Auto
+  is Comfortable in this layout); the pads' waveforms; whether the layout is
   remembered, and **Reset layout**.
 - **Audio**: the output and input interfaces, sample rate and buffer
   size (what each interface offers), then the interface's **channels**,
@@ -1117,14 +1146,14 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
-| `test_devices_panel.py` | the Devices panel: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (back to the one before when let go), their banks |
+| `test_devices_panel.py` | the Library's devices: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (back to the one before when let go), their banks |
 | `test_app_gaps.py` | the arrow keys moving between pads; Keyboard mode opening on C3's bank and bank A at C-2; the status bar; Edit > History jumping back and forward; MIDI exported and read back; new pads' own colours |
 | `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
 | `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
 | `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
-| `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song and launch setting |
+| `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song, the launch setting (in Perform) |
 | `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
@@ -1132,6 +1161,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
+| `test_layout.py` | the default window at the Comfortable size (the other tests run at Compact, `--control-size compact`, the size their positions were written for): the pads area folded to a bar and unfolded by a pad and by its button, one search finding a file and a device, Cmd+L, the control size in Settings |
 | `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |

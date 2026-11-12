@@ -1,5 +1,5 @@
-"""A CLAP instrument on a pad: found by a scan, dragged from the Devices
-panel onto a pad, played through the mixer, given a lane (one undo
+"""A CLAP instrument on a pad: found by a scan, dragged from the Library
+onto a pad, played through the mixer, given a lane (one undo
 step). Saving its state: tests/pads_model. Needs the test plug-ins
 (./scripts/clap.sh); skips without them."""
 
@@ -23,7 +23,7 @@ def scanned(app):
 
 def test_plugin_instrument_dragged_onto_a_pad(scanned):
     app = scanned
-    app.click("  Devices")
+    app.library_find("fire test sine")
     app.wait(3)
     app.drag("device Fire Test Sine", "pad A1", to_window="detail")
     p = app.pad(0)

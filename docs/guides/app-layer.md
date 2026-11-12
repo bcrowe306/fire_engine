@@ -125,7 +125,24 @@ command of it.
   and draws each open `Panel` in it. The first time (set
   `has_saved_layout` when your ImGui ini file already exists), panels dock
   where `panel_add` asked: the centre, left, right or bottom.
-  `workspace_reset_layout` puts them back.
+  `workspace_reset_layout` puts them back. Two fixed areas can sit beside
+  the dockspace: `left` (the whole height between the toolbar and the
+  status bar, `left_w` wide, its right edge dragged; shown while
+  `left_shown`) and `bottom` (beside it, `bottom_h` tall, its top edge
+  dragged; `bottom_folded` makes it a bar `bottom_folded_h` tall, and its
+  draw proc is told so). They are windows of their own, not viewport side
+  bars, so popups still have the whole window's height.
+- **Densities and text sizes.** `set_density(&p, .Comfortable)` makes
+  every control 28, 34 or 44 pt tall (Compact, Comfortable, Touch);
+  `text_push(.Label)` / `text_pop()` draw at a text size (Heading 18,
+  Body 15, Label 13, Caption 11).
+- **Accent.** `set_accent(&p, color)` draws the accent in another colour
+  (made to stand out from the surfaces, with text that reads on it):
+  Pads gives it the selected pad's. Zero alpha goes back to the theme's.
+- **Lit buttons and value bars.** `toggle` is a button lit when on, with
+  a light at its left; `value_bar` (and `number_drag`, the same without a
+  label) shows a label and a value inside a bar filled as far as the
+  value goes.
 
 - **Zoom.** `set_zoom(&p, 1.25)` draws the whole UI larger (fixed sizes
   too): ImGui sees a window that much smaller at that much more pixel

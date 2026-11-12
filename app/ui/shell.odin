@@ -297,12 +297,15 @@ toasts_destroy :: proc(ts: ^Toasts) {
 	delete(ts.log)
 }
 
-// Draws the toasts and ages them by this frame's time.
-toasts_draw :: proc(ts: ^Toasts) {
+// Draws the toasts at the bottom right of the rectangle `at`, `size` (the
+// viewport's work area if it is empty) and ages them by this frame's time.
+toasts_draw :: proc(ts: ^Toasts, at: im.Vec2 = {}, size: im.Vec2 = {}) {
 	t := current
 	vp := im.GetMainViewport()
+	area_pos, area_size := at, size
+	if size.x <= 0 do area_pos, area_size = vp.WorkPos, vp.WorkSize
 	dt := im.GetIO().DeltaTime
-	y := vp.WorkPos.y + vp.WorkSize.y - 16
+	y := area_pos.y + area_size.y - 16
 	#reverse for &x, i in ts.items {
 		x.age += dt
 		if x.age > x.life {
@@ -324,7 +327,7 @@ toasts_draw :: proc(ts: ^Toasts) {
 		ts_ := im.CalcTextSize(text)
 		w := ts_.x + 56
 		h := ts_.y + 22
-		pos := im.Vec2{vp.WorkPos.x + vp.WorkSize.x - w - 16, y - h}
+		pos := im.Vec2{area_pos.x + area_size.x - w - 16, y - h}
 		dl := im.GetForegroundDrawList()
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, col(with_alpha(t.surface, alpha)), t.radius_big)
 		im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, col(with_alpha(t.border, alpha)), t.radius_big)
@@ -381,7 +384,36 @@ Workspace :: struct {
 	// `statusbar(toolbar_user)`, `statusbar_h` tall.
 	statusbar:    proc(user: rawptr),
 	statusbar_h:  f32,
+	// An area along the bottom, above the status bar and under the panels,
+	// the whole window wide: drawn by `bottom(bottom_user, folded)`. Its
+	// top edge drags its height; folded, it is a bar `bottom_folded_h`
+	// tall. Its window is `bottom_title` ("Title###id": tests find its
+	// items by the id).
+	bottom:          proc(user: rawptr, folded: bool),
+	bottom_user:     rawptr,
+	bottom_title:    cstring,
+	bottom_h:        f32, // its height open, in points (0: 42% of the window at first)
+	bottom_folded_h: f32,
+	bottom_folded:   bool,
+	// An area along the left, between the toolbar and the status bar (the
+	// bottom area beside it): drawn by `left(left_user)`, `left_w` wide (its
+	// right edge drags), shown while `left_shown`. Its window is
+	// `left_title` ("Title###id").
+	left:       proc(user: rawptr),
+	left_user:  rawptr,
+	left_title: cstring,
+	left_w:     f32, // 0: 20% of the window at first
+	left_shown: bool,
+	center_pos, center_size: im.Vec2, // where the dockspace is (what the areas and bars leave), this frame
 }
+
+// The narrowest and the widest (of the window) the left area drags to.
+LEFT_MIN :: 200
+LEFT_MAX :: 0.4
+
+// The shortest and the tallest (of the window) the bottom area drags to.
+BOTTOM_MIN :: 160
+BOTTOM_MAX :: 0.75
 
 // Prepares a workspace.
 workspace_init :: proc(w: ^Workspace) {
@@ -440,7 +472,77 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 		if im.BeginViewportSideBar("##statusbar", im.GetMainViewport(), .Down, w.statusbar_h, flags) do w.statusbar(w.toolbar_user)
 		im.End()
 	}
-	w.dock_id = im.DockSpaceOverViewport(0, im.GetMainViewport(), {.PassthruCentralNode})
+	// The Library-like area on the left and the bottom area are windows of
+	// their own (not viewport side bars, which would shrink the work area
+	// popups are kept inside), and the dockspace fills what they leave.
+	vp := im.GetMainViewport()
+	area_pos, area_size := vp.WorkPos, vp.WorkSize // (under the toolbar, over the status bar)
+	fixed := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking, .NoCollapse, .NoBringToFrontOnFocus}
+	left_w: f32 = 0
+	if w.left != nil && w.left_shown {
+		if w.left_w <= 0 do w.left_w = vp.Size.x * 0.2
+		w.left_w = clamp(w.left_w, LEFT_MIN, max(vp.Size.x * LEFT_MAX, LEFT_MIN))
+		left_w = w.left_w
+		im.SetNextWindowPos(area_pos)
+		im.SetNextWindowSize({left_w, area_size.y})
+		im.SetNextWindowViewport(vp.id)
+		if im.Begin(w.left_title, nil, fixed) {
+			at, size := im.GetWindowPos(), im.GetWindowSize()
+			back := im.GetCursorScreenPos()
+			im.SetCursorScreenPos({at.x + size.x - 6, at.y})
+			im.InvisibleButton("##left_edge", {6, size.y})
+			name("left edge")
+			hot := im.IsItemHovered() || im.IsItemActive()
+			if hot do im.SetMouseCursor(.ResizeEW)
+			if im.IsItemActive() do w.left_w = clamp(w.left_w + im.GetIO().MouseDelta.x, LEFT_MIN, max(vp.Size.x * LEFT_MAX, LEFT_MIN))
+			im.SetCursorScreenPos(back)
+			im.DrawList_AddLine(im.GetWindowDrawList(), {at.x + size.x - 1, at.y}, {at.x + size.x - 1, at.y + size.y}, col(current.accent if hot else current.border), 2 if hot else 1)
+			w.left(w.left_user)
+		}
+		im.End()
+	}
+	bottom_h: f32 = 0
+	if w.bottom != nil {
+		if w.bottom_h <= 0 do w.bottom_h = vp.Size.y * 0.42
+		w.bottom_h = clamp(w.bottom_h, BOTTOM_MIN, max(vp.Size.y * BOTTOM_MAX, BOTTOM_MIN))
+		bottom_h = w.bottom_folded_h if w.bottom_folded else w.bottom_h
+		im.SetNextWindowPos({area_pos.x + left_w, area_pos.y + area_size.y - bottom_h})
+		im.SetNextWindowSize({area_size.x - left_w, bottom_h})
+		im.SetNextWindowViewport(vp.id)
+		if im.Begin(w.bottom_title, nil, fixed) {
+			at, size := im.GetWindowPos(), im.GetWindowSize()
+			dl := im.GetWindowDrawList()
+			hot := false
+			if !w.bottom_folded {
+				// The top edge: drag it to make the area taller or shorter.
+				back := im.GetCursorScreenPos()
+				im.SetCursorScreenPos(at)
+				im.InvisibleButton("##bottom_edge", {size.x, 6})
+				name("bottom edge")
+				hot = im.IsItemHovered() || im.IsItemActive()
+				if hot do im.SetMouseCursor(.ResizeNS)
+				if im.IsItemActive() do w.bottom_h = clamp(w.bottom_h - im.GetIO().MouseDelta.y, BOTTOM_MIN, max(vp.Size.y * BOTTOM_MAX, BOTTOM_MIN))
+				im.SetCursorScreenPos(back)
+			}
+			im.DrawList_AddLine(dl, at, {at.x + size.x, at.y}, col(current.accent if hot else current.border), 2 if hot else 1)
+			w.bottom(w.bottom_user, w.bottom_folded)
+		}
+		im.End()
+	}
+	// The dockspace, in a window of its own over the rest.
+	w.center_pos = {area_pos.x + left_w, area_pos.y}
+	w.center_size = {area_size.x - left_w, area_size.y - bottom_h}
+	im.SetNextWindowPos(w.center_pos)
+	im.SetNextWindowSize(w.center_size)
+	im.SetNextWindowViewport(vp.id)
+	im.PushStyleVar(.WindowRounding, 0)
+	im.PushStyleVar(.WindowBorderSize, 0)
+	im.PushStyleVarVec2(.WindowPadding, {0, 0})
+	im.Begin("##dockhost", nil, fixed + {.NoBackground, .NoNavFocus})
+	im.PopStyleVar(3)
+	w.dock_id = im.GetID("##workspace_dock")
+	im.DockSpace(w.dock_id, {0, 0}, {.PassthruCentralNode})
+	im.End()
 	if !w.built {
 		w.built = true
 		if !w.has_saved_layout do build_layout(w)
@@ -468,7 +570,7 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 		im.End()
 	}
 	if actions != nil do palette_draw(&w.palette, actions)
-	toasts_draw(&w.toasts)
+	toasts_draw(&w.toasts, w.center_pos, w.center_size) // (over the panels, clear of the bottom area)
 }
 
 // ImGuiDockNodeFlags_NoTabBar, an internal flag (bit 12): a node with no tab bar.
@@ -484,7 +586,7 @@ build_layout :: proc(w: ^Workspace) {
 	id := w.dock_id
 	im.DockBuilderRemoveNode(id)
 	im.DockBuilderAddNode(id, DOCK_NODE_DOCKSPACE)
-	im.DockBuilderSetNodeSize(id, vp.WorkSize)
+	im.DockBuilderSetNodeSize(id, w.center_size if w.center_size.x > 0 else vp.WorkSize)
 	used: [Dock]bool
 	for _, d in w.layout do used[d] = true
 	center := id

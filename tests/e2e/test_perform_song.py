@@ -40,10 +40,10 @@ def test_the_song(app, fixtures):
     app.click("Add the current sequence", window="song")
     app.click("Add the current sequence", window="song")
     assert app.state()["song_steps"] == 2
-    app.click("Song", window="song")  # the Pattern | Song switch
+    app.click("Song", window="##toolbar")  # the Pattern | Song switch
     assert app.state()["song_mode"]
     app.click("Loop: on (it goes round)")  # the transport's loop: the song's too
     assert not app.state()["loop"]
-    app.click("Pattern", window="song")
+    app.click("Pattern", window="##toolbar")
     assert not app.state()["song_mode"]
     app.expect_item("song step 2", window="song")

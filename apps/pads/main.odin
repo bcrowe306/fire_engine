@@ -87,7 +87,6 @@ App :: struct {
 	leave:     Leave_State,
 	template:  Template_Ui, // the Save as Template dialog
 	status:    Status_State, // the status bar's lights and load  // leaving a project with changes: the prompt; a crash's backup to offer
-	devices:   Devices_Ui,   // the Devices panel
 	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
 	seq:      Seq_State,
@@ -108,6 +107,7 @@ App :: struct {
 	editors:  [dynamic]Plugin_Editor, // plug-ins' own windows open
 	about:    About_State,
 	fake_interface: bool, // --fake-interface: the simulated driver has `fake_interfaces`
+	control_size:   Control_Size, // --control-size: the size controls are this run, whatever Settings says (Auto: as Settings says)
 	audio_fallback: bool, // the interface in the settings wasn't there at the start: the system's plays
 	plugin_pad: Plugin_Pad_Ui,
 	proj:     Project_State,
@@ -124,6 +124,7 @@ main :: proc() {
 	context.assertion_failure_proc = ui.crash_assertion
 	project, drive, out, headless, fake, profile, prefs := "", "", ".build/app/shots", false, false, 0, ""
 	fake_interface := false
+	control_size := Control_Size.Auto
 	control := -1
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
@@ -142,6 +143,7 @@ main :: proc() {
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
 		case "--prefs":    prefs = next(&i)
 		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
+		case "--control-size": control_size = control_size_parse(next(&i)) // (tests: the size their positions were written for)
 		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
 			fmt.println("Pads", version_text())
@@ -153,6 +155,7 @@ main :: proc() {
 	}
 	a := new(App)
 	a.fake_interface = fake_interface
+	a.control_size = control_size
 	a.dark, a.pad_waves = true, true
 	a.io.by_select = -1
 	a.peaks = make(map[app.Id][]ui.Peak)
@@ -177,7 +180,9 @@ main :: proc() {
 	}
 	p := &a.platform
 	layout := ""
-	if a.settings.layout do layout, _ = filepath.join({settings_folder(a), "layout.ini"})
+	// (layout2.ini: the panels as they are since the Library and the bottom
+	// area; a layout.ini from before has panels that are gone.)
+	if a.settings.layout do layout, _ = filepath.join({settings_folder(a), "layout2.ini"})
 	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0, ini_path = layout}) {
 		ui.platform_destroy(p)
 		os.exit(1)
@@ -338,6 +343,10 @@ frame :: proc(a: ^App) {
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
 	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys}
+	// The accent is the selected pad's colour (the theme's, on an empty pad).
+	sel := a.m.project.pads[a.selected]
+	ui.set_accent(&a.platform, ui.rgb(sel.color) if pm.pad_used(&a.m.project, a.selected) else {})
+	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)

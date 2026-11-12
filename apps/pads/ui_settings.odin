@@ -30,7 +30,8 @@ App_Settings :: struct {
 	presets:   [dynamic]ui.Theme, // the user's own (names owned)
 	zoom:      f32,
 	pad_waves: bool,
-	layout:    bool, // remember the window layout (layout.ini beside settings.ini)
+	control_size: Control_Size, // how large controls are
+	layout:    bool, // remember the window layout (layout2.ini beside settings.ini)
 	preset_name: [32]u8, // "Save as preset"
 	// Audio: what the device opens with; what the page has (Apply opens it);
 	// a change waiting to be kept.
@@ -169,6 +170,7 @@ settings_load :: proc(a: ^App) {
 	read_colors(ini_, "appearance.colors", &s.theme) // its edits
 	s.zoom = f32(app.ini_f64(ini_, "appearance", "zoom", 1))
 	s.pad_waves = app.ini_bool(ini_, "appearance", "pad_waveforms", true)
+	s.control_size = control_size_parse(app.ini_get(ini_, "appearance", "control_size") or_else "auto")
 	s.layout = app.ini_bool(ini_, "appearance", "remember_layout", true)
 	// Audio.
 	s.audio = {
@@ -236,6 +238,7 @@ settings_save :: proc(a: ^App) {
 	for t in s.presets do write_colors(ini, fmt.tprintf("theme.%s", t.name), t, {})
 	app.ini_set_f64(ini, "appearance", "zoom", f64(s.zoom))
 	app.ini_set_bool(ini, "appearance", "pad_waveforms", s.pad_waves)
+	app.ini_set(ini, "appearance", "control_size", CONTROL_SIZE_NAMES[s.control_size])
 	app.ini_set_bool(ini, "appearance", "remember_layout", s.layout)
 	app.ini_set(ini, "audio", "output", s.audio.output)
 	app.ini_set(ini, "audio", "input", s.audio.input)
@@ -394,11 +397,41 @@ set_string :: proc(s: ^string, v: string) {
 
 // --- applying -----------------------------------------------------------------------------------
 
+// How large controls are, as chosen in Settings: Auto lets the layout
+// decide.
+Control_Size :: enum u8 {
+	Auto,
+	Compact,
+	Comfortable,
+	Touch,
+}
+
+// How each control size is written in settings.ini.
+CONTROL_SIZE_NAMES := [Control_Size]string{.Auto = "auto", .Compact = "compact", .Comfortable = "comfortable", .Touch = "touch"}
+
+// A control size from its name in settings.ini (Auto if unknown).
+control_size_parse :: proc(s: string) -> Control_Size {
+	for n, k in CONTROL_SIZE_NAMES do if n == s do return k
+	return .Auto
+}
+
+// The density a control size gives (Auto: Comfortable, the size of the
+// default layout).
+density_for :: proc(c: Control_Size) -> ui.Density {
+	switch c {
+	case .Compact:     return .Compact
+	case .Touch:       return .Touch
+	case .Comfortable, .Auto: return .Comfortable
+	}
+	return .Comfortable
+}
+
 // The appearance where it shows: the theme, the zoom, the pads' waveforms.
 appearance_apply :: proc(a: ^App) {
 	s := &a.settings
 	ui.set_theme(&a.platform, s.theme)
 	ui.set_zoom(&a.platform, s.zoom)
+	ui.set_density(&a.platform, density_for(a.control_size if a.control_size != .Auto else s.control_size))
 	a.dark = ui.theme_is_dark(s.theme)
 	a.pad_waves = s.pad_waves
 }
@@ -535,9 +568,11 @@ draw_settings :: proc(a: ^App) {
 		return
 	}
 	// A modal window over the app (it dims behind it), sized to the app's.
+	// (The whole window's size, not the work area's: the Library and the
+	// pads area take theirs out of that.)
 	vp := im.GetMainViewport()
-	im.SetNextWindowSize({min(1040, vp.WorkSize.x - 80), max(min(680, vp.WorkSize.y - 80), vp.WorkSize.y * 0.85)}, .Appearing) // (tall: an interface's channel lists)
-	im.SetNextWindowPos({vp.WorkPos.x + vp.WorkSize.x / 2, vp.WorkPos.y + vp.WorkSize.y / 2}, .Appearing, {0.5, 0.5})
+	im.SetNextWindowSize({min(1040, vp.Size.x - 80), min(max(680, vp.Size.y * 0.85), vp.Size.y - 40)}, .Appearing) // (tall: an interface's channel lists)
+	im.SetNextWindowPos({vp.Pos.x + vp.Size.x / 2, vp.Pos.y + vp.Size.y / 2}, .Appearing, {0.5, 0.5})
 	if !im.IsPopupOpen("Settings###settings") do im.OpenPopup("Settings###settings")
 	if im.BeginPopupModal("Settings###settings", &s.open, {.NoCollapse}) {
 		if im.IsWindowAppearing() do refresh_devices(a)
@@ -737,6 +772,15 @@ page_appearance :: proc(a: ^App) -> (changed: bool) {
 	}
 	im.NewLine()
 	hint("Everything drawn larger or smaller, as a browser zooms.")
+	label("Control size")
+	size := int(s.control_size)
+	if ui.segmented("control size", {"Auto", "Compact", "Comfortable", "Touch"}, &size) {
+		s.control_size = Control_Size(size)
+		appearance_apply(a)
+		changed = true
+	}
+	ui.name("control size")
+	hint("Auto: as the layout suits (Comfortable in this one, Touch on a touch screen).")
 	label("Pad waveforms")
 	if ui.toggle("Show each pad's sound on it", &s.pad_waves) {
 		appearance_apply(a)
@@ -746,7 +790,7 @@ page_appearance :: proc(a: ^App) -> (changed: bool) {
 	if ui.toggle("Remember where panels are", &s.layout) do changed = true
 	im.SameLine(0, 16)
 	if im.Button("Reset layout") do ui.workspace_reset_layout(&a.ws)
-	hint("Remembered in layout.ini beside settings.ini (from the next start).")
+	hint("Remembered in layout2.ini beside settings.ini (from the next start).")
 	return
 }
 

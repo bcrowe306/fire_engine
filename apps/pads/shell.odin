@@ -74,6 +74,12 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "pad_waves", label = "Pad Waveforms", icon = ui.ICON_AUDIO_WAVEFORM, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); a.pad_waves = !a.pad_waves },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).pad_waves }})
+	add(acts, {id = "library", label = "Library", icon = ui.ICON_LIBRARY, chord = ui.MOD_CMD | i32(im.Key.L), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); a.ws.left_shown = !a.ws.left_shown },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).ws.left_shown }})
+	add(acts, {id = "fold_pads", label = "Fold the Pads Area", icon = ui.ICON_PANEL_BOTTOM_CLOSE, chord = ui.MOD_CMD | i32(im.Key.J), user = a,
+		run = proc(u: rawptr) { a := (^App)(u); a.ws.bottom_folded = !a.ws.bottom_folded },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).ws.bottom_folded }})
 	add(acts, {id = "reset_layout", label = "Reset Layout", icon = ui.ICON_LAYOUT_DASHBOARD, user = a,
 		run = proc(u: rawptr) { ui.workspace_reset_layout(&(^App)(u).ws) }})
 	for b in 0 ..< pm.BANKS {
@@ -235,6 +241,8 @@ draw_menu :: proc(user: rawptr) {
 		im.Separator()
 		ui.menu_action(&a.actions, "theme")
 		ui.menu_action(&a.actions, "pad_waves")
+		ui.menu_action(&a.actions, "library")
+		ui.menu_action(&a.actions, "fold_pads")
 		ui.menu_action(&a.actions, "reset_layout")
 		im.EndMenu()
 	}
@@ -248,17 +256,14 @@ draw_menu :: proc(user: rawptr) {
 setup_workspace :: proc(a: ^App) {
 	w := &a.ws
 	ui.workspace_init(w)
-	w.sizes[.Left] = 0.18
-		w.sizes[.Bottom] = 0.44
 	w.toolbar, w.toolbar_user, w.toolbar_h = draw_toolbar, a, TOOLBAR_H
 	w.statusbar, w.statusbar_h = draw_statusbar, STATUS_H
-	ui.panel_add(w, {id = "browser", title = "Browser", icon = ui.ICON_FOLDER, open = true, draw = draw_browser, user = a}, .Left)
-	ui.panel_add(w, {id = "devices", title = "Devices", icon = ui.ICON_BLOCKS, open = true, draw = draw_devices, user = a}, .Left)
+	w.left, w.left_user, w.left_title, w.left_shown = draw_browser, a, "Library###browser", true
 	ui.panel_add(w, {id = "sequence", title = "Sequence", icon = ui.ICON_LIST_MUSIC, open = true, draw = draw_sequence, user = a}, .Center)
 	ui.panel_add(w, {id = "song", title = "Song", icon = ui.ICON_LIST_ORDERED, open = true, draw = draw_song, user = a}, .Center)
 	ui.panel_add(w, {id = "mixer", title = "Mixer", icon = ui.ICON_SLIDERS_VERTICAL, open = true, draw = draw_mixer, user = a}, .Center)
 	ui.panel_add(w, {id = "perform", title = "Perform", icon = ui.ICON_KEYBOARD_MUSIC, open = true, draw = draw_perform, user = a}, .Center)
-	ui.panel_add(w, {id = "detail", title = "Devices", icon = ui.ICON_LAYOUT_GRID, open = true, draw = draw_detail, user = a, flags = {.NoScrollbar, .NoScrollWithMouse}, no_tab = true}, .Bottom)
+	w.bottom, w.bottom_user, w.bottom_title = draw_bottom, a, "Devices###detail"
 	ui.panel_focus(w, "sequence")
 }
 
@@ -969,7 +974,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "lfo":               show_detail(a, .Lfo)
 		case "effect", "effects": show_device(a, a.fx)
 		case "eq":                show_eq(a)
-		case "pads":              ui.panel_focus(&a.ws, "detail")
+		case "pads":              a.ws.bottom_folded = false
+		case "browser", "library", "devices": a.ws.left_shown = true
 		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
 		}
 		return true

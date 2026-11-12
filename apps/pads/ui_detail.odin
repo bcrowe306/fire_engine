@@ -76,7 +76,7 @@ show_device :: proc(a: ^App, fx: pm.Fx_Target) {
 		st.track, st.device = {.Pad, fx.index}, {.Instrument, 0}
 	}
 	st.show = 2
-	ui.panel_focus(&a.ws, "detail")
+	a.ws.bottom_folded = false
 }
 
 // Shows pad `index`'s chain (when it shows something else).
@@ -92,7 +92,7 @@ show_pad_chain :: proc(a: ^App, index: int) {
 show_eq :: proc(a: ^App) {
 	st := &a.detail
 	st.track, st.device, st.show = {.Pad, a.selected}, {.Eq, 0}, 2
-	ui.panel_focus(&a.ws, "detail")
+	a.ws.bottom_folded = false
 }
 
 // Width of the divider between the pads and the tabs.
@@ -103,7 +103,65 @@ show_eq :: proc(a: ^App) {
 show_detail :: proc(a: ^App, tab: Detail_Tab) {
 	st := &a.detail
 	st.track, st.device, st.tab, st.show = {.Pad, a.selected}, {.Instrument, 0}, tab, 2
-	ui.panel_focus(&a.ws, "detail")
+	a.ws.bottom_folded = false
+}
+
+// The bottom area, open (`draw_detail`) or folded (`draw_pad_bar`).
+draw_bottom :: proc(user: rawptr, folded: bool) {
+	a := (^App)(user)
+	if folded do draw_pad_bar(a)
+	else do draw_detail(a)
+}
+
+// The bottom area folded: the bank's 16 pads in a row, each its name and
+// colour (bright while it plays), and a button to unfold. Clicking a pad
+// selects it and unfolds on it; files and devices drop onto them as onto
+// the grid.
+draw_pad_bar :: proc(a: ^App) {
+	p := &a.m.project
+	t := ui.theme()
+	h := im.GetFrameHeight()
+	gap: f32 = 4
+	room := h + t.gap.x
+	w := max((im.GetContentRegionAvail().x - room - 15 * gap) / 16, 24)
+	dl := im.GetWindowDrawList()
+	ui.text_push(.Label)
+	for k in 0 ..< pm.PADS_PER_BANK {
+		index := a.bank * pm.PADS_PER_BANK + k
+		pad := &p.pads[index]
+		if k > 0 do im.SameLine(0, gap)
+		pos := im.GetCursorScreenPos()
+		im.PushIDInt(i32(index))
+		clicked := im.InvisibleButton("##barpad", {w, h})
+		label := pm.pad_label(index)
+		ui.name(fmt.tprintf("bar pad %s", label))
+		a.pad_rects[k] = {pos, {pos.x + w, pos.y + h}}
+		has := pm.pad_used(p, index)
+		lit := a.lit[index] > 0 || a.held[index]
+		c := ui.rgb(pad.color)
+		hovered := im.IsItemHovered()
+		bg := t.hover if hovered else t.raised
+		if has do bg = ui.mix(bg, c, 0.6 if lit else 0.25)
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
+		if has do im.DrawList_AddRectFilled(dl, {pos.x, pos.y + h - 3}, {pos.x + w, pos.y + h}, ui.col(c), t.radius, {.RoundCornersBottomLeft, .RoundCornersBottomRight})
+		if index == a.selected do im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(t.accent), t.radius, 1.5)
+		text := fmt.ctprintf("%s", pm.pad_name(pad) if has else label)
+		ts := im.CalcTextSize(text)
+		im.DrawList_PushClipRect(dl, {pos.x + 4, pos.y}, {pos.x + w - 4, pos.y + h}, true)
+		im.DrawList_AddText(dl, {pos.x + max((w - ts.x) / 2, 4), pos.y + (h - ts.y) / 2}, ui.col(t.text if has else t.text_dim), text)
+		im.DrawList_PopClipRect(dl)
+		if hovered do im.SetTooltip("%s", fmt.ctprintf("%s%s: click to select it and unfold", label, fmt.tprintf(" %s", pm.pad_name(pad)) if has else ""))
+		if clicked {
+			a.pad_sel, a.pad_anchor = {index}, index
+			select_pad(a, index, false)
+			show_pad_chain(a, index)
+			a.ws.bottom_folded = false
+		}
+		im.PopID()
+	}
+	ui.text_pop()
+	im.SameLine(0, t.gap.x)
+	if ui.icon_button(ui.ICON_CHEVRON_UP, "Unfold the pads and the sound (Cmd+J)") do a.ws.bottom_folded = false
 }
 
 // The bottom panel, as Ableton's detail view: the pad grid on the left,
@@ -127,7 +185,19 @@ draw_detail :: proc(user: rawptr) {
 	line := im.GetCursorScreenPos()
 	line_right := line.x + im.GetContentRegionAvail().x
 	device_tabs(a)
-	if st.track.kind == .Pad && st.device.kind == .Instrument && a.m.project.pads[st.track.index].kind == .Synth do draw_preset_bar(a, line_right, line.y)
+	// At the line's right: how the pads play, and folding the area away
+	// (a synth's presets before them).
+	fh := im.GetFrameHeight()
+	right_room := 4 * fh + 3 * 2 + 16
+	if st.track.kind == .Pad && st.device.kind == .Instrument && a.m.project.pads[st.track.index].kind == .Synth do draw_preset_bar(a, line_right - right_room, line.y)
+	{
+		back := im.GetCursorScreenPos()
+		im.SetCursorScreenPos({line_right - right_room + 16, line.y})
+		draw_play_modes(a)
+		im.SameLine(0, 2)
+		if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Fold the pads and the sound to a bar (Cmd+J)") do a.ws.bottom_folded = true
+		im.SetCursorScreenPos(back)
+	}
 	avail := im.GetContentRegionAvail()
 	// The pads: a square grid as tall as the panel, unless dragged wider or narrower.
 	header := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y * 2
