@@ -51,10 +51,10 @@ Linux, ARM and Windows, and pushed.
 - [x] **macOS**: a `.app` bundle (icon, Info.plist, nothing to bundle: it
   links only the system's) in a `.dmg` made with `dmgbuild`. Unsigned (an
   ad-hoc signature): first open is right-click > Open.
-- [ ] **Windows**: an installer made with Inno Setup (Start menu shortcut,
+- [x] **Windows**: an installer made with Inno Setup (Start menu shortcut,
   uninstaller), and a zip of the same files.
-- [ ] **Linux**: an AppImage and a `.deb` (x86-64 and ARM64).
-- [ ] **GitHub**: a tagged pre-release `v0.1.0-dev` with the packages and
+- [x] **Linux**: an AppImage and a `.deb` (x86-64 and ARM64).
+- [x] **GitHub**: a tagged pre-release `v0.1.0-dev` with the packages and
   release notes (`docs/release-notes.md`).
 - [x] `scripts/release/` builds each; `task release:<os>`.
 
