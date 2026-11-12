@@ -392,7 +392,7 @@ Workspace :: struct {
 	bottom:          proc(user: rawptr, folded: bool),
 	bottom_user:     rawptr,
 	bottom_title:    cstring,
-	bottom_h:        f32, // its height open, in points (0: 42% of the window at first)
+	bottom_h:        f32, // its height open, in points (0: 46% of the window at first)
 	bottom_folded_h: f32,
 	bottom_folded:   bool,
 	// An area along the left, between the toolbar and the status bar (the

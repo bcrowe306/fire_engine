@@ -224,6 +224,19 @@ Plug-ins), each with its own search, instead of one tree for both.
 - Preview-and-chop before loading (option B) was not chosen: chopping
   stays on the pad's Sample page.
 
+### Pads and device pages: decided (2026-11-12)
+
+- **Device area: option A**, the tabs kept, each page tidied to fit
+  without scrolling: its graph, its choices as one labelled row, its
+  knobs; the chop tools labelled; the synth's modulation sources only on
+  its Mod tab.
+- **A loaded pad shows**: its name, large; its waveform faint behind the
+  name; mute and solo; its kind (sampler, synth, slicer, audio, plug-in).
+  Not its note and number.
+- **An empty pad shows** a drop hint ("+") and its key (Z, X, ...).
+- **An empty pad's page** offers buttons to start one: Browse, Record
+  (an audio track), Synth, Slicer, Plug-in.
+
 ## Order of the redesign
 
 1. **The window layout**: Sequence as home, where the browser, device

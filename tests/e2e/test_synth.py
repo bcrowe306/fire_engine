@@ -31,6 +31,7 @@ def test_a_pad_becomes_a_synth_and_plays(app):
 def test_drag_a_source_onto_a_knob(app):
     synth_pad(app)
     tab(app, "Filter")
+    app.click("show sources", window="detail")  # (the sources, shown on every tab)
     app.drag("mod LFO 1", "Cutoff", to_window="detail")
     routes = app.pad(0)["synth"]["routes"]
     assert len(routes) == 1 and routes[0]["source"] == "LFO 1" and routes[0]["dest"] == "Filter 1 Cutoff", routes
@@ -140,6 +141,7 @@ def test_a_random_modulator(app):
     app.click("Lorenz")
     assert app.pad(0)["synth"]["params"]["Random 1 Style"] == 3
     tab(app, "Filter")
+    app.click("show sources", window="detail")
     app.drag("mod Random 1", "Cutoff", to_window="detail")
     routes = app.pad(0)["synth"]["routes"]
     assert routes[-1]["source"] == "Random 1" and routes[-1]["dest"] == "Filter 1 Cutoff", routes

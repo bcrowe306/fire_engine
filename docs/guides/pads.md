@@ -126,14 +126,20 @@ records.
   the bottom left (pad 1) up, as on an MPC. Click a pad, or
   press its key, to play it and select it. The keys sit as the pads do:
   `Z X C V` is the bottom row (pads 1–4), then `A S D F`, `Q W E R`, and
-  `1 2 3 4` the top (pads 13–16). Each pad shows:
-  - its sample's name at the top, centred (cut off at the pad's edge);
-  - its note in the middle: pad N is MIDI note N−1, so A1 is `C-2 · 0`
-    and H16 is `G8 · 127` (what a MIDI controller plays it with);
+  `1 2 3 4` the top (pads 13–16). A pad with a sound shows:
+  - its name, large, at the top (cut off at the pad's edge), and under it
+    its kind: sampler, synth, slicer (and its slices), audio, plug-in;
   - **M**ute (bottom left) and **S**olo (bottom right): the same switches
     as its mixer strip's;
-  - behind them, the sound's waveform (the region it plays); **View > Pad
-    Waveforms** turns these off.
+  - behind them, faint, the sound's waveform (the region it plays);
+    **View > Pad Waveforms** turns these off.
+
+  An empty pad shows a "+" (drop a sound here), its label and its key
+  (`A1 · Z`). Its note (pad N is MIDI note N−1: A1 is C-2, what a MIDI
+  controller plays it with) is in its tooltip. Selected, its page says
+  what to put on it: **Browse** (the Library's Browser), **Record** (an
+  audio track), **Synth**, **Slicer** (empty: a sound dropped on it is
+  sliced) or **Plug-in** (an instrument plug-in found).
 
   Right-click a pad for its colour: 24 swatches and a picker (also behind
   the colour button in the Global tab). The colour shows on the pad, its
@@ -220,8 +226,10 @@ records.
   file is left alone); drag across the wave to select. While the pad
   plays, a white playhead runs through the wave. The
   toolbar (it wraps when narrow):
-  - edits — crop, delete, silence, fade in and out, normalize, reverse,
-    trim silence, and put the selection on the next empty pad. Edits write
+  - edits, each a labelled button — **Crop**, **Delete**, **Silence**,
+    **Fade in** and **out**, **Normalize**, **Reverse**, **Trim** (silence
+    from both ends), and **To a pad** (the selection on the next empty
+    pad). Edits write
     a new file into the project and leave the original alone, so they undo;
   - **Chop** — at the transients (with a sensitivity) or into equal parts,
     onto consecutive pads, each playing its slice of the same file;
@@ -679,8 +687,8 @@ All MIDI too, by key rather than the drum map), pitch bend, the mod wheel
 and channel pressure included. The Pitch, Cutoff and Resonance lanes reach
 its transpose and filter 1.
 
-Its device has eight tabs; on the tab bar's line (or just under it) are
-the **sources**: E1–E6 (envelopes), L1–L8 (LFOs), R1–R4 (random), M1–M4 (macros), velocity,
+Its device has eight tabs; **Modulate**, at the tab line's right, shows
+(under the tabs, on every tab) the **sources**: E1–E6 (envelopes), L1–L8 (LFOs), R1–R4 (random), M1–M4 (macros), velocity,
 key, aftertouch, mod wheel, pitch bend and random. **Drag a source onto any
 knob** on any tab to modulate it: the knob gets a ring in the source's
 colour from its value to where the source takes it, and a dot shows where

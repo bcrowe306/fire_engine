@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:strings"
 import "core:math"
 
 import app "app:core"
@@ -43,7 +44,7 @@ draw_sample :: proc(user: rawptr) {
 	}
 	s := pm.pad_sample(m, i)
 	if s == nil {
-		im.TextDisabled("%s", fmt.ctprintf("No sample on %s", pm.pad_label(i)))
+		draw_empty_pad(a, i)
 		return
 	}
 	w := &a.wave
@@ -134,29 +135,32 @@ draw_tools :: proc(a: ^App) {
 	edit :: proc(a: ^App, e: pm.Audio_Edit, sel: [2]i64) {
 		if pm.edit_audio(&a.m, a.selected, e, sel) != .None do ui.toast(&a.ws.toasts, .Error, "That edit could not be made")
 	}
-	if ui.icon_button(ui.ICON_CROP, "Crop to the selection (or region)") do edit(a, .Crop, sel)
-	im.SameLine()
-	if !has_sel do im.BeginDisabled()
-	if ui.icon_button(ui.ICON_SCISSORS, "Delete the selection") do edit(a, .Delete, sel)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_VOLUME_X, "Silence the selection") do edit(a, .Silence, sel)
-	if !has_sel do im.EndDisabled()
-	im.SameLine()
-	if ui.icon_button(ui.ICON_TRENDING_UP, "Fade in over the selection") do edit(a, .Fade_In, sel)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_TRENDING_DOWN, "Fade out over the selection") do edit(a, .Fade_Out, sel)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_MAXIMIZE_2, "Normalize") do edit(a, .Normalize, sel)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_ARROW_LEFT_RIGHT, "Reverse the audio") do edit(a, .Reverse, sel)
-	im.SameLine()
-	if ui.icon_button(ui.ICON_SCAN_LINE, "Trim silence from both ends") do edit(a, .Trim, sel)
-	im.SameLine()
-	if !has_sel do im.BeginDisabled()
-	if ui.icon_button(ui.ICON_COPY_PLUS, "Put the selection on the next empty pad") {
+	// The edits, labelled (each named for tests by its tooltip).
+	tool :: proc(icon, label: string, tip: cstring) -> bool {
+		ui.text_push(.Label)
+		defer ui.text_pop()
+		text := fmt.ctprintf("%s  %s###%s", icon, label, tip)
+		ui.flow(ui.button_width(text), 4)
+		clicked := im.Button(text)
+		ui.name(string(tip))
+		if im.IsItemHovered({.AllowWhenDisabled}) do im.SetTooltip("%s", tip)
+		return clicked
+	}
+	if tool(ui.ICON_CROP, "Crop", "Crop to the selection (or region)") do edit(a, .Crop, sel)
+	im.BeginDisabled(!has_sel)
+	if tool(ui.ICON_SCISSORS, "Delete", "Delete the selection") do edit(a, .Delete, sel)
+	if tool(ui.ICON_VOLUME_X, "Silence", "Silence the selection") do edit(a, .Silence, sel)
+	im.EndDisabled()
+	if tool(ui.ICON_TRENDING_UP, "Fade in", "Fade in over the selection") do edit(a, .Fade_In, sel)
+	if tool(ui.ICON_TRENDING_DOWN, "Fade out", "Fade out over the selection") do edit(a, .Fade_Out, sel)
+	if tool(ui.ICON_MAXIMIZE_2, "Normalize", "Normalize") do edit(a, .Normalize, sel)
+	if tool(ui.ICON_ARROW_LEFT_RIGHT, "Reverse", "Reverse the audio") do edit(a, .Reverse, sel)
+	if tool(ui.ICON_SCAN_LINE, "Trim", "Trim silence from both ends") do edit(a, .Trim, sel)
+	im.BeginDisabled(!has_sel)
+	if tool(ui.ICON_COPY_PLUS, "To a pad", "Put the selection on the next empty pad") {
 		if b := pm.bounce_to_pad(m, i, sel); b >= 0 do a.selected = b
 	}
-	if !has_sel do im.EndDisabled()
+	im.EndDisabled()
 
 	// Chop.
 	segw := ui.button_width("Transients") + ui.button_width("Equal") + 8
@@ -239,4 +243,39 @@ draw_take :: proc(a: ^App, i: int) {
 	avail := im.GetContentRegionAvail()
 	ui.waveform("wave", w.peaks, w.frames, &w.view, nil, &w.selection, {avail.x, max(avail.y - 4, 80)}, ui.rgb(pad.color), head, {pyramid = &w.pyramid})
 	item_menu(a, {kind = .Take, index = i}, "##takemenu")
+}
+
+// An empty pad's page: what to put on it. Browse (the Library, to drop a
+// sound on it), Record (an audio track), Synth, Slicer (empty: a sound
+// dropped on it is sliced), or a plug-in instrument.
+draw_empty_pad :: proc(a: ^App, i: int) {
+	ui.text_push(.Heading)
+	im.Text("%s", fmt.ctprintf("%s is empty", pm.pad_label(i)))
+	ui.text_pop()
+	im.TextDisabled("Drop a sound on it, or start one:")
+	im.Spacing()
+	choice :: proc(label: cstring, tip: cstring) -> bool {
+		clicked := im.Button(label, {0, im.GetFrameHeight() * 1.6})
+		ui.name(string(label)[strings.index(string(label), "  ") + 2:] if strings.contains(string(label), "  ") else string(label))
+		if im.IsItemHovered() do im.SetTooltip("%s", tip)
+		return clicked
+	}
+	if choice(ui.ICON_FOLDER_OPEN + "  Browse", "Show the Library's Browser: drag a sound onto the pad, or select it and press Enter") do library_show(a, 0)
+	im.SameLine()
+	if choice(ui.ICON_MIC + "  Record", "Make it an audio track, to record into") do put_device(a, i, "inst audio")
+	im.SameLine()
+	if choice(ui.ICON_AUDIO_WAVEFORM + "  Synth", "Make it a synth") do put_device(a, i, "inst synth")
+	im.SameLine()
+	if choice(ui.ICON_SCISSORS + "  Slicer", "Make it an empty slicer: a sound dropped on it is sliced, one slice a key") do put_device(a, i, "inst slicer")
+	im.SameLine()
+	if choice(ui.ICON_PLUG + "  Plug-in", "A plug-in instrument on it") do im.OpenPopup("##emptyplugins")
+	if im.BeginPopup("##emptyplugins") {
+		insts := plugin_instruments(a)
+		for e, k in insts do if im.MenuItem(fmt.ctprintf("%s###pi%d", e.name, k)) do put_device(a, i, fmt.tprintf("clapi %d", k))
+		if len(insts) == 0 {
+			im.TextDisabled("No plug-in instruments found yet")
+			if im.MenuItem("Find plug-ins… (Settings)") do a.settings.open, a.settings.page = true, .Plugins
+		}
+		im.EndPopup()
+	}
 }

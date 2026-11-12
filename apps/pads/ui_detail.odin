@@ -220,7 +220,7 @@ draw_detail :: proc(user: rawptr) {
 	avail := im.GetContentRegionAvail()
 	// The pads: a square grid as tall as the panel, unless dragged wider or narrower.
 	header := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y * 2
-	auto := avail.y - header + 24
+	auto := min(avail.y - header + 24, 340) // (square, but no wider than leaves the device room)
 	w := st.pads_width if st.pads_width > 0 else auto
 	w = clamp(w, 260, max(avail.x * 0.6, 260))
 	if im.BeginChild("##pads", {w, avail.y}, {}, {.NoScrollbar, .NoScrollWithMouse}) do draw_pads(a)

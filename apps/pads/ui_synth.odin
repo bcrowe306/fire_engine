@@ -40,6 +40,7 @@ Synth_Ui :: struct {
 	comp_band: int,      // the compressor band its knobs set
 	eq_curve: Eq_Curve,
 	fx_filter_curve: Filter_Curve,
+	sources:  bool, // the modulation sources shown on every tab (the Modulate button), to drag onto knobs
 }
 
 // The drag-and-drop payload a source chip carries: a `synth.Mod_Source`.
@@ -169,14 +170,14 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 	shown := fmt.ctprintf("%s", param_text(spec, v))
 	step: f32 = 1 if spec.curve == .Indexed else 0
 	if a.param_host.slot { // (an effect slot: no modulation)
-		e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step)
+		e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, size = SYNTH_KNOB)
 		if e.changed do host_set(a, id, v, spec.name)
 		if e.ended do app.seal(&m.history)
 		return
 	}
 	routes := pm.synth_routes_to(m, i, id)
 	knob_target(a, sound_param_target(i, id))
-	e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, overlap = len(routes) > 0)
+	e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, overlap = len(routes) > 0, size = SYNTH_KNOB)
 	knob_target(a, {})
 	knob_id := im.GetItemID()
 	if e.changed do pm.set_synth_value(m, i, id, v, spec.name)
@@ -194,7 +195,7 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 	// The rings: each route's span from the value, a handle at its end.
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
-	c, r := ui.knob_geometry(label, pos)
+	c, r := ui.knob_geometry(label, pos, SYNTH_KNOB)
 	arc := ui.KNOB_ARC
 	frac :: proc(spec: ^synth.Param_Spec, x: f32) -> f32 { return clamp((x - spec.min) / (spec.max - spec.min), 0, 1) }
 	angle :: proc(arc: [2]f32, f: f32) -> f32 { return arc[0] + (arc[1] - arc[0]) * f }
@@ -246,9 +247,15 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 		im.PopID()
 	}
 	// Back where the knob left the cursor.
-	im.SetCursorScreenPos({pos.x, pos.y + im.GetTextLineHeight() * 2 + ui.KNOB_SIZE + 6})
-	im.Dummy({ui.knob_width(label), 0})
+	ui.text_push(.Label)
+	im.SetCursorScreenPos({pos.x, pos.y + im.GetTextLineHeight() * 2 + SYNTH_KNOB + 6})
+	ui.text_pop()
+	im.Dummy({ui.knob_width(label, SYNTH_KNOB), 0})
 }
+
+// The synth's knobs' size (a little under the default: its pages have
+// many, and fit in the pads area's height).
+SYNTH_KNOB :: 34
 
 // A knob in a row: its label and parameter.
 Knob :: struct {
@@ -335,8 +342,20 @@ draw_synth_tabs :: proc(a: ^App) {
 		tabs_end = im.GetItemRectMax().x
 	}
 	im.EndTabBar()
-	// The sources, right-aligned on the tab bar's line (if there is room).
+	// At the tab line's right: Modulate, which shows the sources (small
+	// chips to drag onto any knob, on any tab) under it. (The Mod tab has
+	// them too.)
 	{
+		mw := ui.button_width("Modulate") + 24
+		back := im.GetCursorScreenPos()
+		im.SetCursorScreenPos({right - mw, line_y})
+		ui.toggle(ui.ICON_SPLINE + " Modulate##sources", &st.sources)
+		ui.name("show sources")
+		if im.IsItemHovered() do im.SetTooltip("The modulation sources, to drag one onto any knob")
+		im.SetCursorScreenPos(back)
+		right -= mw + 8
+	}
+	if st.sources && shown != .Mod { // (the Mod tab has them large)
 		chips := []synth.Mod_Source{.Env_1, .Env_2, .Env_3, .Env_4, .Env_5, .Env_6, .Lfo_1, .Lfo_2, .Lfo_3, .Lfo_4, .Lfo_5, .Lfo_6, .Lfo_7, .Lfo_8, .Random_1, .Random_2, .Random_3, .Random_4, .Macro_1, .Macro_2, .Macro_3, .Macro_4, .Velocity, .Note, .Aftertouch, .Mod_Wheel, .Pitch_Wheel, .Random}
 		w: f32 = 0
 		for s in chips do w += mini_chip_width(s) + 1
@@ -469,11 +488,6 @@ draw_synth_osc :: proc(a: ^App) {
 		ui.name("edit wavetable")
 		im.SameLine(0, 14)
 		synth_choice(a, synth.osc_param(o, .Destination), DESTINATION_NAMES, 110, "##dest")
-		ui.flow(100, 14)
-		synth_toggle(a, "Key track##osc", synth.osc_param(o, .Keytrack))
-		ui.flow(190, 14)
-		synth_choice(a, synth.osc_param(o, .Spectral_Morph), MORPH_NAMES, 190, "##morph", "Morph: ")
-		ui.name("spectral morph")
 	} else {
 		synth_toggle(a, "On##smp", synth.sample_param(.On))
 		im.SameLine(0, 14)
@@ -495,7 +509,6 @@ draw_synth_osc :: proc(a: ^App) {
 		im.SameLine(0, 10)
 		synth_toggle(a, "Bounce##smp", synth.sample_param(.Bounce))
 	}
-	im.Spacing()
 	avail := im.GetContentRegionAvail()
 	view_w := avail.x * 0.28
 	view_h := max(avail.y - 8, 120)
@@ -506,14 +519,20 @@ draw_synth_osc :: proc(a: ^App) {
 	w := avail.x - view_w - 14 - im.GetStyle().ScrollbarSize
 	if st.osc < 3 {
 		col := pos.x + view_w + 14
-		synth_choice(a, synth.osc_param(o, .Stack), STACK_NAMES, 128, "##stack", "Unison: ")
-		wrap_in(col, w, 128, 8)
-		synth_choice(a, synth.osc_param(o, .Warp), WARP_NAMES, 128, "##warp", "Warp: ")
+		// (Key track and Morph beside the view: the page fits in one height.)
+		synth_toggle(a, "Key track##osc", synth.osc_param(o, .Keytrack))
+		wrap_in(col, w, 150, 8)
+		synth_choice(a, synth.osc_param(o, .Spectral_Morph), MORPH_NAMES, 150, "##morph", "Morph: ")
+		ui.name("spectral morph")
+		wrap_in(col, w, 132, 8)
+		synth_choice(a, synth.osc_param(o, .Stack), STACK_NAMES, 132, "##stack", "Unison: ")
+		wrap_in(col, w, 118, 8)
+		synth_choice(a, synth.osc_param(o, .Warp), WARP_NAMES, 118, "##warp", "Warp: ")
 		wrap_in(col, w, 90, 8)
 		synth_drag(a, synth.osc_param(o, .Warp_Spread), "Spread %+.0f%%", 100, 90)
 		wrap_in(col, w, 90, 6)
 		synth_drag(a, synth.osc_param(o, .Warp_Phase), "Phase %.0f°", 360, 90)
-		im.SetCursorScreenPos({pos.x + view_w + 14, im.GetCursorScreenPos().y + 6})
+		im.SetCursorScreenPos({pos.x + view_w + 14, im.GetCursorScreenPos().y + 2})
 		synth_knob_row(a, w, {{"Level", synth.osc_param(o, .Level)}, {"Pan", synth.osc_param(o, .Pan)}, {"Frame", synth.osc_param(o, .Frame)}, {"Transpose", synth.osc_param(o, .Transpose)}, {"Tune", synth.osc_param(o, .Tune)}, {"Phase", synth.osc_param(o, .Phase)}, {"Random", synth.osc_param(o, .Random_Phase)}})
 		im.SetCursorScreenPos({pos.x + view_w + 14, im.GetCursorScreenPos().y + 4})
 		synth_knob_row(a, w, {{"Voices", synth.osc_param(o, .Unison)}, {"Detune", synth.osc_param(o, .Detune)}, {"Blend", synth.osc_param(o, .Blend)}, {"Stereo", synth.osc_param(o, .Stereo_Spread)}, {"Curve", synth.osc_param(o, .Detune_Power)}, {"Range", synth.osc_param(o, .Detune_Range)}, {"Warp", synth.osc_param(o, .Warp_Amount)}, {"Morph", synth.osc_param(o, .Spectral_Amount)}})

@@ -424,8 +424,8 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		w := size.x - 2 * inset
 		mid := pos.y + size.y / 2
 		half := size.y * 0.34
-		// Plainly visible, a lighter shade of the pad's colour.
-		wc := col(with_alpha(mix(face.tint, t.text, 0.45), 0.8))
+		// Faint behind the name: a lighter shade of the pad's colour.
+		wc := col(with_alpha(mix(face.tint, t.text, 0.35), 0.32))
 		// A filled bar per column: the loudest and quietest of the peaks it covers.
 		cols := max(int(w), 1)
 		n := len(face.peaks)
@@ -453,23 +453,29 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		badge_w = bsz.x + 10
 	}
 	im.DrawList_PushClipRect(dl, {pos.x + pad_x, pos.y}, {max_.x - pad_x, max_.y}, true)
+	// With a sound: its name, large, at the top, and under it the middle
+	// line (its kind), small. Without: the name (a "+": drop one here)
+	// in the middle, dim, and the middle line (its key) under it.
+	big := clamp(size.y * 0.2, TEXT_SIZE[.Body], 20)
 	if face.name != "" {
+		im.PushFontFloat(nil, big)
 		nc := strings.clone_to_cstring(face.name, context.temp_allocator)
 		ns := im.CalcTextSize(nc)
 		x := pos.x + max((size.x - ns.x) / 2, pad_x) // too long: from the left, cut at the right
+		y := pos.y + pad_y if face.has_sound else pos.y + (size.y - ns.y) / 2 - (TEXT_SIZE[.Caption] / 2 if face.middle != "" else 0)
 		if badge_w > 0 do im.DrawList_PushClipRect(dl, {pos.x + pad_x, pos.y}, {max_.x - badge_w - 2, max_.y}, true)
-		im.DrawList_AddText(dl, {math.round(x), pos.y + pad_y}, col(text_c), nc)
+		im.DrawList_AddText(dl, {math.round(x), math.round(y)}, col(text_c), nc)
 		if badge_w > 0 do im.DrawList_PopClipRect(dl)
+		im.PopFont()
 	}
-	// The middle line (the note).
 	if face.middle != "" {
+		text_push(.Caption if !face.has_sound else .Label)
 		mc := strings.clone_to_cstring(face.middle, context.temp_allocator)
 		ms := im.CalcTextSize(mc)
-		at := im.Vec2{math.round(pos.x + max((size.x - ms.x) / 2, pad_x)), math.round(pos.y + (size.y - ms.y) / 2)}
-		if len(face.peaks) > 0 || len(face.notes) > 0 { // readable over the waveform (or notes): a faint backing just its size
-			im.DrawList_AddRectFilled(dl, {at.x - 3, at.y}, {at.x + ms.x + 3, at.y + ms.y}, col(with_alpha(fill, 0.55)), 3)
-		}
-		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.85) if face.lit || hit.held || face.has_sound else t.text_dim), mc)
+		y := pos.y + pad_y + big + 3 if face.has_sound else pos.y + (size.y + big) / 2 - 2
+		at := im.Vec2{math.round(pos.x + max((size.x - ms.x) / 2, pad_x)), math.round(y)}
+		im.DrawList_AddText(dl, at, col(with_alpha(t.text, 0.75) if face.lit || hit.held || face.has_sound else with_alpha(t.text_dim, 0.8)), mc)
+		text_pop()
 	}
 	im.DrawList_PopClipRect(dl)
 

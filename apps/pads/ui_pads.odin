@@ -44,8 +44,10 @@ draw_pads :: proc(user: rawptr) {
 		label := pm.pad_label(index)
 		face := ui.Pad_Face{
 			label     = fmt.tprintf("pad %s", label),
-			name      = pm.pad_name(pad) if has else label,
-			middle    = (ui.ICON_CIRCLE_DOT + " armed" if pm.track_armed(&a.m, index) else ui.ICON_MIC + " audio") if audio else pm.pad_note_name(index),
+			// Its name and its kind; empty, a "+" (drop a sound here), its
+			// label and its key.
+			name      = pm.pad_name(pad) if has else "+",
+			middle    = (ui.ICON_CIRCLE_DOT + " armed" if pm.track_armed(&a.m, index) else ui.ICON_MIC + " audio") if audio else (ui.ICON_AUDIO_LINES + " sampler" if has else fmt.tprintf("%s · %s", label, PAD_KEY_LABELS[k])),
 			tint      = ui.rgb(pad.color),
 			has_sound = has,
 			lit       = a.lit[index] > 0 || a.held[index],
@@ -61,6 +63,7 @@ draw_pads :: proc(user: rawptr) {
 		}
 		if has && a.pad_waves && !audio do face.peaks = pad_peaks(a, index)
 		if pad.kind == .Synth do face.middle = ui.ICON_AUDIO_WAVEFORM + " synth"
+		if pad.kind == .Plugin do face.middle = ui.ICON_PLUG + " plug-in"
 		if pad.kind == .Slicer do face.middle = fmt.tprintf("%s %d slices", ui.ICON_SCISSORS, pad.slicer.count) if pad.sample != 0 else ui.ICON_SCISSORS + " slicer"
 
 		switch a.play_mode {
