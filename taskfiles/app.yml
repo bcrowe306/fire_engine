@@ -25,8 +25,7 @@ vars:
   # What the build is: its commit (and the day), in the About box and --version.
   PADS_COMMIT:
     sh: 'git -C "{{.ROOT_DIR}}" rev-parse --short=7 HEAD 2>/dev/null || echo unknown'
-  PADS_DATE:
-    sh: 'date +%Y-%m-%d'
+  PADS_DATE: '{{now | date "2006-01-02"}}' # (Task's own: no `date` on Windows)
   # The Python `task deps` sets up (pytest for the e2e suite).
   E2E_PYTHON: '{{if eq OS "windows"}}{{.ROOT_DIR}}/.deps/venv/Scripts/python.exe{{else}}{{.ROOT_DIR}}/.deps/venv/bin/python{{end}}'
 
