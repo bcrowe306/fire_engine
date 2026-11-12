@@ -765,9 +765,12 @@ Plug-in effects have **Open editor** on their pages too.
 
 ## The transport
 
-The toolbar under the menus, centred, always showing: what is needed
-while playing. Play and stop are icons; Rec, Loop, Count-in and Click are
-labelled lit buttons.
+The toolbar under the menus, always showing: what is needed while
+playing. The transport (play, stop, Rec and Loop) sits at the centre of
+the window; the sequence, Pattern | Song and the position to its left;
+the tempo, Tap, the time signature, Count-in and Click to its right. Play
+and stop are icons; Rec, Loop, Count-in and Click are labelled lit
+buttons.
 
 - **Play** (green while playing) and **Stop**, or Space for both. Press
   **Stop** twice (or when stopped) to silence every sound still ringing.

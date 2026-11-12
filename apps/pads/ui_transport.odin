@@ -17,7 +17,7 @@ Transport_State :: struct {
 	tapped: f64, // when Tap was last pressed (for its flash)
 	stopped_at: f64, // when Stop was last pressed (a second press soon after silences everything)
 	silences: int,   // times Stop silenced everything (for tests)
-	flex: ui.Flex,   // the toolbar's row: its groups, centred
+	left, center, right: ui.Flex, // the toolbar's rows: what plays and where, the transport (centred on the window), tempo and click
 }
 
 // Height of the transport toolbar.
@@ -54,67 +54,24 @@ draw_toolbar :: proc(user: rawptr) {
 	im.PushStyleColorVec4(.FrameBgHovered, transmute(im.Vec4)t.raised)
 	im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)t.raised)
 	big := im.GetFrameHeight()
-	st.flex.justify, st.flex.gap = .Center, 16
+	st.left.justify, st.left.gap = .End, 16
+	st.center.justify, st.center.gap = .Start, 2
+	st.right.justify, st.right.gap = .Start, 16
 	win := im.GetWindowPos()
-	im.SetCursorScreenPos({win.x + im.GetStyle().WindowPadding.x, win.y})
-	ui.flex_begin(&st.flex, {im.GetWindowSize().x - 2 * im.GetStyle().WindowPadding.x, TOOLBAR_H})
-	ui.flex_next(&st.flex)
-
-	// Transport.
+	// Three rows: the transport (play, stop, record, loop) centred on the
+	// window, what plays and where to its left (packed against it), and
+	// the tempo, count-in and click to its right.
 	beat, playing := pm.timeline_beat(e)
-	if ui.icon_button(ui.ICON_PLAY, "Play (Space)", on = playing, color = t.ok, size = big) {
-		if !playing do pm.play(e)
-	}
-	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_SQUARE, "Stop (Space); press twice to silence every sound", size = big) {
-		// Pressed again soon after (or while stopped): every voice stops too.
-		if !playing || st.clock - st.stopped_at < 0.6 {
-			pm.silence_all(e)
-			st.silences += 1
-		}
-		pm.stop(e)
-		pm.capture_arm(m, &a.capture, false)
-		st.stopped_at = st.clock
-	}
-	im.SameLine(0, 2)
-	// Record: red whatever the accent, and blinking while it records.
-	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = st.clock) do toggle_record(a)
-	im.SameLine(0, 2)
-	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
-		n := tr
-		n.loop = !n.loop
-		pm.set_transport(m, .Loop, "Loop", n)
-		app.seal(&m.history)
-	}
-	im.SameLine(0, 2)
-	ci_tip := fmt.ctprintf("Count-in: %s (click to change)", "off" if tr.count_in == 0 else fmt.tprintf("%d bar%s", tr.count_in, "" if tr.count_in == 1 else "s"))
-	if tool_toggle(ui.ICON_TIMER if tr.count_in > 0 else ui.ICON_TIMER_OFF, fmt.tprintf("Count-in %d", tr.count_in) if tr.count_in > 0 else "Count-in", ci_tip, tr.count_in > 0, t.accent, big) {
-		n := tr
-		n.count_in = (n.count_in + 1) % 3
-		pm.set_transport(m, .Count_In, "Count-in", n)
-		app.seal(&m.history)
-	}
+	pad_x := im.GetStyle().WindowPadding.x
+	x0, width := win.x + pad_x, im.GetWindowSize().x - 2 * pad_x
+	side_gap: f32 = 28
+	cw := ui.flex_width(&st.center)
+	cx := x0 + (width - cw) / 2
 
-	// Where the playhead is.
-	ui.flex_next(&st.flex)
-	rel, _ := pm.position(e)
-	shown := beat if beat < 0 else rel
-	bar, bt, six := pm.position_of(p, shown)
-	seq := pm.current_sequence(m)
-	pos_text := fmt.ctprintf("%d.%d.%d", bar, bt, six) if playing else fmt.ctprintf("1.1.1")
-	im.PushFontFloat(a.platform.fonts.semibold, 17)
-	ps := im.CalcTextSize("88.8.8")
-	at := im.GetCursorScreenPos()
-	im.Dummy({ps.x + 8, big})
-	ui.name("position")
-	cur := im.CalcTextSize(pos_text)
-	pc := t.warn if beat < 0 && playing else t.text
-	im.DrawList_AddText(im.GetWindowDrawList(), {at.x + (ps.x + 8 - cur.x) / 2, at.y + (big - cur.y) / 2}, ui.col(pc), pos_text)
-	im.PopFont()
-	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Bar . beat . sixteenth%s; the sequence is %d bar%s", " (counting in)" if beat < 0 && playing else "", seq.bars, "" if seq.bars == 1 else "s"))
-
+	im.SetCursorScreenPos({x0, win.y})
+	ui.flex_begin(&st.left, {max(cx - side_gap - x0, 1), TOOLBAR_H})
+	ui.flex_next(&st.left)
 	// The sequence.
-	ui.flex_next(&st.flex)
 	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pm.select_slot(m, p.slot - 1)
 	im.SameLine(0, 0)
 	im.SetNextItemWidth(118)
@@ -145,10 +102,9 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = p.slot >= pm.SLOTS - 1) do pm.select_slot(m, p.slot + 1)
-
+	ui.flex_next(&st.left)
 	// What plays (the sequence, or the song), and when a sequence picked
 	// while playing takes over.
-	ui.flex_next(&st.flex)
 	mode := 1 if p.song_mode else 0
 	if ui.segmented("play_mode", {"Pattern", "Song"}, &mode) {
 		p.song_mode = mode == 1
@@ -156,9 +112,60 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("Play the sequence shown (Pattern) or the song's steps one after another (Song)")
 	// (When a sequence picked while playing takes over is in Perform.)
+	ui.flex_next(&st.left)
+	// Where the playhead is.
+	rel, _ := pm.position(e)
+	shown := beat if beat < 0 else rel
+	bar, bt, six := pm.position_of(p, shown)
+	seq := pm.current_sequence(m)
+	pos_text := fmt.ctprintf("%d.%d.%d", bar, bt, six) if playing else fmt.ctprintf("1.1.1")
+	im.PushFontFloat(a.platform.fonts.semibold, 17)
+	ps := im.CalcTextSize("88.8.8")
+	at := im.GetCursorScreenPos()
+	im.Dummy({ps.x + 8, big})
+	ui.name("position")
+	cur := im.CalcTextSize(pos_text)
+	pc := t.warn if beat < 0 && playing else t.text
+	im.DrawList_AddText(im.GetWindowDrawList(), {at.x + (ps.x + 8 - cur.x) / 2, at.y + (big - cur.y) / 2}, ui.col(pc), pos_text)
+	im.PopFont()
+	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Bar . beat . sixteenth%s; the sequence is %d bar%s", " (counting in)" if beat < 0 && playing else "", seq.bars, "" if seq.bars == 1 else "s"))
+	ui.flex_end(&st.left)
 
+	im.SetCursorScreenPos({cx, win.y})
+	ui.flex_begin(&st.center, {width, TOOLBAR_H})
+	ui.flex_next(&st.center)
+	// Transport.
+	if ui.icon_button(ui.ICON_PLAY, "Play (Space)", on = playing, color = t.ok, size = big) {
+		if !playing do pm.play(e)
+	}
+	im.SameLine(0, 2)
+	if ui.icon_button(ui.ICON_SQUARE, "Stop (Space); press twice to silence every sound", size = big) {
+		// Pressed again soon after (or while stopped): every voice stops too.
+		if !playing || st.clock - st.stopped_at < 0.6 {
+			pm.silence_all(e)
+			st.silences += 1
+		}
+		pm.stop(e)
+		pm.capture_arm(m, &a.capture, false)
+		st.stopped_at = st.clock
+	}
+	im.SameLine(0, 2)
+	// Record: red whatever the accent, and blinking while it records.
+	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = st.clock) do toggle_record(a)
+	im.SameLine(0, 2)
+	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
+		n := tr
+		n.loop = !n.loop
+		pm.set_transport(m, .Loop, "Loop", n)
+		app.seal(&m.history)
+	}
+	ui.flex_end(&st.center)
+
+	right := cx + cw + side_gap
+	im.SetCursorScreenPos({right, win.y})
+	ui.flex_begin(&st.right, {max(x0 + width - right, 1), TOOLBAR_H})
+	ui.flex_next(&st.right)
 	// Tempo: drag by 1 (Shift: 0.1), tap, and the time signature.
-	ui.flex_next(&st.flex)
 	bpm := p.bpm
 	te := ui.number_drag("tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", 104, fill = false)
 	if te.changed do pm.set_bpm(m, bpm)
@@ -224,9 +231,16 @@ draw_toolbar :: proc(user: rawptr) {
 		im.EndCombo()
 	}
 	if im.IsItemHovered() do im.SetTooltip("Time signature")
-
+	ui.flex_next(&st.right)
+	ci_tip := fmt.ctprintf("Count-in: %s (click to change)", "off" if tr.count_in == 0 else fmt.tprintf("%d bar%s", tr.count_in, "" if tr.count_in == 1 else "s"))
+	if tool_toggle(ui.ICON_TIMER if tr.count_in > 0 else ui.ICON_TIMER_OFF, fmt.tprintf("Count-in %d", tr.count_in) if tr.count_in > 0 else "Count-in", ci_tip, tr.count_in > 0, t.accent, big) {
+		n := tr
+		n.count_in = (n.count_in + 1) % 3
+		pm.set_transport(m, .Count_In, "Count-in", n)
+		app.seal(&m.history)
+	}
+	ui.flex_next(&st.right)
 	// The metronome: on/off, and its settings.
-	ui.flex_next(&st.flex)
 	if tool_toggle(ui.ICON_METRONOME, "Click", "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", e.metronome, t.accent, big) do e.metronome = !e.metronome
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Metronome settings") do im.OpenPopup("##metro")
@@ -273,8 +287,7 @@ draw_toolbar :: proc(user: rawptr) {
 		}
 		im.EndPopup()
 	}
-
-	ui.flex_end(&st.flex)
+	ui.flex_end(&st.right)
 	im.PopStyleColor(4)
 	im.PopStyleVar()
 	// A line under the bar.
