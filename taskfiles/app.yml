@@ -47,7 +47,7 @@ tasks:
       - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}{{.LINK}}"'
     cmds:
       - mkdir -p {{.OUT}}
-      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} -define:PADS_COMMIT={{.PADS_COMMIT}} -define:PADS_DATE={{.PADS_DATE}} -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
       - echo {{.OPT}}{{.LINK}} > {{.OUT}}/pads.opt
 
   gallery:

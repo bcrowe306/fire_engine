@@ -15,7 +15,7 @@ build_pads() {
 	for f in "$ROOT"/third_party/link/lib/*abl_link*; do [ -e "$f" ] && LINKC="on"; done
 	odin build "$ROOT/apps/pads" -collection:fire="$ROOT/f_engine" -collection:app="$ROOT/app" \
 		-collection:deps="$ROOT/vendor" -collection:padslink="$ROOT/apps/pads/link/$LINKC" \
-		-define:PADS_COMMIT="$COMMIT" -define:PADS_DATE="$DATE" \
+		-define:PADS_COMMIT="\"$COMMIT\"" -define:PADS_DATE="\"$DATE\"" \
 		${EXTRA_BUILD:-} -o:speed -debug -vet -strict-style -out:"$1"
 	echo "built $1 (Link: $LINKC)"
 }

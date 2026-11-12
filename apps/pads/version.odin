@@ -1,20 +1,28 @@
 package pads
 
 import "core:fmt"
+import "core:strings"
 
 import "app:ui"
 import im "deps:imgui"
 
-// Pads' version, and the commit and date it was built from (given by the
-// build: -define:PADS_COMMIT=... -define:PADS_DATE=...).
+// Pads' version, and the commit and date it was built from. The build
+// gives those quoted (-define:PADS_COMMIT='"ab12cd3"'), so a commit of
+// digits stays text (unquoted, 0123456 would be the number 123456).
 PADS_VERSION :: "0.1.0-dev"
-PADS_COMMIT :: #config(PADS_COMMIT, "unknown")
-PADS_DATE :: #config(PADS_DATE, "")
+@(private = "file") COMMIT_DEFINE :: #config(PADS_COMMIT, "unknown")
+@(private = "file") DATE_DEFINE :: #config(PADS_DATE, "")
+
+// The commit Pads was built from ("unknown" when the build didn't say).
+pads_commit :: proc() -> string { return strings.trim(COMMIT_DEFINE, "\"") }
+
+// The day it was built ("" when the build didn't say).
+pads_date :: proc() -> string { return strings.trim(DATE_DEFINE, "\"") }
 
 // The version as one line: "0.1.0-dev (ab12cd3, 2026-11-11)".
 version_text :: proc() -> string {
-	if PADS_DATE != "" do return fmt.tprintf("%s (%s, %s)", PADS_VERSION, PADS_COMMIT, PADS_DATE)
-	return fmt.tprintf("%s (%s)", PADS_VERSION, PADS_COMMIT)
+	if pads_date() != "" do return fmt.tprintf("%s (%s, %s)", PADS_VERSION, pads_commit(), pads_date())
+	return fmt.tprintf("%s (%s)", PADS_VERSION, pads_commit())
 }
 
 // The About box's state.
@@ -37,7 +45,7 @@ draw_about :: proc(a: ^App) {
 	im.Text("Pads")
 	im.PopFont()
 	im.Text("%s", fmt.ctprintf("Version %s", PADS_VERSION))
-	im.TextDisabled("%s", fmt.ctprintf("Built from %s%s", PADS_COMMIT, fmt.tprintf(", %s", PADS_DATE) if PADS_DATE != "" else ""))
+	im.TextDisabled("%s", fmt.ctprintf("Built from %s%s", pads_commit(), fmt.tprintf(", %s", pads_date()) if pads_date() != "" else ""))
 	im.Spacing()
 	im.TextWrapped("A pad sampler, sequencer and song arranger on the Fire Engine audio engine. A development release: things will change, and some will break.")
 	im.Spacing()
