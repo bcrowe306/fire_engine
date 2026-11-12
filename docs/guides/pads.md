@@ -398,10 +398,15 @@ records.
   channel, from its own output port). Projects from before each pad had
   its own give every pad the project's old note repeat and arpeggiator
   settings.
-- **Mixer** (middle tab): a channel strip, as in Logic, for every pad
-  with a sound (all banks; it scrolls sideways), then the buses (four to
-  start with, up to 16: the **+** adds one; they scroll when many) and
-  main, pinned on the right. Right-click a bus's name to **Rename…** (or
+- **Mixer** (middle tab): along its top, a bar of toggles for what the
+  strips show — **Inserts**, **EQ**, **Sends**, **I/O** (each lit when
+  shown, grey when not; hidden ones give the fader the room) — and
+  **Wide** or **Narrow** strips (narrow: more at once, the names their
+  labels, the fader's level in the peak readout's tooltip); kept in the
+  app's settings. Then a channel strip, as in Logic, for every pad with a
+  sound (all banks; it scrolls sideways), the buses right after them
+  (four to start with, up to 16: the **+** adds one; they scroll when
+  many), and main pinned on the right with its **meters column**. Right-click a bus's name to **Rename…** (or
   double-click it) or **Delete Bus** (what went to it goes to main; the
   buses after it move up a letter). Click strips' names with **Shift** (a
   range) or **Cmd** (one more) to select several: then moving one's
@@ -415,12 +420,14 @@ records.
   **Ungroup** (the pads go where the group went, the bus goes). The
   group's own strip is its bus's, with the other buses. From the top:
   - the pad's **EQ** curve (click it for the Effects tab, where the EQ is);
-  - its two **inserts** (a bus and main have five slots);
-  - its **sends**, one per bus (four show; with more buses they scroll):
-    drag a send up and down for its
-    level (Shift for fine), double-click to turn it on at 0 dB or off,
-    right-click for **Pre-fader** (it then ignores the fader, and shows
-    `pre`, its knob in yellow). A muted pad sends nothing;
+  - a block of rows, as many as the room has (the same on every strip;
+    more scroll): its two **inserts** (a bus and main have five slots) —
+    drag one onto another slot of the same strip to swap them (one undo
+    step) — and its **sends**, one per bus, each a bar of its level:
+    drag a send up and down for its level (Shift for fine), double-click
+    to turn it on at 0 dB or off, right-click for **Pre-fader** (it then
+    ignores the fader, and shows `pre`, its bar in yellow). A muted pad
+    sends nothing;
   - its **cue** send, while a cue output is set (Settings > Audio): how
     much of it goes to the headphones mix on top of main (a send's knob:
     double-click, right-click for pre-fader);
@@ -428,7 +435,11 @@ records.
   - two readouts: the fader's level, and the loudest peak since you last
     clicked it (red above 0 dB);
   - the **fader** (Logic's taper: finer near 0 dB; double-click for 0 dB)
-    beside the stereo meter and its dB scale;
+    beside the stereo meter and its dB scale. Each side's bar is its peak
+    with its **RMS** (the average) inside it, a line its held peak; green,
+    then amber, then red (dBFS: above -12 and 0; a K scale: above its 0
+    and +4). A strip with a compressor, gate or limiter shows its **gain
+    reduction** beside the meter, down from the top (0–24 dB);
   - **M**ute and **S**olo;
   - its **output**, right above its name: Main or a bus (click to
     choose). A bus's output is Main or another bus (one that would bring
@@ -438,6 +449,19 @@ records.
     the mixdown). One whose pair isn't open shows `(not open)` in amber
     and plays in main until it is;
   - the name on the pad's colour (click to select the pad).
+
+  **Main's meters column**: its **loudness** (EBU R128): short-term (3 s)
+  large, momentary (400 ms), and integrated since the last reset (click
+  it to start again); its **true peak** (between the samples too; red
+  over -1 dBTP; click to reset); its **phase correlation**, a bar from
+  -1 to +1 (green in phase, amber near 0, red out of phase: it thins or
+  cancels in mono); and a **stereo view** (a goniometer: mono straight up
+  and down, wide sideways, out of phase flat across).
+
+  **Settings > Appearance > Meters**: the scale (**dBFS**, or **K-12**,
+  **K-14**, **K-20**: their 0 that far under full scale), **RMS
+  emphasis** (the average bright and the peak dim), the **peak hold**
+  (0–10 s; 0: none) and how fast the bars **fall** (dB a second).
 
   Click a slot to edit it in the **Effects** tab: what it holds, on or
   off (a 15 ms fade), and its settings. The effects are:
@@ -1291,7 +1315,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Shift-click launching alone, Continue, Option-click not launching, Record to Song writing the launches into lanes, the main fader |
-| `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
+| `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader; with the inserts and EQ toggled off), outputs, inserts, the EQ display, the peak readout; the bar (narrow, a section off), main's meters (integrated reset, correlation, stereo) |
 | `test_perform_song.py` | a pad's MIDI page (play modes, its note repeat and arpeggiator), holding performance effects, the song and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |
 | `test_crawl.py` | a hunt for crashes: every item showing in each panel and tab clicked (left and right), and a browser file dragged onto every kind of target |

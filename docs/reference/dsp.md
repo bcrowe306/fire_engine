@@ -367,6 +367,23 @@ LIMITER_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(3)
 
 Parameter id of the `Limiter`'s release, in ms (1..2000, default 100).
 
+### LOUDNESS_SILENT
+
+```odin
+LOUDNESS_SILENT :: -144
+```
+
+The level a `Loudness_Meter` reports for nothing (no signal yet, or
+silence): far under any real level.
+
+### STEREO_POINTS
+
+```odin
+STEREO_POINTS :: 1024
+```
+
+Points the stereo analyser keeps for a goniometer.
+
 ### METER_CHANNELS
 
 ```odin
@@ -1612,6 +1629,92 @@ a DAC or a sample-rate conversion, inter-sample peaks can be up to about
 | `lookahead_ms` |  |
 | `sample_rate` |  |
 | `meter` | atomic: f64 bits of the gain reduction in dB at the end of the last block |
+
+### Loudness_Meter
+
+```odin
+Loudness_Meter :: struct {
+	shelf: K_Stage,
+	highpass: K_Stage,
+	block_len: int,
+	tp: [4][12]f64,
+	sum: [2]f64,
+	frames: int,
+	blocks: [30]f64,
+	at: int,
+	filled: int,
+	hist_power: [800]f64,
+	hist_count: [800]u32,
+	history: [2][12]f32,
+	hist_at: int,
+	tp_max: f32,
+	reset_seen: u32,
+	momentary: u32,
+	short_term: u32,
+	integrated: u32,
+	true_peak: u32,
+	reset: u32,
+}
+```
+
+Passes audio through unchanged and measures its loudness (EBU R128) and
+true peak. Read from any thread (`loudness_read`); reset the integrated
+loudness and the true peak's maximum with `loudness_reset`.
+
+| Field | Description |
+|-------|-------------|
+| `shelf` | Set by prepare. |
+| `highpass` |  |
+| `block_len` | frames in 100 ms |
+| `tp` | the interpolator's taps, a phase each |
+| `sum` | The audio thread's. the K-weighted Σ x² of this block so far |
+| `frames` |  |
+| `blocks` | each block's mean power (channels summed), newest at `at` |
+| `at` |  |
+| `filled` |  |
+| `hist_power` | the gated blocks' power, by loudness |
+| `hist_count` |  |
+| `history` | the last samples, for the interpolator |
+| `hist_at` |  |
+| `tp_max` |  |
+| `reset_seen` |  |
+| `momentary` | Atomic: f32 bits, what the reader reads. |
+| `short_term` |  |
+| `integrated` |  |
+| `true_peak` | linear, the largest since the last reset |
+| `reset` | raised by `loudness_reset` |
+
+### Stereo_Analyser
+
+```odin
+Stereo_Analyser :: struct {
+	decay: f64,
+	lr: f64,
+	ll: f64,
+	rr: f64,
+	skip: int,
+	corr: u32,
+	points: [1024][2]f32,
+	at: u32,
+}
+```
+
+Passes audio through unchanged and measures its first two channels'
+stereo image: their phase correlation (+1: the same, 0: unrelated, -1:
+one the other inverted), averaged over about 300 ms, and the latest
+`STEREO_POINTS` (left, right) pairs (every 4th frame) for a goniometer.
+Read from any thread.
+
+| Field | Description |
+|-------|-------------|
+| `decay` | per frame, set by prepare |
+| `lr` |  |
+| `ll` |  |
+| `rr` | the audio thread's running averages |
+| `skip` |  |
+| `corr` | atomic: f32 bits |
+| `points` | written by the audio thread (a torn read only shows a point late) |
+| `at` | atomic: where the next point goes |
 
 ### Meter
 
@@ -2965,6 +3068,61 @@ limiter_gain_reduction_db :: proc "contextless"(l: ^Limiter) -> f64
 ```
 
 **Realtime-safe** (callable on the audio thread). The limiter's gain reduction in dB at the end of its last block. Any thread.
+
+### loudness_create
+
+```odin
+loudness_create :: proc(allocator: mem.Allocator = context.allocator) -> (core.Node, ^Loudness_Meter)
+```
+
+Control thread. A loudness meter node (give it as many inputs as
+outputs; the first two channels are measured) and its handle, valid
+until the graph destroys the node.
+
+### loudness_read
+
+```odin
+loudness_read :: proc "contextless"(m: ^Loudness_Meter) -> (momentary: f32, short_term: f32, integrated: f32, true_peak: f32)
+```
+
+Any thread. The momentary (400 ms), short-term (3 s) and integrated
+loudness in LUFS (`LOUDNESS_SILENT` for none), and the true peak since
+the last reset (linear: 1 = 0 dBTP).
+
+### loudness_reset
+
+```odin
+loudness_reset :: proc "contextless"(m: ^Loudness_Meter)
+```
+
+Any thread. Starts the integrated loudness and the true peak's maximum
+again (from the audio thread's next block).
+
+### stereo_create
+
+```odin
+stereo_create :: proc(allocator: mem.Allocator = context.allocator) -> (core.Node, ^Stereo_Analyser)
+```
+
+Control thread. A stereo analyser node (give it as many inputs as
+outputs) and its handle, valid until the graph destroys the node.
+
+### stereo_correlation
+
+```odin
+stereo_correlation :: proc "contextless"(s: ^Stereo_Analyser) -> f32
+```
+
+Any thread. The phase correlation (-1..+1; 0 for silence).
+
+### stereo_points
+
+```odin
+stereo_points :: proc "contextless"(s: ^Stereo_Analyser, out: [][2]f32) -> int
+```
+
+Any thread. The latest points, oldest first, into `out` (as many as fit;
+`out` up to `STEREO_POINTS` long). Returns how many.
 
 ### meter_create
 

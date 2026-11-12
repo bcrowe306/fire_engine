@@ -384,3 +384,27 @@ old_effects_convert_and_play :: proc(t: ^testing.T) {
 	got := r2.m.project.pads[0].inserts[0]
 	testing.expect(t, got.kind == .Reverb && pm.slot_value(got, synth.effect_param(.Reverb, synth.Reverb_Field.Wet), 0) == 0.6, "saved")
 }
+
+@(test)
+main_measures_its_loudness_and_stereo :: proc(t: ^testing.T) {
+	r := rig_make(t, "main_loudness")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "long.wav", 440, 1.5))
+	render(r, 256)
+	mom, _, _, _ := pm.main_loudness(&m.engine)
+	testing.expect_value(t, mom, f32(-144)) // nothing yet
+	pm.hit(&m.engine, 0, true)
+	render(r, 48_000) // a second of it
+	short, integ, tp: f32
+	mom, short, integ, tp = pm.main_loudness(&m.engine)
+	testing.expectf(t, mom > -40 && mom < 0 && short > -40 && integ > -40, "a level (%v %v %v)", mom, short, integ)
+	testing.expectf(t, tp > 0.05 && tp <= 1.2, "a true peak (%v)", tp)
+	pts: [8][2]f32
+	corr, n := pm.main_stereo(&m.engine, pts[:])
+	testing.expectf(t, corr > 0.95 && n == 8, "a centred pad: in phase (%v)", corr)
+	pm.main_loudness_reset(&m.engine)
+	render(r, 2400)
+	_, _, integ, _ = pm.main_loudness(&m.engine)
+	testing.expect_value(t, integ, f32(-144))
+}

@@ -275,6 +275,15 @@ graph.set_param(g, id, dsp.REVERB_PARAM_DECAY_S, 4)  // the reverb's own
 - `meter_create()` passes audio through and returns a handle: `meter_read`
   gives each channel's peak and RMS since the last read, from any thread,
   for level meters.
+- `loudness_create()` measures loudness as EBU R128 has it (ITU-R
+  BS.1770: K-weighting, 100 ms blocks): `loudness_read` gives the
+  momentary (400 ms), short-term (3 s) and integrated loudness in LUFS
+  (gated: under -70 LUFS left out, then what is 10 LU under the rest) and
+  the true peak (4× oversampled) since `loudness_reset`. A stereo 1 kHz
+  sine at -23 dBFS reads -23 LUFS.
+- `stereo_create()` measures the stereo image: `stereo_correlation` (-1
+  to +1, over about 300 ms) and `stereo_points`, the latest left/right
+  pairs (every 4th frame) for a goniometer.
 - `pan_create()` is an equal-power stereo balance (`PAN_PARAM_POSITION`,
   -1..1): unity in the centre, so a centred pan passes audio unchanged.
 

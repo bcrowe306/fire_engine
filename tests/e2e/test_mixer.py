@@ -37,6 +37,10 @@ def test_faders_mute_solo_and_pan(app, fixtures):
 
 def test_sends_pre_and_post(app, fixtures):
     mixer(app, fixtures)
+    # The inserts and EQ hidden (the bar's toggles): the sends get the room.
+    app.click("Inserts: each strip's effects (click one to edit it below, drag to reorder)", window="mixer")
+    app.click("EQ: each strip's EQ curve (click it to edit below)", window="mixer")
+    assert not app.state()["mixer_view"]["inserts"]
     app.drag_by("A1 send B", 0, -150, window="mixer")
     assert app.pad(0)["sends"][1] > -10
     app.click("A1 send B", window="mixer", right=True)
@@ -65,3 +69,19 @@ def test_the_peak_readout_resets(app, fixtures):
     app.wait(20)
     assert app.pad(0)["level"] > 0
     app.click("A1 peak", window="mixer")
+
+
+def test_the_bar_and_main_meters(app, fixtures):
+    mixer(app, fixtures)
+    app.click("strip width", window="mixer", at=(0.75, 0.5))  # Narrow
+    assert app.state()["mixer_view"]["narrow"]
+    for k in ("eq", "sends", "io"):
+        assert app.state()["mixer_view"][k]
+    app.click("EQ: each strip's EQ curve (click it to edit below)", window="mixer")
+    assert not app.state()["mixer_view"]["eq"]
+    app.expect_item("A1 fader", window="mixer")
+    app.expect_item("main integrated", window="mixer")
+    app.expect_item("main correlation", window="mixer")
+    app.expect_item("main stereo", window="mixer")
+    app.click("main integrated", window="mixer")  # starts again
+    app.screenshot("mixer_narrow")

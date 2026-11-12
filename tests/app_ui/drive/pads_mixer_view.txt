@@ -1,0 +1,33 @@
+# The Mixer: its bar's sections and width, strips with send bars and
+# insert chips, the meters (peak, RMS, held peak, gain reduction on the
+# compressor), main's loudness, correlation and stereo view.
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+load 2 tests/app_ui/fixtures/loop.wav
+load 3 tests/app_ui/fixtures/kick.wav
+note 0 0 0.25 1
+note 0 1 0.25 1
+note 1 0.5 0.25 0.7
+note 2 0 1 1
+note 3 2 0.25 1
+insert 0 0 compressor
+insert 0 1 lowpass
+insert 2 0 reverb
+busfx 0 0 delay
+send 1 1 -6
+send 2 1 -12
+busfx 4 0 limiter
+panel mixer
+wait 5
+play
+wait 60
+screenshot mixer_wide
+mixer narrow
+wait 3
+screenshot mixer_narrow
+mixer wide
+mixer inserts off
+mixer eq off
+wait 3
+screenshot mixer_sends

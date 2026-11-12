@@ -584,6 +584,20 @@ target_slot :: proc(m: ^Model, t: Fx_Target) -> (Effect_Slot, bool) {
 	return {}, false
 }
 
+// Swaps the effects in slots `a` and `b` of one chain (a pad's inserts, a
+// bus's slots): one undo step.
+swap_slots :: proc(m: ^Model, a, b: Fx_Target) {
+	if a == b || a.kind != b.kind || a.index != b.index || (a.kind != .Pad && a.kind != .Bus) do return
+	sa, oka := target_slot(m, a)
+	sb, okb := target_slot(m, b)
+	if !oka || !okb do return
+	app.begin(&m.history, "Move Effect")
+	set_target_slot(m, a, sb, "Move Effect")
+	set_target_slot(m, b, sa, "Move Effect")
+	app.end(&m.history)
+	app.seal(&m.history)
+}
+
 // Puts `s` in the slot `t` points at, as one undo step named `name`.
 set_target_slot :: proc(m: ^Model, t: Fx_Target, s: Effect_Slot, name: string) {
 	switch t.kind {

@@ -2,6 +2,7 @@ package pads
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:math"
 import "core:strings"
 
 import app "app:core"
@@ -106,6 +107,9 @@ State :: struct {
 	launch_record: bool, // Record to Song is armed
 	launch_continue: bool, // launches carry on where the playhead is
 	main_volume: f32, // main's fader (dB)
+	mixer_view: Mixer_View, // the Mixer's sections shown, narrow or wide
+	loudness:   [4]f32, // main's momentary, short-term, integrated (LUFS) and true peak (dBTP)
+	correlation: f32,    // main's phase correlation
 	fx_params:  [dynamic][2]f32, // the effect being edited: its settings, (id, value) each
 	pads:       [dynamic]State_Pad, // the ones with a sound
 	buses:      [dynamic]State_Bus, // those in use (A...), then main
@@ -375,6 +379,12 @@ state_json :: proc(a: ^App) -> string {
 	s.launch_record = pm.launch_recording(m)
 	s.launch_continue = p.launch_continue
 	s.main_volume = p.main.volume
+	s.mixer_view = a.settings.mixer_view
+	{
+		mo, st, it, tp := pm.main_loudness(&m.engine)
+		s.loudness = {mo, st, it, f32(20 * math.log10(max(f64(tp), 1e-9)))}
+		s.correlation, _ = pm.main_stereo(&m.engine, nil)
+	}
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
 	s.clock_out, s.sync = a.settings.clock_out, enum_name(a.settings.sync) // (the setting: with no output port open nothing is sent)

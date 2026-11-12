@@ -32,6 +32,8 @@ App_Settings :: struct {
 	pad_waves: bool,
 	control_size: Control_Size, // how large controls are
 	layout:    bool, // remember the window layout (layout2.ini beside settings.ini)
+	meters:    Meter_Settings, // how the level meters read
+	mixer_view: Mixer_View, // the Mixer's strips: their sections shown, narrow or wide
 	preset_name: [32]u8, // "Save as preset"
 	// Audio: what the device opens with; what the page has (Apply opens it);
 	// a change waiting to be kept.
@@ -172,6 +174,19 @@ settings_load :: proc(a: ^App) {
 	s.pad_waves = app.ini_bool(ini_, "appearance", "pad_waveforms", true)
 	s.control_size = control_size_parse(app.ini_get(ini_, "appearance", "control_size") or_else "auto")
 	s.layout = app.ini_bool(ini_, "appearance", "remember_layout", true)
+	s.meters = {
+		scale    = meter_scale_parse(g(ini_, "meters", "scale", "dbfs")),
+		rms      = app.ini_bool(ini_, "meters", "rms_emphasis", false),
+		hold_s   = f32(clamp(app.ini_f64(ini_, "meters", "hold", 2), 0, 10)),
+		fall_dbs = f32(clamp(app.ini_f64(ini_, "meters", "fall", 24), 3, 96)),
+	}
+	s.mixer_view = {
+		inserts = app.ini_bool(ini_, "mixer", "inserts", true),
+		eq      = app.ini_bool(ini_, "mixer", "eq", true),
+		sends   = app.ini_bool(ini_, "mixer", "sends", true),
+		io      = app.ini_bool(ini_, "mixer", "io", true),
+		narrow  = app.ini_bool(ini_, "mixer", "narrow", false),
+	}
 	// Audio.
 	s.audio = {
 		output = strings.clone(g(ini_, "audio", "output", "")),
@@ -240,6 +255,15 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_bool(ini, "appearance", "pad_waveforms", s.pad_waves)
 	app.ini_set(ini, "appearance", "control_size", CONTROL_SIZE_NAMES[s.control_size])
 	app.ini_set_bool(ini, "appearance", "remember_layout", s.layout)
+	app.ini_set(ini, "meters", "scale", METER_SCALE_KEYS[s.meters.scale])
+	app.ini_set_bool(ini, "meters", "rms_emphasis", s.meters.rms)
+	app.ini_set_f64(ini, "meters", "hold", f64(s.meters.hold_s))
+	app.ini_set_f64(ini, "meters", "fall", f64(s.meters.fall_dbs))
+	app.ini_set_bool(ini, "mixer", "inserts", s.mixer_view.inserts)
+	app.ini_set_bool(ini, "mixer", "eq", s.mixer_view.eq)
+	app.ini_set_bool(ini, "mixer", "sends", s.mixer_view.sends)
+	app.ini_set_bool(ini, "mixer", "io", s.mixer_view.io)
+	app.ini_set_bool(ini, "mixer", "narrow", s.mixer_view.narrow)
 	app.ini_set(ini, "audio", "output", s.audio.output)
 	app.ini_set(ini, "audio", "input", s.audio.input)
 	app.ini_set_f64(ini, "audio", "sample_rate", s.audio.rate)
@@ -791,7 +815,63 @@ page_appearance :: proc(a: ^App) -> (changed: bool) {
 	im.SameLine(0, 16)
 	if im.Button("Reset layout") do ui.workspace_reset_layout(&a.ws)
 	hint("Remembered in layout2.ini beside settings.ini (from the next start).")
+	label("Meters")
+	mt := &s.meters
+	sc := int(mt.scale)
+	if ui.segmented("meter scale", {"dBFS", "K-12", "K-14", "K-20"}, &sc) {
+		mt.scale = Meter_Scale(sc)
+		changed = true
+	}
+	ui.name("meter scale")
+	im.SameLine(0, 12)
+	if ui.toggle("RMS emphasis", &mt.rms) do changed = true
+	if im.IsItemHovered() do im.SetTooltip("The RMS (average) bar bright and the peak dim, instead of the other way round")
+	hold := f64(mt.hold_s)
+	if he := ui.number_drag("meter hold", &hold, 0, 10, 0.5, 0.1, "Peak hold %.1f s", 150); he.changed || he.ended {
+		mt.hold_s = f32(hold)
+		changed = changed || he.ended
+	}
+	im.SameLine(0, 6)
+	fall := f64(mt.fall_dbs)
+	if fe := ui.number_drag("meter fall", &fall, 3, 96, 1, 0.5, "Fall %.0f dB/s", 140); fe.changed || fe.ended {
+		mt.fall_dbs = f32(fall)
+		changed = changed || fe.ended
+	}
+	hint("dBFS: -60 to +6, 0 the top of the digital scale. K-12, K-14, K-20 (Bob Katz's): 0 on the scale that far under full scale, for mixing to a loudness. Hold: how long the held peak stays (0: none); fall: how fast the bars come down.")
 	return
+}
+
+// How the level meters read (Settings > Appearance).
+Meter_Settings :: struct {
+	scale:    Meter_Scale,
+	rms:      bool, // the RMS bar the bright one
+	hold_s:   f32,  // how long a held peak stays (0: none)
+	fall_dbs: f32,  // how fast the bars fall (dB a second)
+}
+
+// A meter's scale: dBFS, or one of the K-system's (0 that many dB under
+// full scale).
+Meter_Scale :: enum u8 {
+	Dbfs,
+	K12,
+	K14,
+	K20,
+}
+
+// How a scale is written in settings.ini.
+METER_SCALE_KEYS := [Meter_Scale]string{.Dbfs = "dbfs", .K12 = "k12", .K14 = "k14", .K20 = "k20"}
+
+@(private)
+meter_scale_parse :: proc(s: string) -> Meter_Scale {
+	for k, sc in METER_SCALE_KEYS do if k == s do return sc
+	return .Dbfs
+}
+
+// The Mixer's strips: which sections show, and their width (the Mixer's
+// bar toggles them; kept in settings.ini).
+Mixer_View :: struct {
+	inserts, eq, sends, io: bool,
+	narrow:                 bool,
 }
 
 @(private)

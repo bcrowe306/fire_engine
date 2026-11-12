@@ -1042,6 +1042,20 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "metronome":
 		a.m.engine.metronome = len(w) < 2 || w[1] != "off"
 		return true
+	case "mixer": // mixer inserts|eq|sends|io on|off / mixer narrow|wide: the Mixer's bar
+		if len(w) < 2 do return false
+		v := &a.settings.mixer_view
+		on := len(w) < 3 || w[2] != "off"
+		switch w[1] {
+		case "inserts": v.inserts = on
+		case "eq":      v.eq = on
+		case "sends":   v.sends = on
+		case "io":      v.io = on
+		case "narrow":  v.narrow = true
+		case "wide":    v.narrow = false
+		case: return false
+		}
+		return true
 	case "launch":
 		// launch SLOT (in its column; stopped, it starts) / launch row R [BANK] /
 		// launch stop COLUMN|all / launch record on|off (Record to Song)

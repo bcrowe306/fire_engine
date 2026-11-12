@@ -268,6 +268,16 @@ arpeggiator as a pad's MIDI effects**, with **the play mode**, on its
 **MIDI page** (first in its chain), and **its MIDI setup** (Learn, MIDI
 out) there too.
 
+### Mixer: decided (2026-11-12)
+
+See docs/design/mixer.md. **The top area, tidied** (names whole, no gap,
+main pinned); **each strip section a toggle** in the Mixer's bar
+(Inserts, EQ, Sends, I/O); **narrow or wide** strips; **accurate meters**:
+peak with RMS, held peak, the highest peak, clip, gain reduction; main's
+**loudness (LUFS, true peak), correlation and stereo view** in a column
+beside it; **the meters' scale, emphasis, hold and fall in Settings**;
+an insert's click opens it below.
+
 ## Order of the redesign
 
 1. **The window layout**: Sequence as home, where the browser, device

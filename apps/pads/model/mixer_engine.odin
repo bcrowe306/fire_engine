@@ -117,6 +117,11 @@ Mixer_Nodes :: struct {
 	// preview), the cue's (a copy of main, cue sends, the click), and a
 	// direct out per output pair a bus or pad goes to.
 	out_main, out_cue: graph.Node_Id,
+	// Main's loudness meter and stereo analyser, after its meter (the
+	// analyser the end of main's chain: what the outputs take).
+	loud_id, stereo_id: graph.Node_Id,
+	loud:      ^dsp.Loudness_Meter,
+	stereo:    ^dsp.Stereo_Analyser,
 	out_pairs: [OUT_PAIRS]graph.Node_Id,
 	wired:     Out_Wiring, // what they are wired to now
 }
@@ -287,9 +292,16 @@ build_mixer :: proc(e: ^Engine) -> fc.Error {
 	main.dest = -1
 	e.mixer.out_main = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
 	e.mixer.out_cue = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
+	ln, loud := dsp.loudness_create()
+	e.mixer.loud_id = graph.add_node(g, ln, 2, 2) or_return
+	sn, stereo := dsp.stereo_create()
+	e.mixer.stereo_id = graph.add_node(g, sn, 2, 2) or_return
+	e.mixer.loud, e.mixer.stereo = loud, stereo
 	for c in 0 ..< 2 {
-		graph.connect(g, main.meter_id, c, e.mixer.out_main, c)
-		graph.connect(g, main.meter_id, c, e.mixer.out_cue, c) // (the cue: a copy of main, and more)
+		graph.connect(g, main.meter_id, c, e.mixer.loud_id, c)
+		graph.connect(g, e.mixer.loud_id, c, e.mixer.stereo_id, c)
+		graph.connect(g, e.mixer.stereo_id, c, e.mixer.out_main, c)
+		graph.connect(g, e.mixer.stereo_id, c, e.mixer.out_cue, c) // (the cue: a copy of main, and more)
 	}
 	for &b in e.mixer.buses[:BUSES] {
 		for c in 0 ..< 2 do graph.connect(g, b.meter_id, c, main.input, c)
@@ -486,7 +498,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 sync_freeze_tap :: proc(e: ^Engine) -> bool {
 	g := e.host.graph
 	mx := &e.mixer
-	main := mx.buses[BUSES].meter_id
+	main := mx.stereo_id // (the end of main's chain)
 	out := mx.out_main
 	want: graph.Node_Id
 	if e.export_solo.kind == .Freeze {
@@ -686,4 +698,24 @@ slot_reduction :: proc(e: ^Engine, t: Fx_Target) -> (db: f64, ok: bool) {
 	case .Limiter:    return dsp.limiter_gain_reduction_db((^dsp.Limiter)(f.inner)), true
 	}
 	return 0, false
+}
+
+// Main's loudness (EBU R128): momentary, short-term and integrated in LUFS
+// (`dsp.LOUDNESS_SILENT` for none), and its true peak since the last
+// reset (linear).
+main_loudness :: proc(e: ^Engine) -> (momentary, short_term, integrated, true_peak: f32) {
+	if e.mixer.loud == nil do return dsp.LOUDNESS_SILENT, dsp.LOUDNESS_SILENT, dsp.LOUDNESS_SILENT, 0
+	return dsp.loudness_read(e.mixer.loud)
+}
+
+// Starts main's integrated loudness and true peak again.
+main_loudness_reset :: proc(e: ^Engine) {
+	if e.mixer.loud != nil do dsp.loudness_reset(e.mixer.loud)
+}
+
+// Main's phase correlation (-1..+1), and its latest (left, right) points
+// into `points` (how many: up to `dsp.STEREO_POINTS`).
+main_stereo :: proc(e: ^Engine, points: [][2]f32) -> (correlation: f32, n: int) {
+	if e.mixer.stereo == nil do return 0, 0
+	return dsp.stereo_correlation(e.mixer.stereo), dsp.stereo_points(e.mixer.stereo, points)
 }
