@@ -17,12 +17,15 @@ Seq_State :: struct {
 	view:     ui.Roll_View,
 	grid:     pm.Grid, // snap and quantize
 	mode:     pm.Seq_Mode, // the tab: Notes (the default) or Automation (kept as you move around, saved with the project)
-	lane:     int,     // the Notes tab's lane: 0 = velocity, 1 = chance
+	lane:     int,     // the Notes tab's lane: 0 = velocity, 1 = chance, 2 = the selected pad's CC `cc`
+	cc:       int,     // ... which controller (0..127)
 	lane_hs:  [2]f32,  // the lane's height (dragged; [0] the Notes tab's, 0: its default)
 	param:    pm.Lane_Param, // the automation the Automation tab shows ...
 	auto_pad: int,     // ... of this pad (-1: the selected pad's)
+	target:   pm.Auto_Target, // ... or this target (any parameter; track .None: the pad lane above)
 	auto_tool: ui.Auto_Tool, // the Automation tab's tool
 	hide_notes: bool,  // the Automation tab draws no notes under the curve
+	learning: bool,    // Touch a control: the next knob or fader touched becomes the automation shown
 	selected: int,     // the note the lanes edit (an index into the sequence), or -1
 	sel:      [dynamic]pm.Seq_Note, // the selected notes (by value: they survive edits that keep them)
 	slot_was: int,
@@ -264,16 +267,41 @@ draw_sequence :: proc(user: rawptr) {
 	lane_at := im.GetCursorScreenPos()
 	im.SetCursorScreenPos({lane_at.x + 2, lane_at.y + 2})
 	ui.text_push(.Label)
-	if im.Button(fmt.ctprintf("%s %s###lanekind", "Velocity" if st.lane == 0 else "Chance", ui.ICON_CHEVRON_DOWN), {left - 6, 0}) do im.OpenPopup("##lanekinds")
+	kind := "Velocity" if st.lane == 0 else ("Chance" if st.lane == 1 else fmt.tprintf("CC %d", st.cc))
+	if im.Button(fmt.ctprintf("%s %s###lanekind", kind, ui.ICON_CHEVRON_DOWN), {left - 6, 0}) do im.OpenPopup("##lanekinds")
 	ui.text_pop()
 	ui.name("lane kind")
-	if im.IsItemHovered() do im.SetTooltip("What the lane shows: the notes' velocity or their chance")
+	if im.IsItemHovered() do im.SetTooltip("What the lane shows: the notes' velocity, their chance, or a MIDI CC of the selected pad")
 	if im.BeginPopup("##lanekinds") {
 		if im.Selectable("Velocity", st.lane == 0) do st.lane = 0
 		if im.Selectable("Chance", st.lane == 1) do st.lane = 1
+		im.Separator()
+		// The selected pad's CC lanes in this sequence, then a new one.
+		used: [128]bool
+		for c in s.ccs do if int(c.pad) == a.selected do used[c.cc] = true
+		for on, k in used do if on {
+			if im.Selectable(fmt.ctprintf("CC %d%s###cc%d", k, cc_suffix(k), k), st.lane == 2 && st.cc == k) do st.lane, st.cc = 2, k
+		}
+		new_cc := im.BeginMenu(ui.ICON_PLUS + "  CC…")
+		ui.name("new cc")
+		if new_cc {
+			for k in ([]int{1, 2, 7, 10, 11, 64, 71, 74}) {
+				if im.MenuItem(fmt.ctprintf("CC %d%s###ncc%d", k, cc_suffix(k), k)) do st.lane, st.cc = 2, k
+			}
+			im.Separator()
+			for hi in 0 ..< 8 do if im.BeginMenu(fmt.ctprintf("%d–%d###ccr%d", hi * 16, hi * 16 + 15, hi)) {
+				for k in hi * 16 ..< hi * 16 + 16 do if im.MenuItem(fmt.ctprintf("CC %d%s###nccx%d", k, cc_suffix(k), k)) do st.lane, st.cc = 2, k
+				im.EndMenu()
+			}
+			im.EndMenu()
+		}
 		im.EndPopup()
 	}
 	im.SetCursorScreenPos({lane_at.x + left, lane_at.y})
+	if st.lane == 2 {
+		draw_cc_lane(a, s, length, snap, {avail.x - left, lane_h})
+		return
+	}
 	le := ui.value_lane("lane", bars, 0, length, {avail.x - left, lane_h}, 0)
 
 	if le.index >= 0 && le.changed {
@@ -289,6 +317,65 @@ draw_sequence :: proc(user: rawptr) {
 		st.selected = i
 	}
 	if le.ended do app.seal(&m.history)
+}
+
+// A controller's usual name after its number (" · Cutoff"; "" for most).
+cc_suffix :: proc(cc: int) -> string {
+	switch cc {
+	case 1:  return " · Mod wheel"
+	case 2:  return " · Breath"
+	case 7:  return " · Volume"
+	case 10: return " · Pan"
+	case 11: return " · Expression"
+	case 64: return " · Sustain"
+	case 71: return " · Resonance"
+	case 74: return " · Cutoff"
+	}
+	return ""
+}
+
+// The Notes tab's CC lane: the selected pad's controller `a.seq.cc`, in
+// steps (0..127; each holds until the next), drawn and edited with the
+// note tools (Select clicks one in and drags it, Draw draws, Erase
+// sweeps). It goes to the pad's MIDI out and, on a plug-in pad, to its
+// instrument.
+draw_cc_lane :: proc(a: ^App, s: pm.Sequence, length, snap: f64, size: im.Vec2) {
+	m := &a.m
+	st := &a.seq
+	slot := m.project.slot
+	pad, cc := a.selected, st.cc
+	events, first := pm.cc_points(s, pad, cc)
+	view := make([]ui.Auto_Lane_Point, len(events), context.temp_allocator)
+	for c, i in events do view[i] = {beat = c.beat, value = f32(c.value) / 127}
+	tool: ui.Auto_Tool
+	switch st.tool {
+	case .Select, .Move: tool = .Select
+	case .Draw:          tool = .Draw
+	case .Erase:         tool = .Erase
+	}
+	beat, playing := pm.position(&m.engine)
+	t := ui.theme()
+	color := ui.rgb(m.project.pads[pad].color) if pm.pad_used(&m.project, pad) else t.accent
+	e := ui.auto_lane("cclane", view, 0, length, snap, size, tool, color, beat if playing else -1)
+	value_of :: proc(n: f32) -> u8 { return u8(clamp(n * 127 + 0.5, 0, 127)) }
+	if e.hover >= 0 && e.hover < len(events) do im.SetTooltip("%s", fmt.ctprintf("CC %d: %d", cc, events[e.hover].value))
+	if e.add && e.at.beat <= length {
+		pm.add_cc(m, slot, {beat = e.at.beat, pad = u8(pad), cc = u8(cc), value = value_of(e.at.value)})
+		app.seal(&m.history)
+	}
+	if e.moving >= 0 && e.moving < len(events) {
+		c := events[e.moving]
+		c.beat, c.value = clamp(e.to.beat, 0, length), value_of(e.to.value)
+		pm.set_cc(m, slot, first + e.moving, c)
+	}
+	if len(e.stroke) > 0 {
+		out := make([dynamic]pm.Seq_Cc, 0, len(e.stroke), context.temp_allocator)
+		b0, b1 := e.stroke[0].beat, e.stroke[len(e.stroke) - 1].beat
+		for sp in e.stroke do if sp.beat <= length do append(&out, pm.Seq_Cc{beat = sp.beat, pad = u8(pad), cc = u8(cc), value = value_of(sp.value)})
+		pm.replace_cc_range(m, slot, pad, cc, min(b0, b1), max(b0, b1), out[:])
+	}
+	if e.swept do pm.replace_cc_range(m, slot, pad, cc, e.swept_lo, e.swept_hi, nil)
+	if e.released do app.seal(&m.history)
 }
 
 // The pad the Automation tab shows (the one chosen in its menu, else the
@@ -310,13 +397,11 @@ draw_automation_view :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, n_r
 	st := &a.seq
 	t := ui.theme()
 	slot := m.project.slot
-	pad := auto_target_pad(a)
-	points, first := pm.lane_points(s, pad, st.param)
-	lo, hi := pm.lane_range(st.param)
-	norm :: proc(v, lo, hi: f32) -> f32 { return (v - lo) / (hi - lo) }
-	value_of :: proc(n, lo, hi: f32) -> f32 { return lo + clamp(n, 0, 1) * (hi - lo) }
+	l := current_lane(a)
+	pad := int(l.pad)
+	points, first := pm.lane_points_of(s, l)
 	view := make([]ui.Auto_Lane_Point, len(points), context.temp_allocator)
-	for p, i in points do view[i] = {beat = p.beat, value = norm(p.value, lo, hi), curve = p.curve}
+	for p, i in points do view[i] = {beat = p.beat, value = lane_norm(l, p.value), curve = p.curve}
 	// The notes beneath: only the rows that have some, each a band of the
 	// height (the first at the bottom, as in the grid).
 	ghosts := make([dynamic]ui.Ghost_Note, 0, len(notes), context.temp_allocator)
@@ -341,8 +426,8 @@ draw_automation_view :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, n_r
 	ui.text_push(.Caption)
 	h := avail.y
 	for k in 0 ..= 2 {
-		v := hi - (hi - lo) * f32(k) / 2
-		text := fmt.ctprintf("%s", lane_value_text(st.param, v))
+		v := lane_denorm(l, 1 - f32(k) / 2)
+		text := fmt.ctprintf("%s", lane_text(a, l, v))
 		ts := im.CalcTextSize(text)
 		y := pos.y + 4 + (h - 8) * f32(k) / 2 - ts.y / 2
 		y = clamp(y, pos.y, pos.y + h - ts.y)
@@ -350,27 +435,28 @@ draw_automation_view :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, n_r
 	}
 	ui.text_pop()
 	if len(view) > 0 && playing {
-		v := value_of(ui.auto_lane_value(view, beat), lo, hi)
-		im.DrawList_AddText(dl, {pos.x + 4, pos.y + h / 2 + 12}, ui.col(t.text), fmt.ctprintf("%s", lane_value_text(st.param, v)))
+		v := lane_denorm(l, ui.auto_lane_value(view, beat))
+		im.DrawList_AddText(dl, {pos.x + 4, pos.y + h / 2 + 12}, ui.col(t.text), fmt.ctprintf("%s", lane_text(a, l, v)))
 	}
 	im.SetCursorScreenPos({pos.x + left, pos.y})
-	color := ui.rgb(m.project.pads[pad].color) if pm.pad_used(&m.project, pad) else t.accent
+	color := t.accent
+	if (l.target.track == .None || l.target.track == .Pad) && pm.pad_used(&m.project, pad) do color = ui.rgb(m.project.pads[pad].color)
 	e := ui.auto_lane("auto", view, 0, length, snap, {avail.x - left, h}, st.auto_tool, color, beat if playing else -1, ghosts[:])
 	if e.hover >= 0 && e.hover < len(points) && e.moving < 0 {
 		p := points[e.hover]
 		bar, bt, six := pm.position_of(&m.project, p.beat)
-		im.SetTooltip("%s", fmt.ctprintf("bar %d.%d.%d · %s", bar, bt, six, lane_value_text(st.param, p.value)))
+		im.SetTooltip("%s", fmt.ctprintf("bar %d.%d.%d · %s", bar, bt, six, lane_text(a, l, p.value)))
 	}
 	if e.add && e.at.beat <= length {
-		pm.add_point(m, slot, {pad = u8(pad), param = st.param, beat = e.at.beat, value = value_of(e.at.value, lo, hi)})
+		pm.add_point(m, slot, {lane = l, beat = e.at.beat, value = lane_denorm(l, e.at.value)})
 		app.seal(&m.history)
 	}
 	if e.moving >= 0 && e.moving < len(points) {
 		p := points[e.moving]
-		p.beat, p.value = clamp(e.to.beat, 0, length), value_of(e.to.value, lo, hi)
+		p.beat, p.value = clamp(e.to.beat, 0, length), lane_denorm(l, e.to.value)
 		pm.set_point(m, slot, first + e.moving, p)
 		bar, bt, six := pm.position_of(&m.project, p.beat)
-		im.SetTooltip("%s", fmt.ctprintf("bar %d.%d.%d · %s", bar, bt, six, lane_value_text(st.param, p.value)))
+		im.SetTooltip("%s", fmt.ctprintf("bar %d.%d.%d · %s", bar, bt, six, lane_text(a, l, p.value)))
 	}
 	if e.bend >= 0 && e.bend < len(points) {
 		p := points[e.bend]
@@ -380,10 +466,10 @@ draw_automation_view :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, n_r
 	if len(e.stroke) > 0 {
 		pts := make([dynamic]pm.Auto_Point, 0, len(e.stroke), context.temp_allocator)
 		b0, b1 := e.stroke[0].beat, e.stroke[len(e.stroke) - 1].beat
-		for sp in e.stroke do if sp.beat <= length do append(&pts, pm.Auto_Point{pad = u8(pad), param = st.param, beat = sp.beat, value = value_of(sp.value, lo, hi)})
-		pm.replace_lane_range(m, slot, pad, st.param, min(b0, b1), max(b0, b1), pts[:])
+		for sp in e.stroke do if sp.beat <= length do append(&pts, pm.Auto_Point{lane = l, beat = sp.beat, value = lane_denorm(l, sp.value)})
+		pm.replace_lane_range_of(m, slot, l, min(b0, b1), max(b0, b1), pts[:])
 	}
-	if e.swept do pm.replace_lane_range(m, slot, pad, st.param, e.swept_lo, e.swept_hi, nil)
+	if e.swept do pm.replace_lane_range_of(m, slot, l, e.swept_lo, e.swept_hi, nil)
 	if e.released do app.seal(&m.history)
 	if e.menu >= 0 && e.menu < len(points) {
 		st.menu_target = {kind = .Point, slot = slot, index = first + e.menu}
@@ -463,36 +549,39 @@ draw_automation_tools :: proc(a: ^App) {
 	m := &a.m
 	st := &a.seq
 	s := pm.current_sequence(m)
-	pad := auto_target_pad(a)
-	im.SetNextItemWidth(220)
-	if ui.combo("##autotarget", fmt.ctprintf("%s · %s", pm.pad_label(pad), lane_label(a, pad, st.param))) {
+	cur := current_lane(a)
+	im.SetNextItemWidth(260)
+	if ui.combo("##autotarget", fmt.ctprintf("%s", lane_name(a, cur))) {
 		// The automations this sequence has.
-		seen := make(map[[2]int]bool, context.temp_allocator)
+		lanes := make([dynamic]pm.Lane, context.temp_allocator)
 		for pt in s.points {
-			key := [2]int{int(pt.pad), int(pt.param)}
-			if seen[key] do continue
-			seen[key] = true
-			on := int(pt.pad) == pad && pt.param == st.param
-			if im.Selectable(fmt.ctprintf("%s · %s###at%d_%d", pm.pad_label(int(pt.pad)), lane_label(a, int(pt.pad), pt.param), pt.pad, pt.param), on) {
-				st.auto_pad, st.param = int(pt.pad), pt.param
+			seen := false
+			for x in lanes do if pm.lane_equal(x, pt.lane) do seen = true
+			if !seen do append(&lanes, pt.lane)
+		}
+		for x, k in lanes {
+			if im.Selectable(fmt.ctprintf("%s###at%d", lane_name(a, x), k), pm.lane_equal(x, cur)) {
+				if x.target.track != .None do st.target = x.target
+				else do st.target, st.auto_pad, st.param = {}, int(x.pad), x.param
 			}
 		}
-		if len(seen) == 0 do im.TextDisabled("No automation in this sequence yet")
+		if len(lanes) == 0 do im.TextDisabled("No automation in this sequence yet")
 		im.Separator()
 		new_open := im.BeginMenu(ui.ICON_PLUS + "  New automation")
 		ui.name("new automation")
 		if new_open {
-			for i in 0 ..< pm.PADS do if pm.pad_used(&m.project, i) || i == a.selected {
-				if im.BeginMenu(fmt.ctprintf("%s  %s###np%d", pm.pad_label(i), pm.pad_name(&m.project.pads[i]) if pm.pad_used(&m.project, i) else "", i)) {
-					for lp in pm.Lane_Param do if lane_shown(a, i, lp) {
-						if im.MenuItem(fmt.ctprintf("%s###nl%d", lane_label(a, i, lp), int(lp))) do st.auto_pad, st.param = i, lp
-					}
-					im.EndMenu()
-				}
-			}
+			new_automation_items(a)
 			im.EndMenu()
 		}
+		if im.MenuItem(ui.ICON_POINTER + "  Touch a control…###learn") do st.learning = true
+		ui.name("touch a control")
 		im.EndCombo()
+	}
+	if st.learning {
+		im.SameLine(0, 10)
+		im.AlignTextToFramePadding()
+		im.TextColored(transmute(im.Vec4)ui.theme().warn, "Touch a knob or fader to automate it (Esc: cancel)")
+		if im.IsKeyPressed(.Escape, false) do st.learning = false
 	}
 	ui.name("automation")
 	tools := [5]struct { tool: ui.Auto_Tool, icon: string, tip: cstring }{

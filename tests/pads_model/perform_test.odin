@@ -10,6 +10,7 @@ import "core:testing"
 import app "app:core"
 import pm "../../apps/pads/model"
 import "fire:clip"
+import fc "fire:core"
 import kit "fire:testkit"
 
 @(test)
@@ -280,4 +281,72 @@ a_tracks_midi_input_plays_it_when_armed :: proc(t: ^testing.T) {
 	app.host_midi_inject(&r.host, {0x90, 0, 100})
 	out = render(r, 4800)
 	testing.expectf(t, kit.peak(out[0][:]) < 1e-3, "no MIDI: silent (%v)", kit.peak(out[0][:]))
+}
+
+@(test)
+automation_of_any_parameter_moves_main_and_is_saved :: proc(t: ^testing.T) {
+	r := rig_make(t, "perf_target")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "long.wav", 440, 3))
+	pm.add_note(m, 0, {start = 0, length = 4, pad = 0, velocity = 1})
+	main := pm.Auto_Target{track = .Main, device = .Volume, lo = -60, hi = 6}
+	pm.add_point(m, 0, {lane = {target = main}, beat = 0, value = -40})
+	pm.add_point(m, 0, {lane = {target = main}, beat = 4, value = 0})
+	points, _ := pm.lane_points_of(pm.current_sequence(m), {target = main})
+	testing.expect_value(t, len(points), 2)
+	// (Not a pad's own lane.)
+	own, _ := pm.lane_points(pm.current_sequence(m), 0, .Volume)
+	testing.expect_value(t, len(own), 0)
+	pm.sync(&m.engine)
+	render(r, 512)
+	pm.play(&m.engine)
+	out := render(r, 96_000) // 4 beats
+	early := kit.peak(out[0][4800:][:4800])
+	late := kit.peak(out[0][84_000:][:4800])
+	testing.expectf(t, late > early * 20, "main rises 40 dB over the bar (%v → %v)", early, late)
+	// Stopped, main has its own volume again.
+	pm.stop(&m.engine)
+	pm.sync(&m.engine)
+	render(r, 48_000)
+	pm.hit(&m.engine, 0, true)
+	again := render(r, 9600)
+	testing.expectf(t, abs(kit.peak(again[0][4800:]) - 0.5) < 0.05, "full level after the stop (%v)", kit.peak(again[0][4800:]))
+	// Saved and opened: the target comes back.
+	path, _ := filepath.join({r.dir, "Target.pads"}, context.temp_allocator)
+	testing.expect_value(t, pm.model_save_as(m, path), fc.Error.None)
+	r2 := rig_make(t, "perf_target_load")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, path), fc.Error.None)
+	back, _ := pm.lane_points_of(r2.m.project.sequences[0], {target = main})
+	testing.expect_value(t, len(back), 2)
+	if len(back) == 2 do testing.expect(t, back[0].target.track == .Main && back[0].target.hi == 6 && back[1].value == 0, "the same target, range and values")
+}
+
+@(test)
+a_cc_lane_goes_out_as_midi_while_playing :: proc(t: ^testing.T) {
+	r := blips(t, "perf_cc")
+	defer rig_destroy(r)
+	m := &r.m
+	pad := m.project.pads[0]
+	pad.midi_out = {on = true, channel = 0, key = 36}
+	pm.set_pad(m, 0, .Whole, "MIDI Out", pad)
+	// CC 74 on pad 0: three steps.
+	pm.add_cc(m, 0, {beat = 0, pad = 0, cc = 74, value = 10})
+	pm.add_cc(m, 0, {beat = 1, pad = 0, cc = 74, value = 64})
+	pm.add_cc(m, 0, {beat = 2, pad = 0, cc = 74, value = 127})
+	events, _ := pm.cc_points(pm.current_sequence(m), 0, 74)
+	testing.expect_value(t, len(events), 3)
+	pm.sync(&m.engine)
+	render(r, 512)
+	sent0, _ := app.host_midi_counts(&r.host)
+	pm.play(&m.engine)
+	render(r, 72_000) // 3 beats at 120
+	sent, _ := app.host_midi_counts(&r.host)
+	testing.expectf(t, sent - sent0 >= 3, "the CC went out (%d messages)", sent - sent0)
+	pm.stop(&m.engine)
+	// Undone: gone.
+	app.undo(&m.history)
+	events, _ = pm.cc_points(pm.current_sequence(m), 0, 74)
+	testing.expect_value(t, len(events), 2)
 }

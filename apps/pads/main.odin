@@ -73,6 +73,9 @@ App :: struct {
 	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
 	browser:  pm.Browser,
 	bview:    Browser_View,
+	knob_target: pm.Auto_Target, // what the knob being drawn moves (see `knob_target`)
+	knob_scale:  f32,
+	auto_rec: Auto_Rec, // recording knob moves (the Automation arm)
 	prefs:    string, // where preferences go (--prefs; default: the system's)
 	control:  ui.Control, // --control: a test harness's live commands
 	pad_waves: bool, // the pads show their sound's waveform (View > Pad Waveforms)
@@ -163,6 +166,7 @@ main :: proc() {
 		for _, p in a.peaks do delete(p)
 		delete(a.peaks)
 		browser_view_destroy(&a.bview)
+		delete(a.auto_rec.points)
 	}
 	a.prefs = prefs
 	// The settings first: the device, the look, the last project.
@@ -244,6 +248,7 @@ main :: proc() {
 	subscribe_imports(a)
 	subscribe_project(a)
 	setup_workspace(a)
+	install_knob_hooks(a)
 	defer ui.workspace_destroy(&a.ws)
 	a.bview.renaming = -1
 	a.song_ui.time.marker_drag, a.song_ui.time.point_drag = -1, -1

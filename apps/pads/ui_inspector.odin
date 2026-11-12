@@ -254,7 +254,9 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 knob_f32 :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, default: f32, format: cstring, field: pm.Pad_Field, step: string, log_scale := false, snap: f32 = 0) {
 	m := &a.m
 	v := value^
+	knob_target(a, pad_field_target(a, a.selected, field))
 	e := ui.knob(label, &v, lo, hi, default, format, log_scale = log_scale, step = snap)
+	knob_target(a, {})
 	if e.changed {
 		p := m.project.pads[a.selected]
 		set_field(&p, field, v)

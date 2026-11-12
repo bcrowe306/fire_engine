@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 28 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab
+PROJECT_VERSION :: 29 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -545,6 +545,30 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	}
 	// v28: the Sequence view's tab.
 	fc.write_u8(w, u8(p.view.seq_mode))
+	// v29: every point's target (in each sequence's order).
+	for s in p.sequences {
+		fc.write_int(w, len(s.points))
+		for pt in s.points {
+			t := pt.target
+			fc.write_u8(w, u8(t.track))
+			fc.write_u8(w, t.index)
+			fc.write_u8(w, u8(t.device))
+			fc.write_u8(w, t.slot)
+			fc.write_u32(w, u32(t.param))
+			fc.write_f32(w, t.lo)
+			fc.write_f32(w, t.hi)
+			fc.write_bool(w, t.stepped)
+			fc.write_bool(w, t.log)
+		}
+		// Its CC lanes.
+		fc.write_int(w, len(s.ccs))
+		for c in s.ccs {
+			fc.write_f64(w, c.beat)
+			fc.write_u8(w, c.pad)
+			fc.write_u8(w, c.cc)
+			fc.write_u8(w, c.value)
+		}
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -920,6 +944,30 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			}
 		}
 		if version >= 28 do p.view.seq_mode = Seq_Mode(min(fc.read_u8(r), u8(max(Seq_Mode))))
+		if version >= 29 do for &s in p.sequences[:seqs] {
+			k := fc.read_int(r)
+			if k != len(s.points) do return // (a file that doesn't agree with itself: the targets are not read)
+			for &pt in s.points {
+				t := &pt.target
+				t.track = Auto_Track(min(fc.read_u8(r), u8(max(Auto_Track))))
+				t.index = fc.read_u8(r)
+				t.device = Auto_Device(min(fc.read_u8(r), u8(max(Auto_Device))))
+				t.slot = fc.read_u8(r)
+				t.param = fc.Param_Id(fc.read_u32(r))
+				t.lo, t.hi = fc.read_f32(r), fc.read_f32(r)
+				t.stepped = fc.read_bool(r)
+				t.log = fc.read_bool(r)
+				if t.track == .Pad do t.index = min(t.index, PADS - 1)
+			}
+			n := fc.read_int(r)
+			if n < 0 || n > 1 << 20 do return
+			s.ccs = make([]Seq_Cc, n)
+			for &c in s.ccs {
+				c.beat = fc.read_f64(r)
+				c.pad = min(fc.read_u8(r), PADS - 1)
+				c.cc, c.value = min(fc.read_u8(r), 127), min(fc.read_u8(r), 127)
+			}
+		}
 	} else {
 		p.bus_count = DEFAULT_BUSES
 	}

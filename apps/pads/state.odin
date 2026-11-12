@@ -64,6 +64,7 @@ State :: struct {
 	curved:     int, // automation points of the current sequence bending the line after them
 	seq_mode:   string, // the Sequence view's tab: "Notes" or "Automation"
 	chances:    []f32,  // each note's chance (0..1) in the current sequence
+	ccs:        int,    // MIDI CC steps in the current sequence
 	auto_lane:  string, // the automation the Automation tab shows ("A1 Volume")
 	notes:      int, // in the current sequence
 	note_list:  [dynamic]State_Note, // its notes (in order)
@@ -326,8 +327,9 @@ state_json :: proc(a: ^App) -> string {
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
 	s.seq_mode = "Automation" if a.seq.mode == .Automation else "Notes"
 	s.chances = make([]f32, len(seq.notes), context.temp_allocator)
+	s.ccs = len(seq.ccs)
 	for n, k in seq.notes do s.chances[k] = n.probability
-	s.auto_lane = fmt.tprintf("%s %s", pm.pad_label(auto_target_pad(a)), pm.LANE_NAMES[a.seq.param])
+	s.auto_lane = lane_name(a, current_lane(a))
 	s.note_list = make([dynamic]State_Note, context.temp_allocator)
 	for n in seq.notes {
 		append(&s.note_list, State_Note{start = n.start, pad = int(n.pad), pitch = int(n.pitch), muted = n.muted})

@@ -113,7 +113,7 @@ copy_part :: proc(p: ^Project, slot: int, lo, hi: f64, pads: ^[PADS]bool, out: ^
 		x.length = min(x.length, out.beats - x.start)
 		append(&out.notes, x)
 	}
-	for pt in s.points do if pt.beat >= lo - 1e-9 && pt.beat <= hi + 1e-9 && out.pads[pt.pad] {
+	for pt in s.points do if pt.beat >= lo - 1e-9 && pt.beat <= hi + 1e-9 && point_in_pads(pt, out.pads) {
 		x := pt
 		x.beat -= lo
 		append(&out.points, x)
@@ -143,7 +143,7 @@ paste_part :: proc(m: ^Model, slot: int, part: ^Seq_Part, at: f64, replace := tr
 	}
 	points := make([dynamic]Auto_Point, 0, len(s.points) + len(part.points), context.temp_allocator)
 	for pt in s.points {
-		if replace && part.pads[pt.pad] && pt.beat >= at - 1e-9 && pt.beat <= end + 1e-9 do continue
+		if replace && point_in_pads(pt, part.pads) && pt.beat >= at - 1e-9 && pt.beat <= end + 1e-9 do continue
 		append(&points, pt)
 	}
 	for pt in part.points {
@@ -230,14 +230,33 @@ remove_note_values :: proc(m: ^Model, slot: int, gone: []Seq_Note, field := Seq_
 // Replaces pad `pad`'s `param` points from beat `lo` to `hi` of sequence
 // `slot` with `pts` (a drawn stroke or line): one undo step.
 replace_lane_range :: proc(m: ^Model, slot, pad: int, param: Lane_Param, lo, hi: f64, pts: []Auto_Point) {
+	replace_lane_range_of(m, slot, pad_lane(pad, param), lo, hi, pts)
+}
+
+// Replaces lane `l`'s points from beat `lo` to `hi` in slot `slot` with
+// `pts` (a stroke drawn, or nothing: erased).
+replace_lane_range_of :: proc(m: ^Model, slot: int, l: Lane, lo, hi: f64, pts: []Auto_Point) {
 	s := m.project.sequences[slot]
 	points := make([dynamic]Auto_Point, 0, len(s.points) + len(pts), context.temp_allocator)
 	for p in s.points {
-		if int(p.pad) == pad && p.param == param && p.beat >= lo - 1e-9 && p.beat <= hi + 1e-9 do continue
+		if lane_equal(p.lane, l) && p.beat >= lo - 1e-9 && p.beat <= hi + 1e-9 do continue
 		append(&points, p)
 	}
 	append(&points, ..pts)
 	s.points = points[:]
 	set_sequence(m, slot, .Notes, "Draw Automation", s)
 	app.seal(&m.history)
+}
+
+// Whether point `pt` goes with the pads `pads` (a copy of some pads'
+// bars): a pad's lane, or a target on a pad, by its pad; a bus's or main's
+// automation always.
+@(private)
+point_in_pads :: proc(pt: Auto_Point, pads: [PADS]bool) -> bool {
+	switch pt.target.track {
+	case .None: return pads[pt.pad]
+	case .Pad:  return pads[pt.target.index]
+	case .Bus, .Main: return true
+	}
+	return true
 }

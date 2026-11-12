@@ -6,6 +6,7 @@ import "core:slice"
 
 import app "app:core"
 import "fire:clip"
+import fc "fire:core"
 
 // Sequence slots in a project.
 SLOTS :: 64
@@ -65,10 +66,71 @@ Sequence :: struct {
 	swing:      f32,  // 0..1 (see clip.swing)
 	swing_grid: Grid, // which notes swing: 1/8 or 1/16
 	notes:      []Seq_Note, // sorted by start, then pad
-	points:     []Auto_Point, // automation, sorted by pad, parameter, beat
+	points:     []Auto_Point, // automation, sorted by lane, then beat
+	ccs:        []Seq_Cc,     // MIDI CC lanes, sorted by pad, controller, beat
 	name:       [24]u8, // "" = "Sequence N"
 	bpm:        f64,    // its own tempo (it takes over when it plays); 0 = the project's
 	color:      u32,    // 0xRRGGBB; 0 = its slot's colour from SEQ_PALETTE
+}
+
+// One step of a pad's MIDI CC lane: controller `cc` goes to `value` at
+// `beat` (and stays there until the next).
+Seq_Cc :: struct {
+	beat:  f64,
+	pad:   u8,
+	cc:    u8, // 0..127
+	value: u8, // 0..127
+}
+
+// The CC events of pad `pad`'s controller `cc` in `s` (a view into s.ccs)
+// and where they start.
+cc_points :: proc(s: Sequence, pad, cc: int) -> (points: []Seq_Cc, first: int) {
+	lo, hi := -1, -1
+	for c, i in s.ccs do if int(c.pad) == pad && int(c.cc) == cc {
+		if lo < 0 do lo = i
+		hi = i + 1
+	}
+	if lo < 0 do return nil, 0
+	return s.ccs[lo:hi], lo
+}
+
+// Replaces pad `pad`'s controller `cc` events from beat `lo` to `hi` of
+// slot `slot` with `events` (drawn, or nothing: erased): one undo step.
+replace_cc_range :: proc(m: ^Model, slot, pad, cc: int, lo, hi: f64, events: []Seq_Cc) {
+	s := m.project.sequences[slot]
+	out := make([dynamic]Seq_Cc, 0, len(s.ccs) + len(events), context.temp_allocator)
+	for c in s.ccs {
+		if int(c.pad) == pad && int(c.cc) == cc && c.beat >= lo - 1e-9 && c.beat <= hi + 1e-9 do continue
+		append(&out, c)
+	}
+	append(&out, ..events)
+	s.ccs = out[:]
+	set_sequence(m, slot, .Notes, "Draw CC", s)
+	app.seal(&m.history)
+}
+
+// Adds one CC event to slot `slot` (one undo step).
+add_cc :: proc(m: ^Model, slot: int, c: Seq_Cc) {
+	s := m.project.sequences[slot]
+	out := make([dynamic]Seq_Cc, 0, len(s.ccs) + 1, context.temp_allocator)
+	append(&out, ..s.ccs)
+	cc := c
+	cc.cc, cc.value = min(cc.cc, 127), min(cc.value, 127)
+	append(&out, cc)
+	s.ccs = out[:]
+	set_sequence(m, slot, .Notes, "Add CC", s)
+}
+
+// Moves CC event `index` of slot `slot` (drags merge).
+set_cc :: proc(m: ^Model, slot, index: int, c: Seq_Cc) {
+	s := m.project.sequences[slot]
+	if index < 0 || index >= len(s.ccs) do return
+	out := slice.clone(s.ccs, context.temp_allocator)
+	cc := c
+	cc.cc, cc.value = min(cc.cc, 127), min(cc.value, 127)
+	out[index] = cc
+	s.ccs = out
+	set_sequence(m, slot, .Automation, "Move CC", s)
 }
 
 // Colours sequences take by their slot, until given one.
@@ -112,22 +174,112 @@ lane_range :: proc "contextless" (p: Lane_Param) -> (lo, hi: f32) {
 	return 0, 1
 }
 
-// One point of an automation lane: pad `pad`'s `param` is `value` at
-// `beat`, moving in a line to the next point. A lane is every point with
-// the same pad and parameter.
+// Which track an automation's target is on (.None: it is one of a pad's
+// own lanes, `Lane.pad`'s `Lane.param`).
+Auto_Track :: enum u8 {
+	None,
+	Pad,
+	Bus,
+	Main,
+}
+
+// Which of a track's devices an automation moves.
+Auto_Device :: enum u8 {
+	Sound,  // a pad's instrument (sampler, synth, plug-in): any of its parameters
+	Insert, // a pad's insert `slot`, or a bus's or main's effect `slot`
+	Volume, // a pad's, a bus's or main's fader
+	Pan,    // a bus's or main's pan (a pad's is its Sound's)
+	Send,   // a pad's send `slot` (into bus slot + 1)
+	Eq,     // a pad's EQ
+}
+
+// What an automation moves, anywhere: a parameter of a device of a track,
+// and its range (plain units, as the device's node gave it when the
+// automation was made, so it can be drawn without the node).
+Auto_Target :: struct {
+	track:   Auto_Track,
+	index:   u8, // the pad, or the bus (0-based; main: 0)
+	device:  Auto_Device,
+	slot:    u8, // the insert or the send
+	param:   fc.Param_Id, // the device's parameter (Volume and Send: the gain's dB; Pan: the pan's position)
+	lo, hi:  f32,
+	stepped: bool, // whole values only
+	log:     bool, // drawn on a log scale (frequencies)
+}
+
+// An automation lane: one of a pad's own (`pad`'s `param`, with no
+// target) or any parameter (`target`).
+Lane :: struct {
+	pad:    u8,
+	param:  Lane_Param,
+	target: Auto_Target,
+}
+
+// Whether two lanes are the same lane.
+lane_equal :: proc "contextless" (a, b: Lane) -> bool {
+	if a.target.track != .None || b.target.track != .None {
+		x, y := a.target, b.target
+		return x.track == y.track && x.index == y.index && x.device == y.device && x.slot == y.slot && x.param == y.param
+	}
+	return a.pad == b.pad && a.param == b.param
+}
+
+// The order lanes are kept in (a sequence's points sorted by lane, then
+// beat).
+lane_less :: proc "contextless" (a, b: Lane) -> bool {
+	x, y := a.target, b.target
+	if x.track != y.track do return x.track < y.track
+	if x.track == .None {
+		if a.pad != b.pad do return a.pad < b.pad
+		return a.param < b.param
+	}
+	if x.index != y.index do return x.index < y.index
+	if x.device != y.device do return x.device < y.device
+	if x.slot != y.slot do return x.slot < y.slot
+	return x.param < y.param
+}
+
+// Lane `l`'s range, in its units.
+lane_range_of :: proc "contextless" (l: Lane) -> (lo, hi: f32) {
+	if l.target.track != .None {
+		if l.target.hi > l.target.lo do return l.target.lo, l.target.hi
+		return 0, 1
+	}
+	return lane_range(l.param)
+}
+
+// One point of an automation lane: the lane's parameter is `value` at
+// `beat`, moving to the next point in a line (or a curve). A lane is every
+// point with the same lane.
 Auto_Point :: struct {
-	pad:   u8,
-	param: Lane_Param,
+	using lane: Lane,
 	beat:  f64,
-	value: f32, // in the parameter's units (see lane_range)
+	value: f32, // in the parameter's units (see lane_range_of)
 	curve: f32, // the segment to the next point: 0 a line, -1..1 bending (as clip's Curve tension)
+}
+
+// Pad `pad`'s own `param` lane.
+pad_lane :: proc "contextless" (pad: int, param: Lane_Param) -> Lane {
+	return {pad = u8(pad), param = param}
+}
+
+// The points of lane `l` in `s` (a view into s.points) and where they
+// start.
+lane_points_of :: proc(s: Sequence, l: Lane) -> (points: []Auto_Point, first: int) {
+	lo, hi := -1, -1
+	for p, i in s.points do if lane_equal(p.lane, l) {
+		if lo < 0 do lo = i
+		hi = i + 1
+	}
+	if lo < 0 do return nil, 0
+	return s.points[lo:hi], lo
 }
 
 // The points of pad `pad`'s `param` lane in `s` (a view into s.points) and
 // where they start.
 lane_points :: proc(s: Sequence, pad: int, param: Lane_Param) -> (points: []Auto_Point, first: int) {
 	lo, hi := -1, -1
-	for p, i in s.points do if int(p.pad) == pad && p.param == param {
+	for p, i in s.points do if p.target.track == .None && int(p.pad) == pad && p.param == param {
 		if lo < 0 do lo = i
 		hi = i + 1
 	}
@@ -141,7 +293,7 @@ add_point :: proc(m: ^Model, slot: int, p: Auto_Point) {
 	points := make([dynamic]Auto_Point, 0, len(s.points) + 1, context.temp_allocator)
 	append(&points, ..s.points)
 	pp := p
-	lo, hi := lane_range(p.param)
+	lo, hi := lane_range_of(p.lane)
 	pp.value = clamp(pp.value, lo, hi)
 	append(&points, pp)
 	s.points = points[:]
@@ -154,7 +306,7 @@ set_point :: proc(m: ^Model, slot, index: int, p: Auto_Point) {
 	if index < 0 || index >= len(s.points) do return
 	points := slice.clone(s.points, context.temp_allocator)
 	pp := p
-	lo, hi := lane_range(p.param)
+	lo, hi := lane_range_of(p.lane)
 	pp.value = clamp(pp.value, lo, hi)
 	points[index] = pp
 	s.points = points
@@ -173,9 +325,14 @@ remove_point :: proc(m: ^Model, slot, index: int) {
 
 // Removes pad `pad`'s `param` lane from slot `slot`.
 clear_lane :: proc(m: ^Model, slot, pad: int, param: Lane_Param) {
+	clear_lane_of(m, slot, pad_lane(pad, param))
+}
+
+// Removes lane `l` from slot `slot`.
+clear_lane_of :: proc(m: ^Model, slot: int, l: Lane) {
 	s := m.project.sequences[slot]
 	points := make([dynamic]Auto_Point, 0, len(s.points), context.temp_allocator)
-	for p in s.points do if !(int(p.pad) == pad && p.param == param) do append(&points, p)
+	for p in s.points do if !lane_equal(p.lane, l) do append(&points, p)
 	s.points = points[:]
 	set_sequence(m, slot, .Notes, "Clear Automation", s)
 }
@@ -204,6 +361,7 @@ clone_sequence :: proc(s: Sequence, allocator := context.allocator) -> Sequence 
 	c := s
 	c.notes = slice.clone(s.notes, allocator)
 	c.points = slice.clone(s.points, allocator)
+	c.ccs = slice.clone(s.ccs, allocator)
 	return c
 }
 
@@ -211,7 +369,8 @@ clone_sequence :: proc(s: Sequence, allocator := context.allocator) -> Sequence 
 delete_sequence :: proc(s: ^Sequence) {
 	delete(s.notes)
 	delete(s.points)
-	s.notes, s.points = nil, nil
+	delete(s.ccs)
+	s.notes, s.points, s.ccs = nil, nil, nil
 }
 
 // Which part of a sequence an edit changes: consecutive edits of the same
@@ -245,8 +404,12 @@ set_sequence :: proc(m: ^Model, slot: int, field: Seq_Field, name: string, new: 
 	n.notes = kept
 	sort_notes(n.notes)
 	slice.sort_by(n.points, proc(x, y: Auto_Point) -> bool {
+		if !lane_equal(x.lane, y.lane) do return lane_less(x.lane, y.lane)
+		return x.beat < y.beat
+	})
+	slice.sort_by(n.ccs, proc(x, y: Seq_Cc) -> bool {
 		if x.pad != y.pad do return x.pad < y.pad
-		if x.param != y.param do return x.param < y.param
+		if x.cc != y.cc do return x.cc < y.cc
 		return x.beat < y.beat
 	})
 	if sequences_equal(old, n) {
@@ -300,7 +463,7 @@ put_sequence :: proc(m: ^Model, slot: int, s: Sequence) {
 
 @(private)
 sequences_equal :: proc(a, b: Sequence) -> bool {
-	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && a.color == b.color && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points)
+	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && a.color == b.color && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points) && slice.equal(a.ccs, b.ccs)
 }
 
 // Notes of one pad and pitch never overlap: taken in order (later ones are

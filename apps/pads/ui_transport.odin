@@ -153,6 +153,12 @@ draw_toolbar :: proc(user: rawptr) {
 	// Record: red whatever the accent, and blinking while it records.
 	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = st.clock) do toggle_record(a)
 	im.SameLine(0, 2)
+	// Recording knob moves: only when this is on (off by default).
+	if tool_toggle(ui.ICON_SPLINE, "Auto", "Record automation: on (knobs and faders moved while recording are written into the sequence)" if a.auto_rec.armed else "Record automation: off (knobs only change the sound)", a.auto_rec.armed, t.danger, big) {
+		a.auto_rec.armed = !a.auto_rec.armed
+		if !a.auto_rec.armed do record_release(a)
+	}
+	im.SameLine(0, 2)
 	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
 		n := tr
 		n.loop = !n.loop

@@ -462,6 +462,9 @@ send_row :: proc(a: ^App, pad, bus: int) {
 		v = pm.SEND_MIN_DB if on else 0
 		e.changed, e.ended = true, true
 	}
+	knob_target(a, fixed_target(.Pad, pad, .Send, bus - 1))
+	defer knob_target(a, {})
+	ui.knob_report(e, v)
 	targets := strip_targets(a, pad)
 	multi_edit(a, card(targets), e.changed, false)
 	if e.changed do for j in 0 ..< pm.PADS do if j in targets {
@@ -471,6 +474,7 @@ send_row :: proc(a: ^App, pad, bus: int) {
 	multi_edit(a, card(targets), false, e.ended)
 	if e.ended do app.seal(&m.history)
 	if im.BeginPopupContextItem(fmt.ctprintf("##sendmenu%d", bus)) {
+		knob_menu_items(a)
 		if im.MenuItem("Pre-fader", nil, s.pre) do pm.set_send_pre(m, pad, bus, !s.pre)
 		if im.MenuItem("Off", nil, false, on) {
 			pm.set_send_db(m, pad, bus, pm.SEND_MIN_DB)
@@ -606,6 +610,8 @@ pan_knob :: proc(a: ^App, pan: ^f32) -> ui.Edit {
 		pan^ = 0
 		e.changed, e.ended = true, true
 	}
+	automation_menu(a, "##panauto")
+	ui.knob_report(e, pan^)
 	r: f32 = 10
 	c := im.Vec2{pos.x + w / 2, pos.y + r + 1}
 	a0 := f32(math.PI) * 0.75
@@ -701,6 +707,8 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32) -> (e: u
 		value^ = 0
 		e.changed, e.ended = true, true
 	}
+	automation_menu(a, "##faderauto")
+	ui.knob_report(e, value^)
 	hovered := im.IsItemHovered() || im.IsItemActive()
 	cx := x0 + fader_w / 2
 	im.DrawList_AddRectFilled(dl, {cx - 2, top}, {cx + 2, bottom}, ui.col(well(t)), 2)
@@ -870,7 +878,9 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	// solo to the same.
 	targets := strip_targets(a, i)
 	pan := pad.pan
+	knob_target(a, pad_field_target(a, i, .Pan))
 	pe := pan_knob(a, &pan)
+	knob_target(a, {})
 	multi_edit(a, card(targets), pe.changed, false)
 	if pe.changed do for j in 0 ..< pm.PADS do if j in targets {
 		p := m.project.pads[j]
@@ -882,7 +892,9 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	gap()
 	vol := pad.volume
 	readouts(a, vol, &a.mixer.pads[i])
+	knob_target(a, fixed_target(.Pad, i, .Volume))
 	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h, compact))
+	knob_target(a, {})
 	multi_edit(a, card(targets), fe.changed, false)
 	if fe.changed do for j in 0 ..< pm.PADS do if j in targets {
 		p := m.project.pads[j]
@@ -948,7 +960,9 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	}
 	gap()
 	pan := bus.pan
+	knob_target(a, fixed_target(.Main if is_main else .Bus, 0 if is_main else b, .Pan))
 	pe := pan_knob(a, &pan)
+	knob_target(a, {})
 	if pe.changed {
 		nb := bus
 		nb.pan = pan
@@ -958,7 +972,9 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	gap()
 	vol := bus.volume
 	readouts(a, vol, &a.mixer.buses[b])
+	knob_target(a, fixed_target(.Main if is_main else .Bus, 0 if is_main else b, .Volume))
 	fe := fader_meter(a, &vol, &a.mixer.buses[b], fader_h(h))
+	knob_target(a, {})
 	if fe.changed {
 		nb := bus
 		nb.volume = vol

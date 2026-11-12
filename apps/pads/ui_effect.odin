@@ -184,7 +184,9 @@ draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []
 		}
 		format := param_format(p)
 		log_scale := p.unit == .Hertz && p.min > 0 && p.max / p.min >= 50 // frequencies turn in ratios
+		knob_target(a, fx_auto_target(t, p.id))
 		e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale)
+		knob_target(a, {})
 		if e.changed {
 			if .Stepped in p.flags do v = f32(int(v + 0.5))
 			pm.set_target_param(m, t, p.id, v)

@@ -49,7 +49,12 @@ voice_knob :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, def: f32, forma
 	m := &a.m
 	i := a.selected
 	x := value^
+	// What it moves on the sampler, for Automate (its own units: some are
+	// 0..1 here and percent there).
+	target_name, scale := voice_param(Voice_Key(key), string(label))
+	if target_name != "" do knob_target(a, sound_target(a, i, target_name), scale)
 	e := ui.knob(label, &x, lo, hi, def, format, log_scale = log_scale)
+	knob_target(a, {})
 	if e.changed {
 		v := m.project.pads[i].voice
 		// The same field of a copy: value points into a copy of the voice.
@@ -606,4 +611,22 @@ draw_pad_eq :: proc(a: ^App) {
 	im.SameLine(0, 14)
 	knob_f32(a, "High", &pad.eq[2], -15, 15, 0, "%+.1f dB", .Eq_High, "Set EQ High")
 	im.Spacing()
+}
+
+// The sampler parameter a voice knob moves (by its key and label), and
+// what turns the knob's value into its units ("": none to automate).
+@(private)
+voice_param :: proc(key: Voice_Key, label: string) -> (name: string, scale: f32) {
+	#partial switch key {
+	case .Amp_Adsr:
+		switch label {
+		case "Decay":   return "Decay", 1
+		case "Sustain": return "Sustain", 100
+		}
+	case .Cutoff:    return "Cutoff", 1
+	case .Resonance: return "Resonance", 100
+	case .Key_Track: return "Filter Key Tracking", 100
+	case .Fine:      return "Fine Tune", 1
+	}
+	return "", 1
 }

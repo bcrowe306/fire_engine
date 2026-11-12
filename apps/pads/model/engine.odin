@@ -95,6 +95,9 @@ Engine :: struct {
 	cue:        f64, // song mode: where play starts (a marker jumped to while stopped)
 	gui_requests: [MAX_GUI_REQUESTS]Gui_Request, // this frame's, from `plugins_idle`
 	gui_request_count: int,
+	auto_dests: [dynamic]Auto_Dest, // automation of any parameter: a player for each node targeted
+	cc_id:      graph.Node_Id,      // the sequence's MIDI CC lanes: a player into the router
+	cc_player:  ^clip.Automation_Player,
 }
 
 // Sets a parameter when it changed (or always, when `fresh`).
@@ -197,6 +200,7 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 
 // Releases the samples the engine opened (the graph frees its nodes).
 engine_destroy :: proc(e: ^Engine) {
+	delete(e.auto_dests)
 	preview_destroy(&e.preview)
 	for _, src in e.sources do stream.source_release(src)
 	delete(e.sources)
@@ -378,6 +382,8 @@ sync :: proc(e: ^Engine) {
 	if sync_watch(e) do structural = true
 	if structural do graph.commit(g)
 	e.resend = false
+	// A targeted node rebuilt: its automation goes to the new one.
+	if !e.stopped && targets_stale(e) do e.seq_dirty = true
 	sync_sequencer(e)
 }
 
@@ -584,6 +590,7 @@ sync_automation :: proc(e: ^Engine) {
 		if fc_ != nil do clip.automation_clip_release(fc_)
 		n.automated = true
 	}
+	sync_targets(e)
 }
 
 // How many times pad `index` has sounded, from any source (to light it).
@@ -624,6 +631,7 @@ stop :: proc(e: ^Engine) {
 		e.resend = true
 		mark(e, i)
 	}
+	release_targets(e)
 	e.stopped = true
 	e.pending.active = false
 	e.plan.at = 0
@@ -702,6 +710,7 @@ engine_clear :: proc(e: ^Engine) {
 	if e.clock_out do graph.remove_node(g, e.clock_out_id)
 	if e.tone_id != {} do graph.remove_node(g, e.tone_id)
 	if e.following do transport.set_sync(e.host.clock, {})
+	remove_targets(e)
 	for &n in e.nodes do if n.live do remove_pad_nodes(g, &n)
 	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
 	graph.remove_node(g, e.mixer.out_main)

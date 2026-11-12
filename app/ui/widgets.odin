@@ -19,6 +19,32 @@ Edit :: struct {
 // The theme the widgets draw with: set by `set_theme`.
 @(private) current: Theme
 
+// What knobs and faders tell the app beyond their value: `menu` is called
+// inside a knob's right-click menu (after its own items: the app adds its
+// own, as Automate), `touched` when a drag on a knob or a fader starts,
+// `moved` each frame it changes it (with its new value), `released` when
+// it lets go. Set by the app; nil: nothing is called.
+Knob_Hooks :: struct {
+	has_menu: proc(user: rawptr) -> bool, // whether `menu` has anything for the control being drawn (a fader only opens a menu then)
+	menu:     proc(user: rawptr),
+	touched:  proc(user: rawptr),
+	moved:    proc(user: rawptr, value: f32),
+	released: proc(user: rawptr),
+	user:     rawptr,
+}
+
+// The app's knob hooks (see `Knob_Hooks`).
+knob_hooks: Knob_Hooks
+
+// Calls the knob hooks for edit `e` of a control now at `value` (knobs and
+// faders do; an app's own controls can too).
+knob_report :: proc(e: Edit, value: f32) {
+	h := knob_hooks
+	if e.started && h.touched != nil do h.touched(h.user)
+	if e.changed && h.moved != nil do h.moved(h.user, value)
+	if e.ended && h.released != nil do h.released(h.user)
+}
+
 // Sizes widgets use by default, in logical points.
 KNOB_SIZE :: 44
 // Default fader size (width × height for a vertical one).
@@ -136,8 +162,10 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 			im.CloseCurrentPopup()
 		}
 		name("Type a Value")
+		if knob_hooks.menu != nil do knob_hooks.menu(knob_hooks.user)
 		im.EndPopup()
 	}
+	knob_report(e, value^)
 	// Arc from 7:30 to 4:30 (270°): track, then the value.
 	r := size / 2 - 3
 	a0, a1 := f32(math.PI) * 0.75, f32(math.PI) * 2.25
@@ -218,6 +246,11 @@ fader :: proc(label: cstring, value: ^f32, min_v, max_v, default: f32, size := F
 	im.InvisibleButton("##fader", size)
 	name(widget_name(label, "fader"))
 	e = drag_value(value, min_v, max_v, default, (size.y if vertical else size.x) - 12, vertical)
+	if knob_hooks.menu != nil && knob_hooks.has_menu != nil && knob_hooks.has_menu(knob_hooks.user) && im.BeginPopupContextItem("##fadermenu") {
+		knob_hooks.menu(knob_hooks.user)
+		im.EndPopup()
+	}
+	knob_report(e, value^)
 	frac := (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
 	hovered := im.IsItemHovered() || im.IsItemActive()
 	track: f32 = 6

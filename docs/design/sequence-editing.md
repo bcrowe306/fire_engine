@@ -1,6 +1,6 @@
 # Sequence editing: a Notes tab and an Automation tab
 
-Status: step 1 built (the two tabs, the Automation view with today's targets); steps 2–5 under way.
+Status: built (all five steps). Limits for later: copying bars doesn't carry CC lanes yet; a CC lane is drawn as lines though it plays as steps; a sampler or synth pad's CC lane goes only to its MIDI out (no offer to make it an automation yet).
 
 The Sequence view gets two tabs, each with the whole view for what it
 edits and the tools for it at the top:

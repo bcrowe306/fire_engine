@@ -224,6 +224,10 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			}
 		case fc.Note_On, fc.Note_Off, fc.Note_Expression:
 			sound(r, out, e) // the sequencer (a note's pitch comes as its expression)
+		case fc.Param_Value:
+			cc_event(r, out, e.offset, v.param, v.value)
+		case fc.Param_Ramp: // (the CC player's steps come as ramps of no length)
+			cc_event(r, out, e.offset, v.param, v.target)
 		}
 	}
 
@@ -450,6 +454,27 @@ midi_send :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, offset: u32,
 	vel := u8(clamp(velocity * 127 + 0.5, 1, 127)) if on else 64
 	fc.event_writer_push(out, {offset, fc.Midi_Raw{bytes = {status, m.key & 127, vel}, port = r.out_port[i]}})
 	if on do intrinsics.atomic_add(&r.midi_out_hits[i], 1)
+}
+
+// Where the router's CC parameters start: CC_PARAM_BASE + pad × 128 +
+// controller is that pad's controller (its value 0..127), as the CC
+// player sends it.
+CC_PARAM_BASE :: fc.Param_Id(0x4000_0000)
+
+// [rt] A pad's MIDI CC lane's step (from the sequence's CC player,
+// `param` CC_PARAM_BASE + pad × 128 + controller): to the pad's MIDI out,
+// and to a plug-in instrument as MIDI.
+@(private)
+cc_event :: proc "contextless" (r: ^Router, out: ^fc.Event_Writer, offset: u32, param: fc.Param_Id, v: f64) {
+	if param < CC_PARAM_BASE do return
+	k := int(param - CC_PARAM_BASE)
+	i, cc := k / 128, u8(k % 128)
+	if i >= PADS do return
+	value := u8(clamp(v + 0.5, 0, 127))
+	if m := r.midi_out[i]; m.on {
+		fc.event_writer_push(out, {offset, fc.Midi_Raw{bytes = {0xB0 | (m.channel & 15), cc, value}, port = r.out_port[i]}})
+	}
+	if r.kinds[i] == .Plugin do track_push(r, i, {offset, fc.Midi_Raw{bytes = {0xB0, cc, value}}})
 }
 
 // A pad's MIDI in takes any port's (the drum map).

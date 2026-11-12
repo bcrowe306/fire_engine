@@ -278,16 +278,25 @@ records.
   one before it, replaces one that starts with it, and takes over one it
   covers (a note it reaches into keeps the part after it), however it got
   there (drawn, moved, pasted, recorded, imported). Under the rows, a
-  slim lane (drag its top edge for more): each note's velocity or its
+  slim lane (drag its top edge for more): each note's velocity, its
   chance (the probability it plays each time round; a new note's is
-  100%), as its name at the left picks.
+  100%), or a **MIDI CC** of the selected pad, as its name at the left
+  picks (**CC…** adds one: the usual ones by name, any of 0–127). A CC
+  lane is steps 0–127, each held until the next, drawn with the note
+  tools; it goes out on the pad's MIDI out and, on a plug-in pad, to its
+  instrument.
 
   In **Automation**: one automation at a time across the whole view, its
   value scale at the left, the notes drawn grey beneath it for timing
   (**Notes** turns them off). The menu at the left of the tab's line
-  picks which: the automations this sequence has, or **New automation**
-  (a pad, then a parameter: volume, pitch, an EQ band, cutoff,
-  resonance, a plug-in pad's lanes). Its tools (or their keys):
+  picks which: the automations this sequence has; **New automation**: a
+  track (a pad with a sound, a bus, main), then a device (a pad's
+  Volume, Sound, EQ, each insert, each send on; a bus's or main's Volume,
+  Pan and effects), then any of its parameters (a plug-in's too); or
+  **Touch a control…**: the next knob or fader you move anywhere becomes
+  it (Escape cancels). Right-click any knob or fader for **Automate**
+  (**Show Automation** once it has some): the tab opens on it.
+  Frequencies are drawn on a log scale. Its tools (or their keys):
   **Select** (V) a click adds a point and a drag moves one; **Draw** (B)
   draws freehand (a point each grid step; **Shift**: a straight line);
   **Line** (L) drags a straight line; **Curve** (C) drags a segment up or
@@ -296,6 +305,13 @@ records.
   point in the columns it crosses; right-click a point to delete it. The
   point under the mouse says where it is and its value. Each stroke is
   one undo step, and a dot rides the curve at the value playing.
+
+  **Recording knob moves**: the **Auto** button beside Rec (off by
+  default). With it on and Rec recording, a knob or fader moved writes its
+  moves into the sequence as that parameter's automation, over what was
+  there for as long as it is held (thinned to the shape: a point only
+  where the line would miss it); each pass round the loop is one undo
+  step. With it off, knobs only change the sound.
 
   The **magnet** (Snap) puts notes and points on the grid; off,
   they go anywhere (hold Cmd on macOS, Alt elsewhere, to place one freely
@@ -1188,7 +1204,8 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
 | `test_slicer.py` | slicing from the browser (Alt+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
-| `test_sequence_tabs.py` | the Sequence view's Notes (the default) and Automation tabs, the tab kept while moving around and saved with the project; Line and Curve; a new automation from the menu; the notes under the curve off and on; a drawn note at 100% chance |
+| `test_sequence_tabs.py` | the Sequence view's Notes (the default) and Automation tabs, the tab kept while moving around and saved with the project; Line and Curve; a new automation from the menu; the notes under the curve off and on; a drawn note at 100% chance; a CC lane drawn for the selected pad |
+| `test_automation_targets.py` | a mixer fader's right-click Automate, Touch a control learning a knob, knob moves recorded only with Auto on |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
 | `test_layout.py` | the default window at the Comfortable size (the other tests run at Compact, `--control-size compact`, the size their positions were written for): the pads area folded to a bar and unfolded by a pad and by its button, one search finding a file and a device, Cmd+L, the control size in Settings |
 | `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |

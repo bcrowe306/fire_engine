@@ -175,7 +175,9 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 		return
 	}
 	routes := pm.synth_routes_to(m, i, id)
+	knob_target(a, sound_param_target(i, id))
 	e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, overlap = len(routes) > 0)
+	knob_target(a, {})
 	knob_id := im.GetItemID()
 	if e.changed do pm.set_synth_value(m, i, id, v, spec.name)
 	if e.ended do app.seal(&m.history)

@@ -43,13 +43,15 @@ def test_notes_is_the_default_and_the_tab_is_kept(app, fixtures, tmp_path):
 def test_line_and_curve_tools_and_a_new_automation(app, fixtures):
     loaded(app, fixtures)
     app.click("sequence mode", window="sequence", at=(0.75, 0.5))
-    assert app.state()["auto_lane"] == "A1 Volume"
-    # A new automation from the menu: A1's pitch.
+    assert app.state()["auto_lane"] == "A1 · Volume"
+    # A new automation from the menu: the kick's sampler cutoff (a track, a
+    # device, a parameter).
     app.click("automation", window="sequence")
     app.click("new automation")
     app.click("A1  kick")
-    app.click("Pitch")
-    assert app.state()["auto_lane"] == "A1 Pitch"
+    app.click("Sound")
+    app.click("Cutoff")
+    assert app.state()["auto_lane"] == "A1 kick · Sound: Cutoff", app.state()["auto_lane"]
     # Line: a straight line, two points.
     app.tool("Line")
     app.drag_at("auto", (0.1, 0.8), (0.9, 0.2), window="sequence", steps=20)
@@ -66,7 +68,14 @@ def test_line_and_curve_tools_and_a_new_automation(app, fixtures):
     app.click("show notes", window="sequence")
     # The menu lists this sequence's automation.
     app.click("automation", window="sequence")
-    app.expect_item("A1 · Pitch")
+    app.expect_item("A1 kick · Sound: Cutoff")
+    app.key("esc")
+    # Main's volume, from the menu too.
+    app.click("automation", window="sequence")
+    app.click("new automation")
+    app.click("Main")
+    app.click("Volume")
+    assert app.state()["auto_lane"] == "Main · Volume"
 
 
 def test_a_drawn_note_plays_every_time(app, fixtures):
@@ -76,3 +85,22 @@ def test_a_drawn_note_plays_every_time(app, fixtures):
     s = app.state()
     assert s["notes"] == 3
     assert all(abs(p - 1) < 1e-6 for p in s["chances"]), s["chances"]
+
+
+def test_a_cc_lane_is_drawn_for_the_selected_pad(app, fixtures):
+    loaded(app, fixtures)
+    app.click("lane kind", window="sequence")
+    app.click("new cc")
+    app.click("CC 74 · Cutoff")
+    app.expect_item("cclane", window="sequence")
+    app.tool("Draw")
+    app.drag_at("cclane", (0.05, 0.8), (0.6, 0.2), window="sequence", steps=20)
+    s = app.state()
+    assert s["ccs"] >= 3, s["ccs"]
+    assert s["undo"] == "Draw CC", s["undo"]
+    app.key("cmd+z")
+    assert app.state()["ccs"] == 0
+    # Back to velocity: the notes' bars again.
+    app.click("lane kind", window="sequence")
+    app.click("Velocity")
+    app.expect_item("lane", window="sequence")

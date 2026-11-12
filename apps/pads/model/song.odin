@@ -414,7 +414,7 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 		lo, hi := sg.offset, min(sg.offset + sg.period, l)
 		for off := 0.0; off < sg.span - 1e-9; off += sg.period {
 			for pt in s.points {
-				if int(pt.pad) != pad || pt.beat < lo - 1e-9 || pt.beat > hi + 1e-9 || off + pt.beat - lo > sg.span do continue
+				if pt.target.track != .None || int(pt.pad) != pad || pt.beat < lo - 1e-9 || pt.beat > hi + 1e-9 || off + pt.beat - lo > sg.span do continue
 				at := tb.Beats(sg.start + off + pt.beat - lo)
 				v := f64(pt.value)
 				shape := clip.Segment_Shape.Curve if pt.curve != 0 else .Linear

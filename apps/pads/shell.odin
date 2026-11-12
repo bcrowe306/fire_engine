@@ -632,7 +632,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case: return false
 		}
 		if len(w) > 2 do for lp in pm.Lane_Param do if strings.has_prefix(strings.to_lower(string(pm.LANE_NAMES[lp]), context.temp_allocator), w[2]) || (w[2] == "low" && lp == .Eq_Low) || (w[2] == "mid" && lp == .Eq_Mid) || (w[2] == "high" && lp == .Eq_High) {
-			a.seq.param, a.seq.auto_pad = lp, -1
+			a.seq.param, a.seq.auto_pad, a.seq.target = lp, -1, {}
 			break
 		}
 		return true
