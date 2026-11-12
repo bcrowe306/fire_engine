@@ -57,7 +57,7 @@ ISCC="${ISCC:-}"
 for c in "$ISCC" "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/c/Program Files/Inno Setup 6/ISCC.exe" "$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe"; do
 	if [ -n "$c" ] && [ -e "$c" ]; then ISCC="$c"; break; fi
 done
-"$ISCC" /Q "$(cygpath -w "$W/pads.iss")"
+MSYS_NO_PATHCONV=1 "$ISCC" /Q "$(cygpath -w "$W/pads.iss")" # (else Git Bash makes /Q a path)
 echo "made $OUT/Pads-$VERSION-windows-x86_64-setup.exe"
 ZIP="$OUT/Pads-$VERSION-windows-x86_64.zip"
 rm -f "$ZIP"
