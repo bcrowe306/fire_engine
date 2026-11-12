@@ -1,6 +1,7 @@
 package pads_model
 
 import "core:math"
+import "core:fmt"
 import "core:strings"
 
 
@@ -223,11 +224,13 @@ Bus :: struct {
 	dest:   u8,     // where it goes: 0 = main, 1..BUSES = another bus (never round to itself)
 	group:  bool,   // a group: the pads going to it show with it in the mixer
 	folded: bool,   // a group whose pads' strips are hidden
+	cue:    Send,   // its send to the cue mix
 }
 
 // The name of where sound goes: 0 = "Main", 1..BUSES = a bus (its own
 // name, else "Bus A"...).
 bus_name :: proc(p: ^Project, b: int) -> string {
+	if is_out_dest(b) do return out_dest_name(b)
 	if b <= 0 || b > BUSES do return "Main"
 	if n := strings.truncate_to_byte(string(p.buses[b - 1].name[:]), 0); n != "" do return n
 	letters := "ABCDEFGHIJKLMNOP"
@@ -240,10 +243,34 @@ bus_index_name :: proc(p: ^Project, index: int) -> string {
 	return bus_name(p, 0 if index >= BUSES else index + 1)
 }
 
+// Where a pad or bus can go besides main and the buses: an interface's
+// output pair, straight out (a direct out). Its route is OUT_DEST + the
+// pair (0: outputs 1/2, 1: 3/4...), by physical channel.
+OUT_DEST :: 64
+
+// The output pairs a route can name.
+OUT_PAIRS :: 32
+
+// Whether route `d` is a direct out.
+is_out_dest :: proc "contextless" (d: int) -> bool {
+	return d >= OUT_DEST && d < OUT_DEST + OUT_PAIRS
+}
+
+// The route for output pair `pair` (0: 1/2).
+out_dest :: proc "contextless" (pair: int) -> int {
+	return OUT_DEST + pair
+}
+
+// "Out 3/4".
+out_dest_name :: proc(d: int) -> string {
+	k := d - OUT_DEST
+	return fmt.tprintf("Out %d/%d", 2 * k + 1, 2 * k + 2)
+}
+
 // Whether bus `b` (1..BUSES) may go to `dest` (0 = main, 1..BUSES): never
 // round to itself, through other buses or directly.
 bus_dest_ok :: proc(p: ^Project, b, dest: int) -> bool {
-	if dest == 0 do return true
+	if dest == 0 || is_out_dest(dest) do return true
 	if dest < 1 || dest > p.bus_count || dest == b do return false
 	at := dest
 	for _ in 0 ..< BUSES { // follow where dest goes
@@ -300,6 +327,7 @@ delete_bus :: proc(m: ^Model, b: int) {
 	app.begin(&m.history, "Delete Bus")
 	defer app.end(&m.history)
 	after :: proc(x, b: int) -> int { // where bus x (1..) is once b is gone (0: main)
+		if is_out_dest(x) do return x // (an output pair stays)
 		if x == b do return 0
 		return x - 1 if x > b else x
 	}
@@ -518,7 +546,7 @@ set_insert_param :: proc(m: ^Model, pad, slot: int, id: fc.Param_Id, value: f32)
 set_pad_bus :: proc(m: ^Model, pad, bus: int) {
 	if pad < 0 || pad >= PADS do return
 	p := m.project.pads[pad]
-	p.bus = u8(clamp(bus, 0, m.project.bus_count))
+	p.bus = u8(bus if is_out_dest(bus) else clamp(bus, 0, m.project.bus_count))
 	set_pad(m, pad, .Bus, "Set Output", p)
 	app.seal(&m.history)
 }

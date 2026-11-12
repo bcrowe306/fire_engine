@@ -164,6 +164,18 @@ asio_enumerate :: proc(dr: ^backend.Driver, allocator: mem.Allocator) -> ([]back
 		ins, outs: i32
 		com.vtbl.get_channels(com, &ins, &outs)
 		info.input_channels, info.output_channels = int(ins), int(outs)
+		// Each channel's name, from the driver.
+		names :: proc(com: ^a.IASIO, n: int, input: bool, allocator: mem.Allocator) -> []string {
+			out := make([]string, n, allocator)
+			for &name, c in out {
+				ci := a.Channel_Info{channel = i32(c), is_input = 1 if input else 0}
+				if com.vtbl.get_channel_info(com, &ci) != a.OK do continue
+				name = strings.clone(strings.truncate_to_byte(string(ci.name[:]), 0), allocator)
+			}
+			return out
+		}
+		info.input_channel_names = names(com, info.input_channels, true, allocator)
+		info.output_channel_names = names(com, info.output_channels, false, allocator)
 		rates := make([dynamic]f64, allocator)
 		for rate in standard_rates do if com.vtbl.can_sample_rate(com, rate) == a.OK do append(&rates, rate)
 		info.sample_rates = rates[:]

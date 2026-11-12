@@ -79,6 +79,7 @@ Pad_Field :: enum {
 	Instrument_Param, // one of its parameters (drags merge)
 	Plugin_Lanes,     // which parameters its lanes move
 	Frozen,           // frozen or not
+	Cue,              // its cue send
 }
 
 // Changes one setting of pad `index`'s voice, undoably: `key` names the

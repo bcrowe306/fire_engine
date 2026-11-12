@@ -167,7 +167,7 @@ build_preview :: proc(e: ^Engine) -> fc.Error {
 	pv.gain_id = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
 	for c in 0 ..< 2 {
 		graph.connect(g, pv.id, c, pv.gain_id, c)
-		graph.connect(g, pv.gain_id, c, graph.OUTPUT, c)
+		graph.connect(g, pv.gain_id, c, e.mixer.out_main if e.mixer.built else graph.OUTPUT, c) // (where main plays)
 	}
 	pv.sent_db = 1 // anything but what it will be
 	return .None

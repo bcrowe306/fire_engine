@@ -4,6 +4,7 @@ import "core:math"
 import "core:os"
 import "core:path/filepath"
 
+import app "app:core"
 import "fire:clap"
 import "fire:clip"
 import "fire:dsp"
@@ -44,12 +45,13 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 	}
 	n.holds = {}
 	if pad.frozen do return // (no input: it plays its renderings)
-	// The input: a pair of channels, or one on both sides.
-	ins := g.settings.input_channels
+	// The input: a pair of the interface's channels, or one on both sides
+	// (physical channels, through the host: not open, no input).
 	first := int(pad.input.channel)
-	src := [2]int{first, first + 1} if pad.input.stereo else [2]int{first, first}
+	phys := [2]int{first, first + 1} if pad.input.stereo else [2]int{first, first}
+	src := [2]int{app.host_input_channel(e.host, phys[0]), app.host_input_channel(e.host, phys[1])}
 	channels := 2 if pad.input.stereo else 1
-	if ins <= max(src[0], src[1]) do return // the device has no such input
+	if src[0] < 0 || src[1] < 0 do return // that channel isn't open (see input_open)
 	if mid, err := graph.add_node(g, dsp.gain_create(), 2, 2); err == .None {
 		n.monitor_id = mid
 		for c in 0 ..< 2 {

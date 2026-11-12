@@ -133,11 +133,30 @@ jack_enumerate :: proc(d: ^backend.Driver, allocator: mem.Allocator) -> ([]backe
 		is_default_input      = true,
 		is_default_output     = true,
 	}
+	infos[0].input_channel_names = port_names(a, client, j.JackPortIsPhysical | j.JackPortIsOutput, allocator)
+	infos[0].output_channel_names = port_names(a, client, j.JackPortIsPhysical | j.JackPortIsInput, allocator)
 	infos[0].sample_rates = make([]f64, 1, allocator)
 	infos[0].sample_rates[0] = f64(rate)
 	infos[0].buffer_sizes = make([]int, 1, allocator)
 	infos[0].buffer_sizes[0] = int(frames)
 	return infos, .None
+}
+
+// The physical ports' short names ("capture_1"), as the channels' names.
+@(private)
+port_names :: proc(a: ^Jack, client: rawptr, flags: c.ulong, allocator: mem.Allocator) -> []string {
+	names := a.api.get_ports(client, nil, j.JACK_DEFAULT_AUDIO_TYPE, flags)
+	if names == nil do return nil
+	defer a.api.free(names)
+	n := 0
+	for names[n] != nil do n += 1
+	out := make([]string, n, allocator)
+	for &name, k in out {
+		full := string(names[k])
+		if i := strings.last_index_byte(full, ':'); i >= 0 do full = full[i + 1:]
+		name = strings.clone(full, allocator)
+	}
+	return out
 }
 
 @(private)

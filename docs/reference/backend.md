@@ -60,6 +60,8 @@ Device_Info :: struct {
 	default_buffer_frames: int,
 	is_default_input: bool,
 	is_default_output: bool,
+	input_channel_names: []string,
+	output_channel_names: []string,
 }
 ```
 
@@ -78,6 +80,8 @@ enumeration result; free them all with device_infos_destroy.
 | `default_buffer_frames` | frames |
 | `is_default_input` | the system default input device |
 | `is_default_output` | the system default output device |
+| `input_channel_names` | Each channel's own name, where the driver has one ("Mic/Line 3"): CoreAudio, ASIO and JACK do; "" where it has none (and nil on drivers without names: WASAPI, ALSA). |
+| `output_channel_names` |  |
 
 ### Device_Setup
 

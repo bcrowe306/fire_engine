@@ -23,6 +23,7 @@ Device_Spec :: struct {
 	buffer_sizes:          []int, // frames; open accepts only these
 	default_sample_rate:   f64,   // Hz
 	default_buffer_frames: int,   // frames
+	input_names, output_names: []string, // its channels' names (nil: none)
 }
 
 // How the fake driver behaves. Start from default_config.
@@ -196,6 +197,14 @@ fake_enumerate :: proc(d: ^backend.Driver, allocator: mem.Allocator) -> ([]backe
 		info.buffer_sizes, err = clone_slice(spec.buffer_sizes, allocator); ok &&= err == nil
 		info.input_channels = spec.input_channels
 		info.output_channels = spec.output_channels
+		names :: proc(src: []string, allocator: mem.Allocator) -> []string {
+			if src == nil do return nil
+			out := make([]string, len(src), allocator)
+			for n, k in src do out[k], _ = clone_string(n, allocator)
+			return out
+		}
+		info.input_channel_names = names(spec.input_names, allocator)
+		info.output_channel_names = names(spec.output_names, allocator)
 		info.default_sample_rate = spec.default_sample_rate
 		info.default_buffer_frames = spec.default_buffer_frames
 		info.is_default_input = i == 0

@@ -520,14 +520,17 @@ output_row :: proc(a: ^App, pad: int) {
 	m := &a.m
 	t := ui.theme()
 	cur := int(m.project.pads[pad].bus)
-	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, pm.bus_name(&m.project, cur)), t.text)
+	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, route_name(a, cur)), t.warn if route_missing(a, cur) else t.text)
 	if clicked do im.OpenPopup("##outmenu")
-	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Output: %s (click to route it)", pm.bus_name(&m.project, cur)))
+	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Output: %s (click to route it)", route_name(a, cur, true)))
 	if im.BeginPopup("##outmenu") {
-		for b in 0 ..= m.project.bus_count do if im.MenuItem(fmt.ctprintf("%s###out%d", pm.bus_name(&m.project, b), b), nil, b == cur) {
+		pick := -1
+		for b in 0 ..= m.project.bus_count do if im.MenuItem(fmt.ctprintf("%s###out%d", pm.bus_name(&m.project, b), b), nil, b == cur) do pick = b
+		if d, ok := out_pairs_menu(a, cur); ok do pick = d
+		if pick >= 0 {
 			targets := strip_targets(a, pad)
 			app.begin(&m.history, "Route")
-			for j in 0 ..< pm.PADS do if j in targets do pm.set_pad_bus(m, j, b)
+			for j in 0 ..< pm.PADS do if j in targets do pm.set_pad_bus(m, j, pick)
 			app.end(&m.history)
 			app.seal(&m.history)
 		}
@@ -548,8 +551,8 @@ input_row :: proc(a: ^App, pad: int) {
 	if audio {
 		// Its level along the bottom of the row.
 		in_ := m.project.pads[pad].input
-		lvl := input_view(a, int(in_.channel)).peak
-		if in_.stereo do lvl = max(lvl, input_view(a, int(in_.channel) + 1).peak)
+		lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
+		if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
 		db := 20 * math.log10(max(lvl, 1e-6))
 		f := clamp((db + 60) / 60, 0, 1)
 		if f > 0 do im.DrawList_AddRectFilled(dl, {lo.x + 2, hi.y - 3}, {lo.x + 2 + (hi.x - lo.x - 4) * f, hi.y - 1}, ui.col(t.ok if db < -12 else (t.warn if db < -1 else t.danger)), 1)
@@ -575,13 +578,15 @@ bus_output_row :: proc(a: ^App, b: int) {
 		return
 	}
 	cur := int(m.project.buses[b].dest)
-	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, pm.bus_name(&m.project, cur)), t.text)
+	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, route_name(a, cur)), t.warn if route_missing(a, cur) else t.text)
 	if clicked do im.OpenPopup("##busout")
+	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Output: %s (click to route it)", route_name(a, cur, true)))
 	if im.BeginPopup("##busout") {
 		for d in 0 ..= m.project.bus_count do if d != b + 1 {
 			ok := pm.bus_dest_ok(&m.project, b + 1, d)
 			if im.MenuItem(fmt.ctprintf("%s###bo%d", pm.bus_name(&m.project, d), d), nil, d == cur, ok) do pm.set_bus_dest(m, b + 1, d)
 		}
+		if d, ok := out_pairs_menu(a, cur); ok do pm.set_bus_dest(m, b + 1, d)
 		im.EndPopup()
 	}
 }
@@ -857,6 +862,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 			im.EndChild()
 			im.PopStyleVar()
 		}
+		if cue_on(a) do cue_row(a, i, -1)
 		gap()
 	}
 	// With several strips selected (Shift- or Cmd-click their names), an
@@ -936,6 +942,10 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	gap()
 	for s, k in bus.slots do slot_row(a, {.Bus, b, k}, s, pm.slot_failed(&m.engine, -1, b, k))
 	for _ in pm.BUS_SLOTS ..< SLOT_ROWS do im.Dummy({inner_w(), ROW_H + 2})
+	if cue_on(a) {
+		if is_main do im.Dummy({inner_w(), ROW_H + 2}) // (main is in the cue already)
+		else do cue_row(a, -1, b)
+	}
 	gap()
 	pan := bus.pan
 	pe := pan_knob(a, &pan)
@@ -969,4 +979,65 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	gap()
 	if name_plate(pm.bus_index_name(&m.project, b), t.accent if is_main else ui.mix(t.accent, t.text_dim, 0.55)) && !is_main && im.IsMouseDoubleClicked(.Left) do begin_rename_bus(a, b + 1)
 	item_menu(a, {kind = .Bus, index = b}, "##busmenu")
+}
+
+// Whether the output interface has a cue pair (the strips show cue sends).
+cue_on :: proc(a: ^App) -> bool {
+	f := interface_find(&a.settings.audio, a.settings.audio.output)
+	return f != nil && f.cue >= 0
+}
+
+// A strip's cue send (pad `pad`, or bus `bus` when pad < 0): a knob like
+// a send's; double-click turns it on at 0 dB or off; right-click for
+// pre-fader.
+@(private)
+cue_row :: proc(a: ^App, pad, bus: int) {
+	m := &a.m
+	t := ui.theme()
+	s := m.project.pads[pad].cue if pad >= 0 else m.project.buses[bus].cue
+	set :: proc(m: ^pm.Model, pad, bus: int, s: pm.Send) {
+		if pad >= 0 do pm.set_pad_cue(m, pad, s)
+		else do pm.set_bus_cue(m, bus, s)
+	}
+	on := s.level > 0
+	lo, hi, _ := row(a, "##cue", "", t.text)
+	dl := im.GetWindowDrawList()
+	small(a)
+	text_in(dl, lo, {hi.x - 18, hi.y}, fmt.tprintf("Cue %s", "pre" if s.pre else ""), t.text if on else t.text_dim, left = true)
+	im.PopFont()
+	db := pm.send_db(s)
+	frac := (db - pm.SEND_MIN_DB) / (6 - pm.SEND_MIN_DB)
+	c := im.Vec2{hi.x - 10, (lo.y + hi.y) / 2}
+	a0, sweep := f32(math.PI) * 0.75, f32(math.PI) * 1.5
+	im.DrawList_PathArcTo(dl, c, 6.5, a0, a0 + sweep, 20)
+	im.DrawList_PathStroke(dl, ui.col(t.raised), 2.5)
+	if on {
+		im.DrawList_PathArcTo(dl, c, 6.5, a0, a0 + sweep * frac, 20)
+		im.DrawList_PathStroke(dl, ui.col(t.warn if s.pre else t.accent), 2.5)
+	}
+	v := db
+	e := ui_drag(&v, pm.SEND_MIN_DB, 6, 0, 140)
+	part("cue")
+	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
+		v = pm.SEND_MIN_DB if on else 0
+		e.changed, e.ended = true, true
+	}
+	if e.changed {
+		ns := s
+		ns.level = pm.send_level(v)
+		set(m, pad, bus, ns)
+	}
+	if e.ended do app.seal(&m.history)
+	if im.BeginPopupContextItem("##cuemenu") {
+		if im.MenuItem("Pre-fader", nil, s.pre) {
+			ns := s
+			ns.pre = !s.pre
+			set(m, pad, bus, ns)
+			app.seal(&m.history)
+		}
+		im.EndPopup()
+	}
+	if im.IsItemHovered({.DelayShort}) && !im.IsItemActive() {
+		im.SetTooltip("%s", fmt.ctprintf("To the cue (headphones): %s, %s-fader", "off" if !on else fmt.tprintf("%+.1f dB", db), "pre" if s.pre else "post"))
+	}
 }

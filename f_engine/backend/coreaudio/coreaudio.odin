@@ -98,6 +98,8 @@ device_info :: proc(id: ca.AudioObjectID, allocator: mem.Allocator) -> (info: ba
 	info.name, _ = get_string(id, ca.kAudioObjectPropertyName, allocator)
 	info.input_channels, _ = channel_count(id, ca.kAudioObjectPropertyScopeInput)
 	info.output_channels, _ = channel_count(id, ca.kAudioObjectPropertyScopeOutput)
+	info.input_channel_names = channel_names(id, ca.kAudioObjectPropertyScopeInput, info.input_channels, allocator)
+	info.output_channel_names = channel_names(id, ca.kAudioObjectPropertyScopeOutput, info.output_channels, allocator)
 
 	rates := make([dynamic]f64, 0, 8, allocator)
 	ranges, _ := get_array(id, ca.kAudioDevicePropertyAvailableNominalSampleRates, ca.AudioValueRange, context.temp_allocator)
@@ -467,22 +469,44 @@ get_array :: proc(id: ca.AudioObjectID, selector: u32, $T: typeid, allocator: me
 	return out[:int(size) / size_of(T)], true
 }
 
+// Each of `n` channels' names in `scope` ("" for a channel without one).
+@(private)
+channel_names :: proc(id: ca.AudioObjectID, scope: u32, n: int, allocator: mem.Allocator) -> []string {
+	out := make([]string, n, allocator)
+	for &name, c in out {
+		a := ca.AudioObjectPropertyAddress{ca.kAudioObjectPropertyElementName, scope, u32(c + 1)}
+		ref: ca.CFStringRef
+		size := u32(size_of(ref))
+		if ca.AudioObjectGetPropertyData(id, &a, 0, nil, &size, &ref) != ca.NO_ERR || ref == nil do continue
+		name = cf_string(ref, allocator)
+		CF.CFRelease(CF.TypeRef(ref))
+	}
+	return out
+}
+
 @(private)
 get_string :: proc(id: ca.AudioObjectID, selector: u32, allocator: mem.Allocator) -> (string, bool) {
 	ref, ok := get_value(id, selector, ca.CFStringRef)
 	if !ok || ref == nil do return "", false
 	defer CF.CFRelease(CF.TypeRef(ref))
+	str := cf_string(ref, allocator)
+	return str, str != "" || CF.StringGetLength(ref) == 0
+}
+
+// A CFString as UTF-8 ("" if it won't convert).
+@(private)
+cf_string :: proc(ref: ca.CFStringRef, allocator: mem.Allocator) -> string {
 	utf8 := CF.StringEncoding(CF.StringBuiltInEncodings.UTF8)
 	cap := int(CF.StringGetMaximumSizeForEncoding(CF.StringGetLength(ref), utf8)) + 1
 	buf, err := make([]u8, cap, allocator)
-	if err != nil do return "", false
+	if err != nil do return ""
 	if !CF.StringGetCString(ref, raw_data(buf), CF.Index(cap), utf8) {
 		delete(buf, allocator)
-		return "", false
+		return ""
 	}
 	n := 0
 	for n < cap && buf[n] != 0 do n += 1
-	return string(buf[:n]), true
+	return string(buf[:n])
 }
 
 // Channel and stream counts come from the stream configuration (an AudioBufferList).

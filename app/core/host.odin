@@ -22,8 +22,14 @@ Host_Settings :: struct {
 	input_device:  string, // "" = the default input
 	sample_rate:   f64,    // 0 = the device's
 	buffer_frames: int,    // 0 = the device's
-	outputs:       int,    // output channels; 0 = 2
-	inputs:        int,    // input channels (0 = none)
+	outputs:       int,    // output channels; 0 = 2 (when `output_channels` is {})
+	inputs:        int,    // input channels (0 = none; when `input_channels` is {})
+	// The device's channels to open (0-based), when not {}: the graph's
+	// INPUT and OUTPUT channels are these in order (see `host_input_channel`).
+	// Channels the device does not have are left out (`Host.missing_*`).
+	input_channels:  backend.Channel_Mask,
+	output_channels: backend.Channel_Mask,
+	fake_devices:  []fake.Device_Spec, // the simulated driver's devices (nil: one 2-in/2-out)
 	max_block:     int,    // largest block the graph processes; 0 = 1024
 	fake:          bool,   // the simulated driver (tests, headless runs)
 	ram_bytes:     int,    // audio files up to this decoded size are held in memory (samplers need it); 0 = the streamer's default
@@ -77,6 +83,10 @@ Host :: struct {
 	out_events:  []fc.Event, // audio thread: the graph's events out, per block
 	block_midi:  []fc.Event, // audio thread: this block's MIDI in, while the clock runs it (see `host_block_midi`)
 	load:        u32, // atomic: f32 bits: how much of each callback's time the engine takes (smoothed)
+	// The device's channels open now (the graph's INPUT and OUTPUT, in
+	// order), and those asked for that the device doesn't have.
+	open_inputs, open_outputs:       backend.Channel_Mask,
+	missing_inputs, missing_outputs: backend.Channel_Mask,
 }
 
 // Announced on the bus when the device changes.
@@ -105,7 +115,7 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 	if h.settings.max_block <= 0 do h.settings.max_block = 1024
 	if settings.fake {
 		cfg := fake.default_config()
-		cfg.devices = nil
+		cfg.devices = settings.fake_devices
 		h.fake = fake.create(cfg)
 		h.driver = fake.driver(h.fake)
 	} else {
@@ -391,10 +401,25 @@ open_device :: proc(h: ^Host) -> fc.Error {
 		input_device_id  = s.input_device,
 		sample_rate      = s.sample_rate,
 		buffer_frames    = s.buffer_frames,
+		input_channels   = s.input_channels,
+		output_channels  = s.output_channels,
 	}
-	for c in 0 ..< s.outputs do setup.output_channels += {c}
-	for c in 0 ..< s.inputs do setup.input_channels += {c}
-	backend.device_open(&h.device, setup, s.max_block) or_return
+	if setup.output_channels == {} do for c in 0 ..< s.outputs do setup.output_channels += {c}
+	if setup.input_channels == {} do for c in 0 ..< s.inputs do setup.input_channels += {c}
+	h.missing_inputs, h.missing_outputs = {}, {}
+	if err := backend.device_open(&h.device, setup, s.max_block); err != .None {
+		// Perhaps channels it doesn't have (another interface under the
+		// same name, or fewer channels now): without those, once more.
+		fitted, ok := fit_channels(h, setup)
+		if !ok || fitted == setup do return err
+		h.missing_inputs = setup.input_channels - fitted.input_channels
+		h.missing_outputs = setup.output_channels - fitted.output_channels
+		setup = fitted
+		backend.device_open(&h.device, setup, s.max_block) or_return
+	}
+	h.open_inputs, h.open_outputs = setup.input_channels, setup.output_channels
+	// (The graph's channels: as many as are open.)
+	h.settings.inputs, h.settings.outputs = card(setup.input_channels), card(setup.output_channels)
 	h.opened = true
 	h.format = h.device.format
 	if err := ensure_engine(h, h.format.sample_rate); err != .None {
@@ -481,3 +506,52 @@ host_fake :: proc(h: ^Host) -> ^fake.Fake {
 
 @(private)
 _ :: clip.Player_Env
+
+// `setup` without the channels its devices don't have (outputs 1–2 if it
+// would have none). False if a device isn't listed.
+@(private)
+fit_channels :: proc(h: ^Host, setup: backend.Device_Setup) -> (out: backend.Device_Setup, ok: bool) {
+	infos, err := backend.driver_enumerate(h.driver, context.temp_allocator)
+	if err != .None do return setup, false
+	find :: proc(infos: []backend.Device_Info, id: string, input: bool) -> ^backend.Device_Info {
+		for &d in infos do if d.id == id || (id == "" && (d.is_default_input if input else d.is_default_output)) do return &d
+		return nil
+	}
+	out = setup
+	o := find(infos, setup.output_device_id, false)
+	if o == nil do return setup, false
+	have :: proc(n: int) -> (m: backend.Channel_Mask) {
+		for c in 0 ..< min(n, fc.MAX_CHANNELS) do m += {c}
+		return
+	}
+	out.output_channels &= have(o.output_channels)
+	if out.output_channels == {} do out.output_channels = have(min(o.output_channels, 2))
+	if setup.input_channels != {} {
+		i := find(infos, setup.input_device_id if setup.input_device_id != "" else setup.output_device_id, true)
+		out.input_channels = setup.input_channels & have(i.input_channels) if i != nil else {}
+	}
+	return out, true
+}
+
+// The graph channel (INPUT) device input channel `c` (0-based) comes in
+// on, or -1 when it isn't open.
+host_input_channel :: proc(h: ^Host, c: int) -> int {
+	return mask_position(h.open_inputs, c)
+}
+
+// The graph channel (OUTPUT) that plays on device output channel `c`
+// (0-based), or -1 when it isn't open.
+host_output_channel :: proc(h: ^Host, c: int) -> int {
+	return mask_position(h.open_outputs, c)
+}
+
+@(private)
+mask_position :: proc(m: backend.Channel_Mask, c: int) -> int {
+	if c < 0 || c >= fc.MAX_CHANNELS || c not_in m do return -1
+	k := 0
+	for x in m {
+		if x == c do return k
+		k += 1
+	}
+	return -1
+}

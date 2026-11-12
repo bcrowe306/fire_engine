@@ -43,6 +43,11 @@ Device_Info :: struct {
 	default_buffer_frames: int,    // frames
 	is_default_input:      bool,   // the system default input device
 	is_default_output:     bool,   // the system default output device
+	// Each channel's own name, where the driver has one ("Mic/Line 3"):
+	// CoreAudio, ASIO and JACK do; "" where it has none (and nil on
+	// drivers without names: WASAPI, ALSA).
+	input_channel_names:   []string,
+	output_channel_names:  []string,
 }
 
 // Frees a slice returned by driver_enumerate and everything in it. Pass the
@@ -53,6 +58,10 @@ device_infos_destroy :: proc(infos: []Device_Info, allocator := context.allocato
 		delete(info.name, allocator)
 		delete(info.sample_rates, allocator)
 		delete(info.buffer_sizes, allocator)
+		for n in info.input_channel_names do delete(n, allocator)
+		for n in info.output_channel_names do delete(n, allocator)
+		delete(info.input_channel_names, allocator)
+		delete(info.output_channel_names, allocator)
 	}
 	delete(infos, allocator)
 }

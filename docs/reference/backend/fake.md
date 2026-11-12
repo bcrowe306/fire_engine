@@ -28,6 +28,8 @@ Device_Spec :: struct {
 	buffer_sizes: []int,
 	default_sample_rate: f64,
 	default_buffer_frames: int,
+	input_names: []string,
+	output_names: []string,
 }
 ```
 
@@ -44,6 +46,8 @@ and must outlive the driver.
 | `buffer_sizes` | frames; open accepts only these |
 | `default_sample_rate` | Hz |
 | `default_buffer_frames` | frames |
+| `input_names` |  |
+| `output_names` | its channels' names (nil: none) |
 
 ### Config
 

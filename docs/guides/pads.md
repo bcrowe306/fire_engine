@@ -304,6 +304,9 @@ for other toggles.
     level (Shift for fine), double-click to turn it on at 0 dB or off,
     right-click for **Pre-fader** (it then ignores the fader, and shows
     `pre`, its knob in yellow). A muted pad sends nothing;
+  - its **cue** send, while a cue output is set (Settings > Audio): how
+    much of it goes to the headphones mix on top of main (a send's knob:
+    double-click, right-click for pre-fader);
   - **pan** (drag; double-click centres);
   - two readouts: the fader's level, and the loudest peak since you last
     clicked it (red above 0 dB);
@@ -312,7 +315,11 @@ for other toggles.
   - **M**ute and **S**olo;
   - its **output**, right above its name: Main or a bus (click to
     choose). A bus's output is Main or another bus (one that would bring
-    it back round to itself can't be picked);
+    it back round to itself can't be picked). Either can also go to a
+    **direct out**: an open output pair of the interface (by its name),
+    straight there, not through main (exports fold direct outs back into
+    the mixdown). One whose pair isn't open shows `(not open)` in amber
+    and plays in main until it is;
   - the name on the pad's colour (click to select the pad).
 
   Click a slot to edit it in the **Effects** tab: what it holds, on or
@@ -820,8 +827,27 @@ it.
   preset**; the **zoom** (50–300%: everything drawn larger or smaller, as
   a browser zooms); the pads' waveforms; whether the layout is
   remembered, and **Reset layout**.
-- **Audio**: the output and input devices, sample rate and buffer size
-  (what each device offers), input channels. Changes wait for **Apply**,
+- **Audio**: the output and input interfaces, sample rate and buffer
+  size (what each interface offers), then the interface's **channels**,
+  inputs and outputs side by side: each one a switch, its number, the
+  interface's own name for it (CoreAudio, ASIO and JACK give names;
+  WASAPI and ALSA only numbers) and a name of yours to type (it shows
+  wherever the channel does). **All** and **None**; a level meter beside
+  each open input, and **Test** beside each open output pair (a second
+  of tone, to find which speaker it is). **Main output** is the pair main
+  plays on (its switches stay on); **Cue output** a pair for a
+  headphones mix: a copy of main, each track's **cue send** (the strips
+  show one while a cue pair is set) and the click, at its own level, with
+  **Click on the cue only** to keep the click out of main. Each interface
+  keeps its own channels, names and pairs (in settings.ini, a section
+  each), so switching interfaces and back puts them back. What isn't
+  there says so: an interface not connected plays through the system's
+  until it is back (plugged in again, Pads switches back to it and says
+  so; the device lists follow what is plugged in); a channel it no longer has is left out (kept, with
+  **Forget them**); main on a pair that isn't open plays on the first
+  open one; the settings and the project keep everything for when the
+  hardware is back. On macOS, separate input and output interfaces need
+  an aggregate device (the page says so). Changes wait for **Apply**,
   which opens the device with them; keep them within 10 s or they go
   back (no getting stuck without sound). Below, the engine now: the rate
   and buffer it runs at, the latency in, out and round trip, its block,
@@ -1106,6 +1132,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_slicer.py` | slicing from the browser (Shift+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_automation_draw.py` | automation drawn freehand, as a Shift line, bent with Ctrl, swept with Erase; the Snap toggle |
+| `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |

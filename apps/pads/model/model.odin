@@ -223,6 +223,7 @@ Pad :: struct {
 	instrument: Effect_Slot, // a plug-in pad's CLAP instrument (kind .Plugin; kept likewise)
 	plugin_lanes: [PLUGIN_LANES]Plugin_Lane, // what each Plugin_N lane moves
 	frozen:     bool, // it plays its renderings (`Project.freezes`) instead of its device and inserts
+	cue:        Send, // its send to the cue mix (a performer's headphones)
 }
 
 // A sample the project holds: a file in its folder.

@@ -78,7 +78,10 @@ Audio_Config :: struct {
 	output, input: string, // device ids ("" = the system default)
 	rate:   f64, // 0 = the device's
 	buffer: int, // frames; 0 = the device's
-	inputs: int, // input channels
+	inputs: int, // input channels (before interfaces had their own: read once into them)
+	interfaces: [dynamic]Interface_Config, // each interface's channels (see audio_channels.odin)
+	cue_db:     f32,  // the cue mix's level
+	click_cue:  bool, // the metronome plays on the cue pair only (not in main)
 }
 
 // A shortcut changed from an action's own.
@@ -174,6 +177,18 @@ settings_load :: proc(a: ^App) {
 		rate   = app.ini_f64(ini_, "audio", "sample_rate", 0),
 		buffer = app.ini_int(ini_, "audio", "buffer", 0),
 		inputs = app.ini_int(ini_, "audio", "input_channels", 2),
+		cue_db = f32(app.ini_f64(ini_, "audio", "cue_db", 0)),
+		click_cue = app.ini_bool(ini_, "audio", "click_on_cue_only", false),
+	}
+	s.audio.interfaces = make([dynamic]Interface_Config)
+	interfaces_load(&s.audio, ini_)
+	// (From before interfaces had their own channels: the input count.)
+	if interface_find(&s.audio, s.audio.input) == nil {
+		if _, had := app.ini_get(ini_, "audio", "input_channels"); had {
+			f := interface_for(&s.audio, s.audio.input)
+			f.inputs = {}
+			for c in 0 ..< clamp(s.audio.inputs, 0, 64) do f.inputs += {c}
+		}
 	}
 	s.staged = audio_clone(s.audio)
 	// MIDI.
@@ -226,7 +241,9 @@ settings_save :: proc(a: ^App) {
 	app.ini_set(ini, "audio", "input", s.audio.input)
 	app.ini_set_f64(ini, "audio", "sample_rate", s.audio.rate)
 	app.ini_set_int(ini, "audio", "buffer", s.audio.buffer)
-	app.ini_set_int(ini, "audio", "input_channels", s.audio.inputs)
+	app.ini_set_f64(ini, "audio", "cue_db", f64(s.audio.cue_db))
+	app.ini_set_bool(ini, "audio", "click_on_cue_only", s.audio.click_cue)
+	interfaces_save(&s.audio, ini)
 	app.ini_set_bool(ini, "midi", "enabled", s.midi_on)
 	app.ini_set(ini, "midi", "inputs_off", strings.join(s.midi_off[:], "|", context.temp_allocator))
 	app.ini_set(ini, "midi", "output", s.midi_output)
@@ -356,6 +373,7 @@ find_preset :: proc(s: ^App_Settings, name: string) -> (ui.Theme, bool) {
 audio_clone :: proc(c: Audio_Config) -> Audio_Config {
 	c := c
 	c.output, c.input = strings.clone(c.output), strings.clone(c.input)
+	c.interfaces = interfaces_clone(c.interfaces)
 	return c
 }
 
@@ -363,6 +381,7 @@ audio_clone :: proc(c: Audio_Config) -> Audio_Config {
 audio_free :: proc(c: ^Audio_Config) {
 	delete(c.output)
 	delete(c.input)
+	interfaces_free(&c.interfaces)
 	c^ = {}
 }
 
@@ -387,12 +406,27 @@ appearance_apply :: proc(a: ^App) {
 // The host settings the audio and MIDI settings make.
 host_settings :: proc(a: ^App, fake: bool) -> app.Host_Settings {
 	s := &a.settings
-	return {
+	hs := app.Host_Settings{
 		fake = fake, max_block = 512, ram_bytes = 512 << 20, rebuild_on_rate_change = true,
 		output_device = s.audio.output, input_device = s.audio.input,
-		sample_rate = s.audio.rate, buffer_frames = s.audio.buffer, inputs = s.audio.inputs,
+		sample_rate = s.audio.rate, buffer_frames = s.audio.buffer,
 		midi = s.midi_on, midi_output = s.midi_output, midi_inputs_off = s.midi_off[:],
+		fake_devices = fake_interfaces[:] if a.fake_interface else nil,
 	}
+	hs.input_channels, hs.output_channels = channels_wanted(&s.audio)
+	return hs
+}
+
+// The channels the interfaces in use say to open: their inputs; their
+// outputs, with main's pair and the cue pair always.
+channels_wanted :: proc(c: ^Audio_Config) -> (inputs, outputs: backend.Channel_Mask) {
+	if f := interface_find(c, c.input); f != nil do inputs = f.inputs
+	else do inputs = {0, 1}
+	f := interface_find(c, c.output)
+	if f == nil do return inputs, {0, 1}
+	outputs = f.outputs + {f.main, f.main + 1}
+	if f.cue >= 0 do outputs += {f.cue, f.cue + 1}
+	return
 }
 
 // Opens the device with the staged audio settings; kept if `keep` is
@@ -433,12 +467,24 @@ audio_revert :: proc(a: ^App) {
 @(private)
 audio_reopen :: proc(a: ^App) -> bool {
 	h := &a.host
-	if h.settings.fake do return true
 	app.host_close(h)
-	hs := host_settings(a, false)
+	hs := host_settings(a, h.settings.fake)
 	h.settings.output_device, h.settings.input_device = hs.output_device, hs.input_device
-	h.settings.sample_rate, h.settings.buffer_frames, h.settings.inputs = hs.sample_rate, hs.buffer_frames, hs.inputs
-	return app.host_open(h) == .None
+	h.settings.sample_rate, h.settings.buffer_frames = hs.sample_rate, hs.buffer_frames
+	h.settings.input_channels, h.settings.output_channels = hs.input_channels, hs.output_channels
+	ok := app.host_open(h) == .None
+	outputs_apply(a)
+	return ok
+}
+
+// Tells the engine where main, the cue and the click play (from the
+// output interface's settings), and that the channels may have changed.
+outputs_apply :: proc(a: ^App) {
+	s := &a.settings
+	o := pm.Outputs{main = 0, cue = -1, cue_db = s.audio.cue_db, click_cue = s.audio.click_cue}
+	if f := interface_find(&s.audio, s.audio.output); f != nil do o.main, o.cue = f.main, f.cue
+	pm.set_outputs(&a.m.engine, o)
+	pm.io_changed(&a.m.engine)
 }
 
 // The MIDI settings where they act: the ports, the clock out, what the
@@ -490,7 +536,7 @@ draw_settings :: proc(a: ^App) {
 	}
 	// A modal window over the app (it dims behind it), sized to the app's.
 	vp := im.GetMainViewport()
-	im.SetNextWindowSize({min(980, vp.WorkSize.x - 80), min(680, vp.WorkSize.y - 80)}, .Appearing)
+	im.SetNextWindowSize({min(1040, vp.WorkSize.x - 80), max(min(680, vp.WorkSize.y - 80), vp.WorkSize.y * 0.85)}, .Appearing) // (tall: an interface's channel lists)
 	im.SetNextWindowPos({vp.WorkPos.x + vp.WorkSize.x / 2, vp.WorkPos.y + vp.WorkSize.y / 2}, .Appearing, {0.5, 0.5})
 	if !im.IsPopupOpen("Settings###settings") do im.OpenPopup("Settings###settings")
 	if im.BeginPopupModal("Settings###settings", &s.open, {.NoCollapse}) {
@@ -715,10 +761,10 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 		return id
 	}
 	if h.settings.fake {
-		im.TextColored(transmute(im.Vec4)ui.theme().warn, "Running with the simulated device (--fake): these settings apply on a normal start.")
+		im.TextColored(transmute(im.Vec4)ui.theme().warn, "Running with the simulated device (--fake): its own devices are listed; the others apply on a normal start.")
 		im.Spacing()
 	}
-	// The devices.
+	// The interfaces.
 	label("Output")
 	im.SetNextItemWidth(360)
 	if ui.combo("##out", fmt.ctprintf("%s", device_name(s, st.output, true))) {
@@ -728,6 +774,7 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 		}
 		im.EndCombo()
 	}
+	ui.name("output interface")
 	label("Input")
 	im.SetNextItemWidth(360)
 	if ui.combo("##in", fmt.ctprintf("%s", device_name(s, st.input, false))) {
@@ -737,11 +784,24 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 		}
 		im.EndCombo()
 	}
+	ui.name("input interface")
 	im.SameLine()
 	if ui.icon_button(ui.ICON_REFRESH_CW, "Look for devices again") do refresh_devices(a)
+	// What is not there, and what can't be.
+	warn :: proc(text: string) {
+		im.Dummy({200, 0})
+		im.SameLine(200)
+		im.TextColored(transmute(im.Vec4)ui.theme().warn, "%s", fmt.ctprintf("%s", text))
+	}
+	out_dev := find_device(s, st.output, true)
+	in_dev := find_device(s, st.input, false)
+	if st.output != "" && out_dev == nil do warn(fmt.tprintf("%s is not connected: the system's output plays until it is back.", device_name(s, st.output, true)))
+	if st.input != "" && in_dev == nil do warn(fmt.tprintf("%s is not connected: the system's input is used until it is back.", device_name(s, st.input, false)))
+	when ODIN_OS == .Darwin {
+		if st.input != "" && st.output != "" && st.input != st.output do warn("Separate input and output interfaces need an aggregate device on macOS (Audio MIDI Setup).")
+	}
 	// What the output device offers.
-	dev: ^backend.Device_Info
-	for &d in s.devices do if d.id == st.output || (st.output == "" && d.is_default_output) do dev = &d
+	dev := out_dev
 	label("Sample rate")
 	im.SetNextItemWidth(200)
 	if ui.combo("##rate", fmt.ctprintf("%s", "The device's" if st.rate == 0 else fmt.tprintf("%.0f Hz", st.rate))) {
@@ -762,11 +822,42 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 		im.EndCombo()
 	}
 	hint("Smaller is quicker to answer a pad, but asks more of the computer; raise it if you hear crackles.")
-	label("Input channels")
-	ch := f64(st.inputs)
-	if ui.number_drag("inputs", &ch, 0, 32, 1, 1, "%.0f", 120).changed do st.inputs = int(ch)
+	// Each interface's channels, and where main and the cue play.
+	// (Side by side: inputs, outputs.)
+	if im.BeginTable("##channels", 2, {.SizingStretchSame}) {
+		im.TableNextColumn()
+		channel_list(a, st, in_dev, false)
+		im.TableNextColumn()
+		channel_list(a, st, out_dev, true)
+		im.EndTable()
+	}
+	of := interface_for(st, st.output)
+	pairs := mask_pairs(of.outputs + {of.main, of.main + 1})
+	label("Main output")
+	im.SetNextItemWidth(260)
+	if ui.combo("##mainout", fmt.ctprintf("%s", pair_label(of, out_dev, true, of.main))) {
+		for p in pairs do if im.Selectable(fmt.ctprintf("%s###mp%d", pair_label(of, out_dev, true, p), p), p == of.main) do of.main = p
+		im.EndCombo()
+	}
+	ui.name("main output")
+	label("Cue output")
+	im.SetNextItemWidth(260)
+	if ui.combo("##cueout", fmt.ctprintf("%s", "None" if of.cue < 0 else pair_label(of, out_dev, true, of.cue))) {
+		if im.Selectable("None", of.cue < 0) do of.cue = -1
+		for p in pairs do if p != of.main && im.Selectable(fmt.ctprintf("%s###cp%d", pair_label(of, out_dev, true, p), p), p == of.cue) do of.cue = p
+		im.EndCombo()
+	}
+	ui.name("cue output")
+	if of.cue >= 0 {
+		im.SameLine()
+		cue := f64(st.cue_db)
+		if ui.number_drag("cue level", &cue, -60, 6, 0.5, 0.1, "%.1f dB", 110).changed do st.cue_db = f32(cue)
+		im.SameLine()
+		ui.toggle("Click on the cue only", &st.click_cue)
+	}
+	hint("The cue output is a headphones mix: each track's cue send, and the click.")
 	// Apply: staged until then.
-	pending := st.output != s.audio.output || st.input != s.audio.input || st.rate != s.audio.rate || st.buffer != s.audio.buffer || st.inputs != s.audio.inputs
+	pending := st.output != s.audio.output || st.input != s.audio.input || st.rate != s.audio.rate || st.buffer != s.audio.buffer || st.cue_db != s.audio.cue_db || st.click_cue != s.audio.click_cue || !interfaces_equal(st.interfaces, s.audio.interfaces)
 	im.Dummy({200, 0})
 	im.SameLine(200)
 	im.BeginDisabled(!pending)
@@ -781,14 +872,9 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 		im.SameLine()
 		im.TextColored(transmute(im.Vec4)ui.theme().warn, "Not applied yet")
 	}
-	// What comes in, channel by channel.
-	im.SeparatorText("Input levels")
-	n := pm.input_channels(&a.m.engine)
-	if n == 0 do im.TextDisabled("No inputs open (Input channels above).")
-	for c in 0 ..< n {
-		label(fmt.ctprintf("In %d", c + 1))
-		level_bar(input_view(a, c).peak, 260, 10)
-		ui.name(fmt.tprintf("input meter %d", c + 1))
+	// What the device left out (asked for, not there).
+	if h.missing_inputs != {} || h.missing_outputs != {} {
+		warn(fmt.tprintf("Not on this interface: %s%s%s", fmt.tprintf("inputs %s", mask_text(h.missing_inputs)) if h.missing_inputs != {} else "", "; " if h.missing_inputs != {} && h.missing_outputs != {} else "", fmt.tprintf("outputs %s", mask_text(h.missing_outputs)) if h.missing_outputs != {} else ""))
 	}
 	// What it runs at, and how it is doing.
 	im.Spacing()
@@ -1052,4 +1138,89 @@ project_defaults_apply :: proc(a: ^App) {
 Folder_Chosen :: struct {
 	what: enum u8 {Projects, Plugins},
 	path: string,
+}
+
+// The device listed under `id` ("": the system's default input or output).
+@(private)
+find_device :: proc(s: ^App_Settings, id: string, output: bool) -> ^backend.Device_Info {
+	for &d in s.devices do if d.id == id || (id == "" && (d.is_default_output if output else d.is_default_input)) do return &d
+	return nil
+}
+
+// An interface's inputs or outputs, a row each: on or off, its number, the
+// driver's name, an alias to type, and (inputs, open) its level. Channels
+// saved but not on the interface now show apart, to forget.
+@(private)
+channel_list :: proc(a: ^App, st: ^Audio_Config, dev: ^backend.Device_Info, output: bool) {
+	f := interface_for(st, st.output if output else st.input)
+	mask := &f.outputs if output else &f.inputs
+	im.SeparatorText("Outputs" if output else "Inputs")
+	n := 0
+	if dev != nil do n = min(dev.output_channels if output else dev.input_channels, 64)
+	if n == 0 {
+		im.TextDisabled("%s", fmt.ctprintf("No %s on this interface.", "outputs" if output else "inputs"))
+		return
+	}
+	im.PushIDInt(i32(1 if output else 0))
+	defer im.PopID()
+	if im.SmallButton("All") do for c in 0 ..< n do mask^ += {c}
+	ui.name(fmt.tprintf("%s all", "outputs" if output else "inputs"))
+	im.SameLine()
+	if im.SmallButton("None") do mask^ = {}
+	ui.name(fmt.tprintf("%s none", "outputs" if output else "inputs"))
+	names := dev.output_channel_names if output else dev.input_channel_names
+	x0: f32 = 0 // (in a table cell, SameLine counts from the cell's start)
+	col_w := im.GetContentRegionAvail().x
+	for c in 0 ..< n {
+		im.PushIDInt(i32(c))
+		on := c in mask^
+		locked := output && (c == f.main || c == f.main + 1) // (main's pair stays open)
+		im.BeginDisabled(locked)
+		if ui.toggle(fmt.ctprintf("%s %d", "Out" if output else "In", c + 1), &on) {
+			if on do mask^ += {c}
+			else do mask^ -= {c}
+		}
+		im.EndDisabled()
+		if locked && im.IsItemHovered({.AllowWhenDisabled}) do im.SetTooltip("Main plays here (choose another main output to turn it off)")
+		im.SameLine(x0 + 96)
+		driver := names[c] if c < len(names) else ""
+		im.TextDisabled("%s", fmt.ctprintf("%s", driver if driver != "" else "—"))
+		im.SameLine(x0 + 190)
+		buf: [32]u8
+		copy(buf[:len(buf) - 1], channel_alias(f, output, c))
+		im.SetNextItemWidth(clamp(col_w - 290, 90, 170))
+		if im.InputTextWithHint("##alias", "Name it…", cstring(&buf[0]), len(buf)) {
+			set_channel_alias(f, output, c, strings.truncate_to_byte(string(buf[:]), 0))
+		}
+		ui.name(fmt.tprintf("%s %d alias", "out" if output else "in", c + 1))
+		// A pair open on the interface in use: its test tone.
+		if output && c % 2 == 0 && interface_key(a.settings.audio.output) == f.id && app.host_output_channel(&a.host, c) >= 0 && app.host_output_channel(&a.host, c + 1) >= 0 {
+			im.SameLine(x0 + col_w - 90)
+			if im.SmallButton(fmt.ctprintf("%s Test %d/%d", ui.ICON_VOLUME_2, c + 1, c + 2)) do pm.test_tone(&a.m.engine, c)
+			ui.name(fmt.tprintf("test %d/%d", c + 1, c + 2))
+			if im.IsItemHovered() do im.SetTooltip("A second of tone on this pair, to find which speaker it is")
+		}
+		if !output {
+			if g := app.host_input_channel(&a.host, c); g >= 0 && interface_key(a.settings.audio.input) == f.id {
+				im.SameLine(x0 + col_w - 90)
+				level_bar(input_view(a, g).peak, 84, 10)
+				ui.name(fmt.tprintf("input meter %d", c + 1))
+			}
+		}
+		im.PopID()
+	}
+	// Saved, but not on this interface (now): kept until forgotten.
+	gone := mask^ - channel_mask(n)
+	if gone != {} {
+		im.TextColored(transmute(im.Vec4)ui.theme().warn, "%s", fmt.ctprintf("%s %s: not on this interface (kept for when it is)", "Outputs" if output else "Inputs", mask_text(gone)))
+		im.SameLine()
+		if im.SmallButton("Forget them") do mask^ -= gone
+	}
+}
+
+// Channels 0..<n.
+@(private)
+channel_mask :: proc(n: int) -> (m: backend.Channel_Mask) {
+	for c in 0 ..< min(n, 64) do m += {c}
+	return
 }

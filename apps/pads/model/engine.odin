@@ -2,6 +2,7 @@ package pads_model
 
 import "base:intrinsics"
 import "core:math"
+import "core:time"
 
 import app "app:core"
 import fc "fire:core"
@@ -55,6 +56,10 @@ Engine :: struct {
 	metro_click: dsp.Click_Sound, // its sound and accent, as sent
 	metro_accent, metro_click_sent: bool,
 	recording: bool, // the capture is armed (the metronome may click only then)
+	outputs:   Outputs, // where main, the cue and the click play (the app's settings)
+	io_dirty:  bool,    // the outputs or the interface's channels changed: wire them again
+	tone_id:   graph.Node_Id, // a test tone playing (see test_tone)
+	tone_until: time.Tick,
 	sig:       Time_Sig, // the meter the clock has
 	resend:    bool, // send every pad's parameters again (automation moved them)
 	stopped:   bool, // stopped by `stop`: automation is off until `play`
@@ -163,8 +168,8 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	graph.connect_events(g, e.player_id, e.router_id)
 	graph.connect_events(g, e.router_id, graph.OUTPUT) // pads' MIDI out
 	e.metro_id = graph.add_node(g, dsp.metronome_create({timeline = e.timeline}), 0, 2) or_return
-	for c in 0 ..< 2 do graph.connect(g, e.metro_id, c, graph.OUTPUT, c)
-	build_mixer(e) or_return
+	build_mixer(e) or_return // (the click is wired to the outputs by sync_outputs)
+	e.io_dirty = true
 	// Input meters: one a pair of the device's input channels.
 	ins := min(g.settings.input_channels, MAX_INPUTS)
 	for k in 0 ..< (ins + 1) / 2 {
@@ -229,6 +234,7 @@ sync :: proc(e: ^Engine) {
 	g := e.host.graph
 	preview_poll(e)
 	warp_poll(e)
+	tone_frame(e)
 	structural := false
 	for i in 0 ..< PADS {
 		if !e.dirty[i] do continue
@@ -694,9 +700,13 @@ hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, 
 engine_clear :: proc(e: ^Engine) {
 	g := e.host.graph
 	if e.clock_out do graph.remove_node(g, e.clock_out_id)
+	if e.tone_id != {} do graph.remove_node(g, e.tone_id)
 	if e.following do transport.set_sync(e.host.clock, {})
 	for &n in e.nodes do if n.live do remove_pad_nodes(g, &n)
 	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
+	graph.remove_node(g, e.mixer.out_main)
+	graph.remove_node(g, e.mixer.out_cue)
+	for id in e.mixer.out_pairs do if id != {} do graph.remove_node(g, id)
 	for b in e.mixer.buses {
 		for f in b.slots do if f.has {
 			graph.remove_node(g, f.id)
@@ -720,8 +730,10 @@ engine_clear :: proc(e: ^Engine) {
 	engine_destroy(e)
 	host := e.host
 	pv := e.preview // its settings stay (they are the user's, not the project's)
+	outs := e.outputs // (so do where it plays)
 	e^ = {}
 	e.host = host
+	e.outputs = outs
 	e.preview = {volume = pv.volume, auto_play = pv.auto_play, sync = pv.sync}
 }
 

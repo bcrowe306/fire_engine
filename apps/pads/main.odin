@@ -107,6 +107,8 @@ App :: struct {
 	plugin_choice: Plugin_Choice,
 	editors:  [dynamic]Plugin_Editor, // plug-ins' own windows open
 	about:    About_State,
+	fake_interface: bool, // --fake-interface: the simulated driver has `fake_interfaces`
+	audio_fallback: bool, // the interface in the settings wasn't there at the start: the system's plays
 	plugin_pad: Plugin_Pad_Ui,
 	proj:     Project_State,
 	detail:   Detail_State,
@@ -121,6 +123,7 @@ main :: proc() {
 	ui.crash_install()
 	context.assertion_failure_proc = ui.crash_assertion
 	project, drive, out, headless, fake, profile, prefs := "", "", ".build/app/shots", false, false, 0, ""
+	fake_interface := false
 	control := -1
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
@@ -139,6 +142,7 @@ main :: proc() {
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
 		case "--prefs":    prefs = next(&i)
 		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
+		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
 			fmt.println("Pads", version_text())
 			os.exit(0)
@@ -148,6 +152,7 @@ main :: proc() {
 		}
 	}
 	a := new(App)
+	a.fake_interface = fake_interface
 	a.dark, a.pad_waves = true, true
 	a.io.by_select = -1
 	a.peaks = make(map[app.Id][]ui.Peak)
@@ -194,6 +199,7 @@ main :: proc() {
 		fmt.eprintln("pads: could not start the engine")
 		os.exit(1)
 	}
+	outputs_apply(a)
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
@@ -222,6 +228,9 @@ main :: proc() {
 		a := (^App)(user)
 		pm.engine_rebuild(&a.m.engine)
 		sync_apply(a) // (the clock out and what it follows: on the new clock)
+	}, a)
+	app.subscribe(&a.bus, app.Host_Event, proc(user: rawptr, e: ^app.Host_Event) {
+		if e.kind == .Devices do on_devices_changed((^App)(user))
 	}, a)
 	setup_actions(a)
 	keys_apply(a)
@@ -291,14 +300,18 @@ open_engine :: proc(a: ^App, fake: bool) -> bool {
 	named := a.settings.audio.output != "" || a.settings.audio.input != ""
 	for default_devices in ([]bool{fake, true}) {
 		if default_devices && !fake && !named do continue // (the first pass was already the default ones)
-		for inputs in ([]int{a.settings.audio.inputs, 0}) {
+		for with_inputs in ([]bool{true, false}) {
 			settings := host_settings(a, fake)
-			settings.inputs = inputs
-			if default_devices || fake do settings.output_device, settings.input_device = "", ""
+			if !with_inputs do settings.input_channels, settings.inputs = {}, 0
+			// (The simulated driver knows only its own devices.)
+			if default_devices || (fake && !strings.has_prefix(settings.output_device, "fake:")) do settings.output_device, settings.input_device = "", ""
 			if a.host.driver != nil do app.host_destroy(&a.host)
 			if app.host_init(&a.host, settings, &a.bus) != .None do continue
 			if app.host_open(&a.host) == .None {
-				if default_devices && !fake && named do fmt.eprintln("pads: the audio device in the settings is not there; using the system's")
+				if default_devices && !fake && named {
+					fmt.eprintln("pads: the audio device in the settings is not there; using the system's")
+					a.audio_fallback = true // (switched back when it is: on_devices_changed)
+				}
 				return true
 			}
 		}

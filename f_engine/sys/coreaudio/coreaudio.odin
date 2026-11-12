@@ -122,6 +122,8 @@ kAudioObjectPropertyScopeOutput :: u32('o') << 24 | u32('u') << 16 | u32('t') <<
 kAudioObjectPropertyElementMain :: u32(0)
 
 kAudioObjectPropertyName :: u32('l') << 24 | u32('n') << 16 | u32('a') << 8 | u32('m')
+// A channel's name: the property in a scope, its element the channel (1-based).
+kAudioObjectPropertyElementName :: u32('l') << 24 | u32('c') << 16 | u32('h') << 8 | u32('n')
 
 kAudioHardwarePropertyDevices              :: u32('d') << 24 | u32('e') << 16 | u32('v') << 8 | u32('#')
 kAudioHardwarePropertyDefaultInputDevice   :: u32('d') << 24 | u32('I') << 16 | u32('n') << 8 | u32(' ')

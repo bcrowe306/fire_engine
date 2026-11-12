@@ -101,11 +101,16 @@ port_name :: proc(a: ^App, id: string, input: bool) -> string {
 	return id
 }
 
-// What track `i`'s audio input is: "In 1/2", "In 3", or none there.
+// What track `i`'s audio input is: "In 1/2", "In 3 · Kick mic" (its
+// alias, or the interface's name), "(not open)" when it isn't.
 audio_in_text :: proc(a: ^App, i: int) -> string {
 	in_ := a.m.project.pads[i].input
-	c := int(in_.channel) + 1
-	return fmt.tprintf("In %d/%d", c, c + 1) if in_.stereo else fmt.tprintf("In %d", c)
+	c := int(in_.channel)
+	f := interface_find(&a.settings.audio, a.settings.audio.input)
+	dev := find_device(&a.settings, a.settings.audio.input, false)
+	text := pair_label(f, dev, false, c) if in_.stereo else channel_label(f, dev, false, c)
+	if !pm.input_open(&a.m.engine, i) do text = fmt.tprintf("%s (not open)", text)
+	return text
 }
 
 // The menu of track `i`'s MIDI inputs (inside an open popup or menu).
@@ -140,32 +145,41 @@ midi_in_items :: proc(a: ^App, i: int) {
 	}
 }
 
-// The menu of track `i`'s audio inputs: each channel, each pair.
+// The menu of track `i`'s audio inputs: the interface's open channels
+// (physical, by name), each pair whose both halves are open, and the one
+// it has when that isn't open now.
 audio_in_items :: proc(a: ^App, i: int) {
 	m := &a.m
 	pad := m.project.pads[i]
-	n := pm.input_channels(&m.engine)
 	set :: proc(m: ^pm.Model, i: int, in_: pm.Audio_Input) {
 		p := m.project.pads[i]
 		p.input = in_
 		pm.set_pad(m, i, .Input, "Set Input", p)
 		app.seal(&m.history)
 	}
-	if n == 0 {
+	open := a.host.open_inputs
+	if open == {} {
 		im.TextDisabled("No inputs open (Settings > Audio)")
 		return
 	}
-	for c := 0; c + 1 < n; c += 2 do if im.MenuItem(fmt.ctprintf("In %d/%d (stereo)", c + 1, c + 2), nil, pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c), stereo = true})
+	f := interface_find(&a.settings.audio, a.settings.audio.input)
+	dev := find_device(&a.settings, a.settings.audio.input, false)
+	for c in mask_pairs(open) do if im.MenuItem(fmt.ctprintf("%s (stereo)###ip%d", pair_label(f, dev, false, c), c), nil, pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c), stereo = true})
 	im.Separator()
-	for c in 0 ..< n do if im.MenuItem(fmt.ctprintf("In %d", c + 1), nil, !pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c)})
+	for c in open do if im.MenuItem(fmt.ctprintf("%s###ic%d", channel_label(f, dev, false, c), c), nil, !pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c)})
+	if !pm.input_open(&m.engine, i) {
+		im.Separator()
+		im.MenuItem(fmt.ctprintf("%s###icmissing", audio_in_text(a, i)), nil, true, false)
+	}
 }
 
 // A horizontal input meter, `w` wide: the level of track `i`'s input
 // (its louder side), green to red.
 input_meter :: proc(a: ^App, i: int, w, h: f32) {
 	in_ := a.m.project.pads[i].input
-	lvl := input_view(a, int(in_.channel)).peak
-	if in_.stereo do lvl = max(lvl, input_view(a, int(in_.channel) + 1).peak)
+	// (Physical channels: their graph channels, through the host.)
+	lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
+	if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
 	level_bar(lvl, w, h)
 }
 

@@ -63,6 +63,7 @@ Strip :: struct {
 	out_db:  f32,
 	dest:    int, // the bus it goes to (0 = main)
 	sends:   [BUSES]Send_Node,
+	cue:     Send_Node, // its cue send
 }
 
 // A send of a strip in the graph (a gain into its bus), while it is on.
@@ -81,6 +82,7 @@ remove_strip :: proc(g: ^graph.Graph, st: ^Strip) {
 		if f.key_filter != {} do graph.remove_node(g, f.key_filter)
 	}
 	for s in st.sends do if s.has do graph.remove_node(g, s.id)
+	if st.cue.has do graph.remove_node(g, st.cue.id)
 	graph.remove_node(g, st.gain)
 	graph.remove_node(g, st.meter_id)
 	graph.remove_node(g, st.out)
@@ -99,8 +101,9 @@ Bus_Nodes :: struct {
 	meter:   ^dsp.Meter,
 	built:   Bus, // the settings sent
 	sent:    bool,
-	dest:    int, // where its output is wired: 0 = main, 1..BUSES = a bus (main itself: -1)
+	dest:    int, // where its output is wired: 0 = main, 1..BUSES = a bus, OUT_DEST.. = a direct out (main itself: -1)
 	chain_dirty: bool, // its effect chain must be wired again
+	cue:     Send_Node, // its cue send (not main's)
 }
 
 // The mixer's nodes: a strip per pad, the buses, main.
@@ -110,6 +113,23 @@ Mixer_Nodes :: struct {
 	built:  bool,
 	any_solo, any_bus_solo: bool,
 	freeze_tap: graph.Node_Id, // a freeze rendering: what feeds the output instead of main
+	// The outputs: only these reach OUTPUT. Main's (main, the click, the
+	// preview), the cue's (a copy of main, cue sends, the click), and a
+	// direct out per output pair a bus or pad goes to.
+	out_main, out_cue: graph.Node_Id,
+	out_pairs: [OUT_PAIRS]graph.Node_Id,
+	wired:     Out_Wiring, // what they are wired to now
+}
+
+// Where the outputs go (graph OUTPUT channels; -1: nowhere).
+@(private)
+Out_Wiring :: struct {
+	main:      [2]int,
+	cue:       [2]int,
+	cue_db:    f32,
+	click_main, click_cue: bool,
+	pairs:     [OUT_PAIRS][2]int, // -2: into main
+	set:       bool,
 }
 
 // [control] The node that plays an effect slot (wrapped for a click-free
@@ -265,7 +285,12 @@ build_mixer :: proc(e: ^Engine) -> fc.Error {
 	}
 	main := &e.mixer.buses[BUSES]
 	main.dest = -1
-	for c in 0 ..< 2 do graph.connect(g, main.meter_id, c, graph.OUTPUT, c)
+	e.mixer.out_main = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
+	e.mixer.out_cue = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
+	for c in 0 ..< 2 {
+		graph.connect(g, main.meter_id, c, e.mixer.out_main, c)
+		graph.connect(g, main.meter_id, c, e.mixer.out_cue, c) // (the cue: a copy of main, and more)
+	}
 	for &b in e.mixer.buses[:BUSES] {
 		for c in 0 ..< 2 do graph.connect(g, b.meter_id, c, main.input, c)
 		b.dest = 0 // (sync wires it where its bus goes)
@@ -278,6 +303,7 @@ build_mixer :: proc(e: ^Engine) -> fc.Error {
 // or main (0).
 @(private)
 dest_input :: proc(e: ^Engine, b: int) -> graph.Node_Id {
+	if is_out_dest(b) do return out_pair_node(e, b - OUT_DEST)
 	return e.mixer.buses[b - 1].input if b >= 1 && b <= BUSES else e.mixer.buses[BUSES].input
 }
 
@@ -362,8 +388,9 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 			graph.set_param(g, st.out, dsp.GAIN_PARAM_DB, f64(out_db))
 			st.out_db = out_db
 		}
-		// Sends: a gain into the bus while on, wired from before the fader
-		// or after it.
+		// Its cue send (into the cue mix), then sends: a gain into the bus
+		// while on, wired from before the fader or after it.
+		if sync_send(e, &st.cue, pad.cue, st.gain, st.meter_id, mx.out_cue) do structural = true
 		for &sn, k in st.sends {
 			s := pad.sends[k]
 			on := s.level > 0
@@ -428,13 +455,14 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		}
 		// Where it goes: main, or another bus (never round: the model sees to that).
 		if !is_main {
-			want := int(b.dest) if int(b.dest) <= p.bus_count && bus_dest_ok(p, i + 1, int(b.dest)) else 0
+			want := int(b.dest) if (int(b.dest) <= p.bus_count || is_out_dest(int(b.dest))) && bus_dest_ok(p, i + 1, int(b.dest)) else 0
 			if want != bn.dest {
 				for c in 0 ..< 2 do graph.disconnect(g, bn.meter_id, c, dest_input(e, bn.dest), c)
 				for c in 0 ..< 2 do graph.connect(g, bn.meter_id, c, dest_input(e, want), c)
 				bn.dest = want
 				structural = true
 			}
+			if sync_send(e, &bn.cue, b.cue, bn.input, bn.meter_id, mx.out_cue) do structural = true
 		}
 		muted := b.mute || (!is_main && mx.any_bus_solo && !b.solo)
 		vol := f32(-96) if muted else b.volume
@@ -446,6 +474,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 	}
 	if sync_keys(e) do structural = true
 	if sync_freeze_tap(e) do structural = true
+	if sync_outputs(e) do structural = true
 	e.mix_dirty = false
 	return
 }
@@ -458,6 +487,7 @@ sync_freeze_tap :: proc(e: ^Engine) -> bool {
 	g := e.host.graph
 	mx := &e.mixer
 	main := mx.buses[BUSES].meter_id
+	out := mx.out_main
 	want: graph.Node_Id
 	if e.export_solo.kind == .Freeze {
 		i := e.export_solo.index
@@ -468,12 +498,12 @@ sync_freeze_tap :: proc(e: ^Engine) -> bool {
 	}
 	if want == mx.freeze_tap do return false
 	if mx.freeze_tap != {} {
-		for c in 0 ..< 2 do graph.disconnect(g, mx.freeze_tap, c, graph.OUTPUT, c)
+		for c in 0 ..< 2 do graph.disconnect(g, mx.freeze_tap, c, out, c)
 	} else {
-		for c in 0 ..< 2 do graph.disconnect(g, main, c, graph.OUTPUT, c)
+		for c in 0 ..< 2 do graph.disconnect(g, main, c, out, c)
 	}
 	src := want if want != {} else main
-	for c in 0 ..< 2 do graph.connect(g, src, c, graph.OUTPUT, c)
+	for c in 0 ..< 2 do graph.connect(g, src, c, out, c)
 	mx.freeze_tap = want
 	return true
 }

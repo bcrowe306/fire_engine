@@ -7,6 +7,7 @@ import "core:strings"
 import app "app:core"
 import "app:ui"
 import pm "model"
+import "fire:backend"
 import "fire:fx"
 import "fire:synth"
 
@@ -38,6 +39,8 @@ State :: struct {
 	position:   string, // as the toolbar shows it: bar.beat.sixteenth
 	recording:  bool,
 	version:    string, // Pads' version ("0.1.0-dev")
+	audio_inputs, audio_outputs: [dynamic]int, // the interface's channels open (1-based)
+	audio_missing_inputs, audio_missing_outputs: [dynamic]int, // asked for, not on it
 	song_mode:  bool,
 	song_steps: int,
 	song:       [dynamic]int, // each step's sequence (1-based)
@@ -274,6 +277,13 @@ state_json :: proc(a: ^App) -> string {
 	bar, bt, six := pm.position_of(p, tl if tl < 0 else s.beat)
 	s.position = fmt.tprintf("%d.%d.%d", bar, bt, six)
 	s.version = PADS_VERSION
+	ones :: proc(m: backend.Channel_Mask) -> [dynamic]int {
+		out := make([dynamic]int, context.temp_allocator)
+		for c in m do append(&out, c + 1)
+		return out
+	}
+	s.audio_inputs, s.audio_outputs = ones(a.host.open_inputs), ones(a.host.open_outputs)
+	s.audio_missing_inputs, s.audio_missing_outputs = ones(a.host.missing_inputs), ones(a.host.missing_outputs)
 	s.song_mode, s.song_steps = p.song_mode, p.song.count
 	s.song = make([dynamic]int, context.temp_allocator)
 	for st in p.song.steps[:p.song.count] do append(&s.song, int(st.slot) + 1)
