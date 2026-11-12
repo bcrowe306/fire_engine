@@ -64,17 +64,17 @@ Engine :: struct {
 	resend:    bool, // send every pad's parameters again (automation moved them)
 	stopped:   bool, // stopped by `stop`: automation is off until `play`
 	plan:      Plan, // what the sequencer plays
-	pending:   struct {
-		active: bool,
-		slot:   int,
-		at:     f64, // timeline beat
-	},
+	launch:    Launcher, // pattern mode: what each launcher column plays, and what is queued
+	rec_launch: bool, // launches are recorded into the song (Record to Song)
+	rec_log:   [dynamic]Launch_Event, // the take so far
+	rec_open:  bool, // a take is going on
+	rec_done:  bool, // a take ended: the model writes it into the song
 	mixer:     Mixer_Nodes,
 	export_solo: Export_Solo, // while exporting a stem: what is heard
 	export_once: bool,        // while exporting: what plays plays once
 	mix_dirty: bool, // a bus or performance effect changed
-	built_perform: Perform, // what the router's effects have
-	perform_sent:  bool,
+	built_fx:  [PADS]Perform, // what the router's MIDI effects have, each pad
+	fx_sent:   [PADS]bool,
 	preview:   Preview, // the browser's preview (straight to the output)
 	armed:     [PADS]bool, // audio pads armed to record
 	audio_dirty: bool,     // a clip changed: give the players theirs again
@@ -146,6 +146,7 @@ engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error 
 	e.sources = make(map[app.Id]^stream.Source)
 	e.warp_sources = make(map[string]^stream.Source)
 	for &x in e.perf_live do x = -1
+	for &c in e.launch.cols do c = {slot = -1}
 	return build_fixed(e)
 }
 
@@ -192,7 +193,7 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	e.preview = {volume = keep.volume, auto_play = keep.auto_play, sync = keep.sync, path = keep.path}
 	build_preview(e) or_return
 	e.bpm, e.metro_on = 0, true // the node starts on: sync sets what the project wants
-	e.perform_sent = false
+	e.fx_sent = {}
 	e.seq_dirty = true
 	mark_all(e)
 	graph.commit(g) or_return
@@ -203,6 +204,7 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 // Releases the samples the engine opened (the graph frees its nodes).
 engine_destroy :: proc(e: ^Engine) {
 	delete(e.auto_dests)
+	delete(e.rec_log)
 	preview_destroy(&e.preview)
 	for _, src in e.sources do stream.source_release(src)
 	delete(e.sources)
@@ -452,8 +454,9 @@ sync_sequencer :: proc(e: ^Engine) {
 		e.sig = tr.time_sig
 	}
 	e.router.midi_map = p.midi_map
-	if !e.perform_sent || e.built_perform != p.perform {
-		if rt.spsc_push(&e.router.settings, p.perform) do e.built_perform, e.perform_sent = p.perform, true
+	for &pad, i in p.pads do if !e.fx_sent[i] || e.built_fx[i] != pad.midi_fx {
+		if !rt.spsc_push(&e.router.settings, Pad_Fx_Set{i, pad.midi_fx}) do break
+		e.built_fx[i], e.fx_sent[i] = pad.midi_fx, true
 	}
 	sequencer_tick(e)
 	defer sync_audio(e)
@@ -464,10 +467,11 @@ sync_sequencer :: proc(e: ^Engine) {
 	at := e.plan.at
 	if p.song_mode && p.song.count > 0 {
 		e.plan = plan_song(p, at)
-	} else if e.pending.active {
-		e.plan = plan_switch(p, plan_pattern(p, e.plan.segs[0].slot if e.plan.count > 0 else p.slot, at), e.pending.slot, e.pending.at)
 	} else {
-		e.plan = plan_pattern(p, p.slot, at)
+		// (Stopped with nothing launched: the current sequence, in its column.)
+		_, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
+		if !playing && !launcher_playing(&e.launch) do e.launch.cols[launch_col(p.slot)].slot = p.slot
+		e.plan = plan_launch(p, &e.launch, at)
 	}
 	e.map_dirty = true
 	// Once, to its end: while exporting, or with the transport's loop off.
@@ -489,11 +493,12 @@ sequencer_tick :: proc(e: ^Engine) {
 	p := e.project
 	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
 	beat := f64(pos)
-	if e.pending.active && playing && beat >= e.pending.at {
-		p.slot = e.pending.slot
-		e.plan = plan_pattern(p, p.slot, e.pending.at)
-		e.pending.active = false
-		e.seq_dirty = true
+	// Queued launches due: each column takes over exactly where it was queued.
+	if playing && !p.song_mode do for {
+		due := math.F64_MAX
+		for c in e.launch.cols do if c.queued && c.at <= beat do due = min(due, c.at)
+		if due == math.F64_MAX do break
+		launch_apply(e, due)
 	}
 	if !playing do return
 	// What doesn't loop stops at its end (not while exporting: the export
@@ -505,48 +510,6 @@ sequencer_tick :: proc(e: ^Engine) {
 	if p.song_mode {
 		if _, slot, _, ok := plan_locate(e.plan, beat); ok do p.slot = slot // the editor shows what plays
 	}
-}
-
-// Picks sequence `slot`. Stopped, at once; playing, when the project's
-// `switch_at` says (a bar, a beat, the end of what plays), exactly there.
-queue_slot :: proc(e: ^Engine, slot: int) {
-	p := e.project
-	if slot < 0 || slot >= SLOTS do return
-	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
-	beat := f64(pos)
-	if !playing || p.song_mode {
-		p.slot = slot
-		e.pending.active = false
-		if !playing do e.plan.at = 0
-		e.seq_dirty = true
-		return
-	}
-	if slot == p.slot && !e.pending.active do return
-	b := beat
-	switch p.switch_at {
-	case .Now:  b = beat + 1e-6
-	case .Beat: b = math.floor(beat + 1e-9) + 1
-	case .Bar:  b = (math.floor(beat / bar_beats(p) + 1e-9) + 1) * bar_beats(p)
-	case .End:
-		l := seq_beats(p, p.sequences[e.plan.segs[0].slot]) if e.plan.count > 0 else bar_beats(p)
-		b = e.plan.at + (math.floor((beat - e.plan.at) / l + 1e-9) + 1) * l
-	}
-	if p.switch_at == .Now {
-		p.slot = slot
-		e.pending.active = false
-		e.plan.at = b
-	} else {
-		e.pending = {active = true, slot = slot, at = b}
-	}
-	e.seq_dirty = true
-}
-
-// The sequence about to take over and when (in beats from now), if one is
-// queued.
-pending_switch :: proc(e: ^Engine) -> (slot: int, in_beats: f64, ok: bool) {
-	if !e.pending.active do return
-	pos, _, _ := transport.timeline_status(e.host.clock, e.timeline)
-	return e.pending.slot, e.pending.at - f64(pos), true
 }
 
 // The song clip leading where it plays (song mode: the topmost lane's
@@ -605,8 +568,11 @@ struck :: proc(e: ^Engine, index: int) -> u32 {
 // before the top, where nothing plays and nothing records).
 play :: proc(e: ^Engine, count_in := false, from_beat := 0.0) {
 	e.stopped = false
-	e.pending.active = false
 	e.plan.at = 0
+	if !e.project.song_mode {
+		launch_play(e)
+		if e.rec_launch do launch_log_start(e, 0)
+	}
 	if e.project.song_mode && e.project.song.count > 0 {
 		first := 0
 		for c, i in e.project.song.clips[:e.project.song.count] do if c.at < e.project.song.clips[first].at || (c.at == e.project.song.clips[first].at && c.lane < e.project.song.clips[first].lane) do first = i
@@ -625,6 +591,10 @@ play :: proc(e: ^Engine, count_in := false, from_beat := 0.0) {
 // Stops it (and goes back to the top). Pads the automation moved get their
 // own settings back.
 stop :: proc(e: ^Engine) {
+	if e.rec_open {
+		pos, _, _ := transport.timeline_status(e.host.clock, e.timeline)
+		launch_log_end(e, f64(pos))
+	}
 	transport.stop(e.host.clock, e.timeline)
 	transport.locate(e.host.clock, e.timeline, tb.Beats(e.cue) if e.project.song_mode else 0) // (back to where it started)
 	// Automation lets go of the pads (a locate would set them again), and
@@ -639,7 +609,7 @@ stop :: proc(e: ^Engine) {
 	}
 	release_targets(e)
 	e.stopped = true
-	e.pending.active = false
+	for &c in e.launch.cols do c.queued = false
 	e.plan.at = 0
 	e.seq_dirty = true
 }
@@ -670,7 +640,7 @@ timeline_beat :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 position :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 	pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
 	if !on do return 0, false
-	_, _, rel, ok := plan_locate(e.plan, f64(pos))
+	_, _, rel, ok := plan_locate(e.plan, f64(pos), -1 if e.project.song_mode else e.project.slot)
 	return rel if ok else 0, true
 }
 

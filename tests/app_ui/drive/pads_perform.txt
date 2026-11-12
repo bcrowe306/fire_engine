@@ -24,14 +24,19 @@ key v
 wait 4
 expect struck 0 4
 mode pads
-# Note repeat: a held key repeats on the grid.
+# Note repeat (A2's own): a held key repeats on the grid.
+select 1
 repeat on
+panel midi
+wait 3
+screenshot perform_midi_page
 wait 2
 hit 1
 wait 40                   # 2/3 s: about five sixteenths at 120 BPM
 release 1
 expect struck 1 4
 repeat off
+select 0
 # MIDI in: key 0 plays A1 (note N plays pad N); learn key 60 for A2.
 midi 0 100
 wait 3

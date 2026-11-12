@@ -335,33 +335,63 @@ records.
   while it is on). Recording overdubs: hit pads (mouse, keys or
   MIDI) while it plays, and each pass is one undo step. Pads light when
   the sequencer plays them.
-- **Perform** (a panel beside the Mixer): at its top, the **sequence
-  pads**: the project's 64 sequences as four banks (A–D) of 16 pads,
-  laid out like the pad grid (1 at the bottom left). In **Launch**, press
-  one to launch it. Stopped, it starts playing; playing, it takes over
-  **Now**, on the next **Beat**, the next **Bar** or at the **Sequence
-  end**, as the setting beside says. In
-  **Hold**, a sequence plays only while its pad is held, at that same
-  quantize, and the one before comes back when you let go. The playing
-  pad is lit and runs a bar along its foot; a queued one blinks with the
-  beat and counts down; Shift-click only shows a sequence. **+ New** goes
-  to the next empty one; right-click a pad for the sequence's commands.
-  With **Keys** on (the keyboard button by the banks), the computer's pad
-  keys play the bank of sequence pads shown instead of the pads. Each pad draws its sequence's notes small
-  (its rows bottom to top, its bars across), as do the song's steps. A sequence's own tempo
-  takes over where it does. Below, how the pads play — **Pads**, each its
-  own sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
+- **Perform** (middle tab): the whole height (the pads area folds to
+  its bar while it shows, and stays folded going to or from Song), with
+  three grids side by side and the levels at the right.
+  - **The bar on top**: the sequence **bank** (A–D: 64 sequences, 16 a
+    bank) and **Keys** (the computer's pad keys play the sequence pads
+    shown instead of the pads); **Launch** or **Hold** (a sequence plays
+    only while its pad is held, its column going back to what it played
+    when you let go); **at** End, Bar, Beat or Now (when a launch
+    happens: when its column's sequence comes round, or the next bar,
+    beat, at once); **Record to Song** (armed, what you launch is
+    written into the Song as clips, column k into lane k, from where
+    each starts to where it is replaced or stopped; the take goes in
+    when you stop, or disarm, as one undo step, over the clips that began
+    on those lanes in its time); and, at the right, **Hold effects**.
+  - **Sequences**: the bank's 16 as a 4 × 4 grid (1 at the bottom left),
+    **each column a lane**: one sequence per column plays at a time, the
+    columns all together (drums in one, a bass sequence in another). A
+    press launches a sequence in its column; stopped, it starts playing,
+    alone. A pad shows its sequence's notes, a bar filling across while it
+    plays, a countdown while queued ("in 2.2"), "stops" when its column is
+    about to; empty pads are nearly invisible (a + on hover: click one to
+    make a new sequence there). Shift-click only goes to a sequence (to
+    edit it); right-click one for its commands. At each row's right, an
+    arrow launches the row (its sequences together, a scene); under each
+    column a square stops it; the last one stops them all. The loop goes
+    round a length every column fits a whole number of times. Recording
+    in pattern mode goes into the sequence being edited (the one launched
+    last). Picking a sequence elsewhere (the toolbar, the Sequence view)
+    plays it alone, as before.
+  - **Pads**: the 16 pads to play, as in the pads area (its banks, Pads,
+    Keyboard or Velocity as the MIDI page sets).
+  - **Effects**: the 16 performance effects, coloured by kind (filters
+    violet, rhythm teal, pitch pink, space blue, drive coral; see below).
+  - **Levels**: main's meter and fader, and the cue (headphones) level
+    (Settings sets where the cue plays).
+- **A pad's MIDI page** (the **MIDI** tab, first in its chain in the
+  bottom area, before its sound; it reads **MIDI · Repeat** or **MIDI ·
+  Arp** when one is on): how the 16 pads play — **Pads**, each its own
+  sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
   triads, sevenths, power chords) on the selected pad, from any root and
   octave, the bottom-left pad the root (the bank buttons, A–H, pick which
   16 notes, from the bottom of the MIDI range up: A starts at the root's
   lowest octave (C-2 for C) and each bank goes on from the last. It opens
   on the bank holding the pad's own note (C3), and back in Pads mode the
-  pads' own bank returns; the computer keyboard's pad keys follow); **Velocity**, the selected pad at
-  16 velocities. Under note repeat and the arpeggiator, a bar of their steps lights the one playing (bright while it is on). **Note repeat** retriggers held pads on the grid;
-  the **arpeggiator** walks held notes (up, down, up-down, random, as
-  played; 1–4 octaves; gate; latch). MIDI: activity lights, **Learn**
-  (the next note you play plays the selected pad), and **MIDI out** (the
-  pad's hits also go out as a note on a channel).
+  pads' own bank returns; the computer keyboard's pad keys follow);
+  **Velocity**, the selected pad at 16 velocities. Then the pad's own
+  **note repeat** (held, it plays again on every step: its step and gate)
+  and **arpeggiator** (the notes held on it — a chord in Keyboard mode —
+  one after another: up, down, up-down, random, as played; 1–4 octaves;
+  gate; latch), each with a bar of its steps lighting the one playing
+  (bright while it is on); one or the other, saved with the pad, acting
+  on its live notes (not the sequencer's). And its **MIDI**: activity
+  lights, the key that plays it and **Learn** (the next note you play
+  plays it), and **MIDI out** (its hits also go out as a note on a
+  channel, from its own output port). Projects from before each pad had
+  its own give every pad the project's old note repeat and arpeggiator
+  settings.
 - **Mixer** (middle tab): a channel strip, as in Logic, for every pad
   with a sound (all banks; it scrolls sideways), then the buses (four to
   start with, up to 16: the **+** adds one; they scroll when many) and
@@ -442,7 +472,7 @@ records.
   none), so a kick keys by its click, not its boom. **Listen** plays the
   filtered key on the track instead, to set it by. Keyed, the compressor
   only presses down: a quiet key lifts nothing.
-- **Performance effects** (in the Perform panel): 16 effects on main, each
+- **Performance effects** (the Perform tab's right grid): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
   distortion. **Hold** latches them. Where you press is how hard it plays
@@ -869,7 +899,7 @@ how many):
   step with the arrows.
 - **Pattern | Song**: play the sequence shown, or the song's steps one
   after another. (When a sequence picked while playing takes over is set
-  in the Perform panel: **End**, **Bar**, **Beat** or **Now**.)
+  in the Perform tab: **End**, **Bar**, **Beat** or **Now**.)
 - **Tempo**: drag it (right or up) to change it by 1 BPM, with **Shift**
   by 0.1; scroll it; double-click to type it. **Tap** in time to set it: it
   flashes with each tap, and the fourth starts playback a beat later,
@@ -885,7 +915,7 @@ how many):
 Elsewhere, near what they change:
 - **Play modes** (at the right of the pads area's header): the pads as
   pads, as a keyboard of the selected pad, or as it at 16 velocities — as
-  in the Perform panel.
+  on a pad's MIDI page.
 - **Input quantize** (the magnet in the Sequence view, beside its
   **Quantize**): on, recorded notes move toward the grid shown beside it;
   the arrow sets the grid (1/4–1/64, triplets), the **strength** (100%:
@@ -905,7 +935,7 @@ four semitones up) while it is **armed**, and record onto it, pitched.
 For an audio track, its **audio input**: a channel of the interface (In 1,
 In 2...) or a stereo pair (In 1/2...), with its level along the row. A
 sampler track's light flashes green as its MIDI comes in and blue as its
-**MIDI out** (Perform panel: on, channel, note, and its own output port)
+**MIDI out** (a pad's MIDI page: on, channel, note, and its own output port)
 goes out; the status bar's MIDI lights do the
 same for all MIDI.
 
@@ -1228,7 +1258,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
-| `test_devices_panel.py` | the Library's devices: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (back to the one before when let go), their banks |
+| `test_devices_panel.py` | the Library's devices: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (its column back to what it had when let go), their banks |
 | `test_app_gaps.py` | the arrow keys moving between pads; Keyboard mode opening on C3's bank and bank A at C-2; the status bar; Edit > History jumping back and forward; MIDI exported and read back; new pads' own colours |
 | `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
 | `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
@@ -1253,9 +1283,10 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
-| `test_live.py` | the sequence pads (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
+| `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
+| `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Record to Song writing the launches into lanes, the main fader |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
-| `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song and its switches |
+| `test_perform_song.py` | a pad's MIDI page (play modes, its note repeat and arpeggiator), holding performance effects, the song and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |
 | `test_crawl.py` | a hunt for crashes: every item showing in each panel and tab clicked (left and right), and a browser file dragged onto every kind of target |
 | `test_harness.py` | the harness: crashes are reported, a missing item is an error |

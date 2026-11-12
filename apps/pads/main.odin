@@ -351,7 +351,7 @@ frame :: proc(a: ^App) {
 	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
-	song_fold_check(a)
+	fold_pads_check(a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
 	draw_preset_save(a)
@@ -367,6 +367,7 @@ frame :: proc(a: ^App) {
 	pm.plugins_idle(&a.m)
 	editors_frame(a)
 	pm.capture_poll(&a.m, &a.capture)
+	pm.launch_record_poll(&a.m)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))
 	dt := im.GetIO().DeltaTime
 	for &l in a.lit do l = max(l - dt, 0)

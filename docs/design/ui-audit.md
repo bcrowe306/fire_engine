@@ -256,6 +256,18 @@ lanes); clips added by dragging, **Draw**, **double-click** and
 **Alt-drag** copies; a lane's header its name with Mute and Solo; **a
 grid** of bars behind the clips, every 2, 4, 8... bars zoomed out.
 
+### Perform: decided (2026-11-12)
+
+See docs/design/perform.md. **The whole height, three grids (layout A)**:
+the launcher, the 16 pads, the effects, the same size, with main and cue
+levels at the right; **the launcher's columns are lanes** playing
+together, **rows launch** (scenes), column stops and Stop All; **Record
+to Song**; sequence pads with their notes, progress and a countdown,
+empty ones faint; **effects coloured by kind**; **note repeat and the
+arpeggiator as a pad's MIDI effects**, with **the play mode**, on its
+**MIDI page** (first in its chain), and **its MIDI setup** (Learn, MIDI
+out) there too.
+
 ## Order of the redesign
 
 1. **The window layout**: Sequence as home, where the browser, device

@@ -120,7 +120,7 @@ draw_song :: proc(user: rawptr) {
 	if ss.cur >= p.song.count do ss.cur = p.song.count - 1
 	for i in p.song.count ..< pm.SONG_CLIPS do ss.sel -= {i}
 	ss.focused = im.IsWindowFocused({.RootWindow, .ChildWindows})
-	song_fold_on_show(a)
+	fold_pads_while_shown(a, &ss.shown_frame, &ss.folded_it)
 	song_keys(a)
 
 	draw_arrangement_bar(a)
@@ -137,29 +137,33 @@ draw_song :: proc(user: rawptr) {
 	im.EndChild()
 }
 
-// Coming to the Song tab folds the pads area (the song gets the height);
-// leaving it unfolds it again if this folded it. (Unfolding it here keeps
-// it unfolded.)
-@(private)
-song_fold_on_show :: proc(a: ^App) {
-	ss := &a.song_ui
+// Coming to a tab that wants the height (Song, Perform) folds the pads
+// area; leaving it unfolds it again if this folded it. (Unfolding it there
+// keeps it unfolded.) `shown` and `folded_it` are the tab's own.
+fold_pads_while_shown :: proc(a: ^App, shown: ^i32, folded_it: ^bool) {
 	frame := im.GetFrameCount()
-	if ss.shown_frame < frame - 1 && !a.ws.bottom_folded {
+	if shown^ < frame - 1 && !a.ws.bottom_folded {
 		a.ws.bottom_folded = true
-		ss.folded_it = true
+		folded_it^ = true
 	}
-	if !a.ws.bottom_folded do ss.folded_it = false
-	ss.shown_frame = frame
+	if !a.ws.bottom_folded do folded_it^ = false
+	shown^ = frame
 }
 
-// Each frame, after the panels: the Song tab gone from view gives back the
-// pads area it folded.
-song_fold_check :: proc(a: ^App) {
-	ss := &a.song_ui
-	if ss.folded_it && ss.shown_frame < im.GetFrameCount() {
+// Each frame, after the panels: with neither Song nor Perform in view, the
+// pads area they folded unfolds again (going from one to the other, it
+// stays folded, the one in view keeping it so).
+fold_pads_check :: proc(a: ^App) {
+	frame := im.GetFrameCount()
+	song, perf := &a.song_ui, &a.perf
+	song_on, perf_on := song.shown_frame == frame, perf.shown_frame == frame
+	if !song.folded_it && !perf.folded_it do return
+	if !song_on && !perf_on {
 		a.ws.bottom_folded = false
-		ss.folded_it = false
+		song.folded_it, perf.folded_it = false, false
+		return
 	}
+	song.folded_it, perf.folded_it = song_on, perf_on && !song_on
 }
 
 // The arrangement picker (its menu: new, duplicate, rename, delete), the

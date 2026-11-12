@@ -30,10 +30,11 @@ Track :: struct {
 	index: int,
 }
 
-// A device of a track's chain: the instrument (a pad's sampler, or its
-// audio), its EQ, or effect slot `slot`.
+// A device of a track's chain: a pad's MIDI page (how it plays, its note
+// repeat and arpeggiator, its MIDI), the instrument (a pad's sampler, or
+// its audio), its EQ, or effect slot `slot`.
 Device :: struct {
-	kind: enum u8 { Instrument, Eq, Slot },
+	kind: enum u8 { Instrument, Eq, Slot, Midi },
 	slot: int,
 }
 
@@ -46,6 +47,7 @@ Detail_State :: struct {
 	show:        int, // frames left to bring `device` (and `tab`) to the front
 	pads_width:  f32, // 0: as wide as the pads are tall
 	selected_was: int, // the selected pad last frame (choosing a pad shows its chain)
+	opened:      bool, // the chain's tabs have shown (the first time, the sound in front, not MIDI)
 }
 
 DETAIL_NAMES := [Detail_Tab]string{.Sample = "Sample", .Env = "Env", .Filter = "Filter", .Pitch = "Pitch", .Lfo = "LFO", .Global = "Global"}
@@ -86,6 +88,14 @@ show_pad_chain :: proc(a: ^App, index: int) {
 	st.track = {.Pad, index}
 	if st.device.kind == .Slot do st.device = {.Instrument, 0}
 	st.show = 2
+}
+
+// Brings the selected pad's MIDI page to the front (how the pads play,
+// its note repeat and arpeggiator, its MIDI).
+show_midi :: proc(a: ^App) {
+	st := &a.detail
+	st.track, st.device, st.show = {.Pad, a.selected}, {.Midi, 0}, 2
+	a.ws.bottom_folded = false
 }
 
 // Shows the selected pad's EQ.
@@ -272,6 +282,10 @@ device_tabs :: proc(a: ^App) {
 	m := &a.m
 	st := &a.detail
 	tr := st.track
+	if !st.opened {
+		st.opened = true
+		if tr.kind == .Pad && st.show == 0 do st.device, st.show = {.Instrument, 0}, 2
+	}
 	if !im.BeginTabBar("##devices", {.FittingPolicyScroll}) do return
 	defer im.EndTabBar()
 	tab :: proc(st: ^Detail_State, label: cstring, d: Device, flags: im.TabItemFlags = {}) -> bool {
@@ -304,6 +318,9 @@ device_tabs :: proc(a: ^App) {
 		pad := &m.project.pads[i]
 		name := pm.pad_name(pad) if pm.pad_used(&m.project, i) else ""
 		instr := fmt.ctprintf("%s  %s%s%s · %s###devinst", ui.ICON_SNOWFLAKE if pad.frozen else (ui.ICON_MIC if pad.kind == .Audio else (ui.ICON_PLUG if pad.kind == .Plugin else ui.ICON_LAYOUT_GRID)), pm.pad_label(i), " " if name != "" else "", name, fmt.tprintf("%s (frozen)", pad_device_name(pad.kind)) if pad.frozen else pad_device_name(pad.kind))
+		midi := fmt.ctprintf("%s  MIDI%s###devmidi", ui.ICON_KEYBOARD_MUSIC, " · Repeat" if pad.midi_fx.repeat_on else (" · Arp" if pad.midi_fx.arp_on else ""))
+		tab(st, midi, {.Midi, 0})
+		if im.IsItemHovered() do im.SetTooltip("How the pads play, this pad's note repeat and arpeggiator, its MIDI")
 		tab(st, instr, {.Instrument, 0})
 		item_menu(a, pad_target(i), "##instmenu")
 		tab(st, ui.ICON_SLIDERS_VERTICAL + "  EQ###deveq", {.Eq, 0})
@@ -342,6 +359,8 @@ device_content :: proc(a: ^App) {
 		}
 	case .Eq:
 		if tr.kind == .Pad do draw_pad_eq(a)
+	case .Midi:
+		if tr.kind == .Pad do draw_midi_fx(a, tr.index)
 	case .Slot:
 		fx: pm.Fx_Target
 		switch tr.kind {

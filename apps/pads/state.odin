@@ -102,6 +102,9 @@ State :: struct {
 	perf_now:   [pm.PERF_FX]f32,  // how hard each plays while held (-1: its own)
 	perf_intensity: [pm.PERF_FX]f32, // each one's own
 	queued:     int, // the sequence about to take over (1-based; 0: none)
+	columns:    [4]int, // what each launcher column plays (1-based; 0: nothing)
+	launch_record: bool, // Record to Song is armed
+	main_volume: f32, // main's fader (dB)
 	fx_params:  [dynamic][2]f32, // the effect being edited: its settings, (id, value) each
 	pads:       [dynamic]State_Pad, // the ones with a sound
 	buses:      [dynamic]State_Bus, // those in use (A...), then main
@@ -167,6 +170,8 @@ State_Pad :: struct {
 	sends:   []f32, // dB (-60: off), to each bus in use
 	choke:   int,    // its choke group (0: none)
 	warp:    string, // its warp's mode, or "" when off
+	repeat:  bool,   // its note repeat is on
+	arp:     bool,   // its arpeggiator is on
 	warp_bpm: f64,   // its sample's tempo (warp)
 	warp_ready: bool, // its warp rendered and playing
 	inserts: [pm.PAD_INSERTS]string,
@@ -282,6 +287,7 @@ state_json :: proc(a: ^App) -> string {
 	case .Instrument: s.detail_tab = enum_name(a.detail.tab)
 	case .Eq:         s.detail_tab = "EQ"
 	case .Slot:       s.detail_tab = "Effect"
+	case .Midi:       s.detail_tab = "MIDI"
 	}
 	s.track = fmt.tprintf("%s %d", strings.to_lower(enum_name(a.detail.track.kind), context.temp_allocator), a.detail.track.index + 1)
 	s.dark = a.dark
@@ -361,6 +367,12 @@ state_json :: proc(a: ^App) -> string {
 	}
 	s.launch = enum_name(p.switch_at)
 	s.launch_hold, s.seq_bank = p.launch_hold, a.perf.seq_bank
+	for k in 0 ..< pm.LAUNCH_COLS {
+		cs, _, _, _, _ := pm.column_state(&m.engine, k)
+		s.columns[k] = cs + 1
+	}
+	s.launch_record = pm.launch_recording(m)
+	s.main_volume = p.main.volume
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
 	s.clock_out, s.sync = a.settings.clock_out, enum_name(a.settings.sync) // (the setting: with no output port open nothing is sent)
@@ -393,6 +405,7 @@ state_json :: proc(a: ^App) -> string {
 			slices = pad.slice_count}
 		sp.choke = int(pad.choke)
 		if pad.warp.on do sp.warp = enum_name(pad.warp.mode)
+		sp.repeat, sp.arp = pad.midi_fx.repeat_on, pad.midi_fx.arp_on
 		sp.warp_bpm, sp.warp_ready = pad.warp.bpm, pad.warp.on && !pm.warp_rendering(&m.engine, i)
 		sp.sends = make([]f32, p.bus_count, context.temp_allocator)
 		for x, k in pad.sends[:p.bus_count] do sp.sends[k] = pm.send_db(x)

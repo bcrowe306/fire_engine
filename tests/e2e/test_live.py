@@ -18,14 +18,14 @@ def two(app, fixtures):
 def test_launch_sequences(app, fixtures):
     two(app, fixtures)
     app.expect_item("launch 1", window="perform")
-    app.expect_item("new sequence", window="perform")
+    app.expect_item("launch 3", window="perform")  # (empty: faint; a click makes a new one there)
     app.click("launch 2", window="perform")  # stopped: it starts playing
     s = app.state()
     assert s["playing"] and s["slot"] == 2, (s["playing"], s["slot"])
     app.click("launch quantize", window="perform", at=(0.125, 0.5))  # the launch setting: End
     assert app.state()["launch"] == "End"
-    app.click("launch 1", window="perform")
-    assert app.state()["queued"] == 1  # it waits for the bar's end
+    app.click("launch 1", window="perform")  # (its own column, beside 2's)
+    assert app.state()["queued"] == 1  # it waits for the end of 2's pass
     app.screenshot("queued")
     app.until(lambda s: s["slot"] == 1 and s["queued"] == 0, frames=240, what="the switch at the sequence's end")
     app.key("space")

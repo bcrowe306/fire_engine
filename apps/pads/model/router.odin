@@ -37,12 +37,20 @@ Taken :: struct {
 	no_pad:   bool, // a MIDI note no pad answers
 }
 
-// What the live effects do; set with `set_perform`.
+// A pad's MIDI effects (note repeat or the arpeggiator, on its live
+// notes); set with `set_midi_fx`.
 Perform :: struct {
 	arp_on:    bool,
 	arp:       pf.Arp_Settings,
 	repeat_on: bool,
 	repeat:    pf.Repeat_Settings,
+}
+
+// New MIDI effects for pad `pad` (to the audio thread).
+@(private)
+Pad_Fx_Set :: struct {
+	pad: int,
+	fx:  Perform,
 }
 
 // A pad's MIDI out: its hits also go out as this note.
@@ -54,7 +62,7 @@ Midi_Out :: struct {
 }
 
 // Plays the pads. Live notes (hits from the UI, and MIDI notes mapped to
-// pads) go through the arpeggiator and note repeat when they are on; the
+// pads) go through their pad's arpeggiator or note repeat when it is on; the
 // sequencer's notes go straight to the pads. Then: a pad's hit chokes its
 // choke group, a Hold pad stops on its second hit, Gate and Loop pads stop
 // on release, keyboard notes play the pad pitched (each its own voice), and
@@ -64,7 +72,7 @@ Midi_Out :: struct {
 Router :: struct {
 	queue:    rt.Spsc_Queue(Hit),
 	taken:    rt.Spsc_Queue(Taken),
-	settings: rt.Spsc_Queue(Perform),
+	settings: rt.Spsc_Queue(Pad_Fx_Set),
 	capture:  bool, // report hits and MIDI notes in `taken`
 	timeline: fc.Timeline_Id,
 	groups:   [PADS]u8,
@@ -89,11 +97,14 @@ Router :: struct {
 	midi_in_hits:  [PADS]u32, // atomic: MIDI notes that played each pad (activity lights)
 	midi_out_hits: [PADS]u32, // atomic: MIDI notes each pad sent
 	// Audio thread.
-	effects:  Perform,
-	arp:      pf.Arp,
-	repeat:   pf.Repeat,
+	effects:  [PADS]Perform, // each pad's MIDI effects
+	arp:      [PADS]pf.Arp,
+	repeat:   [PADS]pf.Repeat,
+	fx_pads:  [PADS]u8, // the pads with one on
+	fx_count: int,
 	live:     [512]fc.Event,
 	effected: [1024]fc.Event,
+	fx_in:    [256]fc.Event, // one pad's live notes, for its effect
 	holding:  [PADS]bool, // Hold pads sounding
 	keys_pad: [128]u8,    // keyboard notes: the pad each key plays
 	keys_id:  [128]fc.Note_Id,
@@ -122,13 +133,15 @@ router_create :: proc(allocator := context.allocator) -> (fc.Node, ^Router) {
 	r := new(Router, allocator)
 	rt.spsc_init(&r.queue, 256, allocator)
 	rt.spsc_init(&r.taken, 1024, allocator)
-	rt.spsc_init(&r.settings, 16, allocator)
+	rt.spsc_init(&r.settings, 256, allocator)
 	r.next_id = 1 << 30 // apart from the sequencer's and the effects' ids
 	for &m, k in r.midi_map do m = i16(k) if k < PADS else -1
 	for &x in r.in_port do x = IN_ALL // (until `sync` says otherwise)
 	for &x in r.out_port do x = 255
-	pf.arp_init(&r.arp, {})
-	pf.repeat_init(&r.repeat, {})
+	for k in 0 ..< PADS {
+		pf.arp_init(&r.arp[k], {})
+		pf.repeat_init(&r.repeat[k], {})
+	}
 	return fc.node_make(&router_vtable, r, allocator), r
 }
 
@@ -231,16 +244,33 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 		}
 	}
 
-	// The live effects, then the pads.
+	// Each pad's MIDI effect on its live notes (the others' pass), then the pads.
 	events := fc.event_writer_events(&live)
-	if r.effects.arp_on || r.effects.repeat_on {
+	if r.fx_count > 0 {
 		fx := fc.Event_Writer{buffer = r.effected[:]}
-		if r.effects.arp_on {
-			pf.arp_process(&r.arp, ctx.transport, ctx.frames, events, &fx)
-		} else {
-			pf.repeat_process(&r.repeat, ctx.transport, ctx.frames, events, &fx)
+		for e in events do if !pad_has_fx(r, live_pad(r, e)) do fc.event_writer_push(&fx, e)
+		for k in r.fx_pads[:r.fx_count] {
+			pad := int(k)
+			w := fc.Event_Writer{buffer = r.fx_in[:]}
+			for e in events do if live_pad(r, e) == pad do fc.event_writer_push(&w, e)
+			mine := fc.event_writer_events(&w)
+			if r.effects[pad].arp_on {
+				pf.arp_process(&r.arp[pad], ctx.transport, ctx.frames, mine, &fx)
+			} else {
+				pf.repeat_process(&r.repeat[pad], ctx.transport, ctx.frames, mine, &fx)
+			}
 		}
 		events = fc.event_writer_events(&fx)
+		// In time order again (each pad's came apart).
+		for i in 1 ..< len(events) {
+			x := events[i]
+			j := i
+			for j > 0 && events[j - 1].offset > x.offset {
+				events[j] = events[j - 1]
+				j -= 1
+			}
+			events[j] = x
+		}
 	}
 	for e in events do sound(r, out, e)
 	// A slicer's sequencer note that came without a pitch: its first slice.
@@ -323,17 +353,46 @@ note :: proc "contextless" (on: bool, channel, key: u8, velocity: f32) -> fc.Eve
 	return fc.Note_Off{id = fc.NOTE_ID_ANY, channel = channel, key = key}
 }
 
-// [rt] New effect settings: what the old effect was playing ends.
+// [rt] A pad's new MIDI effect settings: what its old effect was playing ends.
 @(private)
-router_set :: proc "contextless" (r: ^Router, s: Perform, out: ^fc.Event_Writer) {
+router_set :: proc "contextless" (r: ^Router, set: Pad_Fx_Set, out: ^fc.Event_Writer) {
+	i := set.pad
+	if i < 0 || i >= PADS do return
+	s := set.fx
 	fx: [64]fc.Event
 	w := fc.Event_Writer{buffer = fx[:]}
-	if r.effects.arp_on && !s.arp_on do pf.arp_reset(&r.arp, &w)
-	if r.effects.repeat_on && !s.repeat_on do pf.repeat_reset(&r.repeat, &w)
-	pf.arp_set(&r.arp, s.arp)
-	pf.repeat_set(&r.repeat, s.repeat)
-	r.effects = s
+	old := r.effects[i]
+	if old.arp_on && !s.arp_on do pf.arp_reset(&r.arp[i], &w)
+	if old.repeat_on && !s.repeat_on do pf.repeat_reset(&r.repeat[i], &w)
+	pf.arp_set(&r.arp[i], s.arp)
+	pf.repeat_set(&r.repeat[i], s.repeat)
+	r.effects[i] = s
+	r.fx_count = 0
+	for e, k in r.effects do if e.arp_on || e.repeat_on {
+		r.fx_pads[r.fx_count] = u8(k)
+		r.fx_count += 1
+	}
 	for e in fc.event_writer_events(&w) do sound(r, out, e)
+}
+
+// [rt] Whether pad `i` has a MIDI effect on.
+@(private)
+pad_has_fx :: proc "contextless" (r: ^Router, i: int) -> bool {
+	return i >= 0 && i < PADS && (r.effects[i].arp_on || r.effects[i].repeat_on)
+}
+
+// [rt] The pad a live note plays (a keyboard note: the pad its key plays), or -1.
+@(private)
+live_pad :: proc "contextless" (r: ^Router, e: fc.Event) -> int {
+	#partial switch v in e.payload {
+	case fc.Note_On:
+		if v.channel == KEYS_CHANNEL do return int(r.keys_pad[v.key])
+		return pad_of_key(v.key)
+	case fc.Note_Off:
+		if v.channel == KEYS_CHANNEL do return int(r.keys_pad[v.key])
+		return pad_of_key(v.key)
+	}
+	return -1
 }
 
 // [rt] One note to the pads.

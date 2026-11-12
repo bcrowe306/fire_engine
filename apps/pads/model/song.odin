@@ -484,9 +484,10 @@ plan_top :: proc(pl: ^Plan, x: f64) -> int {
 }
 
 // Where timeline beat `beat` falls in plan `pl`: the segment leading there
-// (`plan_top`), its slot, and the beat within the sequence; false before
-// the plan starts, after it ends, or where nothing plays.
-plan_locate :: proc(pl: Plan, beat: f64) -> (seg: int, slot: int, rel: f64, ok: bool) {
+// (`plan_top`, or sequence `prefer`'s when it plays there), its slot, and
+// the beat within the sequence; false before the plan starts, after it
+// ends, or where nothing plays.
+plan_locate :: proc(pl: Plan, beat: f64, prefer := -1) -> (seg: int, slot: int, rel: f64, ok: bool) {
 	pl := pl
 	if pl.count == 0 do return
 	x := beat - pl.at
@@ -495,6 +496,12 @@ plan_locate :: proc(pl: Plan, beat: f64) -> (seg: int, slot: int, rel: f64, ok: 
 		x = pl.loop_start + math.mod(x - pl.loop_start, pl.loop_end - pl.loop_start)
 	}
 	i := plan_top(&pl, x)
+	// Sequence `prefer`'s segment there, when it plays (the launcher: the
+	// one being edited).
+	if prefer >= 0 do for s, k in pl.segs[:pl.count] do if s.slot == prefer && x >= s.start && x < s.start + s.span {
+		i = k
+		break
+	}
 	if i < 0 do return
 	s := pl.segs[i]
 	return i, s.slot, s.offset + math.mod(x - s.start, s.period), true

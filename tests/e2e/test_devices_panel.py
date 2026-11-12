@@ -51,16 +51,17 @@ def test_sequence_pads_launch_and_hold(app, fixtures):
     assert app.state()["launch"] == "Now"
     app.click("launch 2", window="perform")  # stopped: it plays from there
     app.until(lambda s: s["playing"] and s["slot"] == 2, what="sequence 2 playing")
-    # Hold: while held only.
+    # Hold: while held only (sequence 1 in its own column, beside 2).
     app.click("launch mode", window="perform", at=(0.75, 0.5))
     assert app.state()["launch_hold"]
     app.cmd('hover_item "launch 1" in perform')
     app.cmd("down")
     app.wait(3)
-    assert app.state()["slot"] == 1
+    s = app.state()
+    assert s["slot"] == 1 and s["columns"][:2] == [1, 2], s["columns"]
     app.cmd("up")
     app.wait(3)
-    assert app.state()["slot"] == 2  # back to the one before
+    assert app.state()["columns"][:2] == [0, 2]  # its column back to what it had: nothing
     # The banks: B shows sequences 17 to 32.
     app.click("sequence bank", window="perform", at=(0.375, 0.5))
     assert app.state()["seq_bank"] == 1

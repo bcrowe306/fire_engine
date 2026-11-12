@@ -76,7 +76,7 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 				append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot})
 				continue
 			}
-			_, slot, rel, ok := plan_locate(m.engine.plan, t.beat)
+			_, slot, rel, ok := plan_locate(m.engine.plan, t.beat, editing_slot(m))
 			if !ok do continue
 			start := input_quantize(m.project.transport.quantize, rel)
 			length := seq_beats(&m.project, m.project.sequences[slot])
@@ -103,7 +103,7 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 downbeat_ahead :: proc(m: ^Model, preroll, beat: f64) -> (slot: int, start: f64, ok: bool) {
 	if preroll <= 0 do return
 	pl := m.engine.plan
-	seg, s, rel, found := plan_locate(pl, beat + preroll)
+	seg, s, rel, found := plan_locate(pl, beat + preroll, editing_slot(m))
 	if !found do return
 	into := rel - pl.segs[seg].offset // how far past its downbeat beat + preroll is
 	if into >= preroll - 1e-9 do return

@@ -88,7 +88,7 @@ audio_poll :: proc(m: ^Model) -> (changed: bool) {
 fold_take :: proc(m: ^Model, pad: int, t: record.Take) -> fc.Error {
 	if t.frames <= 0 || t.channels < 1 || !(t.sample_rate > 0) do return .Invalid_Argument
 	p := &m.project
-	_, slot, rel, ok := plan_locate(m.engine.plan, f64(t.start))
+	_, slot, rel, ok := plan_locate(m.engine.plan, f64(t.start), editing_slot(m))
 	if !ok do return .Invalid_Argument
 	bpm := p.bpm
 	fpb := t.sample_rate * 60 / bpm

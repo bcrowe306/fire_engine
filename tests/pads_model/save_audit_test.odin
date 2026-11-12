@@ -98,7 +98,7 @@ every_setting_saves :: proc(t: ^testing.T) {
 		// clamped to a range both test values fall outside (they read back
 		// as its bound): tempos (40..300), cutoffs (20 Hz..), count-in (..2 bars).
 		switch {
-		case k == "main.dest", k == "perform.arp.seed", strings.has_suffix(k, ".bpm"), k == "pad.voice.cutoff", k == "transport.count_in":
+		case k == "main.dest", k == "perform.arp.seed", k == "pad.midi_fx.arp.seed", strings.has_suffix(k, ".bpm"), k == "pad.voice.cutoff", k == "transport.count_in":
 			continue
 		}
 		append(&keys, k)

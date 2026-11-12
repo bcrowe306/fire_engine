@@ -4,19 +4,26 @@ and the Song tab, by mouse."""
 import os
 
 
-def test_play_modes_repeat_and_arp(app, fixtures):
+def test_play_modes_repeat_and_arp_on_the_pads_midi_page(app, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
-    app.panel("Perform")
-    app.click("Keyboard", window="perform")
+    app.cmd("select 0")
+    app.cmd("panel midi")  # the pad's MIDI page, first in its chain
+    app.wait(3)
+    assert app.state()["detail_tab"] == "MIDI"
+    app.click("Keyboard", window="detail")
     assert app.state()["play_mode"] == "Keyboard"
-    app.click("Pads", window="perform")
+    app.click("Pads", window="detail")
     assert app.state()["play_mode"] == "Pads"
-    app.click("Repeat", window="perform")
-    app.click("Arpeggiate", window="perform")
-    app.click("##arp_mode", window="perform")
+    app.click("Repeat", window="detail")
+    assert app.pad(0)["repeat"], app.pad(0)
+    app.click("Arpeggiate", window="detail")  # (repeat off)
+    p = app.pad(0)
+    assert p["arp"] and not p["repeat"], p
+    app.click("##arp_mode", window="detail")
     app.click("Down")
-    assert app.state()["undo"] != ""
-    app.expect_item("steps", window="perform")  # the repeat's and the arpeggiator's steps
+    assert app.state()["undo"] == "Arpeggiator"
+    app.expect_item("steps", window="detail")  # the arpeggiator's steps
+    app.screenshot("midi_page")
 
 
 def test_performance_effects_while_held(app, fixtures):

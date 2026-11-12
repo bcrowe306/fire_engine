@@ -18,9 +18,9 @@ the_arpeggiator_plays_a_held_chord_on_the_grid :: proc(t: ^testing.T) {
 	r := blips(t, "perf_arp")
 	defer rig_destroy(r)
 	m := &r.m
-	p := m.project.perform
+	p := m.project.pads[0].midi_fx
 	p.arp_on, p.arp = true, {mode = .Up, rate = .Sixteenth}
-	pm.set_perform(m, p)
+	pm.set_midi_fx(m, 0, p)
 	pm.sync(&m.engine)
 	render(r, 512)
 	// A keyboard chord on pad 0: C, E, G above its pitch.
@@ -45,9 +45,9 @@ note_repeat_retriggers_a_held_pad :: proc(t: ^testing.T) {
 	r := blips(t, "perf_repeat")
 	defer rig_destroy(r)
 	m := &r.m
-	p := m.project.perform
+	p := m.project.pads[1].midi_fx
 	p.repeat_on, p.repeat = true, {rate = .Eighth}
-	pm.set_perform(m, p)
+	pm.set_midi_fx(m, 1, p)
 	pm.sync(&m.engine)
 	render(r, 512)
 	pm.hit(&m.engine, 1, true)
@@ -55,8 +55,15 @@ note_repeat_retriggers_a_held_pad :: proc(t: ^testing.T) {
 	got := onsets(out[0][:])
 	testing.expectf(t, len(got) == 4 || len(got) == 5, "an eighth apart (%v)", got)
 	pm.hit(&m.engine, 1, false)
+	render(r, 12_000)
+	// Pad 0 has none: held, it plays once.
+	pm.hit(&m.engine, 0, true)
+	out = render(r, 48_000)
+	pm.hit(&m.engine, 0, false)
+	got = onsets(out[0][:])
+	testing.expectf(t, len(got) == 1, "pad 0 is not repeated (%v)", got)
 	p.repeat_on = false
-	pm.set_perform(m, p)
+	pm.set_midi_fx(m, 1, p)
 	pm.sync(&m.engine)
 	render(r, 12_000)
 	quiet := render(r, 24_000)
@@ -207,9 +214,9 @@ engine_timing :: proc(t: ^testing.T) {
 	for k in 0 ..< 64 do pm.add_note(m, 0, {start = f64(k) * 0.25, length = 0.2, pad = u8(k % 8), velocity = 0.8})
 	pm.set_bars(m, 0, 4)
 	for i in 0 ..< 8 do pm.add_point(m, 0, {pad = u8(i), param = .Volume, beat = 0, value = -6})
-	p := m.project.perform
+	p := m.project.pads[0].midi_fx
 	p.arp_on = true
-	pm.set_perform(m, p)
+	pm.set_midi_fx(m, 0, p)
 	// And effects: a low-pass on every pad, reverb and a compressor on main.
 	for i in 0 ..< 8 do pm.set_insert(m, i, 0, pm.new_effect(.Low_Pass))
 	b := m.project.main

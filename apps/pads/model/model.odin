@@ -209,6 +209,7 @@ Pad :: struct {
 	slices:     [MAX_SLICES]i64,
 	slice_count: int,
 	midi_out:   Midi_Out, // its hits also go out as MIDI
+	midi_fx:    Perform,  // its MIDI effects: note repeat or the arpeggiator on its live notes
 	midi_in:    Midi_In,  // what MIDI plays it
 	inserts:    [PAD_INSERTS]Effect_Slot, // after its EQ
 	mute, solo: bool,
@@ -269,7 +270,7 @@ Project :: struct {
 	freezes: [SLOTS][PADS]Clip, // frozen pads' renderings, per sequence (see `freeze_begin`)
 	slot:    int, // the current sequence: what plays and is edited
 	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key N plays pad N (A1 = 0, H16 = 127)
-	perform: Perform, // the arpeggiator and note repeat (`set_perform`)
+	perform: Perform, // files before v31: note repeat and the arpeggiator for every pad (read into each pad's `midi_fx`)
 	buses:   [BUSES]Bus, // the first `bus_count` are in use
 	bus_count: int,
 	main:    Bus,
@@ -319,8 +320,11 @@ default_transport :: proc() -> Transport {
 
 // The default pad: one-shot, full volume, centred.
 default_pad :: proc() -> Pad {
-	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}, slicer = default_slicer()}
+	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}, slicer = default_slicer(), midi_fx = DEFAULT_MIDI_FX}
 }
+
+// A pad's MIDI effects to start with: both off, at 1/16, half a step long.
+DEFAULT_MIDI_FX :: Perform{arp = {rate = .Sixteenth, gate = 0.5, octaves = 1}, repeat = {rate = .Sixteenth, gate = 0.5}}
 
 // Prepares an empty project in `dir`.
 project_init :: proc(p: ^Project, dir: string) {
@@ -334,7 +338,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	p.arrangement_count = 1
 	copy(p.arrangements[0].name[:], "Song")
 	for &x in p.perf_intensity do x = 1
-	p.perform = {arp = {rate = .Sixteenth, gate = 0.5, octaves = 1}, repeat = {rate = .Sixteenth, gate = 0.5}}
+	p.perform = DEFAULT_MIDI_FX
 	for &k, key in p.midi_map do k = i16(key) if key < PADS else -1 // note N plays pad N (A1 = 0)
 	app.store_init(&p.samples)
 	app.store_init(&p.wave_docs)

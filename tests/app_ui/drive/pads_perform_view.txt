@@ -1,0 +1,36 @@
+# The Perform tab: three sequences launched in their columns (together),
+# one queued; the effects by kind; the levels; then the pad's MIDI page.
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+load 2 tests/app_ui/fixtures/loop.wav
+note 0 0 0.25 1
+note 0 1 0.25 1
+note 0 2 0.25 1
+note 0 3 0.25 1
+slot 2
+note 1 0.5 0.25 0.7
+note 1 1.5 0.25 0.7
+slot 3
+note 2 0 1 1
+slot 5
+note 0 0 0.25 1
+note 0 0.5 0.25 1
+slot 1
+panel perform
+wait 5
+screenshot perform_view
+launch 1
+launch 2
+launch 3
+wait 40
+expect playing 1
+launch 5
+wait 10
+screenshot perform_view_playing
+launch stop all
+select 0
+arp
+panel midi
+wait 3
+screenshot perform_midi_page

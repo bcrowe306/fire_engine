@@ -55,9 +55,9 @@ busy_project :: proc(r: ^Rig) {
 	pm.song_add(m, 2)
 	pm.learn_midi(m, 70, 1)
 	m.project.bpm = 97
-	p := m.project.perform
+	p := m.project.pads[1].midi_fx
 	p.arp.mode, p.arp.octaves = .Down, 3
-	pm.set_perform(m, p)
+	pm.set_midi_fx(m, 1, p)
 }
 
 @(test)
@@ -95,7 +95,7 @@ a_project_saves_and_loads_whole :: proc(t: ^testing.T) {
 	testing.expect(t, p.buses[0] == before.buses[0], "bus A")
 	testing.expect(t, p.song == before.song, "the song")
 	testing.expect_value(t, p.midi_map[70], 1)
-	testing.expect(t, p.perform.arp.mode == .Down && p.perform.arp.octaves == 3, "the arpeggiator")
+	testing.expect(t, p.pads[1].midi_fx.arp.mode == .Down && p.pads[1].midi_fx.arp.octaves == 3, "a pad's arpeggiator")
 	testing.expect(t, !pm.model_dirty(&r2.m) && len(r2.m.history.undo) == 0, "a fresh history")
 	// And it plays.
 	pm.play(&r2.m.engine)

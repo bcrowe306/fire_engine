@@ -561,12 +561,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case: return false
 		}
 		return true
-	case "arp", "repeat":
-		p := a.m.project.perform
+	case "arp", "repeat": // arp|repeat [off]: the selected pad's
+		p := a.m.project.pads[a.selected].midi_fx
 		on := len(w) < 2 || w[1] != "off"
 		if w[0] == "arp" do p.arp_on, p.repeat_on = on, p.repeat_on && !on
 		else do p.repeat_on, p.arp_on = on, p.arp_on && !on
-		pm.set_perform(&a.m, p)
+		pm.set_midi_fx(&a.m, a.selected, p)
+		app.seal(&a.m.history)
 		return true
 	case "midi":
 		// midi KEY VELOCITY [PORT] (0 = note-off; the port's index, 0 by default)
@@ -1021,6 +1022,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "lfo":               show_detail(a, .Lfo)
 		case "effect", "effects": show_device(a, a.fx)
 		case "eq":                show_eq(a)
+		case "midi":              show_midi(a)
 		case "pads":              a.ws.bottom_folded = false
 		case "browser", "library": library_show(a, 0)
 		case "devices":            library_show(a, 1)
@@ -1039,6 +1041,26 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "metronome":
 		a.m.engine.metronome = len(w) < 2 || w[1] != "off"
+		return true
+	case "launch":
+		// launch SLOT (in its column; stopped, it starts) / launch row R [BANK] /
+		// launch stop COLUMN|all / launch record on|off (Record to Song)
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "row":
+			if len(w) < 3 do return false
+			pm.launch_row(&a.m, num(w, 3) - 1 if len(w) > 3 else a.perf.seq_bank, num(w, 2) - 1)
+		case "stop":
+			if len(w) > 2 && w[2] == "all" do pm.stop_all_columns(&a.m.engine)
+			else if len(w) > 2 do pm.stop_column(&a.m.engine, num(w, 2) - 1)
+			else do return false
+		case "record":
+			pm.set_launch_record(&a.m, len(w) < 3 || w[2] != "off")
+		case:
+			k := num(w, 1) - 1
+			if k < 0 || k >= pm.SLOTS do return false
+			pm.launch_slot(&a.m, k)
+		}
 		return true
 	case "slot":
 		if k := num(w, 1); k >= 1 && k <= pm.SLOTS {

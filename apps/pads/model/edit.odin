@@ -67,6 +67,7 @@ Pad_Field :: enum {
 	Send_Pre,
 	Fades,
 	Kind,
+	Midi_Fx, // its MIDI effects (note repeat, the arpeggiator)
 	Input,
 	Monitor,
 	Midi_In,
@@ -287,10 +288,14 @@ set_bpm :: proc(m: ^Model, bpm: f64) {
 	})
 }
 
-// Sets the live effects (the arpeggiator, note repeat). Not undoable: how
-// you play, not what the project holds.
-set_perform :: proc(m: ^Model, p: Perform) {
-	m.project.perform = p
+// Sets pad `pad`'s MIDI effects (note repeat, the arpeggiator), undoably
+// (drags of one setting merge: seal when they end).
+set_midi_fx :: proc(m: ^Model, pad: int, fx: Perform, name := "MIDI Effect") {
+	if pad < 0 || pad >= PADS do return
+	p := m.project.pads[pad]
+	if p.midi_fx == fx do return
+	p.midi_fx = fx
+	set_pad(m, pad, .Midi_Fx, name, p)
 }
 
 // Makes MIDI key `key` play pad `pad` (-1: nothing), undoably. Another key

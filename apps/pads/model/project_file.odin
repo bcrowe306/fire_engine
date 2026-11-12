@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 30 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes
+PROJECT_VERSION :: 31 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own)
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -581,6 +581,19 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_int(w, mt.sig.den)
 		}
 	}
+	// v31: each pad's MIDI effects.
+	for &pad in p.pads {
+		fx := pad.midi_fx
+		fc.write_bool(w, fx.repeat_on)
+		fc.write_u8(w, u8(fx.repeat.rate))
+		fc.write_f32(w, fx.repeat.gate)
+		fc.write_bool(w, fx.arp_on)
+		fc.write_u8(w, u8(fx.arp.mode))
+		fc.write_u8(w, u8(fx.arp.rate))
+		fc.write_int(w, fx.arp.octaves)
+		fc.write_f32(w, fx.arp.gate)
+		fc.write_bool(w, fx.arp.latch)
+	}
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -669,6 +682,9 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	legacy := make([]Legacy_Song, ARRANGEMENTS, context.temp_allocator)
 	read_project_body(r, p, version, legacy)
 	if version < 30 do for &a, k in p.arrangements[:p.arrangement_count] do song_from_steps(p, &a.song, &legacy[k])
+	// Before v31 note repeat and the arpeggiator were the project's, for
+	// every pad: each pad has them now.
+	if version < 31 do for &pad in p.pads do pad.midi_fx = p.perform
 	p.song = p.arrangements[p.arrangement].song
 }
 
@@ -1075,6 +1091,18 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 				mt.sig = {clamp(fc.read_int(r), 1, 16), fc.read_int(r)}
 				if mt.sig.den != 2 && mt.sig.den != 4 && mt.sig.den != 8 && mt.sig.den != 16 do mt.sig.den = 4
 			}
+		}
+		if version >= 31 do for &pad in p.pads {
+			fx := &pad.midi_fx
+			fx.repeat_on = fc.read_bool(r)
+			fx.repeat.rate = perform.Rate(min(fc.read_u8(r), u8(max(perform.Rate))))
+			fx.repeat.gate = clamp(fc.read_f32(r), 0, 1)
+			fx.arp_on = fc.read_bool(r)
+			fx.arp.mode = perform.Arp_Mode(min(fc.read_u8(r), u8(max(perform.Arp_Mode))))
+			fx.arp.rate = perform.Rate(min(fc.read_u8(r), u8(max(perform.Rate))))
+			fx.arp.octaves = clamp(fc.read_int(r), 1, 4)
+			fx.arp.gate = clamp(fc.read_f32(r), 0, 1)
+			fx.arp.latch = fc.read_bool(r)
 		}
 	} else {
 		p.bus_count = DEFAULT_BUSES
