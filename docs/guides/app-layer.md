@@ -132,6 +132,13 @@ command of it.
   dragged; `bottom_folded` makes it a bar `bottom_folded_h` tall, and its
   draw proc is told so). They are windows of their own, not viewport side
   bars, so popups still have the whole window's height.
+- **Flex rows.** A `Flex` lays a row out as CSS flexbox does: call
+  `flex_begin(&f, size)`, then `flex_next(&f)` before each item (a widget,
+  or a group of them; `flex_next(&f, gap)` for a different gap before it),
+  and `flex_end(&f)`. Items sit one after another `f.gap` apart, each
+  centred in the row's height, the whole justified by `f.justify` (Start,
+  Center, End, Between). Sizes are measured as items are drawn and used
+  the next frame, so keep the `Flex` between frames. Pads' toolbar is one.
 - **Densities and text sizes.** `set_density(&p, .Comfortable)` makes
   every control 28, 34 or 44 pt tall (Compact, Comfortable, Touch);
   `text_push(.Label)` / `text_pop()` draw at a text size (Heading 18,

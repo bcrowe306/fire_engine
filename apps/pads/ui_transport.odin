@@ -17,11 +17,16 @@ Transport_State :: struct {
 	tapped: f64, // when Tap was last pressed (for its flash)
 	stopped_at: f64, // when Stop was last pressed (a second press soon after silences everything)
 	silences: int,   // times Stop silenced everything (for tests)
-	width: f32,
+	flex: ui.Flex,   // the toolbar's row: its groups, centred
 }
 
 // Height of the transport toolbar.
 TOOLBAR_H :: 46
+
+// Height of the toolbar's controls (a little under the panels' own, so
+// the bar stays slim; at the Touch size, still big enough for a finger).
+TOOL_H :: 30
+TOOL_H_TOUCH :: 40
 
 // The transport toolbar, under the menus whatever shows below: what is
 // needed while playing. Play and stop; record, loop and count-in; where
@@ -37,15 +42,23 @@ draw_toolbar :: proc(user: rawptr) {
 	tr := p.transport
 	t := ui.theme()
 	st := &a.transport
-	gap: f32 = 18
 	st.clock += f64(im.GetIO().DeltaTime)
 
-	avail := im.GetContentRegionAvail().x
-	start := im.GetCursorPosX()
-	if st.width > 0 do im.SetCursorPosX(start + max((avail - st.width) / 2, 0))
-	x0 := im.GetCursorScreenPos().x
-	im.SetCursorPosY((TOOLBAR_H - im.GetFrameHeight()) / 2)
-	big := im.GetFrameHeight() + 4
+	// Every control the same height, flat (a shade off the bar rather than
+	// raised from it), in a row of groups centred both ways.
+	tool_h: f32 = TOOL_H_TOUCH if a.platform.density == .Touch else TOOL_H
+	im.PushStyleVarVec2(.FramePadding, {t.pad.x, (tool_h - ui.FONT_SIZE) / 2})
+	flat := ui.mix(t.surface, t.raised, 0.4)
+	im.PushStyleColorVec4(.FrameBg, transmute(im.Vec4)flat)
+	im.PushStyleColorVec4(.Button, transmute(im.Vec4)flat)
+	im.PushStyleColorVec4(.FrameBgHovered, transmute(im.Vec4)t.raised)
+	im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)t.raised)
+	big := im.GetFrameHeight()
+	st.flex.justify, st.flex.gap = .Center, 16
+	win := im.GetWindowPos()
+	im.SetCursorScreenPos({win.x + im.GetStyle().WindowPadding.x, win.y})
+	ui.flex_begin(&st.flex, {im.GetWindowSize().x - 2 * im.GetStyle().WindowPadding.x, TOOLBAR_H})
+	ui.flex_next(&st.flex)
 
 	// Transport.
 	beat, playing := pm.timeline_beat(e)
@@ -83,7 +96,7 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 
 	// Where the playhead is.
-	im.SameLine(0, gap)
+	ui.flex_next(&st.flex)
 	rel, _ := pm.position(e)
 	shown := beat if beat < 0 else rel
 	bar, bt, six := pm.position_of(p, shown)
@@ -101,7 +114,7 @@ draw_toolbar :: proc(user: rawptr) {
 	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Bar . beat . sixteenth%s; the sequence is %d bar%s", " (counting in)" if beat < 0 && playing else "", seq.bars, "" if seq.bars == 1 else "s"))
 
 	// The sequence.
-	im.SameLine(0, gap)
+	ui.flex_next(&st.flex)
 	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pm.select_slot(m, p.slot - 1)
 	im.SameLine(0, 0)
 	im.SetNextItemWidth(118)
@@ -135,7 +148,7 @@ draw_toolbar :: proc(user: rawptr) {
 
 	// What plays (the sequence, or the song), and when a sequence picked
 	// while playing takes over.
-	im.SameLine(0, gap)
+	ui.flex_next(&st.flex)
 	mode := 1 if p.song_mode else 0
 	if ui.segmented("play_mode", {"Pattern", "Song"}, &mode) {
 		p.song_mode = mode == 1
@@ -145,7 +158,7 @@ draw_toolbar :: proc(user: rawptr) {
 	// (When a sequence picked while playing takes over is in Perform.)
 
 	// Tempo: drag by 1 (Shift: 0.1), tap, and the time signature.
-	im.SameLine(0, gap)
+	ui.flex_next(&st.flex)
 	bpm := p.bpm
 	te := ui.number_drag("tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", 104, fill = false)
 	if te.changed do pm.set_bpm(m, bpm)
@@ -213,7 +226,7 @@ draw_toolbar :: proc(user: rawptr) {
 	if im.IsItemHovered() do im.SetTooltip("Time signature")
 
 	// The metronome: on/off, and its settings.
-	im.SameLine(0, gap)
+	ui.flex_next(&st.flex)
 	if tool_toggle(ui.ICON_METRONOME, "Click", "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", e.metronome, t.accent, big) do e.metronome = !e.metronome
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Metronome settings") do im.OpenPopup("##metro")
@@ -261,7 +274,9 @@ draw_toolbar :: proc(user: rawptr) {
 		im.EndPopup()
 	}
 
-	st.width = im.GetItemRectMax().x - x0
+	ui.flex_end(&st.flex)
+	im.PopStyleColor(4)
+	im.PopStyleVar()
 	// A line under the bar.
 	vp := im.GetWindowPos()
 	sz := im.GetWindowSize()
@@ -351,7 +366,7 @@ tool_toggle :: proc(icon, label: string, tip: cstring, on: bool, color: ui.Color
 	clicked := im.InvisibleButton(tip, {w, h})
 	ui.name(string(tip))
 	hovered := im.IsItemHovered()
-	bg := t.pressed if im.IsItemActive() else (t.hover if hovered else t.raised)
+	bg := t.pressed if im.IsItemActive() else (t.raised if hovered else ui.mix(t.surface, t.raised, 0.4))
 	if on {
 		f: f32 = 0.3
 		if blink do f = 0.15 + 0.4 * f32(0.5 + 0.5 * math.sin(time * 6))

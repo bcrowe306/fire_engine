@@ -23,6 +23,10 @@ The rules every Pads screen follows; the layouts and the redesign's order are in
   panel 12 pt.
 - Hit area is never smaller than the control's height in either
   direction (an icon button is square).
+- **Bars are slimmer**: the toolbar's controls are 30 pt (40 at Touch)
+  and flat, a shade off the bar rather than raised from it;
+  rows of controls are laid out with `ui.Flex` (each item centred in the
+  row's height).
 
 ## Text
 

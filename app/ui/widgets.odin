@@ -35,6 +35,11 @@ shown_label :: proc(label: cstring) -> cstring {
 	return strings.clone_to_cstring(text[:i], context.temp_allocator)
 }
 
+// The style's colour `c` now (with any pushed over it).
+style_color :: proc(c: im.Col) -> Color {
+	return transmute(Color)im.GetStyle().Colors[int(c)]
+}
+
 // A colour as ImGui packs it, for draw lists.
 col :: proc "contextless" (c: Color) -> u32 {
 	return im.GetColorU32Vec4(transmute(im.Vec4)c)
@@ -559,7 +564,7 @@ value_bar :: proc(id: cstring, label: cstring, value: ^f64, lo, hi, step, fine: 
 		typing, typed = wid, value^
 	}
 	hovered := im.IsItemHovered() || im.IsItemActive()
-	bg := t.hover if hovered else t.raised
+	bg := style_color(.FrameBgHovered if hovered else .FrameBg)
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + width, pos.y + h}, col(bg), t.radius)
 	if fill && hi > lo {
 		frac := f32(clamp((value^ - lo) / (hi - lo), 0, 1))
@@ -632,7 +637,11 @@ segmented :: proc(id: cstring, options: []string, choice: ^int) -> bool {
 		widths[i] = im.CalcTextSize(strings.clone_to_cstring(o, context.temp_allocator)).x + 2 * t.pad.x
 		total += widths[i]
 	}
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + total + 4, pos.y + h}, col(t.raised), t.radius)
+	// The background is the style's frame colour (a toolbar may push a
+	// flatter one); the choice stands out from it either way.
+	bg := style_color(.FrameBg)
+	chosen := t.surface if bg == t.raised else t.raised
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + total + 4, pos.y + h}, col(bg), t.radius)
 	changed := false
 	x := pos.x + 2
 	for o, i in options {
@@ -647,7 +656,7 @@ segmented :: proc(id: cstring, options: []string, choice: ^int) -> bool {
 		name(o)
 		im.PopID()
 		if choice^ == i {
-			im.DrawList_AddRectFilled(dl, {x, pos.y + 2}, {x + widths[i], pos.y + h - 2}, col(t.surface), t.radius - 1)
+			im.DrawList_AddRectFilled(dl, {x, pos.y + 2}, {x + widths[i], pos.y + h - 2}, col(chosen), t.radius - 1)
 		} else if hovered {
 			im.DrawList_AddRectFilled(dl, {x, pos.y + 2}, {x + widths[i], pos.y + h - 2}, col(t.hover), t.radius - 1)
 		}
