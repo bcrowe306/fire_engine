@@ -35,7 +35,7 @@ export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY:-}}"
 export AWS_DEFAULT_REGION="${FIRE_AWS_REGION:-us-east-2}" # the org policy allows EC2 only in us-east-2
 unset DIGITAL_OCEAN_ACCESS_TOKEN
 
-SSH_OPTS=(-i "$KEY" -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/fire_engine_known_hosts" -o ConnectTimeout=10)
+SSH_OPTS=(-i "$KEY" -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/fire_engine_known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=30)
 
 instance_id() {
 	aws ec2 describe-instances --filters "Name=tag:Name,Values=$NAME" \

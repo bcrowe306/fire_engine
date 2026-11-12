@@ -29,7 +29,7 @@ KEY="${FIRE_SSH_KEY:-$HOME/.ssh/fire_engine_do}"
 ODIN_RELEASE="dev-2026-10" # keep in sync with .github/workflows/ci.yml
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/fire_engine_known_hosts" -o ConnectTimeout=10)
+SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/fire_engine_known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=30)
 
 ip() {
 	doctl compute droplet list --format Name,PublicIPv4 --no-header | awk -v n="$NAME" '$1 == n { print $2 }'
