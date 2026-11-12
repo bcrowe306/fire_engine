@@ -45,9 +45,13 @@ Secondary text uses the dim colour, never a smaller size alone.
 
 - Surfaces as now (background, surface, inset, raised, hover, pressed),
   dark by default, light as the alternative.
-- **The accent is the selected pad's colour**: selection, focus, the
-  active tab, a value's arc and record-ready states all take it, so the
-  whole window says which pad you are on.
+- **The pads area's accent is its pad's colour**: in the pads, the
+  sound's devices and effects and the channel strip, selection, focus,
+  the active tab, a value's arc and lit buttons take the colour of the
+  pad shown, so that area says which pad you are on. The rest of the
+  window (toolbar, Library, the views) keeps the theme's accent.
+  (Decided 2026-11-12, after a first build where the whole window took
+  it.)
   - Text on the accent picks white or near-black, whichever reads better
     against that colour.
   - A pad colour too dark or too light against the surfaces is shifted

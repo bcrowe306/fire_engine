@@ -75,9 +75,11 @@ left, lit when on. Settings set once (lengths, swing, voices) are value
 bars: the name at the left, the value at the right, filled as far as the
 value goes; drag across them, scroll, or double-click to type.
 
-The **accent** (selection, focus, the active tab, knobs' arcs, lit
-buttons) is the selected pad's colour, so the whole window says which
-pad you are on; on an empty pad it is the theme's own. A pad colour too
+The **pads area** (the pads, the sound's devices and effects, the
+channel strip) draws its accent (selection, focus, the active tab,
+knobs' arcs, lit buttons) in the colour of the pad it shows, so it says
+which pad you are on; the rest of the window keeps the theme's accent,
+as does the area for an empty pad, a bus or the performance effects. A pad colour too
 dark or too light to stand out is lightened or darkened for the accent
 (the pad keeps its own). Record is always red and blinks while it
 records.

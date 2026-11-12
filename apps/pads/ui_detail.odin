@@ -109,8 +109,27 @@ show_detail :: proc(a: ^App, tab: Detail_Tab) {
 // The bottom area, open (`draw_detail`) or folded (`draw_pad_bar`).
 draw_bottom :: proc(user: rawptr, folded: bool) {
 	a := (^App)(user)
+	// This area (the pads, the sound's devices and effects, the strip) is
+	// drawn in its track's colour; the rest of the window keeps the
+	// theme's accent.
+	ui.set_accent(&a.platform, track_accent(a, folded))
+	defer ui.set_accent(&a.platform, {})
 	if folded do draw_pad_bar(a)
 	else do draw_detail(a)
+}
+
+// The colour the bottom area's accent takes: the pad whose chain it shows
+// (folded: the selected pad), if it has a sound; else none (a bus, the
+// performance effects, an empty pad: the theme's accent).
+track_accent :: proc(a: ^App, folded: bool) -> ui.Color {
+	st := &a.detail
+	index := a.selected
+	if !folded {
+		if st.track.kind != .Pad do return {}
+		index = st.track.index
+	}
+	if !pm.pad_used(&a.m.project, index) do return {}
+	return ui.rgb(a.m.project.pads[index].color)
 }
 
 // The bottom area folded: the bank's 16 pads in a row, each its name and

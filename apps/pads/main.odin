@@ -344,9 +344,6 @@ frame :: proc(a: ^App) {
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
 	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys}
-	// The accent is the selected pad's colour (the theme's, on an empty pad).
-	sel := a.m.project.pads[a.selected]
-	ui.set_accent(&a.platform, ui.rgb(sel.color) if pm.pad_used(&a.m.project, a.selected) else {})
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	draw_plugin_choice(a)
