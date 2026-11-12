@@ -107,3 +107,17 @@ def test_plugins_found_and_offered(app):
     app.click("Plug-ins")
     app.expect_item(f"plugin {effects[0]}")
     app.screenshot("plugins")
+
+
+def test_settings_naming_a_device_that_is_gone_still_start():
+    # (An unplugged USB interface: on the simulated device this crashed at start.)
+    prefs = tempfile.mkdtemp(prefix="pads_prefs_")
+    with open(os.path.join(prefs, "settings.ini"), "w") as f:
+        f.write("[audio]\noutput = no-such-device:2,1\ninput = no-such-device:2,1\nsample_rate = 0\nbuffer = 0\n")
+    app = Pads(prefs=prefs)
+    try:
+        assert app.state()["slot"] >= 1  # up and answering
+        text = open(os.path.join(prefs, "settings.ini")).read()
+        assert "no-such-device" in text  # (kept: it is used again when it is back)
+    finally:
+        app.close()

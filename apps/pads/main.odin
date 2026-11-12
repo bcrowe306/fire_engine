@@ -184,7 +184,10 @@ main :: proc() {
 	defer app.bus_destroy(&a.bus)
 	if !open_engine(a, fake) {
 		fmt.eprintln("pads: no audio device; using the simulated one")
-		open_engine(a, true)
+		if !open_engine(a, true) {
+			fmt.eprintln("pads: could not open even the simulated audio device")
+			os.exit(1)
+		}
 	}
 	defer app.host_destroy(&a.host)
 	if pm.model_init(&a.m, &a.host, project, &a.bus) != .None {
@@ -282,12 +285,24 @@ main :: proc() {
 // Opens the audio device (the fake one if asked), with inputs for
 // recording when the device has them.
 open_engine :: proc(a: ^App, fake: bool) -> bool {
-	for inputs in ([]int{a.settings.audio.inputs, 0}) {
-		settings := host_settings(a, fake)
-		settings.inputs = inputs
-		if a.host.driver != nil do app.host_destroy(&a.host)
-		if app.host_init(&a.host, settings, &a.bus) != .None do continue
-		if app.host_open(&a.host) == .None do return true
+	// The devices the settings name, then (when they are gone: unplugged)
+	// the system's default ones; each with its inputs, then without. The
+	// simulated device has no devices to name.
+	named := a.settings.audio.output != "" || a.settings.audio.input != ""
+	for default_devices in ([]bool{fake, true}) {
+		if default_devices && !fake && !named do continue // (the first pass was already the default ones)
+		for inputs in ([]int{a.settings.audio.inputs, 0}) {
+			settings := host_settings(a, fake)
+			settings.inputs = inputs
+			if default_devices || fake do settings.output_device, settings.input_device = "", ""
+			if a.host.driver != nil do app.host_destroy(&a.host)
+			if app.host_init(&a.host, settings, &a.bus) != .None do continue
+			if app.host_open(&a.host) == .None {
+				if default_devices && !fake && named do fmt.eprintln("pads: the audio device in the settings is not there; using the system's")
+				return true
+			}
+		}
+		if fake do break
 	}
 	return false
 }
