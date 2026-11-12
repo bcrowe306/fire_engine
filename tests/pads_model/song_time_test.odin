@@ -74,7 +74,7 @@ the_tempo_follows_the_loop_round :: proc(t: ^testing.T) {
 	render_synced(r, 30 * 48_000, 2400)
 	pos, _, _ = transport.timeline_status(m.engine.host.clock, m.engine.timeline)
 	testing.expectf(t, abs(f64(pos) - (12 + 40)) < 0.05, "ten passes more (%v)", pos)
-	// No lane: the steps' tempos.
+	// No lane: the project's tempo.
 	pm.stop(&m.engine)
 	for m.project.song.tempo_count > 1 do pm.tempo_point_remove(m, m.project.song.tempo_count - 1)
 	pm.tempo_point_remove(m, 0)
@@ -83,12 +83,12 @@ the_tempo_follows_the_loop_round :: proc(t: ^testing.T) {
 }
 
 @(test)
-steps_have_time_signatures :: proc(t: ^testing.T) {
-	r := song_rig(t, "song_meters", 8, false)
+the_time_signature_lane_plays :: proc(t: ^testing.T) {
+	r := song_rig(t, "song_meters_play", 8, false)
 	defer rig_destroy(r)
 	m := &r.m
 	pm.song_add(m, 0, repeats = 3) // beats 8..20
-	pm.set_step_meter(m, 1, {3, 4})
+	pm.meter_set(m, 8, {3, 4})
 	testing.expect_value(t, pm.song_meter_at(&m.project, 9), pm.Time_Sig{3, 4})
 	testing.expect_value(t, pm.song_meter_at(&m.project, 2), m.project.transport.time_sig)
 	mp := pm.song_tempo_map(&m.project, pm.plan_song(&m.project, 0), 1)
@@ -120,7 +120,7 @@ markers_and_the_loop_range_are_kept :: proc(t: ^testing.T) {
 	testing.expect(t, m.project.song.loop_start == 4 && m.project.song.loop_end == 12)
 	pm.tempo_point_add(m, {0, 100, true})
 	pm.tempo_point_add(m, {8, 140, false})
-	pm.set_step_meter(m, 0, {7, 8})
+	pm.meter_set(m, 0, {7, 8})
 	testing.expect_value(t, pm.model_save(m), fc.Error.None)
 	r2 := rig_make(t, "song_markers_load")
 	defer rig_destroy(r2)
@@ -130,7 +130,7 @@ markers_and_the_loop_range_are_kept :: proc(t: ^testing.T) {
 	testing.expect_value(t, pm.marker_name(&s.markers[1]), "Bridge")
 	testing.expect(t, s.loop_on && s.loop_start == 4 && s.loop_end == 12)
 	testing.expect(t, s.tempo_count == 2 && s.tempo[0].ramp && s.tempo[1].bpm == 140)
-	testing.expect_value(t, s.steps[0].meter, pm.Time_Sig{7, 8})
+	testing.expect(t, s.meter_count == 1 && s.meters[0].sig == pm.Time_Sig{7, 8}, "the time signature lane")
 	// Undone: the loop range goes.
 	app.undo(&m.history)
 	app.undo(&m.history)

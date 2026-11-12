@@ -461,65 +461,86 @@ drag is one step. Cmd+K opens the command palette; Cmd+1..8 switch banks (or Vie
 Delete clears the pad; View > Light Theme switches theme.
 
 - **Song** (middle tab): **Pattern** plays the current sequence; **Song**
-  plays the chain of steps, each a sequence played 1–16 times (drag a step
-  onto another to move it; with the toolbar's **Loop** on it goes round,
-  otherwise it stops at the end). Across the top, the **timeline**: the
-  song laid out in time, bars on its ruler (each step's in its own time
-  signature) and its total length in minutes and seconds (at the song's
-  tempo), each step a block in its sequence's
-  colour with its name and repeats (muted ones hatched), and the playhead;
-  click the ruler to play the song from that bar, drag along it for the
-  **loop range** (the bars the loop goes round, in song mode with **Loop**
-  on; right-click the ruler to loop one bar, go back to the whole song or
-  add a marker), a block to select its
-  step (Shift-click: a range; Cmd-click: one more or less). A selected or
-  hovered block has a grip at each end: drag the right one to change how
-  much of its sequence it plays, the left one to change where that part
-  starts (its end stays), by bars (Shift: beats); drag a block's middle
-  to move the selected steps elsewhere (a line shows where they land).
-  With steps selected, Cmd+C copies them and Cmd+V pastes them after the
-  last selected, Cmd+D duplicates them there, Cmd+X cuts them, Delete or
-  Backspace removes them, Cmd+A selects them all. The playing step's
-  card runs a bar across (drag cards too; a selected card takes the
-  selection with it). On the left, every
-  **sequence** slot with its colour, length, own tempo and how many times
-  the song plays it (the playing one lit): double-click one or its **+** to
-  add it at the end, drag it onto a step to put it before that one or
-  onto the **+** at the end, click it to edit it, right-click for its
-  commands (**Colour** among them: its colour shows on the launcher, the
-  toolbar's list, the song and the Sequence panel). On the right, the
-  selected **step**: its sequence, a section name (shown on the
-  timeline), **Repeats**, which part of the sequence it plays (**Start**
-  and **Length** in beats, drawn over the sequence), **Transpose** — each a
-  number to drag (a step at a time; Shift: finer), scroll, or
-  double-click and type — **Mute**, its **own
-  tempo** (while the song has no tempo lane), its **Time** signature (the
-  project's, or its own: 3/4, 7/8...; the metronome, bars and the clock
-  follow it while it plays), and Duplicate/Remove.
+  plays the song (with the toolbar's **Loop** on it goes round, otherwise
+  it stops at the end). The song is **lanes of clips**: any sequence on any
+  lane, from any bar and as long as you like, several playing at once (a
+  drum sequence on one lane, a fill or a bass sequence on another). Coming
+  to the Song tab folds the pads area to its bar of 16 pads (the song gets
+  the height); leaving it unfolds it again.
+  - **Down the left**, the sequences in use (and one empty one, for a
+    new sequence), each with its colour, length, own tempo and how many
+    clips of it the song has (the playing one lit). Drag one onto a lane;
+    double-click it or its **+** to add it at the end of the first lane;
+    click it to edit it; right-click for its commands (**Colour** among
+    them: its colour shows on the launcher, the toolbar's list, the song
+    and the Sequence panel).
+  - **The bar above**: the **arrangement** picker (several songs from the
+    same sequences, one current: Song mode and export play it;
+    right-click it to add, duplicate, rename or delete one); the tools,
+    **Select** (V) and **Draw** (B); **Snap** (Bar, Beat or Off; Shift
+    while dragging snaps to the beat); **+ Lane**; **Merge into this…**
+    (lays another sequence's notes and automation over the current one);
+    **Tempo lane**; **fit** (Cmd+0); and the song's length in minutes and
+    bars.
+  - **Over the lanes**, the song's time: the **markers** (locators:
+    double-click the strip for one at that bar, its name box opens; click
+    one to go there, playing or stopped; drag one to move it; right-click
+    to rename or remove it; **Alt+Right** and **Alt+Left** go to the next
+    and previous), the **ruler** (click it to play the song from that bar;
+    drag along it for the **loop range**, the bars the loop goes round;
+    right-click it to loop one bar, go back to the whole song, add a
+    marker or change the time signature there), the **time signature
+    lane** (the song's from its start, and each change at the bar it
+    starts: click one to pick another, double-click the lane for a change
+    at that bar, right-click a change to remove it; the metronome, bars
+    and the clock follow it), and the **tempo lane** (shown with **Tempo
+    lane**, and anyway once it has points: double-click for a tempo point
+    there, the first keeping the project's tempo at the start; drag a
+    point in time and tempo; right-click one to make it **ramp** to the
+    next or remove it). Without tempo points the song plays at the
+    project's tempo. The markers, loop range and both lanes are each
+    arrangement's own.
+  - **The lanes**: each with its header (its name, Lane 1, 2... —
+    double-click to rename it — and **M**ute and **S**olo) and its clips
+    on a grid: a line every bar, every 2, 4, 8... bars as you zoom out (so
+    the lines stay apart), and the beats too when zoomed in.
+    **Cmd+scroll** zooms round the mouse; scrolling sideways (or
+    Shift+scroll) moves along; the view follows the playhead. Lanes grow
+    to fill the height; more scroll up and down.
+  - **A clip** shows its sequence's colour, its name (and section),
+    its notes along it, a notch where its sequence goes round again,
+    hatched when muted (or its lane silent), outlined when selected. Click
+    one to select it (Shift or Cmd: one more or less), drag empty space
+    for a box; drag a clip to move the selection in time and across lanes
+    (**Alt** as you start: copies); drag its **right end** for any length
+    (it goes round its sequence, the last time cut short) and its **left
+    end** to begin later or earlier (its notes stay where they were); all
+    snapped. Double-click a clip to edit its sequence (the Sequence tab
+    opens on it); right-click it for **Edit Its Sequence**, **Mute**,
+    **Duplicate**, **Remove from Song** (the selection, when it is in
+    it). With **Draw**, drag along a lane to paint the current sequence
+    there (a click: its own length); with Select, double-click a lane for
+    it at that bar. Cmd+C copies the selected clips and Cmd+V pastes them
+    after the selection (or where the song plays), Cmd+D duplicates them
+    after themselves, Cmd+X cuts them, Delete or Backspace removes them,
+    Cmd+A selects them all.
+  - **Under the lanes**, the selected clip's settings on one line: its
+    sequence, a **section** name (shown on the clip), the **bar** it
+    starts at and its **length** in bars (numbers to drag, scroll, or
+    double-click and type), **Transpose**, **Mute**, and in **…** the part
+    of its sequence it goes round (from which beat, how long; **Whole
+    sequence**); duplicate, remove, and how long it plays.
+  - Where clips overlap, all of them play. The playhead (and recording in
+    song mode, and the Sequence panel following along) goes by the topmost
+    lane's clip there; an audio pad's takes play from that clip only.
+    Older projects' songs (a chain of steps) open as clips on Lane 1, one
+    after another, their steps' tempos and time signatures in the song's
+    lanes.
 
-  Above the timeline, the **markers** (locators): double-click the strip
-  for one at that bar (its name box opens), click one to go there
-  (playing: it plays from there; stopped: play starts there), drag one to
-  move it, right-click to rename or remove it. They are listed on the
-  left too, with **+** for one where the song is. **Alt+Right** and
-  **Alt+Left** go to the next and previous marker. Below the timeline,
-  the **tempo lane** (**Tempo lane** in the bar above shows it; it shows
-  anyway once the song has points): the song's tempo across it, and the
-  tempo now.
-  Double-click it for a tempo point there (the first one turns the steps'
-  tempos into points, so the song plays as it did). Drag a point to move
-  it in time and tempo; right-click one to make it **ramp** to the next
-  (the tempo moves in a line between them) or remove it. Playing and
-  exporting follow it, round the loop too. The markers, loop range and
-  tempo lane are each arrangement's own. The picker at the top holds
-  **arrangements**: several songs from the same sequences, one current
-  (Song mode and export play it); right-click it to add, duplicate,
-  rename or delete one. **Add** (the current sequence's name) puts the current one at
-  the end; **Merge into this…** lays another sequence's notes and
-  automation over the current one. In pattern mode, a sequence picked
-  while playing takes over **at the end of the playing sequence**, **at
-  the next bar**, **at the next beat** or **at once** — exactly there; the
-  Sequence panel shows what comes next and when.
+  In pattern mode, a sequence picked while playing takes over **at the
+  end of the playing sequence**, **at the next bar**, **at the next beat**
+  or **at once** — exactly there; the Sequence panel shows what comes next
+  and when.
 
 ### The status bar
 
@@ -1213,9 +1234,8 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
 | `test_commands.py` | the menus made from the command list (a pad's, a note's, a song step's, an effect slot's, a bus's, a knob's), the palette on the selection, commands by id |
-| `test_song_arrange.py` | the Song tab arranged: a step's settings (mute, part, transpose, own tempo, name), the timeline's ruler playing from a bar, arrangements (duplicate, each its own song, undo), a sequence's colour |
+| `test_song_lanes.py` | the Song tab's lanes: the pads area folded while it shows; sequences dragged from the list onto a lane (and double-click, +); clips moved across time and lanes, Alt-dragged copies, their ends dragged (the left end keeping the notes in place); painting with Draw, double-clicking a lane, a box; Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, a clip's menu; lanes renamed, muted, soloed; the clip strip (section, transpose, mute); Cmd+scroll zoom and fitting; the ruler playing from a bar; arrangements; a sequence's colour |
 | `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song, the launch setting (in Perform) |
-| `test_song_overview.py` | the Song timeline: Shift- and Cmd-click selection, the blocks' end and start handles (bars; Shift: beats), dragging a block to move the selection, Cmd+C / Cmd+V / Cmd+D / Cmd+X, Backspace, Cmd+A, undo |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
 | `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
@@ -1229,14 +1249,13 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
-| `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a tempo point on the tempo lane, undo |
-| `test_song_side.py` | the Song tab's sidebar: double-click and + to add, dragging onto a step and onto the end, click to edit, right-click, undo |
+| `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a time signature change on its lane, a tempo point on the tempo lane, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the sequence end, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader), outputs, inserts, the EQ display, the peak readout |
-| `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song chain and its switches |
+| `test_perform_song.py` | play modes, repeat, the arpeggiator, holding performance effects, the song and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |
 | `test_crawl.py` | a hunt for crashes: every item showing in each panel and tab clicked (left and right), and a browser file dragged onto every kind of target |
 | `test_harness.py` | the harness: crashes are reported, a missing item is an error |

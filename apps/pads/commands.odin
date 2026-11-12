@@ -20,7 +20,7 @@ Target_Kind :: enum u8 {
 	Pad,
 	Note,      // `slot`'s note `index`
 	Sequence,  // `slot`
-	Song_Step, // `index`
+	Song_Clip, // `index`
 	Slot,      // `fx`: an insert, a bus slot or a performance effect
 	Bus,       // `index` (BUSES: main)
 	File,      // `path`
@@ -235,17 +235,30 @@ register_commands :: proc(a: ^App) {
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.sequences[t.slot].bpm > 0 }})
 	add(c, {id = "seq.clear", label = "Clear", icon = ui.ICON_TRASH_2, kinds = {.Sequence}, group = 3, run = proc(a: ^App, t: Target) { pm.clear_sequence(&a.m, t.slot) }})
 
-	// Song steps.
-	add(c, {id = "step.edit", label = "Edit Its Sequence", icon = ui.ICON_LIST_MUSIC, kinds = {.Song_Step}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.select_slot(&a.m, int(a.m.project.song.steps[t.index].slot)) }})
-	add(c, {id = "step.more", label = "Repeat Once More", icon = ui.ICON_PLUS, kinds = {.Song_Step}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.song_repeats(&a.m, t.index, int(a.m.project.song.steps[t.index].repeats) + 1) }})
-	add(c, {id = "step.less", label = "Repeat Once Less", icon = ui.ICON_MINUS, kinds = {.Song_Step}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.song_repeats(&a.m, t.index, int(a.m.project.song.steps[t.index].repeats) - 1) },
-		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.song.steps[t.index].repeats > 1 }})
-	add(c, {id = "step.duplicate", label = "Duplicate Step", icon = ui.ICON_COPY_PLUS, kinds = {.Song_Step}, group = 2,
-		run = proc(a: ^App, t: Target) { st := a.m.project.song.steps[t.index]; pm.song_add(&a.m, int(st.slot), t.index, int(st.repeats)) }})
-	add(c, {id = "step.remove", label = "Remove from Song", icon = ui.ICON_X, kinds = {.Song_Step}, group = 2, run = proc(a: ^App, t: Target) { pm.song_remove(&a.m, t.index) }})
+	// Song clips (each acts on the selection when the clip is in it).
+	add(c, {id = "clip.edit", label = "Edit Its Sequence", icon = ui.ICON_LIST_MUSIC, kinds = {.Song_Clip}, group = 0,
+		run = proc(a: ^App, t: Target) {
+			pm.select_slot(&a.m, int(a.m.project.song.clips[t.index].slot))
+			ui.panel_focus(&a.ws, "sequence")
+		}})
+	add(c, {id = "clip.mute", label = "Mute", icon = ui.ICON_VOLUME_X, kinds = {.Song_Clip}, group = 1,
+		run = proc(a: ^App, t: Target) {
+			s := a.m.project.song
+			on := !s.clips[t.index].mute
+			for k in clip_targets(a, t.index) do s.clips[k].mute = on
+			pm.set_song(&a.m, "Mute Clips" if on else "Unmute Clips", s)
+		},
+		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.song.clips[t.index].mute }})
+	add(c, {id = "clip.duplicate", label = "Duplicate", icon = ui.ICON_COPY_PLUS, kinds = {.Song_Clip}, group = 2,
+		run = proc(a: ^App, t: Target) {
+			added := pm.song_duplicate_clips(&a.m, clip_targets(a, t.index))
+			if added != {} do a.song_ui.sel = added
+		}})
+	add(c, {id = "clip.remove", label = "Remove from Song", icon = ui.ICON_X, kinds = {.Song_Clip}, group = 2,
+		run = proc(a: ^App, t: Target) {
+			pm.song_remove_clips(&a.m, clip_targets(a, t.index))
+			a.song_ui.sel, a.song_ui.cur = {}, -1
+		}})
 
 	// Effect slots (inserts, bus slots, performance effects).
 	add(c, {id = "slot.edit", label = "Edit Effect", icon = ui.ICON_SLIDERS_HORIZONTAL, kinds = {.Slot}, group = 0, run = proc(a: ^App, t: Target) { show_device(a, t.fx) }})
@@ -367,10 +380,17 @@ target_valid :: proc(a: ^App, t: Target) -> bool {
 	#partial switch t.kind {
 	case .Note:      return t.slot >= 0 && t.slot < pm.SLOTS && t.index >= 0 && t.index < len(p.sequences[t.slot].notes)
 	case .Point:     return t.slot >= 0 && t.slot < pm.SLOTS && t.index >= 0 && t.index < len(p.sequences[t.slot].points)
-	case .Song_Step: return t.index >= 0 && t.index < p.song.count
+	case .Song_Clip: return t.index >= 0 && t.index < p.song.count
 	case .Pad, .Take: return t.index >= 0 && t.index < pm.PADS
 	case .Bus:       return t.index == pm.BUSES || (t.index >= 0 && t.index < p.bus_count)
 	case .Sequence:  return t.slot >= 0 && t.slot < pm.SLOTS
 	}
 	return true
+}
+
+// The clips a clip's command acts on: the selection when clip `i` is in it,
+// else that clip alone.
+@(private)
+clip_targets :: proc(a: ^App, i: int) -> pm.Clip_Set {
+	return a.song_ui.sel if i in a.song_ui.sel else {i}
 }

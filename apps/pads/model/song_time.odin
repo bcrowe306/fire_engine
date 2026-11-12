@@ -7,7 +7,7 @@ import tb "fire:timebase"
 import "fire:transport"
 
 // The song's time: its tempo lane (points at any beat, a line or a step
-// to the next), its steps' time signatures, its markers (locators), and
+// to the next), its time signature lane, its markers (locators), and
 // the range its loop goes round. All in song beats (the song starts at
 // 0); kept in `Song`, so each arrangement has its own and they undo with
 // it.
@@ -37,28 +37,14 @@ marker_name :: proc(m: ^Marker) -> string {
 	return strings.truncate_to_byte(string(m.name[:]), 0)
 }
 
-// Where step `i` of the song starts, in beats.
-step_start :: proc(p: ^Project, i: int) -> f64 {
-	at := 0.0
-	for st in p.song.steps[:clamp(i, 0, p.song.count)] do at += step_period(p, st) * f64(max(st.repeats, 1))
-	return at
-}
-
-// The song's tempo points as played: its lane, or (with none) a point
-// at each step's start with the step's tempo (its own, its sequence's or
-// the project's).
+// The song's tempo points as played: its lane, or (with none) the
+// project's tempo throughout.
 song_tempo_points :: proc(p: ^Project, allocator := context.temp_allocator) -> []Tempo_Point {
 	s := &p.song
 	if s.tempo_count > 0 do return s.tempo[:s.tempo_count]
-	out := make([dynamic]Tempo_Point, allocator)
-	at := 0.0
-	for st, i in s.steps[:s.count] {
-		bpm := step_tempo(p, i)
-		if len(out) == 0 || out[len(out) - 1].bpm != bpm do append(&out, Tempo_Point{at, bpm, false})
-		at += step_period(p, st) * f64(max(st.repeats, 1))
-	}
-	if len(out) == 0 do append(&out, Tempo_Point{0, p.bpm, false})
-	return out[:]
+	out := make([]Tempo_Point, 1, allocator)
+	out[0] = {0, p.bpm, false}
+	return out
 }
 
 // The tempo at song beat `beat` (from `song_tempo_points`).
@@ -81,17 +67,30 @@ tempo_in :: proc(pts: []Tempo_Point, beat: f64) -> f64 {
 	return pts[len(pts) - 1].bpm
 }
 
-// Where the song's bars start (in beats, from 0 to its end): each step's
-// bars in its own time signature, from where it starts. Temporary
+// Where the song's bars start (in beats, from 0 to its end, or to
+// `until` when that is later): bars of the project's time signature, a new
+// bar at each point of the time signature lane in its own. Temporary
 // allocator.
-song_bars :: proc(p: ^Project) -> []f64 {
+song_bars :: proc(p: ^Project, until := 0.0) -> []f64 {
 	out := make([dynamic]f64, context.temp_allocator)
+	end := max(song_beats(p), until)
+	s := &p.song
 	at := 0.0
-	for st in p.song.steps[:p.song.count] {
-		span := step_period(p, st) * f64(max(st.repeats, 1))
-		l := bar_len(st.meter if st.meter.num > 0 && st.meter.den > 0 else p.transport.time_sig)
-		for b := 0.0; b < span - 1e-9; b += l do append(&out, at + b)
-		at += span
+	sig := p.transport.time_sig
+	k := 0
+	for at < end - 1e-9 && len(out) < 100_000 {
+		for k < s.meter_count && s.meters[k].beat <= at + 1e-9 {
+			sig = s.meters[k].sig
+			k += 1
+		}
+		append(&out, at)
+		next := at + bar_len(sig)
+		if k < s.meter_count && s.meters[k].beat < next - 1e-9 {
+			next = s.meters[k].beat
+			sig = s.meters[k].sig
+			k += 1
+		}
+		at = next
 	}
 	append(&out, at)
 	return out[:]
@@ -99,39 +98,29 @@ song_bars :: proc(p: ^Project) -> []f64 {
 
 // The bar song beat `beat` is in (0-based), and where it starts.
 song_bar_at :: proc(p: ^Project, beat: f64) -> (bar: int, start: f64) {
-	bars := song_bars(p)
+	bars := song_bars(p, beat + 1)
 	for i := len(bars) - 1; i >= 0; i -= 1 do if bars[i] <= beat + 1e-9 do return i, bars[i]
 	return 0, 0
 }
 
-// The time signature at song beat `beat`: its step's, or the project's.
+// The time signature at song beat `beat`: the lane's there, or the
+// project's.
 song_meter_at :: proc(p: ^Project, beat: f64) -> Time_Sig {
-	at := 0.0
-	for st in p.song.steps[:p.song.count] {
-		span := step_period(p, st) * f64(max(st.repeats, 1))
-		if beat < at + span do return st.meter if st.meter.num > 0 && st.meter.den > 0 else p.transport.time_sig
-		at += span
-	}
-	return p.transport.time_sig
+	sig := p.transport.time_sig
+	for mt in p.song.meters[:p.song.meter_count] do if mt.beat <= beat + 1e-9 do sig = mt.sig
+	return sig
 }
 
 // --- editing -----------------------------------------------------------------------------
 
 // Adds (or, at the same beat, replaces) a tempo point. One undo step.
-// The first point the lane gets keeps the song as it was played: the
-// steps' tempos become points too.
+// The first point the lane gets keeps the song's start at the project's
+// tempo.
 tempo_point_add :: proc(m: ^Model, pt: Tempo_Point) {
 	s := m.project.song
-	if s.tempo_count == 0 do tempo_lane_from_steps(&m.project, &s)
+	if s.tempo_count == 0 && pt.beat > 1e-6 do tempo_insert(&s, {0, m.project.bpm, false})
 	tempo_insert(&s, pt)
 	set_song(m, "Add Tempo Point", s)
-}
-
-@(private)
-tempo_lane_from_steps :: proc(p: ^Project, s: ^Song) {
-	pts := song_tempo_points(p)
-	for pt in pts do tempo_insert(s, pt)
-	for &st in s.steps[:s.count] do st.bpm = 0 // (the lane has them now)
 }
 
 @(private)
@@ -171,12 +160,38 @@ tempo_point_remove :: proc(m: ^Model, i: int) {
 	set_song(m, "Remove Tempo Point", s)
 }
 
-// Sets step `i`'s time signature ({0, 0}: the project's). One undo step.
-set_step_meter :: proc(m: ^Model, i: int, ts: Time_Sig) {
+// Sets the time signature from song beat `beat` on (moved to the start of
+// the bar it is in; at the same beat, replaced). One undo step.
+meter_set :: proc(m: ^Model, beat: f64, ts: Time_Sig) {
+	if ts.num <= 0 || ts.den <= 0 do return
 	s := m.project.song
-	if i < 0 || i >= s.count do return
-	s.steps[i].meter = ts
-	set_song(m, "Step Time Signature", s)
+	_, start := song_bar_at(&m.project, max(beat, 0))
+	meter_insert(&s, {start, ts})
+	set_song(m, "Time Signature", s)
+}
+
+@(private)
+meter_insert :: proc(s: ^Song, mt: Meter_Point) {
+	for &x in s.meters[:s.meter_count] do if abs(x.beat - mt.beat) < 1e-6 {
+		x = mt
+		return
+	}
+	if s.meter_count >= MAX_METERS do return
+	i := 0
+	for i < s.meter_count && s.meters[i].beat < mt.beat do i += 1
+	copy(s.meters[i + 1:s.meter_count + 1], s.meters[i:s.meter_count])
+	s.meters[i] = mt
+	s.meter_count += 1
+}
+
+// Removes time signature point `i`.
+meter_remove :: proc(m: ^Model, i: int) {
+	s := m.project.song
+	if i < 0 || i >= s.meter_count do return
+	copy(s.meters[i:s.meter_count - 1], s.meters[i + 1:s.meter_count])
+	s.meter_count -= 1
+	s.meters[s.meter_count] = {}
+	set_song(m, "Remove Time Signature", s)
 }
 
 // Adds a marker at `beat` named `name` (in order). Returns its index.
@@ -252,7 +267,7 @@ set_song_loop :: proc(m: ^Model, on: bool, start, end: f64, drag := false) {
 // --- the engine's tempo map ------------------------------------------------------------
 
 // The tempo map song plan `pl` plays by, in timeline beats from 0: its
-// tempo lane and its steps' time signatures, laid out `passes` times
+// tempo lane and its time signature lane, laid out `passes` times
 // round its loop (it goes round in its clip while the timeline counts on).
 // Temporary allocator.
 song_tempo_map :: proc(p: ^Project, pl: Plan, passes: int) -> (m: tb.Tempo_Map) {
@@ -291,24 +306,21 @@ song_tempo_map :: proc(p: ^Project, pl: Plan, passes: int) -> (m: tb.Tempo_Map) 
 		}
 		_ = tb.tempo_map_set_tempo(&m, tb.Beats(e.at), e.bpm, target)
 	}
-	// Time signatures: where each step starts (to the bar), each pass.
+	// Time signatures: the lane's points (each a bar's start), each pass
+	// (its start in the signature there).
 	bar := i64(0)
 	last_at, last_len := 0.0, bar_len(p.transport.time_sig)
 	cur := p.transport.time_sig
 	for r in runs {
-		x := 0.0
-		for st in p.song.steps[:p.song.count] {
-			span := step_period(p, st) * f64(max(st.repeats, 1))
-			if x + span > r.from + 1e-9 && x < r.to - 1e-9 {
-				want := st.meter if st.meter.num > 0 && st.meter.den > 0 else p.transport.time_sig
-				begin := r.at + max(x, r.from) - r.from
-				if want != cur {
-					bar += i64(math.floor((begin - last_at) / last_len + 1e-6))
-					_ = tb.tempo_map_set_meter(&m, bar, meter_of(want))
-					last_at, last_len, cur = begin, bar_len(want), want
-				}
-			}
-			x += span
+		change :: proc(m: ^tb.Tempo_Map, at: f64, want: Time_Sig, bar: ^i64, last_at, last_len: ^f64, cur: ^Time_Sig) {
+			if want == cur^ do return
+			bar^ += i64(math.floor((at - last_at^) / last_len^ + 1e-6))
+			_ = tb.tempo_map_set_meter(m, bar^, meter_of(want))
+			last_at^, last_len^, cur^ = at, bar_len(want), want
+		}
+		change(&m, r.at, song_meter_at(p, r.from), &bar, &last_at, &last_len, &cur)
+		for mt in p.song.meters[:p.song.meter_count] do if mt.beat > r.from + 1e-9 && mt.beat < r.to - 1e-9 {
+			change(&m, r.at + mt.beat - r.from, mt.sig, &bar, &last_at, &last_len, &cur)
 		}
 	}
 	return

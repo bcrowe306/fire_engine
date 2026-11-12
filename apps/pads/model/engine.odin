@@ -407,7 +407,6 @@ sync_sequencer :: proc(e: ^Engine) {
 		pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
 		cur, next := audio_runs(e.plan, f64(pos))
 		run_tempo :: proc(p: ^Project, r: Audio_Run) -> f64 {
-			if r.step >= 0 && r.step < p.song.count do return step_tempo(p, r.step)
 			return sequence_tempo(p, r.slot)
 		}
 		want := run_tempo(p, cur) if on && cur.valid else sequence_tempo(p, p.slot)
@@ -550,7 +549,8 @@ pending_switch :: proc(e: ^Engine) -> (slot: int, in_beats: f64, ok: bool) {
 	return e.pending.slot, e.pending.at - f64(pos), true
 }
 
-// The song step playing (song mode), or -1.
+// The song clip leading where it plays (song mode: the topmost lane's
+// heard one there), or -1.
 song_step :: proc(e: ^Engine) -> int {
 	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
 	if !playing || !e.project.song_mode do return -1
@@ -607,7 +607,11 @@ play :: proc(e: ^Engine, count_in := false, from_beat := 0.0) {
 	e.stopped = false
 	e.pending.active = false
 	e.plan.at = 0
-	if e.project.song_mode && e.project.song.count > 0 do e.project.slot = int(e.project.song.steps[0].slot)
+	if e.project.song_mode && e.project.song.count > 0 {
+		first := 0
+		for c, i in e.project.song.clips[:e.project.song.count] do if c.at < e.project.song.clips[first].at || (c.at == e.project.song.clips[first].at && c.lane < e.project.song.clips[first].lane) do first = i
+		e.project.slot = int(e.project.song.clips[first].slot)
+	}
 	e.seq_dirty = true
 	sync_sequencer(e)
 	from := max(from_beat, 0)

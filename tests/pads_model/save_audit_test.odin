@@ -46,6 +46,8 @@ every_setting_saves :: proc(t: ^testing.T) {
 		scramble(&p.perf_fx[2].on, "perf_fx.on")
 		scramble(&p.song, "song")
 		p.song.count = 4
+		p.song.lane_count = 3
+		p.song.meter_count = 2
 		scramble(&p.sequences[3].color, "seq.color")
 		scramble(&p.sequences[3].bpm, "seq.bpm")
 		testing.expect_value(t, pm.model_save(m), fc.Error.None)
@@ -80,8 +82,12 @@ every_setting_saves :: proc(t: ^testing.T) {
 	for k in missing {
 		if strings.has_prefix(k, "pad.synth") do continue // (synth patches: their own test)
 		if strings.contains(k, ".label[") do continue     // (text)
-		// Song steps past its length aren't kept, by design.
-		if strings.has_prefix(k, "song.steps[") && !(strings.has_prefix(k, "song.steps[0]") || strings.has_prefix(k, "song.steps[1]") || strings.has_prefix(k, "song.steps[2]") || strings.has_prefix(k, "song.steps[3]")) do continue
+		// Song clips, lanes and time signatures past their counts aren't
+		// kept, by design.
+		if strings.has_prefix(k, "song.clips[") && !(strings.has_prefix(k, "song.clips[0]") || strings.has_prefix(k, "song.clips[1]") || strings.has_prefix(k, "song.clips[2]") || strings.has_prefix(k, "song.clips[3]")) do continue
+		if strings.has_prefix(k, "song.lanes[") && !(strings.has_prefix(k, "song.lanes[0]") || strings.has_prefix(k, "song.lanes[1]") || strings.has_prefix(k, "song.lanes[2]")) do continue
+		if k == "song.count" || k == "song.lane_count" || k == "song.meter_count" do continue // (set the same both times)
+		if strings.has_prefix(k, "song.meters[") && !(strings.has_prefix(k, "song.meters[0]") || strings.has_prefix(k, "song.meters[1]")) do continue
 		// Main isn't a group.
 		if k == "main.group" || k == "main.folded" || strings.has_prefix(k, "main.cue.") do continue
 		// An instrument slot can't be keyed (its key isn't kept).

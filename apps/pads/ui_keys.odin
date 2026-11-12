@@ -92,11 +92,11 @@ parse_chord_name :: proc(text: string) -> (chord: im.KeyChord, ok: bool) {
 @(private)
 FIXED_KEYS := [?][2]cstring{
 	{"V  B  E  M", "Sequence editor tools: Select, Draw, Erase, Move"},
-	{"Backspace / Delete", "Delete the selected notes, or song steps"},
+	{"Backspace / Delete", "Delete the selected notes, or song clips"},
 	{"0", "Mute or unmute the selected notes"},
 	{"Arrows (Shift: a bar)", "Nudge the selected notes"},
-	{"Cmd+A", "Select every note, or song step"},
-	{"Cmd+X", "Cut the selected song steps"},
+	{"Cmd+A", "Select every note, or song clip"},
+	{"Cmd+X", "Cut the selected song clips"},
 	{"Z X C V  A S D F  Q W E R  1 2 3 4", "Play the pads of the bank"},
 	{"Esc", "Back to the Select tool; close a dialog"},
 }

@@ -351,6 +351,7 @@ frame :: proc(a: ^App) {
 	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
+	song_fold_check(a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
 	draw_preset_save(a)

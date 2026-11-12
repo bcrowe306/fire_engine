@@ -124,7 +124,7 @@ setup_actions :: proc(a: ^App) {
 		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return len(a.seq.sel) > 0 || song_editing(a) }})
 	add(acts, {id = "paste", label = "Paste Notes", icon = ui.ICON_CLIPBOARD_PASTE, chord = ui.MOD_CMD | i32(im.Key.V), user = a,
 		run = proc(u: rawptr) { a := (^App)(u); if a.song_ui.focused do song_paste(a); else do paste_marked(a) },
-		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return a.song_ui.clip_n > 0 if a.song_ui.focused else a.seq_ops.has_part }})
+		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return a.song_ui.copied_n > 0 if a.song_ui.focused else a.seq_ops.has_part }})
 	add(acts, {id = "clear_sequence", label = "Clear Sequence", icon = ui.ICON_TRASH_2, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,
@@ -383,7 +383,7 @@ subscribe_imports :: proc(a: ^App) {
 //	expect samples K      fail unless the project holds K samples
 //	expect selected N / expect bank N / expect dark 0|1
 //	expect undo NAME      fail unless the next undo step is NAME
-//	command ID KIND [I [S]] run a command on a target: pad I, note I of sequence S, sequence I, song_step I, bus I, file PATH, take I
+//	command ID KIND [I [S]] run a command on a target: pad I, note I of sequence S, sequence I, song_clip I, bus I, file PATH, take I
 //	panel ID              bring a panel (browser, sequence, song, mixer, perform, pads) or a pad tab (sample, env, filter, pitch, lfo, effects, global) to the front
 //	play / stop / rec on|off / metronome on|off   the sequencer
 //	slot N (1..32) / bars N / tempo BPM / swing AMOUNT (0..1, on 1/16)
@@ -902,14 +902,33 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		start_resample(a)
 		return true
 	case "song":
-		// song add SLOT [REPEATS] / song mode on|off / song loop on|off / song clear /
-		// song tempo BEAT BPM [ramp] / song meter STEP NUM DEN / song marker BEAT NAME /
-		// song range START END | off / song jump MARKER
+		// song add SLOT [REPEATS] [lane L] [at BEAT] [length BEATS] / song mode on|off /
+		// song loop on|off / song clear / song tempo BEAT BPM [ramp] / song meter BEAT NUM DEN /
+		// song marker BEAT NAME / song range START END | off / song jump MARKER /
+		// song clip N (select it, 0: none) / song lane add | song lane L name NAME|mute|solo /
+		// song zoom PPB | fit / song scroll BEAT / song tool select|draw
 		if len(w) < 2 do return false
 		switch w[1] {
 		case "add":
-			reps := num(w, 3) if len(w) > 3 else 1
-			pm.song_add(&a.m, num(w, 2) - 1, repeats = reps)
+			reps := 1
+			lane, length := 0, 0.0
+			at := -1.0
+			k := 3
+			if len(w) > 3 && w[3] != "lane" && w[3] != "at" && w[3] != "length" {
+				reps = num(w, 3)
+				k = 4
+			}
+			for k + 1 < len(w) {
+				switch w[k] {
+				case "lane":   lane = num(w, k + 1) - 1
+				case "at":     at = f64(numf(w, k + 1))
+				case "length": length = f64(numf(w, k + 1))
+				case: return false
+				}
+				k += 2
+			}
+			i := pm.song_add(&a.m, num(w, 2) - 1, repeats = reps, lane = lane, at = at, length = length)
+			if i < 0 do return false
 		case "mode":
 			a.m.project.song_mode = len(w) < 3 || w[2] != "off"
 			a.m.engine.seq_dirty = true
@@ -924,9 +943,9 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			b, _ := strconv.parse_f64(w[2])
 			bpm, _ := strconv.parse_f64(w[3])
 			pm.tempo_point_add(&a.m, {b, bpm, len(w) > 4 && w[4] == "ramp"})
-		case "meter": // song meter STEP NUM DEN: step STEP's (1..) time signature
+		case "meter": // song meter BEAT NUM DEN: the time signature from BEAT's bar on
 			if len(w) < 5 do return false
-			pm.set_step_meter(&a.m, num(w, 2) - 1, {num(w, 3), num(w, 4)})
+			pm.meter_set(&a.m, f64(numf(w, 2)), {num(w, 3), num(w, 4)})
 		case "marker": // song marker BEAT NAME
 			if len(w) < 4 do return false
 			b, _ := strconv.parse_f64(w[2])
@@ -941,8 +960,36 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			} else {
 				return false
 			}
-		case "step": // song step STEP: its settings show (1..)
-			a.song_ui.step = clamp(num(w, 2) - 1, -1, a.m.project.song.count - 1)
+		case "clip": // song clip N: select it (its settings show; 0: none)
+			i := clamp(num(w, 2) - 1, -1, a.m.project.song.count - 1)
+			a.song_ui.cur = i
+			a.song_ui.sel = {} if i < 0 else {i}
+		case "lane": // song lane add / song lane L name NAME|mute|solo
+			if len(w) > 2 && w[2] == "add" {
+				pm.lane_add(&a.m)
+			} else if len(w) > 3 {
+				i := num(w, 2) - 1
+				if i < 0 || i >= pm.SONG_LANES do return false
+				l := a.m.project.song.lanes[i]
+				switch w[3] {
+				case "name": pm.lane_rename(&a.m, i, strings.join(w[4:], " ", context.temp_allocator))
+				case "mute":
+					l.mute = !l.mute
+					pm.lane_set(&a.m, i, l, "Mute Lane")
+				case "solo":
+					l.solo = !l.solo
+					pm.lane_set(&a.m, i, l, "Solo Lane")
+				case: return false
+				}
+			} else {
+				return false
+			}
+		case "zoom": // song zoom PPB | fit: points a beat
+			a.song_ui.ppb = 0 if len(w) < 3 || w[2] == "fit" else max(numf(w, 2), 0.5)
+		case "scroll": // song scroll BEAT: the beat at the left edge
+			a.song_ui.scroll = max(f64(numf(w, 2)), 0)
+		case "tool": // song tool select|draw
+			a.song_ui.tool = .Draw if len(w) > 2 && w[2] == "draw" else .Select
 		case "jump": // song jump MARKER: go to marker MARKER (1..)
 			k := num(w, 2) - 1
 			if k < 0 || k >= a.m.project.song.marker_count do return false
@@ -1177,7 +1224,7 @@ drive_expect :: proc(a: ^App, w: []string) -> bool {
 		return true
 	case "song":
 		want, _ := strconv.parse_int(w[2])
-		if a.m.project.song.count != want do return drive_fail(a, fmt.tprintf("expected %d song steps, got %d", want, a.m.project.song.count))
+		if a.m.project.song.count != want do return drive_fail(a, fmt.tprintf("expected %d song clips, got %d", want, a.m.project.song.count))
 		return true
 	case "plugin":
 		// expect plugin loaded|failed|editor|no-editor: the selected pad's plug-in

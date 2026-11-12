@@ -37,13 +37,13 @@ def test_the_song(app, fixtures):
     app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
     app.cmd("note 0 0 0.25 1")
     app.panel("Song")
-    app.click("Add the current sequence", window="song")
-    app.click("Add the current sequence", window="song")
-    assert app.state()["song_steps"] == 2
+    app.click("Add Sequence 1 at the end of the first lane", window="song")
+    app.click("Add Sequence 1 at the end of the first lane", window="song")
+    assert app.state()["song_clips"] == 2
     app.click("Song", window="##toolbar")  # the Pattern | Song switch
     assert app.state()["song_mode"]
     app.click("Loop: on (it goes round)")  # the transport's loop: the song's too
     assert not app.state()["loop"]
     app.click("Pattern", window="##toolbar")
     assert not app.state()["song_mode"]
-    app.expect_item("song step 2", window="song")
+    app.expect_item("clip 2", window="song")

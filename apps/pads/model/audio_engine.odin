@@ -21,9 +21,9 @@ Audio_Run :: struct {
 	valid:      bool,
 	slot:       int,
 	start, end: f64,
-	offset:     f64, // beats into the sequence each pass starts at (a song step's part)
+	offset:     f64, // beats into the sequence each pass starts at (a song clip's part)
 	period:     f64, // beats a pass plays
-	step:       int, // the song step it starts at, or -1
+	step:       int, // the song clip it starts at, or -1
 }
 
 // Silence, for the monitor's gain.
@@ -145,7 +145,7 @@ give :: proc(e: ^Engine, n: ^Pad_Nodes, pad, k: int, run: Audio_Run) {
 	n.holds[k] = run
 	c: Clip
 	if run.valid do c = e.project.freezes[run.slot][pad] if e.project.pads[pad].frozen else e.project.clips[run.slot][pad]
-	muted := run.valid && run.step >= 0 && run.step < e.project.song.count && e.project.song.steps[run.step].mute
+	muted := run.valid && run.step >= 0 && !clip_heard(&e.project.song, run.step)
 	src := source_of(e, c.sample)
 	if src == nil || !(c.bpm > 0) || muted {
 		clip.audio_player_set(n.players[k], nil, {})
@@ -184,31 +184,38 @@ audio_runs :: proc(pl: Plan, beat: f64) -> (cur, next: Audio_Run) {
 		base += n * cycle
 		x -= n * cycle
 	}
-	seg := -1
-	for s, i in pl.segs[:pl.count] do if x >= s.start && x < s.start + s.span {
-		seg = i
-		break
-	}
-	if seg < 0 do return // past the end
-	run_from :: proc(pl: ^Plan, seg: int, base: f64, loops: bool) -> (r: Audio_Run, after: int) {
+	seg := plan_top(&pl, x)
+	if seg < 0 do return // past the end, or a gap
+	// From segment `seg` while it (and the alike segments right after it on
+	// its lane) plays.
+	run_from :: proc(pl: ^Plan, seg: int, base: f64, loops: bool) -> (r: Audio_Run, end: f64) {
 		first := pl.segs[seg]
 		last := seg
-		for last + 1 < pl.count && pl.segs[last + 1].slot == first.slot && pl.segs[last + 1].offset == first.offset && pl.segs[last + 1].period == first.period && pl.alike[last + 1] do last += 1
-		end := pl.segs[last].start + pl.segs[last].span
+		for {
+			end = pl.segs[last].start + pl.segs[last].span
+			next := -1
+			for s, j in pl.segs[:pl.count] do if j != last && pl.alike[j] && s.lane == first.lane && abs(s.start - end) < 1e-9 && s.slot == first.slot && s.offset == first.offset && s.period == first.period do next = j
+			if next < 0 do break
+			last = next
+		}
 		r = {valid = true, slot = first.slot, start = base + first.start, end = base + end, offset = first.offset, period = first.period, step = first.step}
 		if loops && first.start <= pl.loop_start && end >= pl.loop_end do r.start, r.end = pl.at + first.start, math.INF_F64 // the same run every cycle
-		return r, last + 1
+		return
 	}
-	after: int
-	cur, after = run_from(&pl, seg, base, loops)
+	end: f64
+	cur, end = run_from(&pl, seg, base, loops)
 	if cur.end == math.INF_F64 do return
-	if after < pl.count && (!loops || pl.segs[after].start < pl.loop_end) {
-		next, _ = run_from(&pl, after, base, loops)
-	} else if loops {
-		for s, i in pl.segs[:pl.count] do if s.start >= pl.loop_start {
-			next, _ = run_from(&pl, i, base + cycle, loops)
-			break
+	// What leads where it ends (or, past the loop's end, at the loop's start).
+	if !loops || end < pl.loop_end - 1e-9 {
+		if k := plan_top(&pl, end); k >= 0 {
+			next, _ = run_from(&pl, k, base, loops) // (a lower lane's clip may have started before: in its own time)
+		} else {
+			first := -1
+			for s, i in pl.segs[:pl.count] do if s.start >= end - 1e-9 && (!loops || s.start < pl.loop_end) && (first < 0 || s.start < pl.segs[first].start) do first = i
+			if first >= 0 do next, _ = run_from(&pl, first, base, loops)
 		}
+	} else if k := plan_top(&pl, pl.loop_start); k >= 0 {
+		next, _ = run_from(&pl, k, base + cycle, loops)
 	}
 	return
 }

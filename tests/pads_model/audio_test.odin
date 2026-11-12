@@ -150,7 +150,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 }
 
 @(test)
-audio_runs_hand_over_at_switches_and_song_steps :: proc(t: ^testing.T) {
+audio_runs_hand_over_at_switches_and_song_clips :: proc(t: ^testing.T) {
 	p := new(pm.Project) // (too big for a Windows thread's stack)
 	defer free(p)
 	pm.project_init(p, "")
@@ -165,14 +165,22 @@ audio_runs_hand_over_at_switches_and_song_steps :: proc(t: ^testing.T) {
 	testing.expect(t, cur.slot == 0 && cur.end == 8 && next.slot == 1 && next.start == 8 && next.end == math.INF_F64, "switch")
 	later, _ := pm.audio_runs(sw, 30)
 	testing.expect(t, later == next, "the same run every cycle after it")
-	// A song: 1, 1, 2 (repeats merge), looping.
+	// A song: 1, 1, 2 (the same one right after itself merges), looping.
 	p.song.count = 3
-	p.song.steps[0] = {slot = 0, repeats = 1}
-	p.song.steps[1] = {slot = 0, repeats = 1}
-	p.song.steps[2] = {slot = 1, repeats = 1}
+	p.song.clips[0] = {slot = 0, at = 0, length = 4}
+	p.song.clips[1] = {slot = 0, at = 4, length = 4}
+	p.song.clips[2] = {slot = 1, at = 8, length = 8}
 	song := pm.plan_song(p, 0)
 	cur, next = pm.audio_runs(song, 1)
 	testing.expect(t, cur.slot == 0 && cur.start == 0 && cur.end == 8 && next.slot == 1 && next.start == 8 && next.end == 16, "song")
 	cur, next = pm.audio_runs(song, 10)
 	testing.expect(t, cur.slot == 1 && next.slot == 0 && next.start == 16 && next.end == 24, "round to the top")
+	// A clip on a lower lane over the second sequence: the top lane leads.
+	p.song.count = 4
+	p.song.clips[3] = {lane = 1, slot = 2, at = 6, length = 6}
+	song = pm.plan_song(p, 0)
+	cur, next = pm.audio_runs(song, 10)
+	testing.expect(t, cur.slot == 1, "the top lane's")
+	cur, _ = pm.audio_runs(song, 7)
+	testing.expect(t, cur.slot == 0, "the top lane's before it")
 }

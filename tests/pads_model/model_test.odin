@@ -416,9 +416,8 @@ midi_files_export_and_import :: proc(t: ^testing.T) {
 		testing.expectf(t, found, "note on %d at %v back", n.pad, n.start)
 	}
 	// The song: sequence 1 twice, then sequence 5 (the same notes).
-	m.project.song.count = 2
-	m.project.song.steps[0] = {slot = 0, repeats = 2}
-	m.project.song.steps[1] = {slot = 4, repeats = 1}
+	pm.song_add(m, 0, repeats = 2)
+	pm.song_add(m, 4)
 	testing.expect_value(t, pm.export_midi(m, path, -1), 9)
 }
 

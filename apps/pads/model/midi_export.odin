@@ -1,5 +1,6 @@
 package pads_model
 
+import "core:math"
 import "core:slice"
 
 import "fire:clip"
@@ -19,7 +20,7 @@ export_midi :: proc(m: ^Model, path: string, slot: int) -> int {
 	per_pad: [PADS][dynamic]clip.Note
 	for &l in per_pad do l = make([dynamic]clip.Note, context.temp_allocator)
 	tm: tb.Tempo_Map
-	tb.tempo_map_init(&tm, sequence_tempo(p, max(slot, 0)) if slot >= 0 else (step_tempo(p, 0) if p.song.count > 0 else p.bpm), {i32(p.transport.time_sig.num), i32(p.transport.time_sig.den)}, context.temp_allocator)
+	tb.tempo_map_init(&tm, sequence_tempo(p, max(slot, 0)) if slot >= 0 else song_tempo_at(p, 0), {i32(p.transport.time_sig.num), i32(p.transport.time_sig.den)}, context.temp_allocator)
 	put :: proc(m: ^Model, per_pad: ^[PADS][dynamic]clip.Note, n: Seq_Note, at: f64, transpose: int) {
 		k := GM_KICK + int(n.pad) + int(n.pitch) + transpose
 		if k < 0 || k > 127 do return // (past the keys: pads after the 92nd, unpitched)
@@ -31,17 +32,22 @@ export_midi :: proc(m: ^Model, path: string, slot: int) -> int {
 		for n in s.notes do if !n.muted do put(m, &per_pad, n, n.start, 0)
 		total = seq_beats(p, s^)
 	} else {
-		for st, i in p.song.steps[:p.song.count] {
-			period := step_period(p, st)
-			if i > 0 && step_tempo(p, i) != step_tempo(p, i - 1) do tb.tempo_map_set_tempo(&tm, tb.Beats(total), step_tempo(p, i))
-			for _ in 0 ..< max(int(st.repeats), 1) {
-				if !st.mute do for n in p.sequences[st.slot].notes {
-					if n.muted || n.start < st.start || n.start >= st.start + period do continue
-					put(m, &per_pad, n, total + n.start - st.start, int(st.transpose))
+		pts := song_tempo_points(p)
+		for pt, i in pts do if i > 0 do tb.tempo_map_set_tempo(&tm, tb.Beats(pt.beat), pt.bpm, pts[i + 1].bpm if pt.ramp && i + 1 < len(pts) else -1)
+		if len(pts) > 0 && pts[0].ramp && len(pts) > 1 do tb.tempo_map_set_tempo(&tm, 0, pts[0].bpm, pts[1].bpm)
+		for c, i in p.song.clips[:p.song.count] {
+			if !clip_heard(&p.song, i) do continue
+			period := clip_period(p, c)
+			if period <= 0 do continue
+			for off := -math.mod(c.phase, period); off < c.length - 1e-9; off += period {
+				for n in p.sequences[c.slot].notes {
+					x := off + n.start - c.start
+					if n.muted || n.start < c.start || n.start >= c.start + period || x < -1e-9 || x >= c.length - 1e-9 do continue
+					put(m, &per_pad, n, c.at + off + n.start - c.start, int(c.transpose))
 				}
-				total += period
 			}
 		}
+		total = song_beats(p)
 	}
 	tracks := make([dynamic]clip.Midi_File_Track, context.temp_allocator)
 	count := 0

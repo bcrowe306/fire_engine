@@ -244,6 +244,18 @@ Plug-ins), each with its own search, instead of one tree for both.
 - **An empty pad's page** offers buttons to start one: Browse, Record
   (an audio track), Synth, Slicer, Plug-in.
 
+### Song: decided (2026-11-12)
+
+See docs/design/song-lanes.md. **Lanes of clips** (free lanes, any
+sequence on any lane; later an Arranger playback mode with a lane per
+pad); **one tall timeline** (no cards row); the selected clip's settings
+in **a strip under the lanes**; the pads area **folded by default** in
+the Song tab; clips **dragged to any length**; tempo and time signature
+as **song lanes on top**; **layout A** (the sequences listed beside the
+lanes); clips added by dragging, **Draw**, **double-click** and
+**Alt-drag** copies; a lane's header its name with Mute and Solo; **a
+grid** of bars behind the clips, every 2, 4, 8... bars zoomed out.
+
 ## Order of the redesign
 
 1. **The window layout**: Sequence as home, where the browser, device

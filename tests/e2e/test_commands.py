@@ -1,5 +1,5 @@
 """Commands: right-click menus made from one list (pads, notes, the
-marked part, sequences, song steps, effect slots, buses, files, knobs),
+marked part, sequences, song clips, effect slots, buses, files, knobs),
 the palette acting on the selection, and drive scripts running commands
 by id."""
 
@@ -50,13 +50,13 @@ def test_a_notes_menu_and_the_palette(app, fixtures):
     assert app.pad(2)["name"] == "hat"
 
 
-def test_steps_slots_buses_files_and_knobs(app, fixtures, library):
+def test_clips_slots_buses_files_and_knobs(app, fixtures, library):
     loaded(app, fixtures)
     app.panel("Song")
-    app.click("Add the current sequence", window="song")
-    app.click("song step 1", window="song", right=True)
-    app.click("Duplicate Step")
-    assert app.state()["song_steps"] == 2
+    app.click("Add Sequence 1 at the end of the first lane", window="song")
+    app.click("clip 1", window="song", right=True)
+    app.click("Duplicate")
+    assert app.state()["song_clips"] == 2
     app.panel("Mixer")
     app.click("A1 slot 1", window="mixer", right=True)
     app.expect_item("Paste Effect")

@@ -11,63 +11,138 @@ import "fire:sampler"
 import "fire:synth"
 import tb "fire:timebase"
 
-// Steps a song can have.
-SONG_STEPS :: 64
+// Clips a song can have.
+SONG_CLIPS :: 128
 
-// One step of a song: a sequence slot (or part of it: `start` and
-// `length` beats of it), played `repeats` times; muted, transposed, at its
-// own tempo, named, as it says.
-Song_Step :: struct {
+// Lanes a song can have.
+SONG_LANES :: 16
+
+// A lane of the song: its name, and whether it is muted or soloed.
+Song_Lane :: struct {
+	name: [16]u8,
+	mute: bool,
+	solo: bool,
+}
+
+// A clip of the song: sequence `slot` on lane `lane` from song beat `at`
+// for `length` beats, going round its part of the sequence (`start` and
+// `part` beats of it; `part` 0: to the sequence's end) as many times as fit
+// (the last time cut short); muted, transposed, named, as it says.
+Song_Clip :: struct {
+	lane:      u8,
 	slot:      u8,
-	repeats:   u8,  // 1..16
-	start:     f64, // beats into the sequence it starts at
-	length:    f64, // beats it plays from there (0: to the sequence's end)
-	mute:      bool, // in the arrangement, but silent
+	at:        f64, // song beat it starts at
+	length:    f64, // beats it plays
+	start:     f64, // beats into the sequence its part starts at
+	part:      f64, // its part's beats (0: from start to the sequence's end)
+	phase:     f64, // beats into its part it begins at (its left edge trimmed: the notes stay where they were)
 	transpose: i8,  // semitones added to its notes
-	bpm:       f64, // its own tempo (0: the sequence's, or the project's)
-	label:     [16]u8, // a section's name ("Verse"), shown on the timeline
-	meter:     Time_Sig, // its own time signature while it plays ({0, 0}: the project's)
+	mute:      bool, // in the song, but silent
+	label:     [16]u8, // a section's name ("Verse"), shown on the clip
 }
 
-// How many beats step `st` plays each time round (its part of the sequence).
-step_period :: proc(p: ^Project, st: Song_Step) -> f64 {
-	l := seq_beats(p, p.sequences[st.slot])
-	start := clamp(st.start, 0, max(l - 1.0 / 64, 0))
+// A time signature from song beat `beat` (a bar starts there) on.
+Meter_Point :: struct {
+	beat: f64,
+	sig:  Time_Sig,
+}
+
+// Time signature changes a song can have.
+MAX_METERS :: 32
+
+// A set of song clips (their indices).
+Clip_Set :: bit_set[0 ..< SONG_CLIPS; u128]
+
+// How many beats clip `c` plays each time round (its part of the sequence).
+clip_period :: proc(p: ^Project, c: Song_Clip) -> f64 {
+	l := seq_beats(p, p.sequences[c.slot])
+	start := clamp(c.start, 0, max(l - 1.0 / 64, 0))
 	rest := l - start
-	return min(st.length, rest) if st.length > 0 else rest
+	return min(c.part, rest) if c.part > 0 else rest
 }
 
-// The tempo song step `i` plays at.
-step_tempo :: proc(p: ^Project, i: int) -> f64 {
-	st := p.song.steps[i]
-	return st.bpm if st.bpm > 0 else sequence_tempo(p, int(st.slot))
+// Where clip `c` ends, in song beats.
+clip_end :: proc(c: Song_Clip) -> f64 {
+	return c.at + c.length
 }
 
-// Whether two steps play the same (one run of audio, one tempo).
+// A clip's label ("" when it has none).
+clip_label :: proc(c: ^Song_Clip) -> string {
+	return strings.truncate_to_byte(string(c.label[:]), 0)
+}
+
+// A lane's name ("Lane 1"... when it has none).
+lane_name :: proc(s: ^Song, i: int) -> string {
+	if i >= 0 && i < SONG_LANES {
+		if n := strings.truncate_to_byte(string(s.lanes[i].name[:]), 0); n != "" do return n
+	}
+	return fmt.tprintf("Lane %d", i + 1)
+}
+
+// How many lanes the song shows (at least one, and every clip's).
+song_lanes :: proc(s: ^Song) -> int {
+	n := max(s.lane_count, 1)
+	for c in s.clips[:s.count] do n = max(n, int(c.lane) + 1)
+	return min(n, SONG_LANES)
+}
+
+// Whether lane `i` is silent: muted, or another one soloed.
+lane_silent :: proc(s: ^Song, i: int) -> bool {
+	if i < 0 || i >= SONG_LANES do return true
+	if s.lanes[i].mute do return true
+	for l in s.lanes[:SONG_LANES] do if l.solo do return !s.lanes[i].solo
+	return false
+}
+
+// Whether clip `i` plays (not muted, its lane not silent).
+clip_heard :: proc(s: ^Song, i: int) -> bool {
+	if i < 0 || i >= s.count do return false
+	return !s.clips[i].mute && !lane_silent(s, int(s.clips[i].lane))
+}
+
+// Whether two clips play the same (one run of audio).
 @(private)
-steps_alike :: proc(a, b: Song_Step) -> bool {
-	return a.slot == b.slot && a.start == b.start && a.length == b.length && a.mute == b.mute && a.transpose == b.transpose && a.bpm == b.bpm
+clips_alike :: proc(a, b: Song_Clip) -> bool {
+	return a.slot == b.slot && a.start == b.start && a.part == b.part && a.mute == b.mute && a.transpose == b.transpose
 }
 
-// The song's length in seconds, at each step's tempo.
+// The song's length in seconds, at its tempo.
 song_seconds :: proc(p: ^Project) -> f64 {
 	return song_seconds_between(p, 0, song_beats(p))
 }
 
-// A step's label ("" when it has none).
-step_label :: proc(st: ^Song_Step) -> string {
-	return strings.truncate_to_byte(string(st.label[:]), 0)
-}
-
-// Changes song step `i` to `st`, undoably (drags of one setting merge).
-set_step :: proc(m: ^Model, i: int, st: Song_Step, name: string) {
+// Changes clip `i` to `c`, undoably.
+set_song_clip :: proc(m: ^Model, i: int, c: Song_Clip, name: string) {
 	s := m.project.song
 	if i < 0 || i >= s.count do return
-	s.steps[i] = st
+	s.clips[i] = clip_fit(c)
 	set_song(m, name, s)
 }
 
-// Arrangements a project keeps (songs: each a chain of steps, exported apart).
+// Changes clip `i` to `c` as part of a drag (one undo step; seal when it
+// ends).
+set_song_clip_drag :: proc(m: ^Model, i: int, c: Song_Clip, name: string) {
+	s := m.project.song
+	if i < 0 || i >= s.count do return
+	s.clips[i] = clip_fit(c)
+	set_song_drag(m, name, s)
+}
+
+// A clip kept in bounds.
+@(private)
+clip_fit :: proc(c: Song_Clip) -> Song_Clip {
+	c := c
+	c.at = max(c.at, 0)
+	c.length = max(c.length, 1.0 / 16)
+	c.start = max(c.start, 0)
+	c.part = max(c.part, 0)
+	c.phase = max(c.phase, 0)
+	c.lane = min(c.lane, SONG_LANES - 1)
+	c.transpose = i8(clamp(int(c.transpose), -48, 48))
+	return c
+}
+
+// Arrangements a project keeps (songs, exported apart).
 ARRANGEMENTS :: 16
 
 // One arrangement: a name, and its song.
@@ -76,13 +151,17 @@ Arrangement :: struct {
 	song: Song,
 }
 
-// The song: sequence slots one after another (Koala's chain).
+// The song: clips of sequences on lanes, any number playing at once.
 Song :: struct {
-	steps: [SONG_STEPS]Song_Step,
-	count: int,
+	clips:      [SONG_CLIPS]Song_Clip,
+	count:      int,
+	lanes:      [SONG_LANES]Song_Lane,
+	lane_count: int, // lanes made (clips may be on later ones)
 	// (Whether it goes round is the transport's loop.)
-	tempo:       [MAX_TEMPO_POINTS]Tempo_Point, // its tempo lane, by beat (none: the steps' and sequences' tempos)
+	tempo:       [MAX_TEMPO_POINTS]Tempo_Point, // its tempo lane, by beat (none: the project's tempo)
 	tempo_count: int,
+	meters:      [MAX_METERS]Meter_Point, // its time signature lane, by beat (none: the project's)
+	meter_count: int,
 	markers:      [MAX_MARKERS]Marker, // its locators, by beat
 	marker_count: int,
 	loop_on:    bool, // the loop goes round loop_start..loop_end (beats) instead of the whole song
@@ -125,119 +204,132 @@ set_song_drag :: proc(m: ^Model, name: string, new: Song) {
 	})
 }
 
-// Adds slot `slot` at the end of the song (or after step `after`).
-song_add :: proc(m: ^Model, slot: int, after := -1, repeats := 1) {
+// Where lane `lane`'s last clip ends (0: it has none).
+lane_end :: proc(s: ^Song, lane: int) -> f64 {
+	end := 0.0
+	for c in s.clips[:s.count] do if int(c.lane) == lane do end = max(end, clip_end(c))
+	return end
+}
+
+// Puts sequence `slot` into the song: on lane `lane` at song beat `at`
+// (-1: after the lane's last clip), `length` beats long (0: the sequence
+// `repeats` times). Returns its index, or -1 when the song is full.
+song_add :: proc(m: ^Model, slot: int, repeats := 1, lane := 0, at := -1.0, length := 0.0, name := "Add to Song") -> int {
 	s := m.project.song
-	if s.count >= SONG_STEPS do return
-	at := s.count if after < 0 else clamp(after + 1, 0, s.count)
-	copy(s.steps[at + 1:s.count + 1], s.steps[at:s.count])
-	s.steps[at] = {slot = u8(slot), repeats = u8(clamp(repeats, 1, 16))}
+	if s.count >= SONG_CLIPS || slot < 0 || slot >= SLOTS do return -1
+	ln := clamp(lane, 0, SONG_LANES - 1)
+	c := Song_Clip{lane = u8(ln), slot = u8(slot)}
+	c.at = at if at >= 0 else lane_end(&s, ln)
+	c.length = length if length > 0 else seq_beats(&m.project, m.project.sequences[slot]) * f64(clamp(repeats, 1, 64))
+	s.clips[s.count] = clip_fit(c)
 	s.count += 1
-	set_song(m, "Add to Song", s)
-}
-
-// Puts sequence `slot` into the song as step `at` (the steps from there
-// move along), undoably.
-song_insert :: proc(m: ^Model, slot, at: int, repeats := 1) {
-	if at > 0 do song_add(m, slot, at - 1, repeats)
-	else do song_add_first(m, slot, repeats)
-}
-
-@(private)
-song_add_first :: proc(m: ^Model, slot: int, repeats: int) {
-	s := m.project.song
-	if s.count >= SONG_STEPS do return
-	copy(s.steps[1:s.count + 1], s.steps[0:s.count])
-	s.steps[0] = {slot = u8(slot), repeats = u8(clamp(repeats, 1, 16))}
-	s.count += 1
-	set_song(m, "Add to Song", s)
-}
-
-// Removes step `i`.
-song_remove :: proc(m: ^Model, i: int) {
-	s := m.project.song
-	if i < 0 || i >= s.count do return
-	copy(s.steps[i:s.count - 1], s.steps[i + 1:s.count])
-	s.count -= 1
-	s.steps[s.count] = {}
-	set_song(m, "Remove from Song", s)
-}
-
-// Moves step `from` to `to`.
-song_move :: proc(m: ^Model, from, to: int) {
-	s := m.project.song
-	if from < 0 || from >= s.count || to < 0 || to >= s.count || from == to do return
-	step := s.steps[from]
-	if from < to do copy(s.steps[from:to], s.steps[from + 1:to + 1])
-	else do copy(s.steps[to + 1:from + 1], s.steps[to:from])
-	s.steps[to] = step
-	set_song(m, "Move in Song", s)
-}
-
-// A set of song steps (their indices).
-Step_Set :: bit_set[0 ..< SONG_STEPS; u64]
-
-// Removes the steps in `sel`: one undo step.
-song_remove_steps :: proc(m: ^Model, sel: Step_Set, name := "Remove from Song") {
-	s := m.project.song
-	out: Song
-	for i in 0 ..< s.count do if i not_in sel {
-		out.steps[out.count] = s.steps[i]
-		out.count += 1
-	}
-	set_song(m, name, out)
-}
-
-// Puts `steps` into the song from step `before` on (the ones there move
-// along; as many as fit): one undo step. Returns the steps they became.
-song_insert_steps :: proc(m: ^Model, steps: []Song_Step, before: int, name := "Paste Steps") -> (added: Step_Set) {
-	s := m.project.song
-	at := clamp(before, 0, s.count)
-	k := min(len(steps), SONG_STEPS - s.count)
-	if k <= 0 do return
-	copy(s.steps[at + k:s.count + k], s.steps[at:s.count])
-	copy(s.steps[at:at + k], steps[:k])
-	s.count += k
-	for i in at ..< at + k do added += {i}
+	s.lane_count = max(s.lane_count, ln + 1)
 	set_song(m, name, s)
-	return
+	return s.count - 1
 }
 
-// Moves the steps in `sel` (in their order) to before step `to` (as the
-// song is now; `to` = the count: the end): one undo step. Returns where
-// they went.
-song_move_steps :: proc(m: ^Model, sel: Step_Set, to: int) -> (moved: Step_Set) {
+// Removes clip `i`.
+song_remove :: proc(m: ^Model, i: int) {
+	if i < 0 || i >= m.project.song.count do return
+	song_remove_clips(m, {i})
+}
+
+// Removes the clips in `sel`: one undo step.
+song_remove_clips :: proc(m: ^Model, sel: Clip_Set, name := "Remove from Song") {
 	s := m.project.song
-	picked, rest: Song
-	before := 0
-	for i in 0 ..< s.count {
-		if i in sel {
-			picked.steps[picked.count] = s.steps[i]
-			picked.count += 1
-			if i < to do before += 1
-		} else {
-			rest.steps[rest.count] = s.steps[i]
-			rest.count += 1
-		}
+	n := 0
+	for i in 0 ..< s.count do if i not_in sel {
+		s.clips[n] = s.clips[i]
+		n += 1
 	}
-	if picked.count == 0 do return
-	at := clamp(to - before, 0, rest.count)
-	out: Song
-	copy(out.steps[:at], rest.steps[:at])
-	copy(out.steps[at:at + picked.count], picked.steps[:picked.count])
-	copy(out.steps[at + picked.count:rest.count + picked.count], rest.steps[at:rest.count])
-	out.count = rest.count + picked.count
-	for i in at ..< at + picked.count do moved += {i}
-	set_song(m, "Move in Song", out)
+	for i in n ..< s.count do s.clips[i] = {}
+	s.count = n
+	set_song(m, name, s)
+}
+
+// Adds `clips` to the song (as many as fit), `dt` beats later and `dl`
+// lanes down: one undo step. Returns the clips they became.
+song_insert_clips :: proc(m: ^Model, clips: []Song_Clip, dt := 0.0, dl := 0, name := "Paste Clips") -> (added: Clip_Set) {
+	s := m.project.song
+	for c in clips {
+		if s.count >= SONG_CLIPS do break
+		x := c
+		x.at += dt
+		x.lane = u8(clamp(int(c.lane) + dl, 0, SONG_LANES - 1))
+		s.clips[s.count] = clip_fit(x)
+		s.lane_count = max(s.lane_count, int(x.lane) + 1)
+		added += {s.count}
+		s.count += 1
+	}
+	if added != {} do set_song(m, name, s)
 	return
 }
 
-// Sets how many times step `i` plays.
-song_repeats :: proc(m: ^Model, i, repeats: int) {
+// Moves the clips in `sel` (as `from` had them) `dt` beats and `dl` lanes
+// (a drag: seal when it ends; `from` may have clips the song doesn't yet:
+// copies being placed).
+song_move_clips :: proc(m: ^Model, from: Song, sel: Clip_Set, dt: f64, dl: int, name := "Move Clips") {
 	s := m.project.song
-	if i < 0 || i >= s.count do return
-	s.steps[i].repeats = u8(clamp(repeats, 1, 16))
-	set_song(m, "Set Repeats", s)
+	// The earliest and the top lane stay in the song.
+	lo, top := math.F64_MAX, SONG_LANES
+	for i in 0 ..< from.count do if i in sel {
+		lo = min(lo, from.clips[i].at)
+		top = min(top, int(from.clips[i].lane))
+	}
+	t := max(dt, -lo)
+	ld := max(dl, -top)
+	s.count = max(s.count, from.count)
+	for i in 0 ..< from.count do if i in sel {
+		c := from.clips[i]
+		c.at += t
+		c.lane = u8(clamp(int(c.lane) + ld, 0, SONG_LANES - 1))
+		s.clips[i] = clip_fit(c)
+		s.lane_count = max(s.lane_count, int(c.lane) + 1)
+	}
+	set_song_drag(m, name, s)
+}
+
+// Duplicates the clips in `sel` right after themselves (the whole
+// selection's span later, on their lanes). Returns the copies.
+song_duplicate_clips :: proc(m: ^Model, sel: Clip_Set) -> Clip_Set {
+	s := &m.project.song
+	picked := make([dynamic]Song_Clip, context.temp_allocator)
+	lo, hi := math.F64_MAX, 0.0
+	for i in 0 ..< s.count do if i in sel {
+		append(&picked, s.clips[i])
+		lo, hi = min(lo, s.clips[i].at), max(hi, clip_end(s.clips[i]))
+	}
+	if len(picked) == 0 do return {}
+	return song_insert_clips(m, picked[:], hi - lo, 0, "Duplicate Clips")
+}
+
+// Adds a lane at the bottom. Returns it, or -1 when there are as many as
+// can be.
+lane_add :: proc(m: ^Model) -> int {
+	s := m.project.song
+	n := song_lanes(&s)
+	if n >= SONG_LANES do return -1
+	s.lane_count = n + 1
+	set_song(m, "Add Lane", s)
+	return n
+}
+
+// Changes lane `i` (its name, mute and solo).
+lane_set :: proc(m: ^Model, i: int, l: Song_Lane, name: string) {
+	s := m.project.song
+	if i < 0 || i >= SONG_LANES do return
+	s.lanes[i] = l
+	s.lane_count = max(s.lane_count, i + 1)
+	set_song(m, name, s)
+}
+
+// Renames lane `i`.
+lane_rename :: proc(m: ^Model, i: int, name: string) {
+	if i < 0 || i >= SONG_LANES do return
+	l := m.project.song.lanes[i]
+	l.name = {}
+	copy(l.name[:len(l.name) - 1], name)
+	lane_set(m, i, l, "Rename Lane")
 }
 
 // Merges sequence `from` into sequence `to`: its notes and automation laid
@@ -259,7 +351,7 @@ merge_sequences :: proc(m: ^Model, from, to: int) {
 // The song's length in beats.
 song_beats :: proc(p: ^Project) -> f64 {
 	total := 0.0
-	for st in p.song.steps[:p.song.count] do total += step_period(p, st) * f64(max(st.repeats, 1))
+	for c in p.song.clips[:p.song.count] do total = max(total, clip_end(c))
 	return total
 }
 
@@ -272,15 +364,18 @@ Segment :: struct {
 	start:  f64,
 	span:   f64,
 	period: f64,
-	step:   int, // the song step, or -1
-	offset: f64, // beats into the sequence each period starts at (a step's part)
+	step:   int, // the song clip, or -1
+	offset: f64, // beats into the sequence each period starts at (a clip's part)
+	lane:   int, // the song lane (0: a pattern's)
+	silent: bool, // a muted clip, or one on a silent lane
 }
 
 // What the sequencer plays, as one clip placed at timeline beat `at`: its
-// segments, and the part that loops (loop_end 0: nothing loops; it ends).
+// segments (in order of their starts; a song's may overlap), and the part
+// that loops (loop_end 0: nothing loops; it ends).
 Plan :: struct {
-	segs:       [SONG_STEPS + 2]Segment,
-	alike:      [SONG_STEPS + 2]bool, // a song's segment plays as the one before it (one audio run, one tempo)
+	segs:       [2 * SONG_CLIPS + 2]Segment, // (a clip that begins partway into its part: two)
+	alike:      [2 * SONG_CLIPS + 2]bool, // a song's segment plays as the one before it on its lane, right up to it (one audio run)
 	count:      int,
 	loop_start: f64,
 	loop_end:   f64,
@@ -290,7 +385,7 @@ Plan :: struct {
 // Sequence `slot` looping from timeline beat `at`.
 plan_pattern :: proc(p: ^Project, slot: int, at: f64) -> (pl: Plan) {
 	l := seq_beats(p, p.sequences[slot])
-	pl.segs[0] = {slot, 0, l, l, -1, 0}
+	pl.segs[0] = {slot = slot, span = l, period = l, step = -1}
 	pl.count, pl.loop_start, pl.loop_end, pl.at = 1, 0, l, at
 	return
 }
@@ -301,36 +396,96 @@ plan_switch :: proc(p: ^Project, cur: Plan, slot: int, b: f64) -> (pl: Plan) {
 	first := cur.segs[0]
 	span := max(b - cur.at, 0)
 	l := seq_beats(p, p.sequences[slot])
-	pl.segs[0] = {first.slot, 0, span, first.period, -1, first.offset}
-	pl.segs[1] = {slot, span, l, l, -1, 0}
+	pl.segs[0] = {slot = first.slot, span = span, period = first.period, step = -1, offset = first.offset}
+	pl.segs[1] = {slot = slot, start = span, span = l, period = l, step = -1}
 	pl.alike[1] = first.slot == slot && first.offset == 0
 	pl.count, pl.loop_start, pl.loop_end, pl.at = 2, span, span + l, cur.at
 	return
 }
 
-// The song from timeline beat `at`.
+// The song from timeline beat `at`: every clip, in order of where it
+// starts (then its lane).
 plan_song :: proc(p: ^Project, at: f64) -> (pl: Plan) {
-	start := 0.0
-	for st, i in p.song.steps[:p.song.count] {
-		l := step_period(p, st)
-		span := l * f64(max(st.repeats, 1))
-		pl.segs[i] = {int(st.slot), start, span, l, i, clamp(st.start, 0, seq_beats(p, p.sequences[st.slot]))}
-		pl.alike[i] = i > 0 && steps_alike(p.song.steps[i - 1], st)
-		start += span
+	s := &p.song
+	order := make([dynamic]int, 0, s.count, context.temp_allocator)
+	for i in 0 ..< s.count do append(&order, i)
+	clips := s.clips
+	sort_clips :: proc(order: []int, clips: ^[SONG_CLIPS]Song_Clip) {
+		for i in 1 ..< len(order) {
+			k := order[i]
+			j := i
+			for j > 0 {
+				o := order[j - 1]
+				if clips[o].at < clips[k].at || (clips[o].at == clips[k].at && clips[o].lane <= clips[k].lane) do break
+				order[j] = o
+				j -= 1
+			}
+			order[j] = k
+		}
 	}
-	pl.count, pl.at = p.song.count, at
-	if p.transport.loop do pl.loop_start, pl.loop_end = 0, start
+	sort_clips(order[:], &clips)
+	end := 0.0
+	n := 0
+	for k in order {
+		c := clips[k]
+		l := clip_period(p, c)
+		if l <= 0 do continue
+		offset := clamp(c.start, 0, seq_beats(p, p.sequences[c.slot]))
+		seg := Segment{slot = int(c.slot), start = c.at, span = c.length, period = l, step = k, offset = offset, lane = int(c.lane), silent = !clip_heard(s, k)}
+		ph := math.mod(c.phase, l)
+		if ph > 1e-9 {
+			// Its first pass from partway in, then whole ones.
+			first := min(l - ph, c.length)
+			a := seg
+			a.span, a.period, a.offset = first, l - ph, offset + ph
+			pl.segs[n] = a
+			n += 1
+			if c.length - first > 1e-9 {
+				seg.start, seg.span = c.at + first, c.length - first
+				pl.segs[n] = seg
+				n += 1
+			}
+		} else {
+			// Alike the clip ending where it starts on its lane, if any.
+			for b, j in pl.segs[:n] {
+				if b.lane == int(c.lane) && abs(b.start + b.span - c.at) < 1e-9 && b.offset == offset && clips_alike(clips[b.step], c) && abs(b.span - math.round(b.span / max(b.period, 1e-9)) * b.period) < 1e-9 do pl.alike[n] = true
+				_ = j
+			}
+			pl.segs[n] = seg
+			n += 1
+		}
+		end = max(end, c.at + c.length)
+	}
+	pl.count, pl.at = n, at
+	if p.transport.loop do pl.loop_start, pl.loop_end = 0, end
 	// Its loop range, inside the song.
 	if p.transport.loop && p.song.loop_on {
-		a, b := clamp(p.song.loop_start, 0, start), clamp(p.song.loop_end, 0, start)
+		a, b := clamp(p.song.loop_start, 0, end), clamp(p.song.loop_end, 0, end)
 		if b - a >= 1.0 / 16 do pl.loop_start, pl.loop_end = a, b
 	}
 	return
 }
 
-// Where timeline beat `beat` falls in plan `pl`: the segment, its slot,
-// and the beat within the sequence; false before the plan starts or after
-// it ends.
+// The segment of plan `pl` that leads at plan beat `x` (from its start):
+// the heard one covering it on the topmost lane (else any covering it), or
+// -1.
+plan_top :: proc(pl: ^Plan, x: f64) -> int {
+	best := -1
+	for s, i in pl.segs[:pl.count] {
+		if x < s.start || x >= s.start + s.span do continue
+		if best < 0 {
+			best = i
+			continue
+		}
+		b := pl.segs[best]
+		if (b.silent && !s.silent) || (b.silent == s.silent && s.lane < b.lane) do best = i
+	}
+	return best
+}
+
+// Where timeline beat `beat` falls in plan `pl`: the segment leading there
+// (`plan_top`), its slot, and the beat within the sequence; false before
+// the plan starts, after it ends, or where nothing plays.
 plan_locate :: proc(pl: Plan, beat: f64) -> (seg: int, slot: int, rel: f64, ok: bool) {
 	pl := pl
 	if pl.count == 0 do return
@@ -339,12 +494,10 @@ plan_locate :: proc(pl: Plan, beat: f64) -> (seg: int, slot: int, rel: f64, ok: 
 	if pl.loop_end > pl.loop_start && x >= pl.loop_end {
 		x = pl.loop_start + math.mod(x - pl.loop_start, pl.loop_end - pl.loop_start)
 	}
-	for s, i in pl.segs[:pl.count] {
-		if x >= s.start && x < s.start + s.span {
-			return i, s.slot, s.offset + math.mod(x - s.start, s.period), true
-		}
-	}
-	return
+	i := plan_top(&pl, x)
+	if i < 0 do return
+	s := pl.segs[i]
+	return i, s.slot, s.offset + math.mod(x - s.start, s.period), true
 }
 
 // Where the plan ends on the timeline (for a song that doesn't loop), or
@@ -352,8 +505,9 @@ plan_locate :: proc(pl: Plan, beat: f64) -> (seg: int, slot: int, rel: f64, ok: 
 plan_end :: proc(pl: Plan) -> f64 {
 	pl := pl
 	if pl.loop_end > pl.loop_start || pl.count == 0 do return 0
-	last := pl.segs[pl.count - 1]
-	return pl.at + last.start + last.span
+	end := 0.0
+	for s in pl.segs[:pl.count] do end = max(end, s.start + s.span)
+	return pl.at + end
 }
 
 // The clip that plays plan `pl`: each segment's notes on the pads' keys,
@@ -373,10 +527,8 @@ plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 		l := seq_beats(p, s)
 		g := tb.Beats(grid_beats(s.swing_grid))
 		transpose := 0
-		if sg.step >= 0 {
-			if p.song.steps[sg.step].mute do continue // silent, but there
-			transpose = int(p.song.steps[sg.step].transpose)
-		}
+		if sg.silent do continue // there, but not heard
+		if sg.step >= 0 do transpose = int(p.song.clips[sg.step].transpose)
 		lo, hi := sg.offset, min(sg.offset + sg.period, l) // its part of the sequence
 		for off := 0.0; off < sg.span - 1e-9; off += sg.period {
 			for n in s.notes {
@@ -409,6 +561,7 @@ plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^
 	defer clip.automation_builder_destroy(&fb)
 	any_voice, any_eq, any_fader := false, false, false
 	for sg in pl.segs[:pl.count] {
+		if sg.silent do continue
 		s := p.sequences[sg.slot]
 		l := seq_beats(p, s)
 		lo, hi := sg.offset, min(sg.offset + sg.period, l)
@@ -576,9 +729,9 @@ delete_arrangement :: proc(m: ^Model, i: int) {
 	put_arrangements(m, "Delete Arrangement", a)
 }
 
-// Where the song is: the step playing, how far through it (0..1, its
-// repeats included), and the beat of the song (from its start); -1 when
-// the song isn't what plays.
+// Where the song is: the clip leading (the topmost lane's heard one; -1
+// between clips), how far through it (0..1), and the beat of the song
+// (from its start); beat -1 when the song isn't what plays.
 song_progress :: proc(e: ^Engine) -> (step: int, frac: f64, beat: f64) {
 	pos, playing := timeline_beat(e)
 	if !playing || !e.project.song_mode || e.plan.count == 0 do return -1, 0, -1
@@ -586,8 +739,8 @@ song_progress :: proc(e: ^Engine) -> (step: int, frac: f64, beat: f64) {
 	x := pos - pl.at
 	if x < 0 do return -1, 0, -1
 	if pl.loop_end > pl.loop_start && x >= pl.loop_end do x = pl.loop_start + math.mod(x - pl.loop_start, pl.loop_end - pl.loop_start)
-	for s in pl.segs[:pl.count] do if x >= s.start && x < s.start + s.span {
-		return s.step, (x - s.start) / max(s.span, 1e-9), x
-	}
-	return -1, 0, -1
+	i := plan_top(&pl, x)
+	if i < 0 do return -1, 0, x // (between clips: no clip, but the song plays on)
+	c := e.project.song.clips[pl.segs[i].step] if pl.segs[i].step >= 0 && pl.segs[i].step < e.project.song.count else Song_Clip{at = pl.segs[i].start, length = pl.segs[i].span}
+	return pl.segs[i].step, (x - c.at) / max(c.length, 1e-9), x
 }

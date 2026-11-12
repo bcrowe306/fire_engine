@@ -45,10 +45,16 @@ State :: struct {
 	audio_inputs, audio_outputs: [dynamic]int, // the interface's channels open (1-based)
 	audio_missing_inputs, audio_missing_outputs: [dynamic]int, // asked for, not on it
 	song_mode:  bool,
-	song_steps: int,
-	song:       [dynamic]int, // each step's sequence (1-based)
-	steps:      [dynamic]State_Step, // each step's settings
-	song_step:  int, // the step playing (1-based; 0: none)
+	song_clips: int,
+	song:       [dynamic]int, // each clip's sequence (1-based)
+	clips:      [dynamic]State_Clip, // each clip's settings
+	song_clip:  int, // the clip leading where it plays (1-based; 0: none)
+	song_lanes: [dynamic]State_Lane, // the lanes shown
+	meters:     [dynamic][3]f64, // the time signature lane: beat, numerator, denominator
+	song_zoom:  f64, // the Song view's points a beat
+	song_scroll: f64, // the beat at its left edge
+	song_tool:  string, // "Select" or "Draw"
+	pads_folded: bool, // the bottom area is folded
 	song_beat:  f64, // where in the song (beats)
 	song_seconds: f64, // how long the song plays
 	tempo_points: [dynamic][3]f64, // the song's tempo lane: beat, BPM, 1 if it ramps
@@ -56,8 +62,8 @@ State :: struct {
 	marker_beats: [dynamic]f64,
 	song_loop:  [2]f64, // its loop range (beats; 0, 0: none)
 	cue:        f64, // where song mode starts
-	song_selected: int, // the step whose settings show (1-based; 0: none)
-	song_sel:   [dynamic]int, // the selected steps (1-based)
+	song_selected: int, // the clip whose settings show (1-based; 0: none)
+	song_sel:   [dynamic]int, // the selected clips (1-based)
 	arrangements: [dynamic]string,
 	arrangement: int, // 1-based
 	snap:       bool, // the sequence editor snaps to its grid
@@ -199,15 +205,23 @@ State_Note :: struct {
 	muted: bool,
 }
 
-State_Step :: struct {
+State_Clip :: struct {
 	slot:      int, // 1-based
-	repeats:   int,
-	start:     f64,
-	length:    f64, // beats it plays of its sequence (each time)
+	lane:      int, // 1-based
+	at:        f64,
+	length:    f64,
+	start:     f64, // its part's start in the sequence
+	part:      f64, // beats a pass plays
+	phase:     f64,
 	mute:      bool,
 	transpose: int,
-	bpm:       f64, // its own (0: its sequence's)
 	label:     string,
+}
+
+State_Lane :: struct {
+	name: string,
+	mute: bool,
+	solo: bool,
 }
 
 State_Bus :: struct {
@@ -293,16 +307,26 @@ state_json :: proc(a: ^App) -> string {
 	}
 	s.audio_inputs, s.audio_outputs = ones(a.host.open_inputs), ones(a.host.open_outputs)
 	s.audio_missing_inputs, s.audio_missing_outputs = ones(a.host.missing_inputs), ones(a.host.missing_outputs)
-	s.song_mode, s.song_steps = p.song_mode, p.song.count
+	s.song_mode, s.song_clips = p.song_mode, p.song.count
 	s.song = make([dynamic]int, context.temp_allocator)
-	for st in p.song.steps[:p.song.count] do append(&s.song, int(st.slot) + 1)
-	s.steps = make([dynamic]State_Step, context.temp_allocator)
-	for &st in p.song.steps[:p.song.count] {
-		append(&s.steps, State_Step{int(st.slot) + 1, int(st.repeats), st.start, pm.step_period(p, st), st.mute, int(st.transpose), st.bpm, strings.clone(pm.step_label(&st), context.temp_allocator)})
+	for c in p.song.clips[:p.song.count] do append(&s.song, int(c.slot) + 1)
+	s.clips = make([dynamic]State_Clip, context.temp_allocator)
+	for &c in p.song.clips[:p.song.count] {
+		append(&s.clips, State_Clip{int(c.slot) + 1, int(c.lane) + 1, c.at, c.length, c.start, pm.clip_period(p, c), c.phase, c.mute, int(c.transpose), strings.clone(pm.clip_label(&c), context.temp_allocator)})
 	}
+	s.song_lanes = make([dynamic]State_Lane, context.temp_allocator)
+	for i in 0 ..< pm.song_lanes(&p.song) {
+		l := p.song.lanes[i]
+		append(&s.song_lanes, State_Lane{strings.clone(pm.lane_name(&p.song, i), context.temp_allocator), l.mute, l.solo})
+	}
+	s.meters = make([dynamic][3]f64, context.temp_allocator)
+	for mt in p.song.meters[:p.song.meter_count] do append(&s.meters, [3]f64{mt.beat, f64(mt.sig.num), f64(mt.sig.den)})
+	s.song_zoom, s.song_scroll = f64(a.song_ui.ppb), a.song_ui.scroll
+	s.song_tool = "Draw" if a.song_ui.tool == .Draw else "Select"
+	s.pads_folded = a.ws.bottom_folded
 	{
-		step, _, beat := pm.song_progress(&m.engine)
-		s.song_step, s.song_beat = step + 1, beat
+		clip, _, beat := pm.song_progress(&m.engine)
+		s.song_clip, s.song_beat = clip + 1, beat
 	}
 	s.song_seconds = pm.song_seconds(p)
 	s.tempo_points = make([dynamic][3]f64, context.temp_allocator)
@@ -315,7 +339,7 @@ state_json :: proc(a: ^App) -> string {
 	}
 	if p.song.loop_on do s.song_loop = {p.song.loop_start, p.song.loop_end}
 	s.cue = m.engine.cue
-	s.song_selected = a.song_ui.step + 1 if a.song_ui.step < p.song.count else 0
+	s.song_selected = a.song_ui.cur + 1 if a.song_ui.cur < p.song.count else 0
 	s.song_sel = make([dynamic]int, context.temp_allocator)
 	for k in 0 ..< p.song.count do if k in a.song_ui.sel do append(&s.song_sel, k + 1)
 	s.arrangements = make([dynamic]string, context.temp_allocator)

@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 29 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes
+PROJECT_VERSION :: 30 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -349,11 +349,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	write_bus(w, p.main)
 	for s in p.perf_fx do write_slot(w, s)
 	fc.write_bool(w, p.transport.loop) // (before v4: the song's own loop)
-	fc.write_int(w, p.song.count)
-	for st in p.song.steps[:p.song.count] {
-		fc.write_u8(w, st.slot)
-		fc.write_u8(w, st.repeats)
-	}
+	fc.write_int(w, 0) // (the song's steps before v30: none; its clips are at the end)
 	// The transport (v4).
 	tr := p.transport
 	fc.write_int(w, tr.count_in)
@@ -393,17 +389,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_int(w, p.arrangement)
 	for &a in arr[:p.arrangement_count] {
 		fc.write_string(w, strings.truncate_to_byte(string(a.name[:]), 0))
-		fc.write_int(w, a.song.count)
-		for &st in a.song.steps[:a.song.count] {
-			fc.write_u8(w, st.slot)
-			fc.write_u8(w, st.repeats)
-			fc.write_f64(w, st.start)
-			fc.write_f64(w, st.length)
-			fc.write_bool(w, st.mute)
-			fc.write_u8(w, u8(st.transpose))
-			fc.write_f64(w, st.bpm)
-			fc.write_string(w, step_label(&st))
-		}
+		fc.write_int(w, 0) // (steps before v30)
 	}
 	// v12: how many buses, and each one's name and where it goes; each
 	// pad's warp.
@@ -503,11 +489,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_bool(w, sg.loop_on)
 		fc.write_f64(w, sg.loop_start)
 		fc.write_f64(w, sg.loop_end)
-		fc.write_int(w, sg.count)
-		for st in sg.steps[:sg.count] {
-			fc.write_int(w, st.meter.num)
-			fc.write_int(w, st.meter.den)
-		}
+		fc.write_int(w, 0) // (steps' time signatures before v30)
 	}
 	// v25: every slot's sidechain key (the slots in the order above).
 	key :: proc(w: ^fc.State_Writer, sl: Effect_Slot) {
@@ -567,6 +549,36 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 			fc.write_u8(w, c.pad)
 			fc.write_u8(w, c.cc)
 			fc.write_u8(w, c.value)
+		}
+	}
+	// v30: each arrangement's lanes, clips and time signature lane (the
+	// current one's as it is).
+	for k in 0 ..< p.arrangement_count {
+		sg := p.song if k == p.arrangement else p.arrangements[k].song
+		fc.write_int(w, sg.lane_count)
+		for &l in sg.lanes[:sg.lane_count] {
+			fc.write_string(w, strings.truncate_to_byte(string(l.name[:]), 0))
+			fc.write_bool(w, l.mute)
+			fc.write_bool(w, l.solo)
+		}
+		fc.write_int(w, sg.count)
+		for &c in sg.clips[:sg.count] {
+			fc.write_u8(w, c.lane)
+			fc.write_u8(w, c.slot)
+			fc.write_f64(w, c.at)
+			fc.write_f64(w, c.length)
+			fc.write_f64(w, c.start)
+			fc.write_f64(w, c.part)
+			fc.write_f64(w, c.phase)
+			fc.write_u8(w, u8(c.transpose))
+			fc.write_bool(w, c.mute)
+			fc.write_string(w, clip_label(&c))
+		}
+		fc.write_int(w, sg.meter_count)
+		for mt in sg.meters[:sg.meter_count] {
+			fc.write_f64(w, mt.beat)
+			fc.write_int(w, mt.sig.num)
+			fc.write_int(w, mt.sig.den)
 		}
 	}
 }
@@ -632,8 +644,73 @@ read_bus :: proc(r: ^fc.State_Reader, p: ^Project) -> (b: Bus) {
 	return
 }
 
+// A song as files before v30 kept it: a chain of steps.
+@(private)
+Legacy_Step :: struct {
+	slot:      u8,
+	repeats:   u8,
+	start:     f64,
+	length:    f64,
+	mute:      bool,
+	transpose: i8,
+	bpm:       f64,
+	label:     [16]u8,
+	meter:     Time_Sig,
+}
+
+@(private)
+Legacy_Song :: struct {
+	steps: [64]Legacy_Step,
+	count: int,
+}
+
 @(private)
 read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
+	legacy := make([]Legacy_Song, ARRANGEMENTS, context.temp_allocator)
+	read_project_body(r, p, version, legacy)
+	if version < 30 do for &a, k in p.arrangements[:p.arrangement_count] do song_from_steps(p, &a.song, &legacy[k])
+	p.song = p.arrangements[p.arrangement].song
+}
+
+// Song `s` from a chain of steps: each a clip on the first lane, one after
+// another, as long as its repeats; the steps' tempos (their own, their
+// sequences') in its tempo lane when it has none and any differs, and
+// their time signatures in its time signature lane.
+@(private)
+song_from_steps :: proc(p: ^Project, s: ^Song, l: ^Legacy_Song) {
+	s.count, s.meter_count = 0, 0
+	at := 0.0
+	tempos := make([dynamic]Tempo_Point, context.temp_allocator)
+	cur := p.transport.time_sig
+	for st in l.steps[:clamp(l.count, 0, len(l.steps))] {
+		if s.count >= SONG_CLIPS do break
+		c := Song_Clip{slot = st.slot, at = at, start = st.start, part = st.length, transpose = st.transpose, mute = st.mute, label = st.label}
+		period := clip_period(p, c)
+		c.length = period * f64(max(st.repeats, 1))
+		if c.length <= 0 do continue
+		s.clips[s.count] = c
+		s.count += 1
+		bpm := st.bpm if st.bpm > 0 else sequence_tempo(p, int(st.slot))
+		if len(tempos) == 0 || tempos[len(tempos) - 1].bpm != bpm do append(&tempos, Tempo_Point{at, bpm, false})
+		want := st.meter if st.meter.num > 0 && st.meter.den > 0 else p.transport.time_sig
+		if want != cur && s.meter_count < MAX_METERS {
+			s.meters[s.meter_count] = {at, want}
+			s.meter_count += 1
+			cur = want
+		}
+		at += c.length
+	}
+	s.lane_count = 1 if s.count > 0 else 0
+	differs := false
+	for pt in tempos do if pt.bpm != p.bpm do differs = true
+	if s.tempo_count == 0 && differs do for pt in tempos[:min(len(tempos), MAX_TEMPO_POINTS)] {
+		s.tempo[s.tempo_count] = pt
+		s.tempo_count += 1
+	}
+}
+
+@(private)
+read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy: []Legacy_Song) {
 	p.bpm = clamp(fc.read_f64(r), 40, 300)
 	p.slot = clamp(fc.read_int(r), 0, SLOTS - 1)
 	p.song_mode = fc.read_bool(r)
@@ -733,11 +810,13 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	}
 	loop := fc.read_bool(r) // the song's before v4 (patterns always looped)
 	p.transport.loop = loop if version >= 4 || p.song_mode else true
-	p.song.count = clamp(fc.read_int(r), 0, SONG_STEPS)
-	for &st in p.song.steps[:p.song.count] {
+	first := &legacy[0]
+	first.count = clamp(fc.read_int(r), 0, len(first.steps))
+	for &st in first.steps[:first.count] {
 		st.slot = min(fc.read_u8(r), SLOTS - 1)
 		st.repeats = clamp(fc.read_u8(r), 1, 16)
 	}
+	p.arrangement_count, p.arrangement = 1, 0
 	if version >= 4 {
 		tr := &p.transport
 		tr.count_in = clamp(fc.read_int(r), 0, 2)
@@ -777,11 +856,13 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 		}
 		p.arrangement_count = clamp(fc.read_int(r), 1, ARRANGEMENTS)
 		p.arrangement = clamp(fc.read_int(r), 0, p.arrangement_count - 1)
-		for &a in p.arrangements[:p.arrangement_count] {
+		for &a, k in p.arrangements[:p.arrangement_count] {
 			a = {}
 			copy(a.name[:len(a.name) - 1], fc.read_string(r))
-			a.song.count = clamp(fc.read_int(r), 0, SONG_STEPS)
-			for &st in a.song.steps[:a.song.count] {
+			lg := &legacy[k]
+			lg^ = {}
+			lg.count = clamp(fc.read_int(r), 0, len(lg.steps))
+			for &st in lg.steps[:lg.count] {
 				st.slot = min(fc.read_u8(r), SLOTS - 1)
 				st.repeats = clamp(fc.read_u8(r), 1, 16)
 				st.start = max(fc.read_f64(r), 0)
@@ -793,9 +874,6 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 				copy(st.label[:len(st.label) - 1], fc.read_string(r))
 			}
 		}
-		p.song = p.arrangements[p.arrangement].song
-	} else {
-		p.arrangements[0].song = p.song // one arrangement: the song
 	}
 	if version >= 12 {
 		p.bus_count = clamp(fc.read_int(r), 1, BUSES)
@@ -881,7 +959,7 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 			}
 		}
 		if version >= 24 {
-			for &a in p.arrangements[:p.arrangement_count] {
+			for &a, ak in p.arrangements[:p.arrangement_count] {
 				sg := &a.song
 				sg.tempo_count = clamp(fc.read_int(r), 0, MAX_TEMPO_POINTS)
 				for &pt in sg.tempo[:sg.tempo_count] {
@@ -897,14 +975,13 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 				sg.loop_on = fc.read_bool(r)
 				sg.loop_start = max(fc.read_f64(r), 0)
 				sg.loop_end = max(fc.read_f64(r), 0)
-				n := clamp(fc.read_int(r), 0, SONG_STEPS)
+				n := clamp(fc.read_int(r), 0, 64)
 				for k in 0 ..< n {
 					ts := Time_Sig{clamp(fc.read_int(r), 0, 16), fc.read_int(r)}
 					if ts.den != 2 && ts.den != 4 && ts.den != 8 && ts.den != 16 do ts = {}
-					if k < sg.count do sg.steps[k].meter = ts
+					if k < legacy[ak].count do legacy[ak].steps[k].meter = ts
 				}
 			}
-			p.song = p.arrangements[p.arrangement].song
 		}
 		if version >= 25 {
 			key :: proc(r: ^fc.State_Reader, sl: ^Effect_Slot) {
@@ -966,6 +1043,37 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 				c.beat = fc.read_f64(r)
 				c.pad = min(fc.read_u8(r), PADS - 1)
 				c.cc, c.value = min(fc.read_u8(r), 127), min(fc.read_u8(r), 127)
+			}
+		}
+		if version >= 30 do for &a in p.arrangements[:p.arrangement_count] {
+			sg := &a.song
+			sg.lane_count = clamp(fc.read_int(r), 0, SONG_LANES)
+			for &l in sg.lanes[:sg.lane_count] {
+				l = {}
+				copy(l.name[:len(l.name) - 1], fc.read_string(r))
+				l.mute = fc.read_bool(r)
+				l.solo = fc.read_bool(r)
+			}
+			sg.count = clamp(fc.read_int(r), 0, SONG_CLIPS)
+			for &c in sg.clips[:sg.count] {
+				c = {}
+				c.lane = min(fc.read_u8(r), SONG_LANES - 1)
+				c.slot = min(fc.read_u8(r), SLOTS - 1)
+				c.at = fc.read_f64(r)
+				c.length = fc.read_f64(r)
+				c.start = fc.read_f64(r)
+				c.part = fc.read_f64(r)
+				c.phase = fc.read_f64(r)
+				c.transpose = i8(clamp(i32(i8(fc.read_u8(r))), -48, 48))
+				c.mute = fc.read_bool(r)
+				copy(c.label[:len(c.label) - 1], fc.read_string(r))
+				c = clip_fit(c)
+			}
+			sg.meter_count = clamp(fc.read_int(r), 0, MAX_METERS)
+			for &mt in sg.meters[:sg.meter_count] {
+				mt.beat = max(fc.read_f64(r), 0)
+				mt.sig = {clamp(fc.read_int(r), 1, 16), fc.read_int(r)}
+				if mt.sig.den != 2 && mt.sig.den != 4 && mt.sig.den != 8 && mt.sig.den != 16 do mt.sig.den = 4
 			}
 		}
 	} else {

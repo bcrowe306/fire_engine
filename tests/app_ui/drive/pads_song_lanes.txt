@@ -1,0 +1,48 @@
+# The Song tab's lanes: drums, fills over them, a bass sequence; lanes
+# named, 3/4 from bar 7, markers; zoomed in (the beats show) and out (every
+# 2 and 4 bars); playing.
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+note 0 0 0.25 1
+note 0 1 0.25 1
+note 0 2 0.25 1
+note 0 3 0.25 1
+note 1 0.5 0.25 0.7
+note 1 1.5 0.25 0.7
+slot 2
+note 1 0 0.25 1
+note 1 0.25 0.25 1
+note 1 0.5 0.25 1
+note 1 0.75 0.25 1
+slot 3
+note 0 0 1 1
+note 0 2 0.5 1
+slot 1
+song add 1 8
+song add 2 lane 2 at 12 length 4
+song add 2 lane 2 at 28 length 4
+song add 3 lane 3 at 16 length 16
+song lane 1 name Drums
+song lane 2 name Fills
+song lane 3 name Bass
+song meter 24 3 4
+song marker 0 Intro
+song marker 16 Chorus
+panel song
+song clip 4
+wait 5
+screenshot song_lanes
+song zoom 60
+wait 3
+screenshot song_lanes_zoomed_in
+song zoom 4
+wait 3
+screenshot song_lanes_zoomed_out
+song zoom fit
+song lane 2 mute
+song mode on
+play
+wait 40
+expect playing 1
+screenshot song_lanes_playing

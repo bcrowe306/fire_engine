@@ -9,90 +9,168 @@ import "app:ui"
 import pm "model"
 import im "deps:imgui"
 
-// The Song tab's state: the step whose settings show, renaming an
-// arrangement.
+// The Song tab: the song as lanes of clips (any sequence on any lane, as
+// long as you like, several playing at once). Across the top its bar
+// (the arrangement, the tools, snap, a new lane, merging, the tempo lane,
+// fitting it in); down the left every sequence to drag in; beside them the
+// song's time (markers, the ruler, time signatures, tempo) over its lanes,
+// on a grid of bars; under them the selected clip's settings.
+
+// The Song tab's state: the clips selected, the tool, the view (zoom and
+// scroll), what a drag is doing, renaming.
 Song_State :: struct {
-	step:        int, // the step whose settings show (-1: none)
-	sel:         pm.Step_Set, // the selected steps (Shift: a range, Cmd: one more or less)
-	anchor:      int, // where a Shift-click range starts
-	focused:     bool, // the Song tab has the keyboard (its step keys work)
-	clip:        [pm.SONG_STEPS]pm.Song_Step, // steps copied
-	clip_n:      int,
+	cur:         int, // the clip whose settings show (-1: none)
+	sel:         pm.Clip_Set, // the selected clips
+	focused:     bool, // the Song tab has the keyboard (its clip keys work)
+	tool:        Song_Tool,
+	snap:        Song_Snap,
+	copied:      [pm.SONG_CLIPS]pm.Song_Clip, // clips copied
+	copied_n:    int,
 	rename_open: bool,
 	rename_buf:  [24]u8,
 	label_buf:   [16]u8,
 	label_for:   int,
-	// Dragging on the timeline: a block's start or end, or the selection.
+	lane_rename: int, // the lane being renamed (-1: none)
+	lane_open:   bool,
+	lane_buf:    [16]u8,
+	// The view: points a beat (0: fit the song on the next frame) and the
+	// beat at the left edge.
+	ppb:         f32,
+	scroll:      f64,
+	lane_h:      f32, // a lane's height now
+	// A drag in the lanes.
 	drag:        Song_Drag,
-	drag_step:   int,
-	drag_orig:   pm.Song_Step,
-	drag_x:      f32, // where the drag began
-	drag_bpp:    f64, // beats a point, while it lasts
-	drag_total:  f64, // the song's length as it began (the scale holds still)
-	drop_to:     int, // moving: before which step it lands
+	drag_clip:   int,
+	drag_from:   pm.Song, // the song as the drag began
+	drag_sel:    pm.Clip_Set, // what it moves
+	drag_x:      f32, // where it began
+	drag_y:      f32,
+	drag_beat:   f64, // the song beat it began at
+	drag_lane:   int,
+	box_sel:     pm.Clip_Set, // the selection before a box (Shift: added to)
+	drop_lane:   int, // a sequence dragged in: where it would land
+	drop_beat:   f64,
+	// The bottom area: folded on coming to the Song tab (and unfolded on
+	// leaving it, if it was this that folded it).
+	shown_frame: i32,
+	folded_it:   bool,
 	time:        Song_Time_Ui, // the markers, the loop range, the tempo lane
 }
 
-// What a drag on the timeline does.
+// The Song tab's tools.
+Song_Tool :: enum u8 {
+	Select, // click, Shift- or Cmd-click, drag a box; drag clips to move them (Alt: copies), their ends to resize
+	Draw,   // drag along a lane to paint the current sequence there
+}
+
+// What a clip's place and length snap to.
+Song_Snap :: enum u8 {
+	Bar,
+	Beat,
+	Off, // (to a 1/16)
+}
+
+// The names the snap shows.
+SONG_SNAP_NAMES := [Song_Snap]cstring{.Bar = "Bar", .Beat = "Beat", .Off = "Off"}
+
+// What a drag in the lanes does.
 @(private)
 Song_Drag :: enum u8 {
 	None,
-	Press, // the mouse is down on a block: a click, unless it moves
-	Start, // a block's left handle: where its part starts (its end stays)
-	End,   // its right handle: how long its part is
-	Move,  // the selection, to elsewhere in the song
+	Press, // the mouse is down on a clip: a click, unless it moves
+	Move,  // the selection, in time and across lanes (Alt as it began: copies)
+	Start, // a clip's left edge: where it begins (its notes stay where they are)
+	End,   // its right edge: how long it is
+	Draw,  // painting a new clip along a lane
+	Box,   // a box selecting the clips it touches
 }
 
-// The song, arranged: the arrangement (several songs, one current), its
-// timeline across the top (bars, minutes, its steps in their sequences'
-// colours, the playhead; click the ruler to play from there), and below
-// it the sequences down the left (drag or double-click into the song),
-// the steps in order in the middle (drag to move, the playing one runs a
-// bar across), and the selected step's settings on the right: which
-// sequence, how many times, which part of it, muted, transposed, its
-// tempo, its name.
+// Where song beats are across the lanes: `x0` is beat `scroll`, `ppb`
+// points a beat; `x1` is the right edge.
+@(private)
+Song_View :: struct {
+	x0, x1: f32,
+	scroll: f64,
+	ppb:    f32,
+}
+
+@(private)
+beat_x :: proc(v: Song_View, b: f64) -> f32 {
+	return v.x0 + f32(b - v.scroll) * v.ppb
+}
+
+@(private)
+x_beat :: proc(v: Song_View, x: f32) -> f64 {
+	return v.scroll + f64((x - v.x0) / max(v.ppb, 1e-6))
+}
+
+// The lane headers' width, a lane's height, the top rows' heights.
+@(private)
+SONG_HEAD :: 104
+@(private)
+SONG_LANE_H :: 50 // (at least; lanes grow to fill the view, up to twice that)
+@(private)
+SONG_ROW_H :: 18
+
 draw_song :: proc(user: rawptr) {
 	a := (^App)(user)
 	m := &a.m
 	p := &m.project
 	ss := &a.song_ui
-	if ss.step >= p.song.count do ss.step = p.song.count - 1
-	for i in p.song.count ..< pm.SONG_STEPS do ss.sel -= {i}
+	if ss.cur >= p.song.count do ss.cur = p.song.count - 1
+	for i in p.song.count ..< pm.SONG_CLIPS do ss.sel -= {i}
 	ss.focused = im.IsWindowFocused({.RootWindow, .ChildWindows})
+	song_fold_on_show(a)
 	song_keys(a)
 
 	draw_arrangement_bar(a)
 	im.Spacing()
-	draw_song_markers(a)
-	draw_song_timeline(a)
-	draw_tempo_lane(a)
-	im.Spacing()
-
 	avail := im.GetContentRegionAvail()
-	left_w, right_w: f32 = 220, 300
-	if im.BeginChild("##songside", {left_w, avail.y}) do draw_song_side(a)
+	strip_h := im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y + 2
+	list_w: f32 = 168
+	if im.BeginChild("##songlist", {list_w, avail.y - strip_h - 6}) do draw_song_side(a)
 	im.EndChild()
 	im.SameLine(0, 8)
-	if im.BeginChild("##songsteps", {max(avail.x - left_w - right_w - 16, 160), avail.y}) do draw_song_steps(a)
+	if im.BeginChild("##songtime", {avail.x - list_w - 8, avail.y - strip_h - 6}, {}, {.NoScrollbar, .NoScrollWithMouse}) do draw_song_lanes(a)
 	im.EndChild()
-	im.SameLine(0, 8)
-	if im.BeginChild("##stepsettings", {right_w, avail.y}) {
-		draw_step_settings(a)
-		im.Spacing()
-		draw_marker_list(a)
-	}
+	if im.BeginChild("##clipstrip", {avail.x, strip_h}, {.FrameStyle}, {.NoScrollbar}) do draw_clip_strip(a)
 	im.EndChild()
 }
 
-// The arrangement picker (its menu: new, duplicate, rename, delete),
-// Pattern | Song (in the toolbar too), adding the current sequence,
-// merging.
+// Coming to the Song tab folds the pads area (the song gets the height);
+// leaving it unfolds it again if this folded it. (Unfolding it here keeps
+// it unfolded.)
+@(private)
+song_fold_on_show :: proc(a: ^App) {
+	ss := &a.song_ui
+	frame := im.GetFrameCount()
+	if ss.shown_frame < frame - 1 && !a.ws.bottom_folded {
+		a.ws.bottom_folded = true
+		ss.folded_it = true
+	}
+	if !a.ws.bottom_folded do ss.folded_it = false
+	ss.shown_frame = frame
+}
+
+// Each frame, after the panels: the Song tab gone from view gives back the
+// pads area it folded.
+song_fold_check :: proc(a: ^App) {
+	ss := &a.song_ui
+	if ss.folded_it && ss.shown_frame < im.GetFrameCount() {
+		a.ws.bottom_folded = false
+		ss.folded_it = false
+	}
+}
+
+// The arrangement picker (its menu: new, duplicate, rename, delete), the
+// tools, snap, a new lane, merging, the tempo lane, fitting the song in,
+// and its length.
 @(private)
 draw_arrangement_bar :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
 	ss := &a.song_ui
-	im.SetNextItemWidth(180)
+	im.SetNextItemWidth(170)
 	if ui.combo("##arrangement", fmt.ctprintf("%s  %s", ui.ICON_LIST_ORDERED, pm.arrangement_name(p, p.arrangement))) {
 		for k in 0 ..< p.arrangement_count {
 			if im.Selectable(fmt.ctprintf("%s###arr%d", pm.arrangement_name(p, k), k), k == p.arrangement) do pm.select_arrangement(m, k)
@@ -130,23 +208,53 @@ draw_arrangement_bar :: proc(a: ^App) {
 		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
-	im.SameLine(0, 16) // (Pattern or Song: on the toolbar)
-	if im.Button(fmt.ctprintf("%s  Add %s###addseq", ui.ICON_PLUS, pm.sequence_name(p, p.slot))) do pm.song_add(m, p.slot)
-	ui.name("Add the current sequence")
-	im.SameLine()
-	im.SetNextItemWidth(170)
+	// The tools.
+	im.SameLine(0, 14)
+	tools := [2]struct { tool: Song_Tool, icon: string, tip: cstring }{
+		{.Select, ui.ICON_MOUSE_POINTER_2, "Select (V): click, Shift- or Cmd-click, drag a box; drag clips to move them (Alt: copies), their ends to resize"},
+		{.Draw, ui.ICON_PENCIL, "Draw (B): drag along a lane to paint the current sequence there"},
+	}
+	for tl, k in tools {
+		if k > 0 do im.SameLine(0, 2)
+		if ui.icon_button(tl.icon, tl.tip, on = ss.tool == tl.tool) do ss.tool = tl.tool
+	}
+	im.SameLine(0, 10)
+	ui.icon_button(ui.ICON_MAGNET, "Snap: where clips start and end (Shift while dragging: to the beat)", on = ss.snap != .Off)
+	im.SameLine(0, 2)
+	im.SetNextItemWidth(78)
+	if ui.combo("##songsnap", SONG_SNAP_NAMES[ss.snap]) {
+		for s in Song_Snap do if im.Selectable(SONG_SNAP_NAMES[s], s == ss.snap) do ss.snap = s
+		im.EndCombo()
+	}
+	ui.name("song snap")
+	im.SameLine(0, 10)
+	if im.Button(ui.ICON_PLUS + "  Lane") do pm.lane_add(m)
+	ui.name("add lane")
+	if im.IsItemHovered() do im.SetTooltip("A new lane at the bottom")
+	im.SameLine(0, 6)
+	im.SetNextItemWidth(150)
 	if ui.combo("##merge", "Merge into this…") {
 		for k in 0 ..< pm.SLOTS do if k != p.slot && pm.slot_used(m, k) {
 			if im.Selectable(fmt.ctprintf("%s###m%d", pm.sequence_name(p, k), k)) do pm.merge_sequences(m, k, p.slot)
 		}
 		im.EndCombo()
 	}
-	if im.IsItemHovered() do im.SetTooltip("Lay another sequence's notes over this one")
-	im.SameLine(0, 12)
-	tm := &a.song_ui.time
+	if im.IsItemHovered() do im.SetTooltip("Lay another sequence's notes over the current one")
+	im.SameLine(0, 10)
+	tm := &ss.time
 	shown := tempo_lane_shown(a)
 	if ui.toggle("Tempo lane", &shown) do tm.show_tempo = shown
-	if im.IsItemHovered() do im.SetTooltip("The song's tempo across the timeline (shown while it has points)")
+	if im.IsItemHovered() do im.SetTooltip("The song's tempo under its time signatures (shown while it has points)")
+	im.SameLine(0, 6)
+	if ui.icon_button(ui.ICON_MAXIMIZE_2, "Fit the song in (Cmd+0); Cmd+scroll zooms, scrolling sideways moves along") do ss.ppb = 0
+	// Its length, at the right.
+	total := pm.song_beats(p)
+	text := fmt.ctprintf("%s · %d bars", clock_text(pm.song_seconds(p)), max(len(pm.song_bars(p)) - 1, 0) if total > 0 else 0)
+	tw := im.CalcTextSize(text).x
+	im.SameLine(max(im.GetCursorPosX() + 8, im.GetCursorPosX() + im.GetContentRegionAvail().x - tw - 8))
+	im.AlignTextToFramePadding()
+	im.TextDisabled("%s", text)
+	ui.name("song length")
 }
 
 // "1:23": seconds as minutes and seconds.
@@ -156,377 +264,644 @@ clock_text :: proc(secs: f64) -> string {
 	return fmt.tprintf("%d:%02d", s / 60, s % 60)
 }
 
-// The song across the top: a ruler of bars and minutes (given the
-// steps' tempos), its steps as blocks as long as they play (their
-// sequences' colours, their names or labels, repeats marked, muted ones
-// hatched), the total time, the playhead. Click a block to select it
-// (Shift: a range, Cmd: one more), drag its edges to change the part it
-// plays (bars; Shift: beats), drag its middle to move the selection; click
-// the ruler to play from there.
+// Beat `b` snapped as the Song tab snaps (to its bars, beats or 1/16;
+// Shift: beats instead of bars).
 @(private)
-draw_song_timeline :: proc(a: ^App) {
+song_snap :: proc(a: ^App, b: f64) -> f64 {
+	p := &a.m.project
+	s := a.song_ui.snap
+	if s == .Bar && im.GetIO().KeyShift do s = .Beat
+	switch s {
+	case .Bar:
+		bars := pm.song_bars(p, b + 64)
+		best := 0.0
+		for x in bars do if abs(x - b) < abs(best - b) do best = x
+		return best
+	case .Beat: return math.round(b)
+	case .Off:  return math.round(b * 16) / 16
+	}
+	return b
+}
+
+// The grid's step: every 1, 2, 4, 8... bars, as many as keep its lines at
+// least 24 points apart; and whether the beats show too.
+@(private)
+grid_every :: proc(p: ^pm.Project, v: Song_View) -> (bars: int, beats: bool) {
+	bar_px := f32(pm.bar_beats(p)) * v.ppb
+	bars = 1
+	for f32(bars) * bar_px < 24 && bars < 1 << 12 do bars *= 2
+	return bars, v.ppb >= 12
+}
+
+// The song's time over its lanes: the markers, the ruler, the time
+// signature lane and the tempo lane on top; the lanes under them (their
+// headers at the left), the grid behind the clips, the playhead through
+// it all. Cmd+scroll zooms round the mouse, scrolling sideways moves along.
+@(private)
+draw_song_lanes :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
 	ss := &a.song_ui
 	t := ui.theme()
 	io := im.GetIO()
+	origin := im.GetCursorScreenPos()
+	avail := im.GetContentRegionAvail()
 	total := pm.song_beats(p)
-	secs := pm.song_seconds(p)
-	w := im.GetContentRegionAvail().x
-	ruler_h, lane_h: f32 = 20, 46
-	pos := im.GetCursorScreenPos()
+	v := Song_View{x0 = origin.x + SONG_HEAD, x1 = origin.x + avail.x - 4, scroll = ss.scroll, ppb = ss.ppb}
+	// Fit: the song and four bars more (at least 16 bars) across.
+	if ss.ppb <= 0 {
+		shown := max(total + 4 * pm.bar_beats(p), 16 * pm.bar_beats(p))
+		ss.ppb = (v.x1 - v.x0) / f32(shown)
+		ss.scroll = 0
+		v.ppb, v.scroll = ss.ppb, 0
+	}
+	// Zoom and scroll, over the time area.
+	over := im.IsWindowHovered({.ChildWindows}) && io.MousePos.x >= v.x0
+	if over && io.KeyCtrl && io.MouseWheel != 0 {
+		at := x_beat(v, io.MousePos.x)
+		ss.ppb = clamp(ss.ppb * math.pow(f32(1.2), io.MouseWheel), 0.5, 200)
+		ss.scroll = max(at - f64((io.MousePos.x - v.x0) / ss.ppb), 0)
+	} else if over && (io.MouseWheelH != 0 || (io.KeyShift && io.MouseWheel != 0)) {
+		d := io.MouseWheelH if io.MouseWheelH != 0 else io.MouseWheel
+		ss.scroll = max(ss.scroll - f64(d * 40 / ss.ppb), 0)
+	}
+	if ss.focused && !io.WantTextInput && io.KeyCtrl && im.IsKeyPressed(._0, false) do ss.ppb = 0
+	v.ppb, v.scroll = ss.ppb, ss.scroll
 	dl := im.GetWindowDrawList()
-	im.InvisibleButton("##ruler", {w, ruler_h})
-	ui.name("song ruler")
-	ruler_hot := im.IsItemHovered()
-	ruler_down, ruler_active := im.IsItemActivated(), im.IsItemActive()
-	if im.IsItemClicked(.Right) do im.OpenPopup("##rulermenu")
-	im.InvisibleButton("##timeline", {w, lane_h})
-	ui.name("song timeline")
-	lane_hot, lane_down, lane_active := im.IsItemHovered(), im.IsItemActivated(), im.IsItemActive()
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + ruler_h + lane_h}, ui.col(ui.PLOT_BG), t.radius)
-	if total <= 0 {
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + ruler_h + 12}, ui.col(t.text_dim), "The song is empty: drag sequences in from the left.")
-		return
+	// The top rows: markers, the ruler, time signatures, tempo.
+	label :: proc(dl: ^im.DrawList, x, y: f32, text: cstring) {
+		im.DrawList_AddText(dl, {x + 6, y + 1}, ui.col(ui.theme().text_dim), text)
 	}
-	// While an edge is dragged the scale holds still, so the edge stays
-	// under the mouse.
-	shown := ss.drag_total if ss.drag == .Start || ss.drag == .End else total
-	x0, x1 := pos.x + 6, pos.x + w - 70
-	bx :: proc(b, total: f64, x0, x1: f32) -> f32 { return x0 + (x1 - x0) * f32(b / total) }
-	im.DrawList_PushClipRect(dl, {x0 - 6, pos.y}, {x1 + 2, pos.y + ruler_h + lane_h}, true)
-	// The loop range, across the ruler and faintly over the blocks.
-	if p.song.loop_on {
-		la, lb := bx(p.song.loop_start, shown, x0, x1), bx(p.song.loop_end, shown, x0, x1)
-		lc := t.accent if p.transport.loop else t.text_dim
-		im.DrawList_AddRectFilled(dl, {la, pos.y}, {lb, pos.y + ruler_h}, ui.col(ui.with_alpha(lc, 0.35)), 2)
-		im.DrawList_AddRectFilled(dl, {la, pos.y + ruler_h}, {lb, pos.y + ruler_h + lane_h}, ui.col(ui.with_alpha(lc, 0.08)))
+	y := origin.y
+	label(dl, origin.x, y, "Markers")
+	im.SetCursorScreenPos({v.x0, y})
+	draw_song_markers(a, v)
+	y += SONG_ROW_H
+	ruler_y := y
+	im.SetCursorScreenPos({v.x0, y})
+	draw_song_ruler(a, v)
+	y += 20
+	label(dl, origin.x, y, "Time")
+	im.SetCursorScreenPos({v.x0, y})
+	draw_meter_lane(a, v)
+	y += SONG_ROW_H
+	if tempo_lane_shown(a) {
+		label(dl, origin.x, y + 4, "Tempo")
+		im.SetCursorScreenPos({v.x0, y})
+		draw_tempo_lane(a, v)
+		y += 40
 	}
-	// The ruler: bars, each step's in its time signature (fewer labels
-	// when they crowd).
-	starts := pm.song_bars(p)
-	bars := len(starts) - 1
-	every := max(1, int(math.ceil(f32(bars) * 34 / (x1 - x0))))
-	for b in 0 ..= bars {
-		x := bx(starts[b], shown, x0, x1)
-		strong := b % every == 0
-		im.DrawList_AddLine(dl, {x, pos.y + (8 if strong else 13)}, {x, pos.y + ruler_h}, ui.col(ui.mix(ui.PLOT_BG, t.text, 0.4 if strong else 0.15)), 1)
-		if strong && b < bars do im.DrawList_AddText(dl, {x + 3, pos.y + 2}, ui.col(t.text_dim), fmt.ctprintf("%d", b + 1))
+	y += 2
+	// The lanes, scrolling up and down under them.
+	im.SetCursorScreenPos({origin.x, y})
+	lanes_h := origin.y + avail.y - y
+	ss.lane_h = clamp((lanes_h - im.GetFrameHeight() - 12) / f32(max(pm.song_lanes(&p.song), 1)), SONG_LANE_H, 2 * SONG_LANE_H)
+	lane_flags: im.WindowFlags = {.NoScrollWithMouse} if io.KeyCtrl || io.KeyShift else {}
+	if im.BeginChild("##lanes", {avail.x, lanes_h}, {}, lane_flags) {
+		draw_lanes_body(a, v, total)
 	}
-	// The blocks, and what the mouse is over: a block's handle or its middle.
-	EDGE :: 6
-	at := 0.0
-	top, bottom := pos.y + ruler_h + 3, pos.y + ruler_h + lane_h - 3
-	n := p.song.count
-	step_x := make([]f32, n + 1, context.temp_allocator)
-	mx := io.MousePos.x
-	hover_step, hover_edge := -1, Song_Drag.None
-	for &st, i in p.song.steps[:n] {
-		period := pm.step_period(p, st)
-		span := period * f64(max(st.repeats, 1))
-		xa, xb := bx(at, shown, x0, x1), bx(at + span, shown, x0, x1)
-		step_x[i] = xa
-		if lane_hot && mx >= xa && mx < xb {
-			hover_step = i
-			hover_edge = .Start if mx < xa + EDGE && xb - xa > 3 * EDGE else (.End if mx >= xb - EDGE else .Move)
+	im.EndChild()
+	// The playhead (or, stopped in song mode, where it starts) through it all.
+	_, _, beat := pm.song_progress(&m.engine)
+	if beat >= 0 {
+		x := beat_x(v, beat)
+		if x >= v.x0 && x <= v.x1 {
+			im.DrawList_AddLine(dl, {x, ruler_y}, {x, min(origin.y + avail.y, y + f32(pm.song_lanes(&p.song)) * ss.lane_h)}, ui.col(t.warn), 2)
+			im.DrawList_AddTriangleFilled(dl, {x - 5, ruler_y}, {x + 5, ruler_y}, {x, ruler_y + 7}, ui.col(t.warn))
 		}
-		at += span
-	}
-	step_x[n] = bx(at, shown, x0, x1)
-	if lane_hot && hover_step < 0 && n > 0 && mx >= step_x[n] - EDGE && mx < step_x[n] + EDGE do hover_step, hover_edge = n - 1, .End
-	at = 0
-	for &st, i in p.song.steps[:n] {
-		period := pm.step_period(p, st)
-		xa, xb := step_x[i], step_x[i + 1]
-		c := ui.rgb(pm.sequence_color(p, int(st.slot)))
-		if st.mute do c = ui.mix(c, ui.PLOT_BG, 0.65)
-		sel := i in ss.sel || i == ss.step
-		moving := ss.drag == .Move && i in ss.sel
-		fill := ui.mix(c, ui.PLOT_BG, 0.25 if sel else 0.45)
-		if moving do fill = ui.with_alpha(fill, 0.4)
-		im.DrawList_AddRectFilled(dl, {xa + 1, top}, {xb - 1, bottom}, ui.col(fill), 4)
-		if sel do im.DrawList_AddRect(dl, {xa + 1, top}, {xb - 1, bottom}, ui.col(t.text), 4, 2 if i == ss.step else 1.5)
-		for r in 1 ..< int(max(st.repeats, 1)) { // each repeat
-			x := bx(at + period * f64(r), shown, x0, x1)
-			im.DrawList_AddLine(dl, {x, top + 6}, {x, bottom - 6}, ui.col(ui.with_alpha(c, 0.8)), 1)
-		}
-		if st.mute do for x := xa + 4; x < xb - 4; x += 7 do im.DrawList_AddLine(dl, {x, bottom - 2}, {min(x + 8, xb - 2), top + 2}, ui.col(ui.with_alpha(t.text, 0.12)), 1)
-		label := pm.step_label(&st)
-		if label == "" do label = pm.sequence_name(p, int(st.slot))
-		if xb - xa > 24 {
-			im.DrawList_PushClipRect(dl, {xa + 2, top}, {xb - 2, bottom}, true)
-			im.DrawList_AddText(dl, {xa + 8, top + 4}, ui.col(t.text), fmt.ctprintf("%s", label))
-			im.DrawList_AddText(dl, {xa + 8, top + 4 + im.GetTextLineHeight()}, ui.col(t.text_dim), fmt.ctprintf("×%d%s", st.repeats, "  muted" if st.mute else ""))
-			im.DrawList_PopClipRect(dl)
-		}
-		// Its handles: grips at both ends while it is hovered or selected;
-		// the one under the mouse (or dragged) lit.
-		dragged := (ss.drag == .Start || ss.drag == .End) && ss.drag_step == i
-		if sel || hover_step == i || dragged {
-			for edge in ([2]Song_Drag{.Start, .End}) {
-				hot := hover_step == i && hover_edge == edge || dragged && ss.drag == edge
-				gx := xa + 3 if edge == .Start else xb - 5
-				gc := t.warn if hot else ui.with_alpha(t.text, 0.55)
-				im.DrawList_AddRectFilled(dl, {gx, top + 8}, {gx + 2, bottom - 8}, ui.col(gc), 1)
-			}
-		}
-		at += period * f64(max(st.repeats, 1))
-	}
-	// Moving: where the selection lands.
-	if ss.drag == .Move {
-		to := n
-		for k in 0 ..< n do if mx < (step_x[k] + step_x[k + 1]) / 2 {
-			to = k
-			break
-		}
-		ss.drop_to = to
-		x := step_x[to]
-		im.DrawList_AddLine(dl, {x, top - 2}, {x, bottom + 2}, ui.col(t.accent), 3)
-	}
-	// The playhead.
-	step, _, beat := pm.song_progress(&m.engine)
-	if step >= 0 {
-		x := bx(beat, shown, x0, x1)
-		im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + ruler_h + lane_h}, ui.col(t.warn), 2)
-		im.DrawList_AddTriangleFilled(dl, {x - 5, pos.y}, {x + 5, pos.y}, {x, pos.y + 7}, ui.col(t.warn))
-	}
-	im.DrawList_PopClipRect(dl)
-	im.DrawList_AddText(dl, {x1 + 8, pos.y + 2}, ui.col(t.text), fmt.ctprintf("%s", clock_text(secs)))
-	im.DrawList_AddText(dl, {x1 + 8, pos.y + ruler_h + 4}, ui.col(t.text_dim), fmt.ctprintf("%d bars", bars))
-	// The ruler: a click plays from its bar; a drag along it is the loop
-	// range (in bars); right-click for its menu.
-	tm := &ss.time
-	at_bar :: proc(p: ^pm.Project, mx, x0, x1: f32, total: f64) -> f64 {
-		_, s := pm.song_bar_at(p, clamp(f64((mx - x0) / (x1 - x0)) * total, 0, total))
-		return s
-	}
-	bar_no :: proc(p: ^pm.Project, b: f64) -> int { n, _ := pm.song_bar_at(p, b); return n + 1 }
-	bar_after :: proc(p: ^pm.Project, b: f64, total: f64) -> f64 {
-		n, _ := pm.song_bar_at(p, b)
-		starts := pm.song_bars(p)
-		return starts[n + 1] if n + 1 < len(starts) else total
-	}
-	if ruler_hot && !tm.ruler_moved {
-		b := at_bar(p, mx, x0, x1, total)
-		x := bx(b, total, x0, x1)
-		im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + ruler_h}, ui.col(ui.with_alpha(t.warn, 0.6)), 1)
-		im.SetTooltip("%s", fmt.ctprintf("Click: play the song from bar %d · drag: the loop range · right-click: markers, the loop", bar_no(p, b)))
-	}
-	if ruler_down do tm.ruler_x, tm.ruler_moved, tm.ruler_from = mx, false, at_bar(p, mx, x0, x1, total)
-	if ruler_active && abs(mx - tm.ruler_x) > 4 {
-		tm.ruler_moved = true
-		b := at_bar(p, mx, x0, x1, total)
-		lo, hi := min(tm.ruler_from, b), bar_after(p, max(tm.ruler_from, b), total)
-		pm.set_song_loop(m, true, lo, hi, drag = true)
-		im.SetTooltip("%s", fmt.ctprintf("Loop bars %d to %d", bar_no(p, lo), bar_no(p, hi - 1e-6)))
-	}
-	if !ruler_active && tm.ruler_x != 0 {
-		if tm.ruler_moved {
-			app.seal(&m.history)
-			if !p.transport.loop do p.transport.loop = true // (a range to loop: looping)
-			m.engine.seq_dirty = true
-		} else {
-			p.song_mode = true
-			m.engine.seq_dirty = true
-			pm.play(&m.engine, from_beat = tm.ruler_from)
-		}
-		tm.ruler_x, tm.ruler_moved = 0, false
-	}
-	if im.BeginPopup("##rulermenu") {
-		b := at_bar(p, tm.menu_x if tm.menu_x != 0 else mx, x0, x1, total)
-		if tm.menu_x == 0 do tm.menu_x = mx
-		if im.MenuItem(fmt.ctprintf("Add a marker at bar %d", bar_no(p, b))) {
-			k := pm.marker_add(m, b, fmt.tprintf("Marker %d", p.song.marker_count + 1))
-			if k >= 0 do tm.rename, tm.rename_open = k, true
-		}
-		if im.MenuItem(fmt.ctprintf("Loop bar %d", bar_no(p, b))) do pm.set_song_loop(m, true, b, bar_after(p, b, total))
-		if im.MenuItem("Loop the whole song", nil, false, p.song.loop_on) do pm.set_song_loop(m, false, 0, 0)
-		im.EndPopup()
-	} else {
-		tm.menu_x = 0
-	}
-
-	// The mouse on the lane.
-	if lane_hot && ss.drag == .None {
-		if hover_edge == .Start || hover_edge == .End do im.SetMouseCursor(.ResizeEW)
-		if hover_edge == .Start do im.SetTooltip("Drag: where its part starts (bars; Shift: beats)")
-		if hover_edge == .End do im.SetTooltip("Drag: how long its part is (bars; Shift: beats)")
-	}
-	if lane_down && hover_step >= 0 {
-		ss.drag_step, ss.drag_x = hover_step, mx
-		ss.drag_orig = p.song.steps[hover_step]
-		ss.drag_bpp = shown / f64(x1 - x0)
-		ss.drag_total = total
-		ss.drag = hover_edge if hover_edge != .Move else .Press
-		if ss.drag != .Press do ss.step = hover_step
-	}
-	if !lane_active {
-		switch ss.drag {
-		case .Press: select_step(ss, ss.drag_step) // a click
-		case .Start, .End: app.seal(&m.history)
-		case .Move:
-			moved := pm.song_move_steps(m, ss.sel, ss.drop_to)
-			if moved != {} {
-				ss.sel = moved
-				for k in 0 ..< n do if k in moved {
-					ss.step, ss.anchor = k, k
-					break
-				}
-			}
-		case .None:
-		}
-		ss.drag = .None
-		return
-	}
-	switch ss.drag {
-	case .Press:
-		if abs(mx - ss.drag_x) > 4 {
-			if ss.drag_step not_in ss.sel do select_step(ss, ss.drag_step)
-			ss.drag = .Move
-		}
-	case .Start, .End:
-		im.SetMouseCursor(.ResizeEW)
-		drag_edge(a, f64(mx - ss.drag_x) * ss.drag_bpp)
-	case .Move:
-		im.SetMouseCursor(.ResizeAll)
-	case .None:
+		// Following it: the view moves along when it passes the right edge.
+		if x > v.x1 - 20 && ss.drag == .None do ss.scroll = beat - f64((v.x1 - v.x0) * 0.1 / v.ppb)
 	}
 }
 
-// A block's edge dragged by `beats` (on the timeline: its repeats' worth):
-// its part's start (its end stays) or its length, on bars (Shift: beats),
-// within its sequence.
+// The lanes: each one's header (its name, Mute and Solo) and, beside it,
+// its clips on the grid. Clips are dragged to move (Alt: copies), their ends
+// to resize; empty space takes a box (Select) or a painted clip (Draw), a
+// double-click the current sequence, and a sequence dropped from the list.
 @(private)
-drag_edge :: proc(a: ^App, beats: f64) {
+draw_lanes_body :: proc(a: ^App, v: Song_View, total: f64) {
 	m := &a.m
 	p := &m.project
 	ss := &a.song_ui
-	i := ss.drag_step
-	if i < 0 || i >= p.song.count do return
-	o := ss.drag_orig
-	full := pm.seq_beats(p, p.sequences[o.slot])
-	unit := 1.0 if im.GetIO().KeyShift else pm.bar_beats(p)
-	unit = min(unit, full)
-	d := beats / f64(max(o.repeats, 1)) // a pass's worth
-	end := o.start + pm.step_period(p, o)
-	n := o
-	snapped :: proc(x, unit: f64) -> f64 { return math.round(x / unit) * unit }
-	if ss.drag == .Start {
-		start := clamp(snapped(o.start + d, unit), 0, end - min(unit, end - 0.25))
-		start = max(start, 0)
-		n.start = start
-		n.length = 0 if end >= full - 1e-9 else end - start
-	} else {
-		e := clamp(snapped(end + d, unit), o.start + min(unit, full - o.start), full)
-		if end + d >= full - unit / 2 do e = full
-		n.length = 0 if e >= full - 1e-9 else e - o.start
+	t := ui.theme()
+	io := im.GetIO()
+	s := &p.song
+	n_lanes := pm.song_lanes(s)
+	origin := im.GetCursorScreenPos()
+	dl := im.GetWindowDrawList()
+	body_h := f32(n_lanes) * a.song_ui.lane_h
+	lane_y :: proc(origin: im.Vec2, i: int, h: f32) -> f32 { return origin.y + f32(i) * h }
+	// The background and the grid.
+	im.DrawList_AddRectFilled(dl, {v.x0, origin.y}, {v.x1, origin.y + body_h}, ui.col(ui.PLOT_BG), t.radius)
+	im.DrawList_PushClipRect(dl, {v.x0, origin.y}, {v.x1, origin.y + body_h}, true)
+	every, beats := grid_every(p, v)
+	end_beat := x_beat(v, v.x1)
+	bars := pm.song_bars(p, end_beat + 1)
+	for b, k in bars {
+		if b > end_beat do break
+		x := beat_x(v, b)
+		if x < v.x0 - 1 do continue
+		strong := k % every == 0
+		if !strong && !beats do continue
+		im.DrawList_AddLine(dl, {x, origin.y}, {x, origin.y + body_h}, ui.col(ui.mix(ui.PLOT_BG, t.text, 0.16 if strong else 0.07)), 1)
+		if beats && k + 1 < len(bars) {
+			for bb := b + 1; bb < bars[k + 1] - 1e-9; bb += 1 {
+				bx := beat_x(v, bb)
+				im.DrawList_AddLine(dl, {bx, origin.y}, {bx, origin.y + body_h}, ui.col(ui.mix(ui.PLOT_BG, t.text, 0.04)), 1)
+			}
+		}
 	}
-	if n != p.song.steps[i] do pm.set_step(m, i, n, "Step Start" if ss.drag == .Start else "Step Length")
-	tip := fmt.ctprintf("Plays beats %g–%g of %s (%g of %g)", n.start + 1, n.start + pm.step_period(p, n) + 1, pm.sequence_name(p, int(n.slot)), pm.step_period(p, n), full)
-	im.SetTooltip("%s", tip)
+	// Past the song's end, shaded a little.
+	if total > 0 {
+		xe := beat_x(v, total)
+		if xe < v.x1 do im.DrawList_AddRectFilled(dl, {max(xe, v.x0), origin.y}, {v.x1, origin.y + body_h}, ui.col(ui.with_alpha(t.bg, 0.35)))
+	}
+	// The loop range, faintly.
+	if s.loop_on {
+		la, lb := beat_x(v, s.loop_start), beat_x(v, s.loop_end)
+		lc := t.accent if p.transport.loop else t.text_dim
+		im.DrawList_AddRectFilled(dl, {la, origin.y}, {lb, origin.y + body_h}, ui.col(ui.with_alpha(lc, 0.06)))
+	}
+	for i in 1 ..< n_lanes {
+		yy := lane_y(origin, i, a.song_ui.lane_h)
+		im.DrawList_AddLine(dl, {v.x0, yy}, {v.x1, yy}, ui.col(ui.mix(ui.PLOT_BG, t.text, 0.1)), 1)
+	}
+	im.DrawList_PopClipRect(dl)
+	// The headers.
+	for i in 0 ..< n_lanes do draw_lane_header(a, i, {origin.x, lane_y(origin, i, a.song_ui.lane_h)})
+	draw_lane_rename(a)
+	// The clips: each an item (named "clip N"), drawn and dragged.
+	mx, my := io.MousePos.x, io.MousePos.y
+	EDGE :: 7
+	clicked_clip := false
+	im.DrawList_PushClipRect(dl, {v.x0, origin.y}, {v.x1, origin.y + body_h}, true)
+	for i in 0 ..< s.count {
+		c := s.clips[i]
+		xa, xb := beat_x(v, c.at), beat_x(v, pm.clip_end(c))
+		if xb < v.x0 || xa > v.x1 do continue
+		top := lane_y(origin, int(c.lane), a.song_ui.lane_h) + 3
+		bottom := top + a.song_ui.lane_h - 6
+		ra, rb := max(xa, v.x0), min(xb, v.x1)
+		im.SetCursorScreenPos({ra, top})
+		im.PushIDInt(i32(i))
+		im.InvisibleButton("##clip", {max(rb - ra, 2), bottom - top})
+		ui.name(fmt.tprintf("clip %d", i + 1))
+		hovered, pressed, active := im.IsItemHovered(), im.IsItemActivated(), im.IsItemActive()
+		item_menu(a, {kind = .Song_Clip, index = i}, "##clipmenu")
+		im.PopID()
+		edge := Song_Drag.Move
+		if hovered && ss.drag == .None {
+			if mx < xa + EDGE && xb - xa > 3 * EDGE do edge = .Start
+			else if mx > xb - EDGE do edge = .End
+			if edge != .Move do im.SetMouseCursor(.ResizeEW)
+		}
+		if pressed {
+			clicked_clip = true
+			ss.drag_clip, ss.drag_x, ss.drag_y = i, mx, my
+			ss.drag_from = s^
+			ss.drag_beat = x_beat(v, mx)
+			ss.drag_lane = int(c.lane)
+			if edge == .Move {
+				ss.drag = .Press
+			} else {
+				ss.drag = edge
+				ss.cur = i
+				if i not_in ss.sel do ss.sel = {i}
+			}
+		}
+		if hovered && im.IsMouseDoubleClicked(.Left) {
+			pm.select_slot(m, int(c.slot))
+			ui.panel_focus(&a.ws, "sequence")
+		}
+		_ = active
+		draw_clip(a, i, c, {xa, top}, {xb, bottom}, hovered && ss.drag == .None, edge)
+	}
+	// A clip being painted, or a sequence about to be dropped: where it lands.
+	if ss.drag == .Box {
+		a0 := im.Vec2{min(ss.drag_x, mx), min(ss.drag_y, my)}
+		b0 := im.Vec2{max(ss.drag_x, mx), max(ss.drag_y, my)}
+		im.DrawList_AddRectFilled(dl, a0, b0, ui.col(ui.with_alpha(t.accent, 0.12)))
+		im.DrawList_AddRect(dl, a0, b0, ui.col(ui.with_alpha(t.accent, 0.7)), 2)
+	}
+	im.DrawList_PopClipRect(dl)
+	// The empty space: a box, a painted clip, a double-click, a drop.
+	im.SetCursorScreenPos({v.x0, origin.y})
+	im.InvisibleButton("##lanespace", {max(v.x1 - v.x0, 4), body_h})
+	ui.name("song lanes")
+	space_hot, space_down, space_active := im.IsItemHovered(), im.IsItemActivated(), im.IsItemActive()
+	lane_at := clamp(int((my - origin.y) / a.song_ui.lane_h), 0, pm.SONG_LANES - 1)
+	if space_hot && ss.drag == .None {
+		if ss.tool == .Draw do im.SetTooltip("%s", fmt.ctprintf("Drag: paint %s along this lane", pm.sequence_name(p, p.slot)))
+	}
+	if space_hot && ss.tool == .Select && im.IsMouseDoubleClicked(.Left) && ss.drag == .None {
+		b := song_snap(a, x_beat(v, mx))
+		k := pm.song_add(m, p.slot, lane = lane_at, at = max(b, 0))
+		if k >= 0 do ss.sel, ss.cur = {k}, k
+	} else if space_down && !clicked_clip {
+		ss.drag_x, ss.drag_y = mx, my
+		ss.drag_from = s^
+		ss.drag_beat = x_beat(v, mx)
+		ss.drag_lane = lane_at
+		if ss.tool == .Draw {
+			ss.drag = .Draw
+		} else {
+			ss.drag = .Box
+			ss.box_sel = ss.sel if io.KeyShift || io.KeyCtrl else {}
+		}
+	}
+	// A sequence dragged from the list onto a lane.
+	ss.drop_lane = -1
+	if im.BeginDragDropTarget() {
+		b := song_snap(a, max(x_beat(v, mx), 0))
+		ss.drop_lane, ss.drop_beat = lane_at, b
+		if pl := im.AcceptDragDropPayload("SEQUENCE"); pl != nil {
+			k := pm.song_add(m, int((^i32)(pl.Data)^), lane = lane_at, at = b)
+			if k >= 0 do ss.sel, ss.cur = {k}, k
+		}
+		im.EndDragDropTarget()
+	}
+	if ss.drop_lane >= 0 && im.GetDragDropPayload() != nil {
+		pl := im.GetDragDropPayload()
+		slot := int((^i32)(pl.Data)^) if pl.DataSize == size_of(i32) else p.slot
+		if slot >= 0 && slot < pm.SLOTS {
+			xa := beat_x(v, ss.drop_beat)
+			xb := beat_x(v, ss.drop_beat + pm.seq_beats(p, p.sequences[slot]))
+			yy := lane_y(origin, ss.drop_lane, a.song_ui.lane_h)
+			im.DrawList_AddRect(dl, {xa, yy + 3}, {xb, yy + a.song_ui.lane_h - 3}, ui.col(ui.rgb(pm.sequence_color(p, slot))), 5, 2)
+		}
+	}
+	// The lane under the last one: a new lane.
+	im.SetCursorScreenPos({origin.x, origin.y + body_h + 4})
+	if n_lanes < pm.SONG_LANES {
+		if im.Button(ui.ICON_PLUS + "  Lane##below") do pm.lane_add(m)
+		ui.name("add lane below")
+	}
+	if s.count == 0 {
+		msg: cstring = "Drag a sequence onto a lane, double-click a lane, or paint with the pencil"
+		ts := im.CalcTextSize(msg)
+		im.DrawList_AddText(dl, {v.x0 + max((v.x1 - v.x0 - ts.x) / 2, 8), origin.y + (a.song_ui.lane_h - ts.y) / 2}, ui.col(t.text_dim), msg)
+	}
+	song_drag_update(a, v, origin, space_active)
 }
 
-// Selects step `i`: alone, or with Shift the range from the last one
-// clicked, or with Cmd one more (or less). Its settings show.
+// A clip: its sequence's colour, its name (or section), its notes along it
+// (each pass, from where its part starts), a notch where its sequence goes
+// round, hatched when muted, outlined when selected, grips at its ends.
 @(private)
-select_step :: proc(ss: ^Song_State, i: int) {
+draw_clip :: proc(a: ^App, i: int, c: pm.Song_Clip, lo, hi: im.Vec2, hovered: bool, edge: Song_Drag) {
+	p := &a.m.project
+	ss := &a.song_ui
+	t := ui.theme()
+	dl := im.GetWindowDrawList()
+	col := ui.rgb(pm.sequence_color(p, int(c.slot)))
+	heard := pm.clip_heard(&p.song, i)
+	if !heard do col = ui.mix(col, ui.PLOT_BG, 0.6)
+	sel := i in ss.sel
+	fill := ui.mix(col, ui.PLOT_BG, 0.2 if sel else 0.42)
+	if hovered do fill = ui.lighten(fill, 0.05)
+	if ss.drag == .Move && i in ss.drag_sel && !im.GetIO().KeyAlt do fill = ui.with_alpha(fill, 0.85)
+	im.DrawList_AddRectFilled(dl, {lo.x + 1, lo.y}, {hi.x - 1, hi.y}, ui.col(fill), 5)
+	w := hi.x - lo.x
+	// Its notes: the sequence's, each pass.
+	period := pm.clip_period(p, c)
+	full := pm.seq_beats(p, p.sequences[c.slot])
+	if period > 0 && full > 0 && w > 6 {
+		ppb := w / f32(max(c.length, 1e-9))
+		minis := seq_minis(a, int(c.slot))
+		nc := ui.with_alpha(ui.mix(col, t.text, 0.55), 0.8)
+		top := lo.y + im.GetTextLineHeight() + 6
+		ph := math.mod(c.phase, period)
+		im.DrawList_PushClipRect(dl, {lo.x + 2, lo.y}, {hi.x - 2, hi.y}, true)
+		for off := -ph; off < c.length - 1e-9; off += period {
+			px := lo.x + f32(off) * ppb // where this pass's part starts
+			pa, pb := max(px, lo.x), min(px + f32(period) * ppb, hi.x)
+			if pb <= pa do continue
+			im.DrawList_PushClipRect(dl, {pa, lo.y}, {pb, hi.y}, true)
+			sx := px - f32(c.start) * ppb // the whole sequence's left
+			ui.mini_notes(dl, minis, {sx, top}, {sx + f32(full) * ppb, hi.y - 4}, nc)
+			im.DrawList_PopClipRect(dl)
+			if off > 0 do im.DrawList_AddLine(dl, {px, lo.y + 4}, {px, lo.y + 10}, ui.col(ui.with_alpha(t.text, 0.5)), 1)
+		}
+		im.DrawList_PopClipRect(dl)
+	}
+	if !heard do for x := lo.x + 4; x < hi.x - 4; x += 7 do im.DrawList_AddLine(dl, {x, hi.y - 2}, {min(x + 8, hi.x - 2), lo.y + 2}, ui.col(ui.with_alpha(t.text, 0.1)), 1)
+	// Its name.
+	if w > 18 {
+		label := pm.clip_label(&p.song.clips[i])
+		name := pm.sequence_name(p, int(c.slot))
+		text := fmt.ctprintf("%s · %s", label, name) if label != "" else fmt.ctprintf("%s", name)
+		if c.transpose != 0 do text = fmt.ctprintf("%s  %+d", text, c.transpose)
+		im.DrawList_PushClipRect(dl, {lo.x + 2, lo.y}, {hi.x - 4, hi.y}, true)
+		im.DrawList_AddText(dl, {max(lo.x, im.GetWindowPos().x + SONG_HEAD) + 7, lo.y + 3}, ui.col(t.text if heard else t.text_dim), text)
+		im.DrawList_PopClipRect(dl)
+	}
+	if sel do im.DrawList_AddRect(dl, {lo.x + 1, lo.y}, {hi.x - 1, hi.y}, ui.col(t.text), 5, 2 if i == ss.cur else 1.5)
+	// Its grips, while hovered or selected (the one under the mouse lit).
+	dragged := (ss.drag == .Start || ss.drag == .End) && ss.drag_clip == i
+	if (sel || hovered || dragged) && w > 16 {
+		for e in ([2]Song_Drag{.Start, .End}) {
+			hot := hovered && edge == e || dragged && ss.drag == e
+			gx := lo.x + 3 if e == .Start else hi.x - 5
+			im.DrawList_AddRectFilled(dl, {gx, lo.y + 10}, {gx + 2, hi.y - 10}, ui.col(t.warn if hot else ui.with_alpha(t.text, 0.5)), 1)
+		}
+	}
+}
+
+// What a drag in the lanes does as the mouse moves, and when it ends.
+@(private)
+song_drag_update :: proc(a: ^App, v: Song_View, origin: im.Vec2, space_active: bool) {
+	m := &a.m
+	p := &m.project
+	ss := &a.song_ui
 	io := im.GetIO()
-	if io.KeyShift && ss.anchor >= 0 {
-		ss.sel = {}
-		for k in min(ss.anchor, i) ..= max(ss.anchor, i) do ss.sel += {k}
-	} else if io.KeyCtrl { // (Cmd on macOS)
+	mx, my := io.MousePos.x, io.MousePos.y
+	if ss.drag == .None do return
+	held := im.IsMouseDown(.Left)
+	from := ss.drag_from
+	switch ss.drag {
+	case .None:
+	case .Press:
+		if !held {
+			select_clip(ss, ss.drag_clip) // a click
+			ss.drag = .None
+		} else if abs(mx - ss.drag_x) > 4 || abs(my - ss.drag_y) > 4 {
+			if ss.drag_clip not_in ss.sel do select_clip(ss, ss.drag_clip)
+			ss.drag = .Move
+			ss.drag_sel = ss.sel
+			// Alt as it begins: copies (the originals stay; one undo step).
+			if io.KeyAlt {
+				copies: pm.Clip_Set
+				for k in 0 ..< from.count do if k in ss.sel && from.count < pm.SONG_CLIPS {
+					from.clips[from.count] = from.clips[k]
+					copies += {from.count}
+					from.count += 1
+				}
+				ss.drag_from, ss.drag_sel = from, copies
+			}
+		}
+	case .Move:
+		if !held {
+			app.seal(&m.history)
+			if ss.drag_sel != ss.sel {
+				ss.sel = ss.drag_sel
+				for k in 0 ..< pm.SONG_CLIPS do if k in ss.sel {
+					ss.cur = k
+					break
+				}
+			}
+			ss.drag = .None
+			return
+		}
+		im.SetMouseCursor(.ResizeAll)
+		lead := from.clips[ss.drag_clip] if ss.drag_clip < from.count else pm.Song_Clip{}
+		dt := song_snap(a, lead.at + x_beat(v, mx) - ss.drag_beat) - lead.at
+		dl := int(math.floor((my - origin.y) / a.song_ui.lane_h)) - ss.drag_lane
+		copying := ss.drag_sel != ss.sel
+		pm.song_move_clips(m, from, ss.drag_sel, dt, dl, "Copy Clips" if copying else "Move Clips")
+		im.SetTooltip("%s", fmt.ctprintf("%s bar %d%s", "Copy to" if copying else "Move to", bar_of(p, max(lead.at + dt, 0)), fmt.tprintf(", %s", pm.lane_name(&p.song, clamp(int(lead.lane) + dl, 0, pm.SONG_LANES - 1))) if dl != 0 else ""))
+	case .Start, .End:
+		if !held {
+			app.seal(&m.history)
+			ss.drag = .None
+			return
+		}
+		im.SetMouseCursor(.ResizeEW)
+		i := ss.drag_clip
+		if i >= from.count do return
+		o := from.clips[i]
+		c := o
+		period := pm.clip_period(p, o)
+		snap_min := 1.0 / 16
+		if ss.drag == .End {
+			e := song_snap(a, pm.clip_end(o) + x_beat(v, mx) - ss.drag_beat)
+			c.length = max(e - o.at, snap_min)
+		} else {
+			b := clamp(song_snap(a, o.at + x_beat(v, mx) - ss.drag_beat), 0, pm.clip_end(o) - snap_min)
+			d := b - o.at
+			c.at, c.length = b, o.length - d
+			if period > 0 do c.phase = math.mod(math.mod(o.phase + d, period) + period, period)
+		}
+		pm.set_song_clip_drag(m, i, c, "Clip Start" if ss.drag == .Start else "Clip Length")
+		passes := c.length / max(period, 1e-9)
+		im.SetTooltip("%s", fmt.ctprintf("%s: bar %d, %g beats (%s × its sequence)", pm.sequence_name(p, int(c.slot)), bar_of(p, c.at), c.length, fmt.tprintf("%.2g", passes)))
+	case .Draw:
+		slot := p.slot
+		b0 := song_snap(a, max(ss.drag_beat, 0))
+		cur := x_beat(v, mx)
+		length := song_snap(a, cur) - b0
+		if abs(mx - ss.drag_x) < 4 do length = pm.seq_beats(p, p.sequences[slot]) // a click: its own length
+		length = max(length, 1.0 / 16)
+		if from.count >= pm.SONG_CLIPS {
+			ss.drag = .None
+			return
+		}
+		s := from
+		s.clips[s.count] = {lane = u8(ss.drag_lane), slot = u8(slot), at = b0, length = length}
+		s.count += 1
+		s.lane_count = max(s.lane_count, ss.drag_lane + 1)
+		pm.set_song_drag(m, "Draw Clip", s)
+		if !held {
+			app.seal(&m.history)
+			ss.sel, ss.cur = {s.count - 1}, s.count - 1
+			ss.drag = .None
+			return
+		}
+		im.SetTooltip("%s", fmt.ctprintf("%s: %g beats", pm.sequence_name(p, slot), length))
+	case .Box:
+		if !held {
+			if abs(mx - ss.drag_x) < 3 && abs(my - ss.drag_y) < 3 && ss.box_sel == {} {
+				ss.sel, ss.cur = {}, -1 // a click on nothing
+			}
+			ss.drag = .None
+			return
+		}
+		lo_b, hi_b := x_beat(v, min(ss.drag_x, mx)), x_beat(v, max(ss.drag_x, mx))
+		l0 := int(math.floor((min(ss.drag_y, my) - origin.y) / a.song_ui.lane_h))
+		l1 := int(math.floor((max(ss.drag_y, my) - origin.y) / a.song_ui.lane_h))
+		sel := ss.box_sel
+		for c, k in p.song.clips[:p.song.count] {
+			if int(c.lane) >= l0 && int(c.lane) <= l1 && c.at < hi_b && pm.clip_end(c) > lo_b do sel += {k}
+		}
+		ss.sel = sel
+		ss.cur = -1
+		for k in 0 ..< p.song.count do if k in sel {
+			ss.cur = k
+			break
+		}
+	}
+	_ = space_active
+}
+
+// The bar song beat `b` is in (1-based).
+@(private)
+bar_of :: proc(p: ^pm.Project, b: f64) -> int {
+	n, _ := pm.song_bar_at(p, b)
+	return n + 1
+}
+
+// A lane's header: its name (double-click to rename) and Mute and Solo.
+@(private)
+draw_lane_header :: proc(a: ^App, i: int, pos: im.Vec2) {
+	m := &a.m
+	s := &m.project.song
+	ss := &a.song_ui
+	t := ui.theme()
+	dl := im.GetWindowDrawList()
+	l := s.lanes[i]
+	h: f32 = a.song_ui.lane_h
+	im.DrawList_AddRectFilled(dl, {pos.x, pos.y + 1}, {pos.x + SONG_HEAD - 6, pos.y + h - 1}, ui.col(t.raised), t.radius)
+	im.PushIDInt(i32(i))
+	defer im.PopID()
+	name := pm.lane_name(s, i)
+	im.SetCursorScreenPos({pos.x, pos.y + 2})
+	im.InvisibleButton("##lanename", {SONG_HEAD - 6, h / 2 - 2})
+	ui.name(fmt.tprintf("lane %d", i + 1))
+	if im.IsItemHovered() {
+		im.SetTooltip("Double-click: rename")
+		if im.IsMouseDoubleClicked(.Left) {
+			ss.lane_rename, ss.lane_open = i, true
+		}
+	}
+	im.DrawList_PushClipRect(dl, pos, {pos.x + SONG_HEAD - 8, pos.y + h}, true)
+	im.DrawList_AddText(dl, {pos.x + 8, pos.y + 5}, ui.col(t.text if !pm.lane_silent(s, i) else t.text_dim), fmt.ctprintf("%s", name))
+	im.DrawList_PopClipRect(dl)
+	bs := im.GetFrameHeight() * 0.8
+	im.SetCursorScreenPos({pos.x + 4, pos.y + h - bs - 4})
+	if ui.icon_button("M", fmt.ctprintf("Mute %s", name), on = l.mute, size = bs, color = t.warn) {
+		l.mute = !l.mute
+		pm.lane_set(m, i, l, "Mute Lane")
+	}
+	im.SetCursorScreenPos({pos.x + 6 + bs, pos.y + h - bs - 4})
+	if ui.icon_button("S", fmt.ctprintf("Solo %s", name), on = l.solo, size = bs) {
+		l.solo = !l.solo
+		pm.lane_set(m, i, l, "Solo Lane")
+	}
+}
+
+// The lane rename box.
+@(private)
+draw_lane_rename :: proc(a: ^App) {
+	m := &a.m
+	ss := &a.song_ui
+	if ss.lane_open {
+		ss.lane_open = false
+		if ss.lane_rename >= 0 && ss.lane_rename < pm.SONG_LANES {
+			ss.lane_buf = {}
+			copy(ss.lane_buf[:len(ss.lane_buf) - 1], pm.lane_name(&m.project.song, ss.lane_rename))
+			im.OpenPopup("Rename lane")
+		}
+	}
+	if im.BeginPopupModal("Rename lane", nil, {.AlwaysAutoResize}) {
+		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
+		im.SetNextItemWidth(200)
+		done := im.InputText("##lanerename", cstring(&ss.lane_buf[0]), len(ss.lane_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		ui.name("lane name")
+		if done || im.Button("Rename") {
+			pm.lane_rename(m, ss.lane_rename, strings.trim_space(strings.truncate_to_byte(string(ss.lane_buf[:]), 0)))
+			im.CloseCurrentPopup()
+		}
+		im.SameLine()
+		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		im.EndPopup()
+	}
+}
+
+// Selects clip `i`: alone, or with Shift or Cmd one more (or less). Its
+// settings show.
+@(private)
+select_clip :: proc(ss: ^Song_State, i: int) {
+	io := im.GetIO()
+	if io.KeyShift || io.KeyCtrl { // (Cmd on macOS)
 		ss.sel ~= {i}
-		ss.anchor = i
 	} else {
 		ss.sel = {i}
-		ss.anchor = i
 	}
-	ss.step = i
+	ss.cur = i if i in ss.sel else -1
 }
 
-// The steps the keys act on: the selection, else the step showing.
+// The clips the keys act on: the selection, else the clip showing.
 @(private)
-song_targets :: proc(a: ^App) -> pm.Step_Set {
+song_targets :: proc(a: ^App) -> pm.Clip_Set {
 	ss := &a.song_ui
 	if ss.sel != {} do return ss.sel
-	if ss.step >= 0 && ss.step < a.m.project.song.count do return {ss.step}
+	if ss.cur >= 0 && ss.cur < a.m.project.song.count do return {ss.cur}
 	return {}
 }
 
-// Whether the Song tab's keys act on steps: it has the keyboard, with steps selected.
+// Whether the Song tab's keys act on clips: it has the keyboard, with clips selected.
 song_editing :: proc(a: ^App) -> bool {
 	return a.song_ui.focused && song_targets(a) != {}
 }
 
-// Moves the selection (or step `from` alone, when it is not selected) to
-// before step `to`.
-@(private)
-move_selection :: proc(a: ^App, from, to: int) {
-	ss := &a.song_ui
-	sel := ss.sel if from in ss.sel else pm.Step_Set{from}
-	moved := pm.song_move_steps(&a.m, sel, to)
-	if moved == {} do return
-	ss.sel = moved
-	for k in 0 ..< pm.SONG_STEPS do if k in moved {
-		ss.step, ss.anchor = k, k
-		break
-	}
-}
-
-// Copies the selected steps (Cmd+C). False when none are.
+// Copies the selected clips (Cmd+C). False when none are.
 song_copy :: proc(a: ^App) -> bool {
 	ss := &a.song_ui
 	sel := song_targets(a)
 	if sel == {} do return false
-	ss.clip_n = 0
-	for st, i in a.m.project.song.steps[:a.m.project.song.count] do if i in sel {
-		ss.clip[ss.clip_n] = st
-		ss.clip_n += 1
+	ss.copied_n = 0
+	for c, i in a.m.project.song.clips[:a.m.project.song.count] do if i in sel {
+		ss.copied[ss.copied_n] = c
+		ss.copied_n += 1
 	}
-	ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Copied %d step%s", ss.clip_n, "" if ss.clip_n == 1 else "s"))
+	ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Copied %d clip%s", ss.copied_n, "" if ss.copied_n == 1 else "s"))
 	return true
 }
 
-// Pastes the copied steps after the last selected one (or at the song's
-// end); they become the selection.
-song_paste :: proc(a: ^App, name := "Paste Steps") {
+// Pastes the copied clips on their lanes: right after the selection (or,
+// with none, where the song plays or starts, to the bar); they become the
+// selection.
+song_paste :: proc(a: ^App) {
 	ss := &a.song_ui
-	if ss.clip_n == 0 do return
+	m := &a.m
+	p := &m.project
+	if ss.copied_n == 0 do return
+	lo := math.F64_MAX
+	for c in ss.copied[:ss.copied_n] do lo = min(lo, c.at)
+	to := 0.0
 	sel := song_targets(a)
-	at := a.m.project.song.count
-	if sel != {} do for k := pm.SONG_STEPS - 1; k >= 0; k -= 1 do if k in sel {
-		at = k + 1
+	if sel != {} {
+		for c, i in p.song.clips[:p.song.count] do if i in sel do to = max(to, pm.clip_end(c))
+	} else {
+		_, _, beat := pm.song_progress(&m.engine)
+		b := beat if beat >= 0 else m.engine.cue
+		_, to = pm.song_bar_at(p, max(b, 0))
+	}
+	added := pm.song_insert_clips(m, ss.copied[:ss.copied_n], to - lo)
+	if added == {} do return
+	ss.sel = added
+	for k in 0 ..< pm.SONG_CLIPS do if k in added {
+		ss.cur = k
 		break
 	}
-	added := pm.song_insert_steps(&a.m, ss.clip[:ss.clip_n], at, name)
-	if added == {} do return
-	ss.sel, ss.step, ss.anchor = added, at, at
 }
 
-// Duplicates the selected steps after the last of them (Cmd+D).
+// Duplicates the selected clips right after themselves (Cmd+D).
 song_duplicate :: proc(a: ^App) {
-	if song_copy(a) do song_paste(a, "Duplicate Steps")
+	ss := &a.song_ui
+	sel := song_targets(a)
+	if sel == {} do return
+	added := pm.song_duplicate_clips(&a.m, sel)
+	if added == {} do return
+	ss.sel = added
+	for k in 0 ..< pm.SONG_CLIPS do if k in added {
+		ss.cur = k
+		break
+	}
 }
 
-// Removes the selected steps (Delete, Backspace).
+// Removes the selected clips (Delete, Backspace).
 song_delete :: proc(a: ^App) {
 	ss := &a.song_ui
 	sel := song_targets(a)
 	if sel == {} do return
-	pm.song_remove_steps(&a.m, sel)
-	first := 0
-	for k in 0 ..< pm.SONG_STEPS do if k in sel {
-		first = k
-		break
-	}
-	ss.sel = {}
-	ss.step = min(first, a.m.project.song.count - 1)
+	pm.song_remove_clips(&a.m, sel)
+	ss.sel, ss.cur = {}, -1
 }
 
 // The Song tab's keys, while it has the keyboard: Backspace removes the
-// selected steps, Cmd+X cuts them, Cmd+A selects them all. (Delete,
-// Cmd+C, Cmd+V and Cmd+D are the app's shortcuts, which come here while
-// the tab has the keyboard.)
+// selected clips, Cmd+X cuts them, Cmd+A selects them all, V and B pick the
+// tools. (Delete, Cmd+C, Cmd+V and Cmd+D are the app's shortcuts, which
+// come here while the tab has the keyboard.)
 @(private)
 song_keys :: proc(a: ^App) {
 	ss := &a.song_ui
@@ -542,91 +917,21 @@ song_keys :: proc(a: ^App) {
 		if song_copy(a) do song_delete(a)
 		return
 	}
-	if !io.KeyCtrl && !io.KeyAlt && im.IsKeyPressed(.Backspace, false) do song_delete(a)
-}
-
-// The song's steps in order: drag one to move it, a sequence from the
-// left onto one to put it before, or onto the end to add it. The playing
-// one runs a bar across; click one for its settings.
-@(private)
-draw_song_steps :: proc(a: ^App) {
-	m := &a.m
-	p := &m.project
-	ss := &a.song_ui
-	t := ui.theme()
-	playing, frac, _ := pm.song_progress(&m.engine)
-	if p.song.count == 0 do im.TextDisabled("The song is empty: double-click or drag sequences from the left.")
-	w: f32 = 120
-	h: f32 = 76
-	for i in 0 ..< p.song.count {
-		st := p.song.steps[i]
-		if i > 0 do ui.flow(w, 8)
-		im.PushIDInt(i32(i))
-		pos := im.GetCursorScreenPos()
-		dl := im.GetWindowDrawList()
-		clicked := im.InvisibleButton("##step", {w, h})
-		ui.name(fmt.tprintf("song step %d", i + 1))
-		item_menu(a, {kind = .Song_Step, index = i}, "##stepmenu")
-		c := ui.rgb(pm.sequence_color(p, int(st.slot)))
-		if st.mute do c = ui.mix(c, t.raised, 0.6)
-		on := i == playing
-		bg := ui.mix(t.raised, c, 0.55 if on else 0.22)
-		if im.IsItemHovered() do bg = ui.lighten(bg, 0.06)
-		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
-		im.DrawList_AddRectFilled(dl, {pos.x, pos.y}, {pos.x + 4, pos.y + h}, ui.col(c), 2)
-		if i in ss.sel || i == ss.step do im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(t.text), t.radius, 2 if i == ss.step else 1.5)
-		label := pm.step_label(&st)
-		name := pm.sequence_name(p, int(st.slot))
-		im.DrawList_PushClipRect(dl, pos, {pos.x + w - 4, pos.y + h}, true)
-		// Its sequence's notes, small, along the bottom half.
-		lh := im.GetTextLineHeightWithSpacing()
-		ui.mini_notes(dl, seq_minis(a, int(st.slot)), {pos.x + 10, pos.y + 8 + 2 * lh}, {pos.x + w - 8, pos.y + h - 8}, ui.with_alpha(ui.mix(c, t.text, 0.5), 0.7))
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6}, ui.col(t.text), fmt.ctprintf("%s", label if label != "" else name))
-		part := "" if st.start == 0 && st.length == 0 else fmt.tprintf(" · part")
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6 + im.GetTextLineHeightWithSpacing()}, ui.col(t.text_dim), fmt.ctprintf("×%d · %g beats%s", st.repeats, pm.step_period(p, st), part))
-		extra := make([dynamic]string, context.temp_allocator)
-		if st.mute do append(&extra, "muted")
-		if st.transpose != 0 do append(&extra, fmt.tprintf("%+d st", st.transpose))
-		if st.bpm > 0 do append(&extra, fmt.tprintf("%.0f BPM", st.bpm))
-		if len(extra) > 0 do im.DrawList_AddText(dl, {pos.x + 10, pos.y + 6 + 2 * im.GetTextLineHeightWithSpacing()}, ui.col(t.warn), fmt.ctprintf("%s", strings.join(extra[:], " · ", context.temp_allocator)))
-		im.DrawList_PopClipRect(dl)
-		// Playing: how far through it.
-		if on do im.DrawList_AddRectFilled(dl, {pos.x + 6, pos.y + h - 5}, {pos.x + 6 + (w - 12) * f32(frac), pos.y + h - 2}, ui.col(t.accent_text), 2)
-		if clicked do select_step(ss, i)
-		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) do pm.select_slot(m, int(st.slot))
-		if im.BeginDragDropSource() {
-			k := i32(i)
-			im.SetDragDropPayload("SONG_STEP", &k, size_of(k))
-			im.Text("%s", fmt.ctprintf("%s", name))
-			im.EndDragDropSource()
-		}
-		if im.BeginDragDropTarget() {
-			if pl := im.AcceptDragDropPayload("SONG_STEP"); pl != nil do move_selection(a, int((^i32)(pl.Data)^), i)
-			if pl := im.AcceptDragDropPayload("SEQUENCE"); pl != nil do pm.song_insert(m, int((^i32)(pl.Data)^), i)
-			im.EndDragDropTarget()
-		}
-		im.PopID()
-	}
-	// The end: drop a sequence here to add it.
-	if p.song.count > 0 do ui.flow(w, 8)
-	pos := im.GetCursorScreenPos()
-	im.InvisibleButton("##songend", {w, h})
-	ui.name("song end")
-	dropping := im.GetDragDropPayload() != nil && im.IsItemHovered({.AllowWhenBlockedByActiveItem})
-	im.DrawList_AddRect(im.GetWindowDrawList(), pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.accent if dropping else t.text, 0.7 if dropping else 0.2)), t.radius, 1.5)
-	ts := im.CalcTextSize("+")
-	im.DrawList_AddText(im.GetWindowDrawList(), {pos.x + (w - ts.x) / 2, pos.y + (h - ts.y) / 2}, ui.col(t.text_dim), "+")
-	if im.BeginDragDropTarget() {
-		if pl := im.AcceptDragDropPayload("SEQUENCE"); pl != nil do pm.song_add(m, int((^i32)(pl.Data)^))
-		if pl := im.AcceptDragDropPayload("SONG_STEP"); pl != nil do move_selection(a, int((^i32)(pl.Data)^), p.song.count)
-		im.EndDragDropTarget()
+	if io.KeyCtrl || io.KeyAlt do return
+	if im.IsKeyPressed(.Backspace, false) do song_delete(a)
+	if im.IsKeyPressed(.V, false) do ss.tool = .Select
+	if im.IsKeyPressed(.B, false) do ss.tool = .Draw
+	if im.IsKeyPressed(.Escape, false) {
+		ss.tool = .Select
+		ss.sel, ss.cur = {}, -1
 	}
 }
 
 // Every sequence slot, to build the song from: its colour, name, length,
-// own tempo and how many times the song plays it (the playing one lit).
-// Click to edit it, double-click or + to add it at the song's end, drag it
-// onto a step; right-click for its commands (its colour among them).
+// own tempo and how many clips of it the song has (the playing one lit).
+// Click to edit it, drag it onto a lane (or double-click it, or its +, for
+// the end of the first lane); right-click for its commands (its colour
+// among them).
 @(private)
 draw_song_side :: proc(a: ^App) {
 	m := &a.m
@@ -635,16 +940,22 @@ draw_song_side :: proc(a: ^App) {
 	im.TextDisabled("Sequences")
 	im.Separator()
 	playing := -1
-	if st, _, _ := pm.song_progress(&m.engine); st >= 0 do playing = int(p.song.steps[st].slot)
+	if c, _, _ := pm.song_progress(&m.engine); c >= 0 && c < p.song.count do playing = int(p.song.clips[c].slot)
 	dl := im.GetWindowDrawList()
+	first_empty := -1
+	for k in 0 ..< pm.SLOTS do if !pm.slot_used(m, k) && k != p.slot {
+		first_empty = k
+		break
+	}
 	for k in 0 ..< pm.SLOTS {
-		im.PushIDInt(i32(k))
 		used := pm.slot_used(m, k)
+		if !used && k != p.slot && k != first_empty do continue // (the sequences in use, the current one, and one empty: a new one)
+		im.PushIDInt(i32(k))
 		s := p.sequences[k]
 		uses := 0
-		for st in p.song.steps[:p.song.count] do if int(st.slot) == k do uses += int(st.repeats)
+		for c in p.song.clips[:p.song.count] do if int(c.slot) == k do uses += 1
 		w := im.GetContentRegionAvail().x
-		h: f32 = 40 if used else 24
+		h: f32 = 38 if used else 22
 		pos := im.GetCursorScreenPos()
 		btn := im.GetFrameHeight()
 		clicked := im.InvisibleButton("##seq", {w - (btn + 4 if used else 0), h})
@@ -666,14 +977,14 @@ draw_song_side :: proc(a: ^App) {
 		if hovered do bg = ui.lighten(bg, 0.06)
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(bg), t.radius)
 		im.DrawList_AddRectFilled(dl, {pos.x, pos.y}, {pos.x + 4, pos.y + h}, ui.col(c if used else ui.with_alpha(c, 0.3)), 2)
-		im.DrawList_AddText(dl, {pos.x + 10, pos.y + (5 if used else (h - im.GetTextLineHeight()) / 2)}, ui.col(t.text if used else t.text_dim), fmt.ctprintf("%s", pm.sequence_name(p, k)))
+		im.DrawList_AddText(dl, {pos.x + 10, pos.y + (4 if used else (h - im.GetTextLineHeight()) / 2)}, ui.col(t.text if used else t.text_dim), fmt.ctprintf("%s", pm.sequence_name(p, k)))
 		if used {
 			info := fmt.tprintf("%d bar%s%s", s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "")
-			if uses > 0 do info = fmt.tprintf("%s · ×%d", info, uses)
-			im.DrawList_AddText(dl, {pos.x + 10, pos.y + 5 + im.GetTextLineHeightWithSpacing() - 2}, ui.col(t.text_dim), fmt.ctprintf("%s", info))
+			if uses > 0 do info = fmt.tprintf("%s · %d in song", info, uses)
+			im.DrawList_AddText(dl, {pos.x + 10, pos.y + 4 + im.GetTextLineHeightWithSpacing() - 2}, ui.col(t.text_dim), fmt.ctprintf("%s", info))
 			im.SameLine(0, 4)
 			im.SetCursorScreenPos({pos.x + w - btn, pos.y + (h - btn) / 2})
-			if ui.icon_button(ui.ICON_PLUS, fmt.ctprintf("Add %s to the song's end", pm.sequence_name(p, k))) do pm.song_add(m, k)
+			if ui.icon_button(ui.ICON_PLUS, fmt.ctprintf("Add %s at the end of the first lane", pm.sequence_name(p, k))) do pm.song_add(m, k)
 		}
 		im.SetCursorScreenPos({pos.x, pos.y + h + 3})
 		im.Dummy({1, 0})
@@ -681,151 +992,116 @@ draw_song_side :: proc(a: ^App) {
 	}
 }
 
-// The time signatures a step can have.
-STEP_METERS := [?]pm.Time_Sig{{2, 4}, {3, 4}, {4, 4}, {5, 4}, {6, 4}, {7, 4}, {3, 8}, {5, 8}, {6, 8}, {7, 8}, {9, 8}, {12, 8}}
+// The time signatures the song's lane offers.
+SONG_METERS := [?]pm.Time_Sig{{2, 4}, {3, 4}, {4, 4}, {5, 4}, {6, 4}, {7, 4}, {3, 8}, {5, 8}, {6, 8}, {7, 8}, {9, 8}, {12, 8}}
 
-// The selected step's settings: its sequence, how many times, which part
-// of it (start and length, drawn over the sequence's length), muted,
-// transposed, its own tempo, its name; duplicate and remove.
+// The selected clip's settings, one line: its sequence, its section name,
+// where it starts (bar), how long, transposed, muted; its part (which
+// beats of its sequence go round) in "…"; duplicate and remove.
 @(private)
-draw_step_settings :: proc(a: ^App) {
+draw_clip_strip :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
 	ss := &a.song_ui
-	t := ui.theme()
-	im.TextDisabled("Step")
-	im.Separator()
-	i := ss.step
+	i := ss.cur
+	n_sel := card(ss.sel)
 	if i < 0 || i >= p.song.count {
-		im.TextDisabled("Click a step (or the timeline) for its settings.")
+		im.AlignTextToFramePadding()
+		im.TextDisabled("%s", fmt.ctprintf("%s", fmt.tprintf("%d clips selected", n_sel) if n_sel > 1 else "Select a clip for its settings · drag a sequence onto a lane to add one"))
 		return
 	}
-	st := p.song.steps[i]
-	edit :: proc(m: ^pm.Model, i: int, st: pm.Song_Step, name: string, e: ui.Edit) {
-		if e.changed do pm.set_step(m, i, st, name)
+	c := p.song.clips[i]
+	edit :: proc(m: ^pm.Model, i: int, c: pm.Song_Clip, name: string, e: ui.Edit) {
+		if e.changed do pm.set_song_clip_drag(m, i, c, name)
 		if e.ended do app.seal(&m.history)
 	}
-	// Its sequence, its name (shown on the timeline).
 	im.AlignTextToFramePadding()
-	im.Text("%s", fmt.ctprintf("Step %d", i + 1))
-	im.SameLine()
-	im.SetNextItemWidth(-1)
-	if ui.combo("##stepseq", fmt.ctprintf("%s", pm.sequence_name(p, int(st.slot)))) {
-		for k in 0 ..< pm.SLOTS do if pm.slot_used(m, k) || k == int(st.slot) {
-			if im.Selectable(fmt.ctprintf("%s###ss%d", pm.sequence_name(p, k), k), k == int(st.slot)) {
-				n := st
-				n.slot, n.start, n.length = u8(k), 0, 0
-				pm.set_step(m, i, n, "Step Sequence")
-				app.seal(&m.history)
+	col := ui.rgb(pm.sequence_color(p, int(c.slot)))
+	im.TextColored(transmute(im.Vec4)col, "%s", fmt.ctprintf("%s", ui.ICON_SQUARE))
+	im.SameLine(0, 6)
+	im.SetNextItemWidth(140)
+	if ui.combo("##clipseq", fmt.ctprintf("%s", pm.sequence_name(p, int(c.slot)))) {
+		for k in 0 ..< pm.SLOTS do if pm.slot_used(m, k) || k == int(c.slot) {
+			if im.Selectable(fmt.ctprintf("%s###cs%d", pm.sequence_name(p, k), k), k == int(c.slot)) {
+				x := c
+				x.slot, x.start, x.part, x.phase = u8(k), 0, 0, 0
+				pm.set_song_clip(m, i, x, "Clip Sequence")
 			}
 		}
 		im.EndCombo()
 	}
+	ui.name("clip sequence")
+	im.SameLine(0, 6)
 	if ss.label_for != i {
-		ss.label_buf = st.label
+		ss.label_buf = c.label
 		ss.label_for = i
 	}
-	im.SetNextItemWidth(-1)
-	if im.InputTextWithHint("##steplabel", "Section name (Verse, Drop…)", cstring(&ss.label_buf[0]), len(ss.label_buf)) {
-		n := st
-		n.label = ss.label_buf
-		pm.set_step(m, i, n, "Name Step")
-	}
-	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
-	// How many times, which part, transposed: numbers to drag (a step each
-	// four points; Shift: finer), scroll, or double-click and type.
-	full := pm.seq_beats(p, p.sequences[st.slot])
-	fw := (im.GetContentRegionAvail().x - 6) / 2
-	n := st
-	reps := f64(st.repeats)
-	e := ui.number_drag("Repeats", &reps, 1, 16, 1, 1, "Repeats  ×%.0f", fw)
-	n.repeats = u8(clamp(int(reps + 0.5), 1, 16))
-	edit(m, i, n, "Step Repeats", e)
-	im.SameLine(0, 6)
-	start := st.start
-	e = ui.number_drag("Start", &start, 0, full - 0.25, 1, 0.25, "Start  %.2f b", fw)
-	n = st
-	n.start = start
-	if n.length > 0 do n.length = min(n.length, full - start) // its end stays inside
-	edit(m, i, n, "Step Start", e)
-	length := pm.step_period(p, st)
-	e = ui.number_drag("Length", &length, 0.25, full - st.start, 1, 0.25, "Length  %.2f b", fw)
-	n = st
-	n.length = length
-	if n.length >= full - st.start - 1e-9 do n.length = 0 // to the end
-	edit(m, i, n, "Step Length", e)
-	im.SameLine(0, 6)
-	tr := f64(st.transpose)
-	e = ui.number_drag("Transpose", &tr, -24, 24, 1, 1, "Transpose  %+.0f st", fw)
-	n = st
-	n.transpose = i8(clamp(int(math.round(tr)), -24, 24))
-	edit(m, i, n, "Step Transpose", e)
-	// The part over the whole sequence.
-	pos := im.GetCursorScreenPos()
-	bw := im.GetContentRegionAvail().x
-	im.Dummy({bw, 10})
-	ui.name("step part")
-	dl := im.GetWindowDrawList()
-	c := ui.rgb(pm.sequence_color(p, int(st.slot)))
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + bw, pos.y + 8}, ui.col(ui.PLOT_BG), 3)
-	xa := pos.x + bw * f32(st.start / full)
-	xb := pos.x + bw * f32((st.start + pm.step_period(p, st)) / full)
-	im.DrawList_AddRectFilled(dl, {xa, pos.y + 1}, {xb, pos.y + 7}, ui.col(c), 3)
-	// Muted; its own tempo.
-	mute := st.mute
-	if ui.toggle("Mute", &mute) {
-		n = st
-		n.mute = mute
-		pm.set_step(m, i, n, "Mute Step")
-		app.seal(&m.history)
-	}
-	im.SameLine(0, 12)
-	own := st.bpm > 0
-	if p.song.tempo_count == 0 && ui.toggle("Own tempo", &own) {
-		n = st
-		n.bpm = pm.step_tempo(p, i) if own else 0
-		pm.set_step(m, i, n, "Step Tempo")
-		app.seal(&m.history)
-	}
-	im.SameLine(0, 6)
-	if p.song.tempo_count > 0 {
-		own = false
-		im.AlignTextToFramePadding()
-		im.TextDisabled("%s", fmt.ctprintf("%.0f BPM (the tempo lane)", pm.song_tempo_at(p, pm.step_start(p, i))))
-	} else if own {
-		bpm := st.bpm
-		te := ui.number_drag("step tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", max(im.GetContentRegionAvail().x, 60))
-		n = st
-		n.bpm = bpm
-		edit(m, i, n, "Step Tempo", {changed = te.changed, ended = te.ended})
-	} else {
-		im.AlignTextToFramePadding()
-		im.TextDisabled("%s", fmt.ctprintf("%.0f BPM", pm.step_tempo(p, i)))
-	}
-	// Its time signature (the project's, or its own).
-	im.AlignTextToFramePadding()
-	im.TextDisabled("Time")
-	im.SameLine()
 	im.SetNextItemWidth(130)
-	cur := st.meter
-	label := fmt.ctprintf("%d/%d", cur.num, cur.den) if cur.num > 0 else fmt.ctprintf("Project's (%d/%d)", p.transport.time_sig.num, p.transport.time_sig.den)
-	if ui.combo("##stepmeter", label) {
-		if im.Selectable("The project's", cur.num == 0) do pm.set_step_meter(m, i, {})
-		for ts in STEP_METERS do if im.Selectable(fmt.ctprintf("%d/%d", ts.num, ts.den), ts == cur) do pm.set_step_meter(m, i, ts)
-		im.EndCombo()
+	if im.InputTextWithHint("##cliplabel", "Section (Verse…)", cstring(&ss.label_buf[0]), len(ss.label_buf)) {
+		x := c
+		x.label = ss.label_buf
+		pm.set_song_clip_drag(m, i, x, "Name Clip")
 	}
-	ui.name("step meter")
-	beats := pm.step_period(p, st) * f64(max(st.repeats, 1))
-	from := pm.step_start(p, i)
-	secs := pm.song_seconds_between(p, from, from + beats)
-	if ui.icon_button(ui.ICON_COPY_PLUS, "Duplicate the step") do pm.song_add(m, int(st.slot), i, int(st.repeats))
-	im.SameLine(0, 4)
-	if ui.icon_button(ui.ICON_X, "Remove the step") {
-		pm.song_remove(m, i)
-		ss.step = min(i, p.song.count - 1)
+	ui.name("clip section")
+	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+	// Where and how long (in bars, as numbers to drag or type).
+	bar := pm.bar_beats(p)
+	im.SameLine(0, 10)
+	at := c.at / bar + 1
+	e := ui.number_drag("clip start", &at, 1, 9999, 1, 0.25, "Bar  %.4g", 110)
+	x := c
+	x.at = max((at - 1) * bar, 0)
+	edit(m, i, x, "Clip Start", e)
+	im.SameLine(0, 6)
+	length := c.length / bar
+	e = ui.number_drag("clip length", &length, 1.0 / 16, 9999, 1, 0.25, "Length  %.4g bars", 140)
+	x = c
+	x.length = max(length * bar, 1.0 / 16)
+	edit(m, i, x, "Clip Length", e)
+	im.SameLine(0, 6)
+	tr := f64(c.transpose)
+	e = ui.number_drag("clip transpose", &tr, -24, 24, 1, 1, "Transpose  %+.0f", 120)
+	x = c
+	x.transpose = i8(clamp(int(math.round(tr)), -24, 24))
+	edit(m, i, x, "Clip Transpose", e)
+	im.SameLine(0, 6)
+	mute := c.mute
+	if ui.toggle("Mute", &mute) {
+		x = c
+		x.mute = mute
+		pm.set_song_clip(m, i, x, "Mute Clip")
+	}
+	ui.name("clip mute")
+	im.SameLine(0, 6)
+	if ui.icon_button(ui.ICON_ELLIPSIS, "More: the part of its sequence it goes round") do im.OpenPopup("##clipmore")
+	if im.BeginPopup("##clipmore") {
+		full := pm.seq_beats(p, p.sequences[c.slot])
+		im.TextDisabled("%s", fmt.ctprintf("The part of %s it goes round (beats)", pm.sequence_name(p, int(c.slot))))
+		start := c.start
+		e = ui.number_drag("part start", &start, 0, max(full - 0.25, 0), 1, 0.25, "From  %.2f", 140)
+		x = c
+		x.start = start
+		if x.part > 0 do x.part = min(x.part, full - start)
+		edit(m, i, x, "Clip Part", e)
+		im.SameLine(0, 6)
+		part := pm.clip_period(p, c)
+		e = ui.number_drag("part length", &part, 0.25, max(full - c.start, 0.25), 1, 0.25, "Length  %.2f", 140)
+		x = c
+		x.part = 0 if part >= full - c.start - 1e-9 else part
+		edit(m, i, x, "Clip Part", e)
+		if im.Button("Whole sequence") {
+			x = c
+			x.start, x.part, x.phase = 0, 0, 0
+			pm.set_song_clip(m, i, x, "Clip Part")
+		}
+		im.EndPopup()
 	}
 	im.SameLine(0, 10)
+	if ui.icon_button(ui.ICON_COPY_PLUS, "Duplicate after itself (Cmd+D)") do song_duplicate(a)
+	im.SameLine(0, 2)
+	if ui.icon_button(ui.ICON_X, "Remove (Delete)") do song_delete(a)
+	im.SameLine(0, 10)
 	im.AlignTextToFramePadding()
-	im.TextDisabled("%s", fmt.ctprintf("Plays %g beats, %s", beats, clock_text(secs)))
-	_ = t
+	secs := pm.song_seconds_between(p, c.at, pm.clip_end(c))
+	im.TextDisabled("%s", fmt.ctprintf("%s%s", clock_text(secs), fmt.tprintf(" · %d selected", n_sel) if n_sel > 1 else ""))
 }

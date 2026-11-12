@@ -27,7 +27,7 @@ def test_the_command_palette_switches_the_theme(app):
 
 def test_panels_close_and_reset(app):
     app.panel("Song")
-    app.expect_item("Add the current sequence", window="song")
+    app.expect_item("add lane", window="song")
     app.panel("Sequence")
     app.expect_item("Quantize", window="sequence")
     app.click("View")

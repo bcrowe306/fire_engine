@@ -96,6 +96,7 @@ sync_targets :: proc(e: ^Engine) {
 		return x
 	}
 	if length > 0 do for sg in pl.segs[:pl.count] {
+		if sg.silent do continue
 		s := p.sequences[sg.slot]
 		l := seq_beats(p, s)
 		lo, hi := sg.offset, min(sg.offset + sg.period, l)
@@ -155,6 +156,7 @@ sync_targets :: proc(e: ^Engine) {
 	defer clip.automation_builder_destroy(&ccs)
 	any_cc := false
 	if length > 0 do for sg in pl.segs[:pl.count] {
+		if sg.silent do continue
 		s := p.sequences[sg.slot]
 		l := seq_beats(p, s)
 		lo, hi := sg.offset, min(sg.offset + sg.period, l)

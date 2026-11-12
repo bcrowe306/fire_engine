@@ -1,5 +1,5 @@
-# The song's time: a tempo lane (a step and a ramp), a step in 3/4,
-# markers, a loop range; the Song tab.
+# The song's time: a tempo lane (a step and a ramp), 3/4 from bar 3,
+# markers, a loop range; the Song tab's lanes (a clip over another).
 size 1440 900
 note 0 0 0.25 1
 song add 1 4
@@ -7,13 +7,15 @@ song add 1 4
 song tempo 0 120
 song tempo 16 90 ramp
 song tempo 24 140
-song meter 2 3 4
+song meter 8 3 4
+song add 1 lane 2 at 12 length 8
+song lane 2 name Fills
 song marker 0 Intro
 song marker 16 Chorus
 song range 8 24
 song loop on
 panel song
-song step 2
+song clip 2
 wait 5
 screenshot song_time
 song mode on
