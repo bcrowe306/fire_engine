@@ -645,21 +645,31 @@ Arrangements :: struct {
 	song:    Song,
 }
 
+// The arrangements as they are, into `a` (the one being edited with its
+// song as it is now). Large (16 songs): kept off the stack, as a
+// thread's stack is 1 MB on Windows.
 @(private)
-arrangements_of :: proc(p: ^Project) -> (a: Arrangements) {
+arrangements_of :: proc(p: ^Project, a: ^Arrangements) {
 	// (One assignment each: a tuple of these large arrays costs LLVM minutes at -o:speed.)
 	a.list = p.arrangements
 	a.song = p.song
 	a.count = p.arrangement_count
 	a.current = p.arrangement
 	a.list[a.current].song = p.song // the one being edited, kept
-	return
+}
+
+// A copy of the arrangements as they are, in the frame's temporary memory.
+@(private)
+arrangements_now :: proc(p: ^Project) -> ^Arrangements {
+	a := new(Arrangements, context.temp_allocator)
+	arrangements_of(p, a)
+	return a
 }
 
 @(private)
-put_arrangements :: proc(m: ^Model, name: string, new: Arrangements) {
-	old := arrangements_of(&m.project)
-	app.set_value(&m.history, name, {app.Id(ARRANGEMENT_KEY), 0}, old, new, proc(ctx: rawptr, key: app.Key, v: Arrangements) {
+put_arrangements :: proc(m: ^Model, name: string, new: ^Arrangements) {
+	old := arrangements_now(&m.project)
+	app.set_value_big(&m.history, name, {app.Id(ARRANGEMENT_KEY), 0}, old, new, proc(ctx: rawptr, key: app.Key, v: Arrangements) {
 		m := (^Model)(ctx)
 		p := &m.project
 		p.arrangements = v.list
@@ -683,7 +693,7 @@ arrangement_name :: proc(p: ^Project, i: int) -> string {
 select_arrangement :: proc(m: ^Model, i: int) {
 	p := &m.project
 	if i < 0 || i >= p.arrangement_count || i == p.arrangement do return
-	a := arrangements_of(p)
+	a := arrangements_now(p)
 	a.current = i
 	a.song = a.list[i].song
 	put_arrangements(m, "Switch Arrangement", a)
@@ -694,7 +704,7 @@ select_arrangement :: proc(m: ^Model, i: int) {
 // ARRANGEMENTS already.
 add_arrangement :: proc(m: ^Model, copy_of := -1) -> int {
 	p := &m.project
-	a := arrangements_of(p)
+	a := arrangements_now(p)
 	if a.count >= ARRANGEMENTS do return -1
 	at := a.count
 	src: Arrangement
@@ -717,7 +727,7 @@ add_arrangement :: proc(m: ^Model, copy_of := -1) -> int {
 rename_arrangement :: proc(m: ^Model, i: int, name: string) {
 	p := &m.project
 	if i < 0 || i >= p.arrangement_count do return
-	a := arrangements_of(p)
+	a := arrangements_now(p)
 	a.list[i].name = {}
 	copy(a.list[i].name[:len(a.list[i].name) - 1], strings.trim_space(name))
 	put_arrangements(m, "Rename Arrangement", a)
@@ -727,7 +737,7 @@ rename_arrangement :: proc(m: ^Model, i: int, name: string) {
 delete_arrangement :: proc(m: ^Model, i: int) {
 	p := &m.project
 	if i < 0 || i >= p.arrangement_count || p.arrangement_count <= 1 do return
-	a := arrangements_of(p)
+	a := arrangements_now(p)
 	copy(a.list[i:a.count - 1], a.list[i + 1:a.count])
 	a.count -= 1
 	a.list[a.count] = {}

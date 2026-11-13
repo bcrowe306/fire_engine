@@ -247,3 +247,35 @@ an_old_song_chain_opens_as_clips :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.marker_count, 1)
 	testing.expect_value(t, s.tempo_count, 0) // (every step at the project's tempo)
 }
+
+@(test)
+arrangements_fit_a_small_stack :: proc(t: ^testing.T) {
+	// A Windows thread's stack is 1 MB; 16 arrangements are 200 KB. Adding,
+	// switching, renaming, deleting, undoing and saving them all run on a
+	// 512 KB stack (they once kept several copies on it, and overflowed).
+	r := rig_make(t, "song_arr_stack")
+	defer rig_destroy(r)
+	pm.add_note(&r.m, 0, {start = 0, length = 0.25, pad = 0, velocity = 1})
+	pm.song_add(&r.m, 0)
+	Run :: struct {
+		m:     ^pm.Model,
+		count: int,
+		saved: fc.Error,
+	}
+	run := Run{m = &r.m, saved = .Unsupported}
+	ok := on_small_stack(proc(data: rawptr) {
+		run := (^Run)(data)
+		m := run.m
+		for _ in 0 ..< 3 do pm.add_arrangement(m, copy_of = 0)
+		pm.select_arrangement(m, 1)
+		pm.rename_arrangement(m, 2, "Radio edit")
+		pm.delete_arrangement(m, 3)
+		app.undo(&m.history)
+		app.redo(&m.history)
+		run.count = m.project.arrangement_count
+		run.saved = pm.model_save(m)
+	}, &run, 512 << 10)
+	testing.expect(t, ok, "the thread started")
+	testing.expect_value(t, run.count, 3)
+	testing.expect_value(t, run.saved, fc.Error.None)
+}

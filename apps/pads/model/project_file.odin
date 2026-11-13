@@ -383,11 +383,12 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u32(w, s.color)
 		for pt in s.points do fc.write_f32(w, pt.curve)
 	}
-	arr := p.arrangements
-	arr[p.arrangement].song = p.song
+	// (Each from the project, the current one's song as edited: no copy of
+	// them all, 200 KB, on the stack.)
 	fc.write_int(w, p.arrangement_count)
 	fc.write_int(w, p.arrangement)
-	for &a in arr[:p.arrangement_count] {
+	for k in 0 ..< p.arrangement_count {
+		a := &p.arrangements[k]
 		fc.write_string(w, strings.truncate_to_byte(string(a.name[:]), 0))
 		fc.write_int(w, 0) // (steps before v30)
 	}

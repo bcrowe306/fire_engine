@@ -272,6 +272,17 @@ set_value :: proc(h: ^History, name: string, key: Key, old, new: $T, set: proc(c
 	execute(h, {vtable = set_vtable(T), data = data, name = name})
 }
 
+// As `set_value`, for a large `T` (hundreds of kilobytes): `old` and `new_`
+// are copied straight into the command on the heap, with no copy of them
+// on the stack (a thread's stack is 1 MB on Windows).
+set_value_big :: proc(h: ^History, name: string, key: Key, old, new_: ^$T, set: proc(ctx: rawptr, key: Key, value: T)) {
+	data := new(Set(T), h.allocator)
+	data.key, data.set = key, set
+	data.old = old^
+	data.new = new_^
+	execute(h, {vtable = set_vtable(T), data = data, name = name})
+}
+
 // The vtable of `Set(T)` commands (one per T).
 set_vtable :: proc($T: typeid) -> ^Command_VTable {
 	@(static) vt := Command_VTable {
