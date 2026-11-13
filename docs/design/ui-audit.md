@@ -322,9 +322,9 @@ in screenshots dark and light at 1440×900 and dark at 1100×760, with
    meter of its own (fire's mixer: a meter after the cue's level).
 9. Empty insert slots show a faint +.
 
-Seen while fixing, not fixed: in Perform with a window under about 850
-points tall, the toolbar's controls lose their backgrounds (their text
-stays).
+(A toolbar in Perform that seemed to lose its controls' backgrounds in a
+short window was checked pixel by pixel: the same as every other view.
+The controls are flat by design, a shade off the bar.)
 
 ### Fix first (something is hidden or doesn't work)
 
