@@ -216,6 +216,7 @@ State_Pad :: struct {
 	take:    i64, // an audio pad's take in the current sequence: its frames (0: none; with a part, the sequence's)
 	loop:    f64, // its own loop in the current sequence, beats (0: none)
 	regions: int, // its part's regions in the current sequence
+	muted_regions: int, // ... of them muted
 	takes:   int, // ... and takes
 	attack, release: f32,
 	voice:   pm.Voice, // its envelopes, filter, pitch, LFOs and routes
@@ -511,6 +512,7 @@ state_json :: proc(a: ^App) -> string {
 		if pm.current_clip(m, i).part != 0 {
 			x := pm.part_of(p, p.slot, i)
 			sp.regions, sp.takes = x.count, x.take_count
+			for r in x.regions[:x.count] do if r.mute do sp.muted_regions += 1
 			if x.count > 0 && x.take_count > 0 do sp.take = i64(math.round(pm.seq_beats(p, p.sequences[p.slot]) * pm.frames_per_beat_of(p, p.slot, i, x.takes[0])))
 		} else if sp.take > 0 {
 			sp.regions, sp.takes = 1, 1

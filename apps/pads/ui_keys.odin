@@ -98,6 +98,7 @@ FIXED_KEYS := [?][2]cstring{
 	{"Cmd+A", "Select every note, or song clip"},
 	{"Cmd+X", "Cut the selected song clips"},
 	{"Cmd+T", "Audio tab: split at the cursor (or the range's ends)"},
+	{"0", "Audio tab: mute or unmute the region (the range's, or the whole clip)"},
 	{"Cmd+X  Cmd+C  Cmd+V", "Audio tab: cut, copy, paste (the range, or the region; at the cursor)"},
 	{"Cmd+wheel", "Sequence view: the rows taller or shorter (the wheel alone scrolls)"},
 	{"Z X C V  A S D F  Q W E R  1 2 3 4", "Play the pads of the bank"},

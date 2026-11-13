@@ -794,7 +794,8 @@ fades) and kept by what went into it.
   **Copy** (Cmd+C), **Paste** (Cmd+V, at the cursor, on any audio track),
   **Delete** (the range goes silent; a region goes and what is under it
   plays again), **Crop**; on the region, **Normalize** (its loudest at
-  0 dB, by its gain), **Reverse** and **Mute**.
+  0 dB, by its gain), **Reverse** and **Mute** (**0**, as for notes: the
+  region, the range's regions, or with nothing chosen the whole clip).
 - **Takes** lists the passes recorded: pick one for the range (comping a
   phrase from another pass), the region, or everywhere. **Spread Takes**
   puts each take after the first onto a track of its own, lined up.

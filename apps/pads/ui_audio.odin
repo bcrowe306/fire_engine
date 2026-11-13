@@ -217,12 +217,9 @@ draw_audio_tools :: proc(a: ^App) {
 	}
 	ui.name("audio reverse")
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_VOLUME_X, "Mute: the region silent (what is under it isn't heard either)", on = region && x.regions[ri].mute, disabled = !region) {
-		r := x.regions[ri]
-		r.mute = !r.mute
-		pm.set_region(m, slot, pad, ri, "Mute Region", r)
-		app.seal(&m.history)
-	}
+	all_muted := has
+	for r in x.regions[:x.count] do if !r.mute do all_muted = false
+	if ui.icon_button(ui.ICON_VOLUME_X, "Mute (0): the region silent (what is under it isn't heard either); the range's regions, or with none chosen the whole clip", on = (region && x.regions[ri].mute) || (!region && all_muted), disabled = !has) do audio_mute(a)
 	ui.name("audio mute")
 	im.SameLine(0, 12)
 	// The takes: one for the range (comping), the region's, or everywhere.
@@ -280,6 +277,39 @@ draw_audio_tools :: proc(a: ^App) {
 	im.SameLine(0, 12)
 	draw_grid_controls(a, quantize = false)
 	_ = bar
+}
+
+// Mutes (or unmutes) the selected region; with a range, the regions in
+// it; with neither, the whole clip: each silent, what is under it too. A
+// mix of muted and not: all muted. One undo step, "Mute".
+@(private)
+audio_mute :: proc(a: ^App) {
+	m := &a.m
+	av := &a.seq.aud
+	slot, pad := m.project.slot, a.selected
+	x := pm.part_of(&m.project, slot, pad)
+	if x.count == 0 do return
+	which := make([dynamic]int, context.temp_allocator)
+	switch {
+	case av.range[1] > av.range[0]:
+		for r, k in x.regions[:x.count] do if r.at < av.range[1] && pm.region_end(&m.project, slot, pad, &x, r) > av.range[0] do append(&which, k)
+	case av.region >= 0 && av.region < x.count:
+		append(&which, av.region)
+	case:
+		for k in 0 ..< x.count do append(&which, k)
+	}
+	if len(which) == 0 do return
+	to := false
+	for k in which do if !x.regions[k].mute do to = true
+	app.seal(&m.history)
+	app.begin(&m.history, "Mute" if to else "Unmute")
+	for k in which {
+		r := x.regions[k]
+		r.mute = to
+		pm.set_region(m, slot, pad, k, "Mute" if to else "Unmute", r)
+	}
+	app.end(&m.history)
+	app.seal(&m.history)
 }
 
 // Splits at the range's ends, else the cursor.
@@ -526,6 +556,7 @@ draw_audio_view :: proc(a: ^App, length, snap: f64) {
 		if cmd && im.IsKeyPressed(.C, false) do audio_copy(a)
 		if cmd && im.IsKeyPressed(.V, false) do audio_paste(a)
 		if (im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false)) && !cmd do audio_cut(a, false)
+		if (im.IsKeyPressed(._0, false) || im.IsKeyPressed(.Keypad0, false)) && !cmd && !io.KeyAlt do audio_mute(a)
 		if im.IsKeyPressed(.Escape, false) do av.region, av.range = -1, {}
 	}
 }

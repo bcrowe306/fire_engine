@@ -98,3 +98,22 @@ def test_the_keys(app, fixtures):
     assert app.state()["undo"] == "Split"
     app.key("cmd+v")
     assert app.state()["undo"] == "Paste"
+
+
+def test_zero_mutes_a_region_or_the_clip(app, fixtures):
+    # 0, as for notes: the selected region muted (and back); with none
+    # chosen, the whole clip; one undo step each.
+    take(app, fixtures)
+    app.click("audio editor", at=(0.5, 0.6))
+    app.click("audio split")
+    assert app.pad(1)["regions"] == 2
+    app.click("audio editor", at=(0.75, 0.6))  # the second region
+    app.key("0")
+    assert app.pad(1)["muted_regions"] == 1 and app.state()["undo"] == "Mute", (app.pad(1), app.state()["undo"])
+    app.key("0")
+    assert app.pad(1)["muted_regions"] == 0
+    app.key("esc")  # nothing chosen: the whole clip
+    app.key("0")
+    assert app.pad(1)["muted_regions"] == 2
+    app.key("cmd+z")
+    assert app.pad(1)["muted_regions"] == 0
