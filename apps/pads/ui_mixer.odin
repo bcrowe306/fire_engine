@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import "fire:dsp"
 import pm "model"
 import im "deps:imgui"
 
@@ -1000,6 +1001,7 @@ pan_knob :: proc(a: ^App, pan: ^f32) -> ui.Edit {
 		im.DrawList_PathStroke(dl, ui.col(t.accent), stroke)
 	}
 	im.DrawList_AddLine(dl, c, {c.x + math.cos(at) * (r - 2), c.y + math.sin(at) * (r - 2)}, ui.col(t.text), 1.5)
+	if lv, ok := ui.live_value(); ok do ui.live_ring(dl, c, r, (lv + 1) / 2) // (automation playing: where it is now)
 	text := "C"
 	if pan^ < -0.005 do text = fmt.tprintf("L%.0f", -pan^ * 100)
 	if pan^ > 0.005 do text = fmt.tprintf("R%.0f", pan^ * 100)
@@ -1094,6 +1096,10 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32, gr_db: f
 	cap := t.hover if hovered else t.pressed
 	im.DrawList_AddRectFilled(dl, {x0 + 1, y - 9}, {x0 + fader_w - 1, y + 9}, ui.col(cap), 3)
 	im.DrawList_AddLine(dl, {x0 + 4, y}, {x0 + fader_w - 4, y}, ui.col(t.text), 1.5)
+	if lv, ok := ui.live_value(); ok { // (automation playing: where it is now)
+		ly := y_of(fader_frac(lv), top, bottom)
+		ui.live_marker(dl, {x0 - 1, ly}, {x0 + fader_w + 1, ly})
+	}
 	if im.IsItemActive() do im.SetTooltip("%s", fmt.ctprintf("%+.1f dB", value^))
 
 	// The scale: marks between the fader and the meter.
@@ -1281,6 +1287,8 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 
 	if !compact {
 		eq := pad.eq
+		// (Automation playing: its bands where it has them now, so the curve moves.)
+		for k in 0 ..< 3 do if v, ok := pm.automated_value(m, {track = .Pad, index = u8(i), device = .Eq, param = dsp.eq_band_param(k, .Gain_Db)}); ok do eq[k] = v
 		if strip_view.eq {
 			// Its EQ's switch at the left (off to start with), its curve beside.
 			bw: f32 = 16

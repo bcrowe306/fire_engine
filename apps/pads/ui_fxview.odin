@@ -24,8 +24,10 @@ import "fire:dsp"
 // fractions (40% is 0.4).
 @(private)
 fxv :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, id: fc.Param_Id) -> f32 {
+	// (Automation playing: where it has it now, so the picture moves.)
+	live, automated := pm.automated_value(&a.m, fx_auto_target(t, id))
 	for p in pm.target_params(&a.m.engine, t) do if p.id == id {
-		v := pm.slot_value(s, id, f32(p.default))
+		v := live if automated else pm.slot_value(s, id, f32(p.default))
 		return v / 100 if p.unit == .Percent else v
 	}
 	return pm.slot_value(s, id, 0)

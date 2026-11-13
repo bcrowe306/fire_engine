@@ -142,11 +142,19 @@ draw_synth_filter :: proc(a: ^App) {
 }
 
 // Filter `n`'s settings as they stand (no modulation), for its picture.
+// Synth pad `i`'s parameter `id` (plain) as it plays now: automation's
+// value while a lane of it plays, else its own.
+synth_now :: proc(m: ^pm.Model, i: int, id: fc.Param_Id) -> f32 {
+	if v, ok := pm.automated_value(m, sound_param_target(i, id)); ok do return v
+	return pm.synth_value(m, i, id)
+}
+
 filter_ui_params :: proc(a: ^App, n: int) -> fx.Filter_Params {
 	m := &a.m
 	i := a.selected
 	f :: synth.filter_param
-	v :: proc(m: ^pm.Model, i: int, id: fc.Param_Id) -> f32 { return synth.param_curve(synth.param_spec(id), pm.synth_value(m, i, id)) }
+	// (Automation playing: where it has each now, so the response moves.)
+	v :: proc(m: ^pm.Model, i: int, id: fc.Param_Id) -> f32 { return synth.param_curve(synth.param_spec(id), synth_now(m, i, id)) }
 	return {
 		model = fx.Filter_Model(int(v(m, i, f(n, .Model)))), style = fx.Filter_Style(int(v(m, i, f(n, .Style)))),
 		cutoff = v(m, i, f(n, .Cutoff)), resonance = v(m, i, f(n, .Resonance)), drive_db = v(m, i, f(n, .Drive)),

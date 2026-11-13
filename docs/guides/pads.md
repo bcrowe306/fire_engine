@@ -329,6 +329,11 @@ records.
   **Touch a control…**: the next knob or fader you move anywhere becomes
   it (Escape cancels). Right-click any knob or fader for **Automate**
   (**Show Automation** once it has some): the tab opens on it.
+  While it plays, what automation moves shows moving: an orange outer
+  ring on a knob (where the lane has it now, its own setting inside), an
+  orange mark across a fader, and the pictures (a filter's response, an
+  effect's curve, the strip's EQ, a synth's filters and effects) drawn
+  as it plays.
   Frequencies are drawn on a log scale. Its tools (or their keys):
   **Select** (V) a click adds a point and a drag moves one; **Draw** (B)
   draws freehand (a point each grid step; **Shift**: a straight line);

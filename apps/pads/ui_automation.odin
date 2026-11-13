@@ -276,6 +276,7 @@ show_automation :: proc(a: ^App, t: pm.Auto_Target) {
 // learning when touched).
 install_knob_hooks :: proc(a: ^App) {
 	ui.knob_hooks = {
+		live     = proc(user: rawptr) -> (f32, bool) { return knob_live((^App)(user)) },
 		has_menu = proc(user: rawptr) -> bool { return (^App)(user).knob_target.track != .None },
 		menu     = proc(user: rawptr) { knob_menu_items((^App)(user)) },
 		touched  = proc(user: rawptr) { knob_touched((^App)(user)) },
@@ -283,6 +284,16 @@ install_knob_hooks :: proc(a: ^App) {
 		released = proc(user: rawptr) { knob_released((^App)(user)) },
 		user     = a,
 	}
+}
+
+// What automation gives the knob being drawn now, in the knob's units
+// (its target's, over `knob_scale`), while it plays.
+knob_live :: proc(a: ^App) -> (f32, bool) {
+	t := a.knob_target
+	if t.track == .None do return 0, false
+	v, ok := pm.automated_value(&a.m, t)
+	if !ok do return 0, false
+	return v / a.knob_scale if a.knob_scale != 0 else v, true
 }
 
 // The knob's own menu items: Automate (or Show Automation when the

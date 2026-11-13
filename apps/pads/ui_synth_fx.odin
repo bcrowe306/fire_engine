@@ -140,13 +140,16 @@ draw_synth_effect :: proc(a: ^App, e: fx.Effect, x0, w, bottom: f32) {
 		for spec in synth.PARAMS do values[spec.id] = spec.default
 		s, _ := pm.target_slot(m, a.param_host.t)
 		for p in s.params[:s.count] do if int(p.id) < synth.PARAM_SLOTS do values[p.id] = p.value
+		for spec in synth.PARAMS do if v, ok := pm.automated_value(m, fx_auto_target(a.param_host.t, spec.id)); ok do values[spec.id] = v // (automation playing: as it has them now)
 		cp = synth.effect_chain_params(values, fx.CHAIN_ORDER, bpm)
 		cp.on = {e} if s.on || a.param_host.t.kind == .Perf else {}
 		chain = pm.slot_chain(&m.engine, a.param_host.t)
 		color = ui.theme().accent
 	} else {
 		sy := &m.project.pads[i].synth
-		cp = synth.effect_chain_params(sy.values[:], sy.fx_order, bpm)
+		values := make([]f32, len(sy.values), context.temp_allocator)
+		for &v, id in values do v = synth_now(m, i, fc.Param_Id(id)) // (automation playing: as it has them now)
+		cp = synth.effect_chain_params(values, sy.fx_order, bpm)
 		chain = pm.synth_chain(&m.engine, i)
 		color = ui.rgb(m.project.pads[i].color)
 	}

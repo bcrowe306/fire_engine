@@ -668,7 +668,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			return true
 		}
 	case "point":
-		// point PAD PARAM BEAT VALUE (PARAM: volume, pitch, low, mid, high)
+		// point PAD PARAM BEAT VALUE (PARAM: volume, pitch, low, mid, high, cutoff, resonance)
 		if len(w) < 5 do return false
 		i := num(w, 1)
 		if !pad_ok(i) do return false
@@ -679,6 +679,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "low":    param = .Eq_Low
 		case "mid":    param = .Eq_Mid
 		case "high":   param = .Eq_High
+		case "cutoff": param = .Cutoff
+		case "resonance": param = .Resonance
 		case: return false
 		}
 		pm.add_point(&a.m, a.m.project.slot, {pad = u8(i), param = param, beat = f64(numf(w, 3)), value = numf(w, 4)})

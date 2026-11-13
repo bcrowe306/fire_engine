@@ -23,8 +23,12 @@ Edit :: struct {
 // inside a knob's right-click menu (after its own items: the app adds its
 // own, as Automate), `touched` when a drag on a knob or a fader starts,
 // `moved` each frame it changes it (with its new value), `released` when
-// it lets go. Set by the app; nil: nothing is called.
+// it lets go; `live` the value the control is given now by something
+// else (automation playing), in the control's units: the control shows
+// it beside its own (an outer ring, a marker). Set by the app; nil:
+// nothing is called.
 Knob_Hooks :: struct {
+	live:     proc(user: rawptr) -> (value: f32, ok: bool),
 	has_menu: proc(user: rawptr) -> bool, // whether `menu` has anything for the control being drawn (a fader only opens a menu then)
 	menu:     proc(user: rawptr),
 	touched:  proc(user: rawptr),
@@ -43,6 +47,42 @@ knob_report :: proc(e: Edit, value: f32) {
 	if e.started && h.touched != nil do h.touched(h.user)
 	if e.changed && h.moved != nil do h.moved(h.user, value)
 	if e.ended && h.released != nil do h.released(h.user)
+}
+
+// The value the control being drawn is given now by something else
+// (`Knob_Hooks.live`), if it is.
+live_value :: proc() -> (f32, bool) {
+	h := knob_hooks
+	if h.live == nil do return 0, false
+	return h.live(h.user)
+}
+
+// The colour of a value moving on its own (automation playing).
+LIVE_COLOR :: Color{0.98, 0.62, 0.22, 1}
+
+// An outer ring around a knob at `center` (its arc's radius `r`) showing
+// `frac` (0..1) of its range: the value automation gives it now, a dot
+// where it is.
+live_ring :: proc(dl: ^im.DrawList, center: im.Vec2, r, frac: f32) {
+	a0, a1 := f32(math.PI) * 0.75, f32(math.PI) * 2.25
+	rr := r + 3.5
+	f := clamp(frac, 0, 1)
+	im.DrawList_PathArcTo(dl, center, rr, a0, a1, 32)
+	im.DrawList_PathStroke(dl, col(with_alpha(LIVE_COLOR, 0.22)), 1.5)
+	if f > 0.001 {
+		im.DrawList_PathArcTo(dl, center, rr, a0, a0 + (a1 - a0) * f, 32)
+		im.DrawList_PathStroke(dl, col(LIVE_COLOR), 2)
+	}
+	at := a0 + (a1 - a0) * f
+	im.DrawList_AddCircleFilled(dl, {center.x + math.cos(at) * rr, center.y + math.sin(at) * rr}, 2.5, col(LIVE_COLOR), 12)
+}
+
+// A fader's mark of the value automation gives it now: a line across
+// its track from `a` to `b`, ticked at both ends.
+live_marker :: proc(dl: ^im.DrawList, a, b: im.Vec2) {
+	im.DrawList_AddLine(dl, a, b, col(LIVE_COLOR), 2)
+	im.DrawList_AddCircleFilled(dl, a, 2.5, col(LIVE_COLOR), 10)
+	im.DrawList_AddCircleFilled(dl, b, 2.5, col(LIVE_COLOR), 10)
 }
 
 // Sizes widgets use by default, in logical points.
@@ -176,6 +216,13 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		im.DrawList_PathArcTo(dl, center, r, a0, a0 + (a1 - a0) * frac, 32)
 		im.DrawList_PathStroke(dl, col(t.accent), thickness)
 	}
+	// Moving on its own (automation playing): where it is now, outside.
+	if lv, ok := live_value(); ok {
+		lf: f32
+		if log_scale && min_v > 0 && max_v > min_v do lf = math.ln(clamp(lv, min_v, max_v) / min_v) / math.ln(max_v / min_v)
+		else if max_v > min_v do lf = (lv - min_v) / (max_v - min_v)
+		live_ring(dl, center, r, lf)
+	}
 	hovered := im.IsItemHovered() || im.IsItemActive()
 	im.DrawList_AddCircleFilled(dl, center, r - 7, col(t.hover if hovered else t.raised), 32)
 	a := a0 + (a1 - a0) * frac
@@ -261,12 +308,20 @@ fader :: proc(label: cstring, value: ^f32, min_v, max_v, default: f32, size := F
 		im.DrawList_AddRectFilled(dl, {x - track / 2, y}, {x + track / 2, pos.y + size.y - 6}, col(t.accent), track / 2)
 		im.DrawList_AddRectFilled(dl, {pos.x + 2, y - 6}, {pos.x + size.x - 2, y + 6}, col(t.hover if hovered else t.pressed), 4)
 		im.DrawList_AddLine(dl, {pos.x + 6, y}, {pos.x + size.x - 6, y}, col(t.text), 1.5)
+		if lv, ok := live_value(); ok && max_v > min_v {
+			ly := pos.y + size.y - 6 - (size.y - 12) * clamp((lv - min_v) / (max_v - min_v), 0, 1)
+			live_marker(dl, {pos.x, ly}, {pos.x + size.x, ly})
+		}
 	} else {
 		y := pos.y + size.y / 2
 		im.DrawList_AddRectFilled(dl, {pos.x + 6, y - track / 2}, {pos.x + size.x - 6, y + track / 2}, col(t.raised), track / 2)
 		x := pos.x + 6 + (size.x - 12) * frac
 		im.DrawList_AddRectFilled(dl, {pos.x + 6, y - track / 2}, {x, y + track / 2}, col(t.accent), track / 2)
 		im.DrawList_AddRectFilled(dl, {x - 6, pos.y + 2}, {x + 6, pos.y + size.y - 2}, col(t.hover if hovered else t.pressed), 4)
+		if lv, ok := live_value(); ok && max_v > min_v {
+			lx := pos.x + 6 + (size.x - 12) * clamp((lv - min_v) / (max_v - min_v), 0, 1)
+			live_marker(dl, {lx, pos.y}, {lx, pos.y + size.y})
+		}
 	}
 	// The label under it, inside one box with the fader (so SameLine works).
 	label_h: f32 = 0
