@@ -119,8 +119,13 @@ command of it.
 - **Command palette.** Cmd/Ctrl+K (bind `palette_open` to an action): type
   to filter (letters in order: "svas" finds Save As), arrows to choose,
   Enter to run.
-- **Toasts.** `ui.toast(&ws.toasts, .Success, "Saved")`: a notice in the
-  bottom right that fades.
+- **Toasts.** `ui.toast(&ws.toasts, .Success, "Saved")`: a notice at the
+  top right of the panels (in the strip their tabs leave free, so it covers
+  no controls) that fades; it waits while a popup or modal is open.
+- **Waveforms and plots** draw on `WAVE_BG` / `PLOT_BG` with `WAVE_INK`
+  over them: black and white in a dark theme, a pale grey and the theme's
+  text in a light one (`set_theme` sets them). `fit_text` cuts a label to
+  a width with "…"; pad faces use it (and shrink a long name first).
 - **Workspace.** `workspace_draw` puts a dockspace over the whole window
   and draws each open `Panel` in it. The first time (set
   `has_saved_layout` when your ImGui ini file already exists), panels dock

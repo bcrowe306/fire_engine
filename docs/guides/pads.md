@@ -374,8 +374,10 @@ records.
     Keyboard or Velocity as the MIDI page sets).
   - **Effects**: the 16 performance effects, coloured by kind (filters
     violet, rhythm teal, pitch pink, space blue, drive coral; see below).
-  - **Levels**: main's fader and meter (the mixer's own), and the cue
-    (headphones) level (Settings sets where the cue plays).
+  - **Levels**: main and the cue (headphones; Settings sets where it
+    plays), each a strip with its fader and meter as in the mixer, its
+    level under it. The cue's meter is what the cue output plays (silent
+    while no cue output is set).
 - **A pad's MIDI page** (the **MIDI** tab, first in its chain in the
   bottom area, before its sound; it reads **MIDI · Repeat** or **MIDI ·
   Arp** when one is on): how the 16 pads play — **Pads**, each its own
@@ -739,24 +741,29 @@ Ways to make one:
   into it; either way it is sliced when the sample arrives.
 
 A new slicer is cut at its **transients**. The **Slicer** tab (the pad's
-first tab):
+first tab) is laid out like the sampler's Sample tab: one line of tools,
+the waveform taking most of the page, and the selected slice's settings
+under it. The line (it wraps in a narrow window):
 
-- **Mono | Poly**: in Mono a slice cuts off the one before; in Poly slices
-  ring together. **Thru** plays a slice on to the sample's end. **Gate**
-  stops a slice when its key is let go (otherwise it plays to its end).
-- **From** sets the base note. **Fade in** and **Fade out** (ms) shape
-  every slice's ends, so cuts don't click. **Velocity** sets the
-  sensitivity: 0% plays every hit equally loud, 50% follows how hard you
-  hit, and above 50% makes soft hits softer still.
-- **Transients | Beats | Equal | Manual** slices it again: at its hits
-  (with a sensitivity), on a grid of its tempo (bars, 1/4, 1/8, 1/16), or
-  into equal parts. Editing a marker by hand switches it to Manual.
+- **How it plays** (a dropdown showing Mono or Poly, and Thru and Gate
+  when on): **Mono | Poly** (in Mono a slice cuts off the one before; in
+  Poly slices ring together), **Thru** (a slice plays on to the sample's
+  end), **Gate** (a slice stops when its key is let go, otherwise it plays
+  to its end); **From** sets the base note; **Fade in** and **Fade out**
+  (ms) shape every slice's ends, so cuts don't click; **Velocity** sets
+  the sensitivity: 0% plays every hit equally loud, 50% follows how hard
+  you hit, and above 50% makes soft hits softer still.
+- **How it is sliced** (a dropdown showing the way): **Transients |
+  Beats | Equal | Manual** slices it again, at its hits (with a
+  sensitivity), on a grid of its tempo (bars, 1/4, 1/8, 1/16), or into
+  equal parts. Editing a marker by hand switches it to Manual.
+- The slice count, **Warp** (its settings behind the arrow, as on the
+  Sample tab), the buttons below, and record.
 - The waveform has a marker for each slice. Drag a marker by its numbered
   tag or its line, **double-click** between markers to add one, and
   **right-click** a marker to remove it (slice 1 always stays). Each slice
   has a gray **level line** with a handle: drag it up or down (-24 to
-  +6 dB). The waveform shows dB down the left side (a line at -6 dB), and
-  time or bars along the bottom. The wheel zooms around the mouse,
+  +6 dB). Time or bars show along the bottom. The wheel zooms around the mouse,
   Shift+wheel pans, and the strip underneath shows the whole sample with
   the visible part as a window you can drag. However far you zoom, the
   wave is drawn at the screen's own resolution: a peak each pixel, read
@@ -767,7 +774,7 @@ first tab):
   sample, so they stay put when the sample is warped or stretched.
 - Under the waveform, the selected slice: **play** it, and set its own
   **level**, **pitch**, **pan** and **Reverse**.
-- The buttons by the slice count: **Slices to a sequence** writes a new
+- The buttons after Warp: **Slices to a sequence** writes a new
   sequence that plays each slice where it falls. **Slice to pad** copies
   the selected slice onto the next empty pad, as a sampler of just that
   part (with its level, pitch, pan and direction). **To sampler** turns
@@ -1311,6 +1318,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
 | `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
+| `test_reaudit.py` | what the UI re-audit fixed: Escape closes Settings; another pad selected shows its sound, not the MIDI page; the slicer's settings behind its two dropdowns; a 1100×760 window keeping the toolbar and the mixer's strips whole |
 | `test_slicer.py` | slicing from the browser (Alt+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_sequence_tabs.py` | the Sequence view's Notes (the default) and Automation tabs, the tab kept while moving around and saved with the project; Line and Curve; a new automation from the menu; the notes under the curve off and on; a drawn note at 100% chance; a CC lane drawn for the selected pad |

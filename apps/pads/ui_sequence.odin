@@ -67,11 +67,11 @@ draw_editor_tools :: proc(a: ^App) {
 	}
 	im.SameLine(0, 10)
 	if ui.icon_button(ui.ICON_MAGNET, "Snap: on (to the grid; hold " + ui.FREE_KEY + " to place freely)" if !st.free else "Snap: off (anywhere)", on = !st.free) do st.free = !st.free
-	im.SameLine(0, 14)
+	im.SameLine(0, 8 if seq_bar_narrow else 14)
 	if ui.icon_button(ui.ICON_HEADPHONES, "Hear a row's pad when you click its name: on" if !st.quiet else "Hear a row's pad when you click its name: off", on = !st.quiet) do st.quiet = !st.quiet
-	im.SameLine(0, 14)
+	im.SameLine(0, 8 if seq_bar_narrow else 14)
 	mode := 1 if st.piano else 0
-	if ui.segmented("roll_mode", {"Drums", fmt.tprintf("Piano roll: %s", pm.pad_label(st.piano_pad))}, &mode) {
+	if ui.segmented("roll_mode", {"Drums", fmt.tprintf("%s: %s", "Piano" if seq_bar_narrow else "Piano roll", pm.pad_label(st.piano_pad))}, &mode) {
 		st.piano = mode == 1
 		if st.piano do st.piano_pad = a.selected
 		st.view.key0 = -1 // placed again
@@ -492,6 +492,12 @@ lane_value_text :: proc(p: pm.Lane_Param, v: f32) -> string {
 	return fmt.tprintf("%.0f%%", v)
 }
 
+// Below this width the Sequence view's tool line shortens its labels.
+@(private) SEQ_BAR_NARROW_W :: 1000
+
+// This frame's tool line is narrow (see SEQ_BAR_NARROW_W).
+@(private) seq_bar_narrow: bool
+
 // The tab bar of the Sequence view, and the tab's tools: Notes (the note
 // tools, the view, snap and the grid, Quantize, input quantize) or
 // Automation (which automation, its tools, snap and the grid, the notes
@@ -499,6 +505,8 @@ lane_value_text :: proc(p: pm.Lane_Param, v: f32) -> string {
 draw_mode_bar :: proc(a: ^App) {
 	st := &a.seq
 	mode := int(st.mode)
+	// Narrow (a small window): shorter labels, so the tools stay on one line.
+	seq_bar_narrow = im.GetContentRegionAvail().x < SEQ_BAR_NARROW_W
 	if ui.segmented("seq mode", {"Notes", "Automation"}, &mode) do st.mode = pm.Seq_Mode(mode)
 	ui.name("sequence mode")
 	im.SameLine(0, 16)
@@ -532,9 +540,10 @@ draw_grid_controls :: proc(a: ^App, quantize: bool) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("Grid: where notes and points snap, and what Quantize uses")
 	if !quantize do return
-	q :: ui.ICON_MAGNET + "  Quantize"
-	ui.flow(ui.button_width(q))
+	q: cstring = ui.ICON_MAGNET + "##Quantize" if seq_bar_narrow else ui.ICON_MAGNET + "  Quantize"
+	ui.flow(ui.button_width(q), 8 if seq_bar_narrow else -1)
 	if im.Button(q) do pm.quantize_sequence(m, m.project.slot, st.grid)
+	ui.name("Quantize")
 	if im.IsItemHovered() do im.SetTooltip("Move the sequence's notes to the grid")
 	// Input quantize: notes recorded from now on, moved as they come in.
 	ui.flow(im.GetFrameHeight() * 2 + im.CalcTextSize("1/16T").x)

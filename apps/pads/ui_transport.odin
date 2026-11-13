@@ -23,6 +23,12 @@ Transport_State :: struct {
 // Height of the transport toolbar.
 TOOLBAR_H :: 46
 
+// Below this window width the toolbar's toggles show only their icons.
+TOOLBAR_COMPACT_W :: 1280
+
+// This frame's toolbar is narrow (see TOOLBAR_COMPACT_W).
+@(private = "file") tool_compact: bool
+
 // Height of the toolbar's controls (a little under the panels' own, so
 // the bar stays slim; at the Touch size, still big enough for a finger).
 TOOL_H :: 30
@@ -54,17 +60,21 @@ draw_toolbar :: proc(user: rawptr) {
 	im.PushStyleColorVec4(.FrameBgHovered, transmute(im.Vec4)t.raised)
 	im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)t.raised)
 	big := im.GetFrameHeight()
-	st.left.justify, st.left.gap = .End, 16
-	st.center.justify, st.center.gap = .Start, 2
-	st.right.justify, st.right.gap = .Start, 16
 	win := im.GetWindowPos()
+	// A narrow window: the toggles show their icons alone (their tooltips
+	// say what they are), the groups closer.
+	tool_compact = im.GetWindowSize().x < TOOLBAR_COMPACT_W
+	group_gap: f32 = 8 if tool_compact else 16
+	st.left.justify, st.left.gap = .End, group_gap
+	st.center.justify, st.center.gap = .Start, 2
+	st.right.justify, st.right.gap = .Start, group_gap
 	// Three rows: the transport (play, stop, record, loop) centred on the
 	// window, what plays and where to its left (packed against it), and
 	// the tempo, count-in and click to its right.
 	beat, playing := pm.timeline_beat(e)
 	pad_x := im.GetStyle().WindowPadding.x
 	x0, width := win.x + pad_x, im.GetWindowSize().x - 2 * pad_x
-	side_gap: f32 = 28
+	side_gap: f32 = 14 if tool_compact else 28
 	cw := ui.flex_width(&st.center)
 	cx := x0 + (width - cw) / 2
 
@@ -378,7 +388,7 @@ tool_toggle :: proc(icon, label: string, tip: cstring, on: bool, color: ui.Color
 	t := ui.theme()
 	ui.text_push(.Label)
 	defer ui.text_pop()
-	text := fmt.ctprintf("%s  %s", icon, label)
+	text := fmt.ctprintf("%s", icon) if tool_compact else fmt.ctprintf("%s  %s", icon, label)
 	ts := im.CalcTextSize(text)
 	w := ts.x + 2 * t.pad.x
 	pos := im.GetCursorScreenPos()

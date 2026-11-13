@@ -70,7 +70,7 @@ draw_sample :: proc(user: rawptr) {
 	t := ui.theme()
 	append(&markers, ui.Marker{frame = start, color = t.ok, label = "S", drag = true}, ui.Marker{frame = end, color = t.danger, label = "E", drag = true})
 	// The fades: a handle each, dragged in from the region's ends.
-	fade_c := ui.rgb(0xd0d4dc)
+	fade_c := ui.mix(t.text, t.text_dim, 0.5)
 	append(&markers, ui.Marker{frame = start + pad.fade_in, color = fade_c, drag = true, fade = true, from = start})
 	append(&markers, ui.Marker{frame = end - pad.fade_out, color = fade_c, drag = true, fade = true, from = end})
 	looping := pad.mode == .Loop || pad.mode == .Hold
@@ -173,10 +173,14 @@ draw_sample_bar :: proc(a: ^App) {
 	if tools.chop_parts == 0 do tools.chop_parts = 8
 	if tools.sensitivity == 0 do tools.sensitivity = 0.5
 	if tools.beats == 0 do tools.beats = 4
-	gap: f32 = 8
+	// Narrow (a small window): the choke group and Chop shorter; past the
+	// room, the line wraps rather than cut its end off.
+	narrow := im.GetContentRegionAvail().x < 640
+	gap: f32 = 4 if narrow else 8
+	fh := im.GetFrameHeight()
 	// How it plays.
 	modes := [4]cstring{"One-shot", "Gate", "Loop", "Hold"}
-	im.SetNextItemWidth(120)
+	im.SetNextItemWidth(116 if narrow else 120)
 	if ui.combo("##playmode", fmt.ctprintf("%s  %s", ui.ICON_PLAY, modes[int(pad.mode)])) {
 		for name, k in modes {
 			if im.Selectable(name, int(pad.mode) == k) {
@@ -207,7 +211,7 @@ draw_sample_bar :: proc(a: ^App) {
 	}
 	ui.name("play mode")
 	if im.IsItemHovered() do im.SetTooltip("How it plays: once through (One-shot), while held (Gate), round its loop while held (Loop), or until hit again (Hold)")
-	im.SameLine(0, gap)
+	ui.flow(ui.button_width("Reverse") + 20, gap)
 	rev := pad.reverse
 	if ui.toggle("Reverse", &rev) {
 		p := pad
@@ -215,9 +219,11 @@ draw_sample_bar :: proc(a: ^App) {
 		pm.set_pad(m, i, .Reverse, "Reverse", p)
 		app.seal(&m.history)
 	}
-	im.SameLine(0, gap)
-	im.SetNextItemWidth(130)
-	if ui.combo("##choke", fmt.ctprintf("%s  %s", ui.ICON_SCISSORS, "No choke" if pad.choke == 0 else fmt.tprintf("Choke %d", pad.choke))) {
+	choke_w: f32 = 56 if narrow else 130
+	ui.flow(choke_w, gap)
+	im.SetNextItemWidth(choke_w)
+	choke_text := ("" if pad.choke == 0 else fmt.tprintf("%d", pad.choke)) if narrow else ("No choke" if pad.choke == 0 else fmt.tprintf("Choke %d", pad.choke))
+	if ui.combo("##choke", fmt.ctprintf("%s  %s", ui.ICON_SCISSORS, choke_text)) {
 		for g in 0 ..= pm.CHOKE_GROUPS {
 			if im.Selectable(fmt.ctprintf("%s###cg%d", "No choke group" if g == 0 else fmt.tprintf("Choke group %d", g), g), int(pad.choke) == g) do set_choke(a, selected_pads(a), g)
 		}
@@ -225,7 +231,7 @@ draw_sample_bar :: proc(a: ^App) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("Choke group: a pad's hit stops the others playing in its group (open and closed hi-hats)")
 	// Warp: on or off here, its settings behind the arrow.
-	im.SameLine(0, gap)
+	ui.flow(ui.button_width("Warp") + 20 + (fh if pad.warp.on else 0), gap)
 	w := pad.warp
 	on := w.on
 	if ui.toggle("Warp", &on) {
@@ -243,8 +249,9 @@ draw_sample_bar :: proc(a: ^App) {
 		}
 	}
 	// Chop: how, behind its arrow.
-	im.SameLine(0, gap)
-	if im.Button(ui.ICON_SLICE + "  Chop") do im.OpenPopup("##chop")
+	chop: cstring = ui.ICON_SLICE + "##Chop" if narrow else ui.ICON_SLICE + "  Chop"
+	ui.flow(ui.button_width(chop), gap)
+	if im.Button(chop) do im.OpenPopup("##chop")
 	ui.name("Chop")
 	if im.IsItemHovered() do im.SetTooltip("Chop it into pads: at its hits, or into equal parts")
 	if im.BeginPopup("##chop") {
@@ -266,7 +273,7 @@ draw_sample_bar :: proc(a: ^App) {
 		im.EndPopup()
 	}
 	// Record onto it.
-	im.SameLine(0, gap)
+	ui.flow(fh, gap)
 	recording := a.rec.active
 	if ui.icon_button(ui.ICON_CIRCLE, "Record the input onto this pad", on = recording, color = ui.rgb(0xf0555a)) {
 		if recording {
@@ -276,7 +283,7 @@ draw_sample_bar :: proc(a: ^App) {
 		}
 	}
 	// The rest: the edits and Stretch.
-	im.SameLine(0, gap)
+	ui.flow(fh, gap)
 	if ui.icon_button(ui.ICON_ELLIPSIS, "More: the edits (crop, fades, normalize...) and Stretch") do im.OpenPopup("##sampletools")
 	ui.name("more sample tools")
 	if im.BeginPopup("##sampletools") {

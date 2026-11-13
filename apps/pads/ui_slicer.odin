@@ -36,111 +36,66 @@ draw_slicer :: proc(a: ^App, i: int) {
 	w := &a.wave
 	wave_peaks(a, i)
 
-	// How it plays.
-	mono := 0 if sl.mono else 1
-	if ui.segmented("slice_voices", {"Mono", "Poly"}, &mono) {
-		n := sl
-		n.mono = mono == 0
-		pm.set_slicer(m, i, n, "Mono" if n.mono else "Poly")
-		app.seal(&m.history)
-	}
-	if im.IsItemHovered() do im.SetTooltip("Mono: a slice cuts the one before off. Poly: they play together")
-	im.SameLine(0, 14)
-	thru := sl.thru
-	if ui.toggle("Thru", &thru) {
-		n := sl
-		n.thru = thru
-		pm.set_slicer(m, i, n, "Thru")
-		app.seal(&m.history)
-	}
-	if im.IsItemHovered() do im.SetTooltip("Thru: a slice plays on past its end, to the end of the sample")
-	im.SameLine(0, 14)
-	gate := sl.gate
-	if ui.toggle("Gate", &gate) {
-		n := sl
-		n.gate = gate
-		pm.set_slicer(m, i, n, "Gate")
-		app.seal(&m.history)
-	}
-	if im.IsItemHovered() do im.SetTooltip("Gate: a slice stops when its key is let go (else it plays to its end)")
-	ui.flow(150, 14)
-	base := f64(sl.base)
-	if e := ui.number_drag("base note", &base, 0, 127, 1, 1, fmt.ctprintf("From %s (%%.0f)", ui.note_name(int(sl.base))), 150); e.changed {
-		n := sl
-		n.base = u8(base)
-		pm.set_slicer(m, i, n, "Base Note")
-	} else if e.ended do app.seal(&m.history)
-	if im.IsItemHovered() do im.SetTooltip("The key of slice 1 (the next key plays slice 2...)")
-	ui.flow(256, 14)
-	fi := f64(sl.fade_in_ms)
-	if e := ui.number_drag("fade in", &fi, 0, 200, 0.5, 0.1, "Fade in %.1f ms", 120); e.changed {
-		n := sl
-		n.fade_in_ms = f32(fi)
-		pm.set_slicer(m, i, n, "Fade In")
-	} else if e.ended do app.seal(&m.history)
-	im.SameLine(0, 6)
-	fo := f64(sl.fade_out_ms)
-	if e := ui.number_drag("fade out", &fo, 0, 500, 0.5, 0.1, "Fade out %.1f ms", 130); e.changed {
-		n := sl
-		n.fade_out_ms = f32(fo)
-		pm.set_slicer(m, i, n, "Fade Out")
-	} else if e.ended do app.seal(&m.history)
-	if im.IsItemHovered() do im.SetTooltip("Each slice fades in and out by these (no clicks where it is cut)")
-	ui.flow(130, 14)
-	vel := f64(pad.voice.velocity * 100)
-	if e := ui.number_drag("velocity", &vel, 0, 100, 1, 0.1, "Velocity %.0f%%", 130); e.changed {
-		p := pad
-		p.voice.velocity = f32(vel / 100)
-		pm.set_pad(m, i, .Voice, "Velocity", p)
-	} else if e.ended do app.seal(&m.history)
-	if im.IsItemHovered() do im.SetTooltip("Velocity sensitivity: 0% every hit as loud; 50% as hard as it is hit; more, softer hits softer still")
-
-	draw_warp(a)
-
-	// How it is sliced.
-	by := int(sl.by)
-	if ui.segmented("slice_by", {"Transients", "Beats", "Equal", "Manual"}, &by) && pm.Slice_By(by) != .Manual {
-		pm.slice_pad(m, i, pm.Slice_By(by))
-		ui.toast(&a.ws.toasts, .Info, fmt.tprintf("%d slices", m.project.pads[i].slicer.count))
-	}
-	if im.IsItemHovered() do im.SetTooltip("Slice again: at its hits, on a grid of its tempo, into equal parts (Manual: by hand)")
-	im.SameLine(0, 10)
-	sl = m.project.pads[i].slicer
-	again := false
-	#partial switch sl.by {
-	case .Transients:
-		sens := f64(sl.sensitivity * 100)
-		if e := ui.number_drag("slice sensitivity", &sens, 0, 100, 1, 0.1, "Sensitivity %.0f%%", 150); e.changed {
-			n := sl
-			n.sensitivity = f32(sens / 100)
-			pm.set_slicer(m, i, n, "Sensitivity")
-		} else if e.ended do again = true
-	case .Beats:
-		names := [stretch.Warp_Grain]cstring{.Transients = "Bars", .Sixteenth = "1/16", .Eighth = "1/8", .Quarter = "1/4"}
-		im.SetNextItemWidth(100)
-		if ui.combo("##slicegrid", names[sl.grain]) {
-			for g in stretch.Warp_Grain do if im.Selectable(names[g], g == sl.grain) {
-				n := sl
-				n.grain = g
-				pm.set_slicer(m, i, n, "Grid")
-				again = true
-			}
+	// The toolbar, one line (as the sampler's; it wraps when narrow): how
+	// it plays and how it is sliced (each a dropdown with its settings),
+	// the slices' count, Warp (its settings behind the arrow), then the
+	// slices to a sequence or a pad, back to a sampler, and record.
+	narrow := im.GetContentRegionAvail().x < 640
+	gap: f32 = 4 if narrow else 8
+	fh := im.GetFrameHeight()
+	{ // How it plays.
+		flags := ""
+		if sl.thru do flags = fmt.tprintf("%s · Thru", flags)
+		if sl.gate do flags = fmt.tprintf("%s · Gate", flags)
+		play_w: f32 = 92 if narrow else 160
+		im.SetNextItemWidth(play_w)
+		if ui.combo("##sliceplay", fmt.ctprintf("%s  %s%s", ui.ICON_PLAY, "Mono" if sl.mono else "Poly", flags)) {
+			slicer_play_settings(a, i)
 			im.EndCombo()
 		}
-	case .Equal:
-		parts := f64(sl.parts)
-		if e := ui.number_drag("slice parts", &parts, 1, pm.MAX_SLICER_SLICES, 1, 1, "%.0f slices", 110); e.changed {
-			n := sl
-			n.parts = int(parts)
-			pm.set_slicer(m, i, n, "Parts")
-		} else if e.ended do again = true
+		ui.name("slice playing")
+		if im.IsItemHovered() do im.SetTooltip("How it plays: mono or poly, thru, gate, its first key, the fades, velocity")
 	}
-	if again do pm.slice_pad(m, i, sl.by)
-	sl = m.project.pads[i].slicer
-	im.SameLine(0, 14)
-	im.AlignTextToFramePadding()
-	im.TextDisabled("%s", fmt.ctprintf("%d slice%s from %s", sl.count, "" if sl.count == 1 else "s", ui.note_name(int(sl.base))))
-	im.SameLine(0, 14)
+	{ // How it is sliced.
+		BY_NAMES := [pm.Slice_By]string{.Transients = "Transients", .Beats = "Beats", .Equal = "Equal", .Manual = "Manual"}
+		by_w: f32 = 120 if narrow else 150
+		ui.flow(by_w, gap)
+		im.SetNextItemWidth(by_w)
+		if ui.combo("##sliceby", fmt.ctprintf("%s  %s", ui.ICON_SLICE, BY_NAMES[sl.by])) {
+			slicer_by_settings(a, i)
+			im.EndCombo()
+		}
+		ui.name("slice by")
+		if im.IsItemHovered() do im.SetTooltip("How it is sliced: at its hits, on a grid of its tempo, into equal parts, or by hand (Manual); choosing slices it again")
+		sl = m.project.pads[i].slicer
+	}
+	if !narrow { // (narrow: the markers count them)
+		count := fmt.ctprintf("%d slice%s from %s", sl.count, "" if sl.count == 1 else "s", ui.note_name(int(sl.base)))
+		ui.flow(im.CalcTextSize(count).x, gap + 4)
+		im.AlignTextToFramePadding()
+		im.TextDisabled("%s", count)
+	}
+	// Warp: on or off here, its settings behind the arrow.
+	{
+		ui.flow(ui.button_width("Warp") + 20 + (fh if pad.warp.on else 0), gap + 4)
+		w := pad.warp
+		on := w.on
+		if ui.toggle("Warp", &on) {
+			w.on = on
+			pm.set_warp(m, i, w, "Warp On" if on else "Warp Off")
+			app.seal(&m.history)
+		}
+		if im.IsItemHovered() do im.SetTooltip("Warp: the sample follows the tempo, at its own pitch (made longer or shorter)")
+		if w.on {
+			im.SameLine(0, 0)
+			if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Warp settings") do im.OpenPopup("##warpset")
+			if im.BeginPopup("##warpset") {
+				warp_settings(a)
+				im.EndPopup()
+			}
+		}
+	}
+	ui.flow(fh, gap + 4)
 	if ui.icon_button(ui.ICON_LIST_MUSIC, "Slices to a sequence: a new one, playing each slice where it falls") {
 		if slot := pm.slices_to_sequence(m, i); slot >= 0 {
 			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Sequence %d plays the slices", slot + 1))
@@ -149,13 +104,16 @@ draw_slicer :: proc(a: ^App, i: int) {
 		}
 	}
 	ui.name("slices to sequence")
-	im.SameLine(0, 4)
+	ui.flow(fh, 2)
 	if ui.icon_button(ui.ICON_GRID_2X2_PLUS, "The selected slice onto the next empty pad") do slice_out(a, i, st.selected)
 	ui.name("slice to pad")
-	im.SameLine(0, 4)
+	ui.flow(fh, 2)
 	if ui.icon_button(ui.ICON_AUDIO_WAVEFORM, "Make it a sampler again (its slices kept)") do pm.make_sampler(m, i)
 	ui.name("to sampler")
-	draw_tools_record(a, i)
+	ui.flow(fh, gap)
+	draw_tools_record(a, i, same_line = false)
+	sl = m.project.pads[i].slicer
+	if st.selected >= sl.count do st.selected = max(sl.count - 1, 0)
 	im.Spacing()
 
 	// The waveform: the region's S and E, a marker a slice, a level a slice.
@@ -165,7 +123,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 	gains := make([dynamic]ui.Wave_Gain, context.temp_allocator)
 	for k in 0 ..< sl.count {
 		x := sl.slices[k]
-		c := t.accent if k == st.selected else ui.rgb(0xd0d4dc)
+		c := t.accent if k == st.selected else ui.mix(t.text, t.text_dim, 0.5)
 		append(&markers, ui.Marker{frame = x.start, color = c, label = fmt.tprintf("%d", k + 1), drag = k > 0})
 		append(&gains, ui.Wave_Gain{from = x.start, to = pm.slice_end(m, i, k), db = x.gain_db})
 	}
@@ -174,8 +132,8 @@ draw_slicer :: proc(a: ^App, i: int) {
 	beat := 0.0
 	if pad.warp.on || pad.warp.bpm > 0 do beat = s.rate * 60 / pm.pad_bpm(m, i)
 	inspector_h: f32 = 34
-	opts := ui.Wave_Options{rate = s.rate, beat_frames = beat, beats_per_bar = m.project.transport.time_sig.num, scale = true, overview = true, editable = true, gains = gains[:], pyramid = &w.pyramid}
-	e := ui.waveform("slices", w.peaks, w.frames, &w.view, markers[:], nil, {avail.x, max(avail.y - inspector_h - 8, 120)}, ui.rgb(pad.color), head if playing else -1, opts)
+	opts := ui.Wave_Options{rate = s.rate, beat_frames = beat, beats_per_bar = m.project.transport.time_sig.num, overview = true, editable = true, gains = gains[:], pyramid = &w.pyramid}
+	e := ui.waveform("slices", w.peaks, w.frames, &w.view, markers[:], nil, {avail.x, max(avail.y - inspector_h - 8, 60)}, ui.rgb(pad.color), head if playing else -1, opts)
 	if e.moved {
 		switch e.marker {
 		case 0:
@@ -214,9 +172,11 @@ draw_slicer :: proc(a: ^App, i: int) {
 		x := sl.slices[k]
 		im.AlignTextToFramePadding()
 		im.Text("%s", fmt.ctprintf("Slice %d", k + 1))
-		im.SameLine()
-		im.TextDisabled("%s", fmt.ctprintf("%s · %.3f s", ui.note_name(int(sl.base) + k), f64(pm.slice_end(m, i, k) - x.start) / s.rate))
-		im.SameLine(0, 14)
+		if !narrow { // (narrow: in its tooltip)
+			im.SameLine()
+			im.TextDisabled("%s", fmt.ctprintf("%s · %.3f s", ui.note_name(int(sl.base) + k), f64(pm.slice_end(m, i, k) - x.start) / s.rate))
+		} else if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s · %.3f s", ui.note_name(int(sl.base) + k), f64(pm.slice_end(m, i, k) - x.start) / s.rate))
+		im.SameLine(0, 8 if narrow else 14)
 		if ui.icon_button(ui.ICON_PLAY, "Hear it") do audition_slice(a, i, k)
 		ui.name("play slice")
 		im.SameLine(0, 10)
@@ -247,6 +207,122 @@ draw_slicer :: proc(a: ^App, i: int) {
 	}
 }
 
+// How slicer pad `i` plays (its toolbar's first dropdown): mono or poly,
+// thru, gate, its first key, the fades, velocity.
+@(private)
+slicer_play_settings :: proc(a: ^App, i: int) {
+	m := &a.m
+	pad := m.project.pads[i]
+	sl := pad.slicer
+	mono := 0 if sl.mono else 1
+	if ui.segmented("slice_voices", {"Mono", "Poly"}, &mono) {
+		n := sl
+		n.mono = mono == 0
+		pm.set_slicer(m, i, n, "Mono" if n.mono else "Poly")
+		app.seal(&m.history)
+	}
+	if im.IsItemHovered() do im.SetTooltip("Mono: a slice cuts the one before off. Poly: they play together")
+	im.SameLine(0, 12)
+	thru := sl.thru
+	if ui.toggle("Thru", &thru) {
+		n := sl
+		n.thru = thru
+		pm.set_slicer(m, i, n, "Thru")
+		app.seal(&m.history)
+	}
+	if im.IsItemHovered() do im.SetTooltip("Thru: a slice plays on past its end, to the end of the sample")
+	im.SameLine(0, 8)
+	gate := sl.gate
+	if ui.toggle("Gate", &gate) {
+		n := sl
+		n.gate = gate
+		pm.set_slicer(m, i, n, "Gate")
+		app.seal(&m.history)
+	}
+	if im.IsItemHovered() do im.SetTooltip("Gate: a slice stops when its key is let go (else it plays to its end)")
+	base := f64(sl.base)
+	if e := ui.number_drag("base note", &base, 0, 127, 1, 1, fmt.ctprintf("From %s (%%.0f)", ui.note_name(int(sl.base))), 256); e.changed {
+		n := sl
+		n.base = u8(base)
+		pm.set_slicer(m, i, n, "Base Note")
+	} else if e.ended do app.seal(&m.history)
+	if im.IsItemHovered() do im.SetTooltip("The key of slice 1 (the next key plays slice 2...)")
+	fi := f64(sl.fade_in_ms)
+	if e := ui.number_drag("fade in", &fi, 0, 200, 0.5, 0.1, "Fade in %.1f ms", 125); e.changed {
+		n := sl
+		n.fade_in_ms = f32(fi)
+		pm.set_slicer(m, i, n, "Fade In")
+	} else if e.ended do app.seal(&m.history)
+	im.SameLine(0, 6)
+	fo := f64(sl.fade_out_ms)
+	if e := ui.number_drag("fade out", &fo, 0, 500, 0.5, 0.1, "Fade out %.1f ms", 125); e.changed {
+		n := sl
+		n.fade_out_ms = f32(fo)
+		pm.set_slicer(m, i, n, "Fade Out")
+	} else if e.ended do app.seal(&m.history)
+	if im.IsItemHovered() do im.SetTooltip("Each slice fades in and out by these (no clicks where it is cut)")
+	vel := f64(pad.voice.velocity * 100)
+	if e := ui.number_drag("velocity", &vel, 0, 100, 1, 0.1, "Velocity %.0f%%", 256); e.changed {
+		p := pad
+		p.voice.velocity = f32(vel / 100)
+		pm.set_pad(m, i, .Voice, "Velocity", p)
+	} else if e.ended do app.seal(&m.history)
+	if im.IsItemHovered() do im.SetTooltip("Velocity sensitivity: 0% every hit as loud; 50% as hard as it is hit; more, softer hits softer still")
+}
+
+// How slicer pad `i` is sliced (its toolbar's second dropdown): by its
+// hits, a grid of its tempo, equal parts or by hand, and that way's
+// setting; a change slices it again.
+@(private)
+slicer_by_settings :: proc(a: ^App, i: int) {
+	m := &a.m
+	sl := m.project.pads[i].slicer
+	by := int(sl.by)
+	if ui.segmented("slice_by", {"Transients", "Beats", "Equal", "Manual"}, &by) && pm.Slice_By(by) != .Manual {
+		pm.slice_pad(m, i, pm.Slice_By(by))
+		ui.toast(&a.ws.toasts, .Info, fmt.tprintf("%d slices", m.project.pads[i].slicer.count))
+	}
+	if pm.Slice_By(by) == .Manual && sl.by != .Manual {
+		n := sl
+		n.by = .Manual
+		pm.set_slicer(m, i, n, "Slice by Hand")
+		app.seal(&m.history)
+	}
+	sl = m.project.pads[i].slicer
+	again := false
+	#partial switch sl.by {
+	case .Transients:
+		sens := f64(sl.sensitivity * 100)
+		if e := ui.number_drag("slice sensitivity", &sens, 0, 100, 1, 0.1, "Sensitivity %.0f%%", 240); e.changed {
+			n := sl
+			n.sensitivity = f32(sens / 100)
+			pm.set_slicer(m, i, n, "Sensitivity")
+		} else if e.ended do again = true
+	case .Beats:
+		names := [stretch.Warp_Grain]cstring{.Transients = "Bars", .Sixteenth = "1/16", .Eighth = "1/8", .Quarter = "1/4"}
+		im.SetNextItemWidth(240)
+		if ui.combo("##slicegrid", names[sl.grain]) {
+			for g in stretch.Warp_Grain do if im.Selectable(names[g], g == sl.grain) {
+				n := sl
+				n.grain = g
+				pm.set_slicer(m, i, n, "Grid")
+				again = true
+			}
+			im.EndCombo()
+		}
+	case .Equal:
+		parts := f64(sl.parts)
+		if e := ui.number_drag("slice parts", &parts, 1, pm.MAX_SLICER_SLICES, 1, 1, "%.0f slices", 240); e.changed {
+			n := sl
+			n.parts = int(parts)
+			pm.set_slicer(m, i, n, "Parts")
+		} else if e.ended do again = true
+	case .Manual:
+		im.TextDisabled("By hand: double-click the waveform to add a slice,\nright-click one to take it away, drag one to move it")
+	}
+	if again do pm.slice_pad(m, i, sl.by)
+}
+
 // An empty slicer: a place to drop a sample (or record one).
 @(private)
 draw_empty_slicer :: proc(a: ^App, i: int) {
@@ -275,8 +351,8 @@ draw_empty_slicer :: proc(a: ^App, i: int) {
 
 // The record button (record the input onto the pad: a slicer slices it).
 @(private)
-draw_tools_record :: proc(a: ^App, i: int) {
-	im.SameLine(0, 10)
+draw_tools_record :: proc(a: ^App, i: int, same_line := true) {
+	if same_line do im.SameLine(0, 10)
 	recording := a.rec.active
 	if ui.icon_button(ui.ICON_CIRCLE, "Record the input into this slicer", on = recording, color = ui.rgb(0xf0555a)) {
 		if recording {

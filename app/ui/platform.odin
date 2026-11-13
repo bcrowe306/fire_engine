@@ -306,6 +306,12 @@ set_theme :: proc(p: ^Platform, t: Theme) {
 	theme_apply(u, p.ui_scale)
 	p.clear = u.bg
 	current = u
+	// The waveforms' and plots' background: black on a dark theme; on a
+	// light one a shade darker than the panels, so the traces (in the
+	// pads' colours) stand out from it and it from the panel.
+	WAVE_BG = Color{0, 0, 0, 1} if theme_is_dark(u) else mix(u.inset, u.text, 0.07)
+	PLOT_BG = WAVE_BG
+	WAVE_INK = Color{1, 1, 1, 1} if theme_is_dark(u) else u.text
 }
 
 // Makes controls the size `d` gives them (the theme set again with it).

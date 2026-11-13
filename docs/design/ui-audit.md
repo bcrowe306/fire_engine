@@ -290,3 +290,66 @@ an insert's click opens it below.
 5. **Sequence**: rows that fit, the lanes, recording.
 6. **Pads and device pages**: shaping sounds.
 7. **Song**, then **Perform**, then **Mixer**.
+
+## Re-audit (2026-11-12)
+
+The same tour after the redesign, dark and light at 1440×900 and dark at
+1100×760 (`--fake`, the fixtures project). The redesigned views hold up at
+1440 in both themes; what is left is mostly the narrow window and a few
+leftovers.
+
+**Status: all nine fixed (2026-11-12)**, below each in brief; checked
+in screenshots dark and light at 1440×900 and dark at 1100×760, with
+`tests/e2e/test_reaudit.py`.
+
+1. Escape closes Settings (after first stopping a shortcut being
+   recorded); toasts wait while a popup or modal is open.
+2. Choosing another pad brings its sound to the front (not MIDI, not an
+   insert of the last pad).
+3. A narrow toolbar shows its toggles as icons; the Sequence tools
+   shorten ("Piano: A1", Quantize an icon); pads shrink (closer) so all
+   four rows fit; a short mixer drops the EQ curves, then the I/O rows;
+   the sampler's line shortens its choke and Chop, and wraps if need be.
+4. Toasts sit at the top right, in the panels' tab strip.
+5. The slicer page as the sampler's: one line (how it plays and how it is
+   sliced each a dropdown, Warp behind its arrow), the waveform large, no
+   dB scale.
+6. Pad faces shrink a long name, then end it with "…"; the library's
+   favourites not shown become icons in a narrow sidebar.
+7. Waveforms and plots take a pale grey in a light theme (their traces a
+   shade deeper).
+8. Perform's levels: main and cue as two mixer strips; the cue gets a
+   meter of its own (fire's mixer: a meter after the cue's level).
+9. Empty insert slots show a faint +.
+
+Seen while fixing, not fixed: in Perform with a window under about 850
+points tall, the toolbar's controls lose their backgrounds (their text
+stays).
+
+### Fix first (something is hidden or doesn't work)
+
+1. **Escape doesn't close Settings**, and a toast draws over the modal.
+2. **A pad's MIDI tab sticks**: select a pad, open its MIDI page, select
+   another pad, and its sound page is hidden behind MIDI.
+3. **1100×760 cuts things off**: the toolbar at the right (Click and the
+   menu), the pad grid's bottom row, the mixer strips' foot (MIDI out,
+   output, name: the strips scroll), the sampler toolbar ("Chop").
+4. **Toasts cover controls**: main's loudness column and name in the
+   Mixer, the Perform levels' labels ("Main 0.0" is cut at the bottom).
+
+### Tidy (it works, it reads badly)
+
+5. **The slicer page is dense**, as the sampler's was: three rows of
+   controls, the waveform's time labels clipped, odd dB marks. Give it
+   the sampler's layout (one toolbar line, the waveform large, knobs
+   below).
+6. **Narrow text**: at 1100, Sequence's toolbar wraps input quantize to a
+   second line (four rows show), the library's Documents/Project chips
+   wrap, Perform's effect and sequence names are cut ("Low-pas",
+   "Sequer") and pads' kinds ("samp").
+7. **The light theme's black panels**: the sampler waveform and the
+   stereo view stay black; they should take the theme's surface.
+8. **Perform's levels**: main's fader sits far from its meter, cue has no
+   meter; the labels under them are cut.
+9. **Mixer buses**: empty insert slots show nothing (a + on hover, as on
+   pads).

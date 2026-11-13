@@ -691,6 +691,8 @@ engine_clear :: proc(e: ^Engine) {
 	for &st in e.mixer.strips do if st.built do remove_strip(g, &st)
 	graph.remove_node(g, e.mixer.out_main)
 	graph.remove_node(g, e.mixer.out_cue)
+	graph.remove_node(g, e.mixer.cue_meter_id)
+	e.mixer.cue_meter = nil
 	graph.remove_node(g, e.mixer.loud_id)
 	graph.remove_node(g, e.mixer.stereo_id)
 	for id in e.mixer.out_pairs do if id != {} do graph.remove_node(g, id)

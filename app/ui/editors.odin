@@ -89,8 +89,13 @@ Wave_Gain :: struct {
 // pan with Shift+wheel), drawn from `peaks` (of the whole sound), with
 // `markers` (start, end, loop points, slices) that can be dragged and a
 // selection dragged out with the mouse.
-// The waveform editor's background: black, whatever the theme.
-WAVE_BG :: Color{0, 0, 0, 1}
+// The waveform editor's background: black in a dark theme, a pale grey a
+// shade under the panels in a light one (set with the theme).
+WAVE_BG := Color{0, 0, 0, 1}
+
+// What is drawn over WAVE_BG (its grid, the playhead, labels): white, or
+// the theme's text on a light one.
+WAVE_INK := Color{1, 1, 1, 1}
 
 // How far below the top fade handles sit (under the tags).
 @(private) FADE_ROW :: 24
@@ -120,6 +125,7 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 	e.marker, e.add_at, e.remove, e.gain = -1, -1, -1, -1
 	t := current
 	color := tint if tint != {} else t.accent
+	if !theme_is_dark(t) do color = mix(color, t.text, 0.35) // (deeper on a light background, to stand out)
 	dl := im.GetWindowDrawList()
 	full_pos := im.GetCursorScreenPos()
 	io := im.GetIO()
@@ -242,7 +248,7 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		e.zoomed = true
 	}
 
-	// Drawing: on black (in either theme), as audio editors show waves.
+	// Drawing: on WAVE_BG (black in a dark theme), as audio editors show waves.
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, col(WAVE_BG), t.radius)
 	// The spectrum behind (playing): a column for each bin, from the
 	// bottom, faint in the tint, brighter at the top of each.
@@ -268,7 +274,7 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 	// The grid: -6 dB (half the height) above and below the zero line.
 	if opts.scale {
 		half := (size.y / 2 - 2) * 0.5
-		for y in ([2]f32{mid - half, mid + half}) do im.DrawList_AddLine(dl, {pos.x, y}, {pos.x + size.x, y}, col(with_alpha(rgb(0xffffff), 0.08)), 1)
+		for y in ([2]f32{mid - half, mid + half}) do im.DrawList_AddLine(dl, {pos.x, y}, {pos.x + size.x, y}, col(with_alpha(WAVE_INK, 0.08)), 1)
 	}
 	if selection != nil && selection[1] > selection[0] {
 		x0 := to_x(f64(selection[0]), view^, pos, size)
@@ -340,19 +346,19 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		x0, x1 := to_x(f64(g.from), view^, pos, size), to_x(f64(g.to), view^, pos, size)
 		y := gain_y(g.db, pos, size)
 		hot := i == near_gain || i == dragging_gain
-		lc := with_alpha(rgb(0xc8ccd4), 0.55 if hot else 0.32)
+		lc := with_alpha(WAVE_INK, 0.55 if hot else 0.32)
 		im.DrawList_AddLine(dl, {x0 + 3, y}, {x1 - 3, y}, col(lc), 1.5)
 		cx := (x0 + x1) / 2
-		im.DrawList_AddCircleFilled(dl, {cx, y}, 5 if hot else 4, col(with_alpha(rgb(0xe8e9ed), 0.9 if hot else 0.6)))
+		im.DrawList_AddCircleFilled(dl, {cx, y}, 5 if hot else 4, col(with_alpha(WAVE_INK, 0.9 if hot else 0.6)))
 		if hot {
 			lt := fmt.ctprintf("%+.1f dB", g.db)
-			im.DrawList_AddText(dl, {cx + 8, y - 16}, col(rgb(0xe8e9ed)), lt)
+			im.DrawList_AddText(dl, {cx + 8, y - 16}, col(WAVE_INK), lt)
 		}
 	}
 	// The playhead.
 	if playhead >= 0 {
 		x := to_x(f64(playhead), view^, pos, size)
-		if x >= pos.x && x <= pos.x + size.x do im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(rgb(0xffffff)), 1.5)
+		if x >= pos.x && x <= pos.x + size.x do im.DrawList_AddLine(dl, {x, pos.y}, {x, pos.y + size.y}, col(WAVE_INK), 1.5)
 	}
 	// The ruler: time along the bottom, in bars and beats (at the sound's
 	// tempo) or seconds, its labels as many as fit.
@@ -371,7 +377,7 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		for u := first; u * unit <= view.end; u += step {
 			x := to_x(u * unit, view^, pos, size)
 			if x < pos.x - 1 do continue
-			im.DrawList_AddLine(dl, {x, y0}, {x, y0 + 5}, col(with_alpha(rgb(0xffffff), 0.5)), 1)
+			im.DrawList_AddLine(dl, {x, y0}, {x, y0 + 5}, col(with_alpha(WAVE_INK, 0.5)), 1)
 			lt: cstring
 			if opts.beat_frames > 0 {
 				bar := int(math.floor(u / per_bar + 1e-9)) + 1
@@ -380,7 +386,7 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 			} else {
 				lt = fmt.ctprintf("%.2fs", u) if step < 1 else fmt.ctprintf("%.0fs", u)
 			}
-			im.DrawList_AddText(dl, {x + 3, y0 + 1}, col(with_alpha(rgb(0xffffff), 0.6)), lt)
+			im.DrawList_AddText(dl, {x + 3, y0 + 1}, col(with_alpha(WAVE_INK, 0.6)), lt)
 		}
 	}
 	im.DrawList_PopClipRect(dl)
@@ -414,8 +420,8 @@ waveform :: proc(id: cstring, peaks: []Peak, frames: i64, view: ^Wave_View, mark
 		}
 		wx0 := op.x + f32(view.start / f64(frames)) * osz.x
 		wx1 := op.x + f32(view.end / f64(frames)) * osz.x
-		im.DrawList_AddRectFilled(dl, {wx0, op.y}, {wx1, op.y + osz.y}, col(with_alpha(rgb(0xffffff), 0.12)), 2)
-		im.DrawList_AddRect(dl, {wx0, op.y}, {wx1, op.y + osz.y}, col(with_alpha(rgb(0xffffff), 0.5)), 2, 1)
+		im.DrawList_AddRectFilled(dl, {wx0, op.y}, {wx1, op.y + osz.y}, col(with_alpha(WAVE_INK, 0.12)), 2)
+		im.DrawList_AddRect(dl, {wx0, op.y}, {wx1, op.y + osz.y}, col(with_alpha(WAVE_INK, 0.5)), 2, 1)
 		// Drag (or click) to move the part shown, centred where the mouse is.
 		if im.IsItemActive() {
 			c := f64((io.MousePos.x - op.x) / osz.x) * f64(frames)

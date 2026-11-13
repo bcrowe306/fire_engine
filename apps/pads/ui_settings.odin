@@ -603,6 +603,7 @@ draw_settings :: proc(a: ^App) {
 	if im.BeginPopupModal("Settings###settings", &s.open, {.NoCollapse}) {
 		if im.IsWindowAppearing() do refresh_devices(a)
 		changed := false
+		was_recording := s.recording != "" // (Escape stops that first)
 		// The pages, down the left.
 		if im.BeginChild("##pages", {190, 0}) {
 			for p in Settings_Page {
@@ -636,6 +637,12 @@ draw_settings :: proc(a: ^App) {
 		}
 		im.EndChild()
 		if changed do settings_save(a)
+		// Escape closes it (unless a field is being typed in, a shortcut
+		// recorded, or a menu or the Keep question is in front).
+		if im.IsKeyPressed(.Escape, false) && im.IsWindowFocused({.RootWindow, .ChildWindows}) && !im.IsAnyItemActive() && !was_recording && !s.keep.active {
+			s.open = false
+			im.CloseCurrentPopup()
+		}
 		if s.keep.active do draw_keep(a) // (inside: a popup at the root would close this one)
 		im.EndPopup()
 	}

@@ -8,8 +8,8 @@ import im "deps:imgui"
 // response, an LFO's trace. Each on black, with a live mark of what is
 // playing now, so a change is seen as it is heard.
 
-// The background plots draw on.
-PLOT_BG :: Color{0, 0, 0, 1}
+// The background plots draw on (as WAVE_BG: set with the theme).
+PLOT_BG := Color{0, 0, 0, 1}
 
 // The handle being dragged in a plot (one gesture at a time).
 @(private)

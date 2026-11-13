@@ -117,6 +117,9 @@ Mixer_Nodes :: struct {
 	// preview), the cue's (a copy of main, cue sends, the click), and a
 	// direct out per output pair a bus or pad goes to.
 	out_main, out_cue: graph.Node_Id,
+	// The cue's meter, after its level (what the cue output takes).
+	cue_meter_id: graph.Node_Id,
+	cue_meter:    ^dsp.Meter,
 	// Main's loudness meter and stereo analyser, after its meter (the
 	// analyser the end of main's chain: what the outputs take).
 	loud_id, stereo_id: graph.Node_Id,
@@ -292,6 +295,10 @@ build_mixer :: proc(e: ^Engine) -> fc.Error {
 	main.dest = -1
 	e.mixer.out_main = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
 	e.mixer.out_cue = graph.add_node(g, dsp.gain_create(), 2, 2) or_return
+	cmn, cm := dsp.meter_create()
+	e.mixer.cue_meter_id = graph.add_node(g, cmn, 2, 2) or_return
+	e.mixer.cue_meter = cm
+	for c in 0 ..< 2 do graph.connect(g, e.mixer.out_cue, c, e.mixer.cue_meter_id, c)
 	ln, loud := dsp.loudness_create()
 	e.mixer.loud_id = graph.add_node(g, ln, 2, 2) or_return
 	sn, stereo := dsp.stereo_create()
@@ -571,6 +578,13 @@ bus_level :: proc(e: ^Engine, b: int) -> (peak, rms: [2]f32) {
 	bn := &e.mixer.buses[clamp(b, 0, BUSES)]
 	if bn.meter == nil do return
 	return dsp.meter_read(bn.meter)
+}
+
+// Levels since the last call: the cue mix (after its level; silent while
+// no output takes it).
+cue_level :: proc(e: ^Engine) -> (peak, rms: [2]f32) {
+	if e.mixer.cue_meter == nil do return
+	return dsp.meter_read(e.mixer.cue_meter)
 }
 
 // The plug-in in an effect slot's node, if it holds one (for its

@@ -197,13 +197,16 @@ draw_favorite_tabs :: proc(a: ^App) {
 	t := ui.theme()
 	// Pills that wrap onto more lines (a tab bar would scroll some out of
 	// sight in a narrow sidebar).
+	// In a narrow sidebar the ones not shown are their icons alone (their
+	// names in their tooltips), so they stay on one line longer.
 	changed := false
-	im.PushStyleVarVec2(.FramePadding, {8, 4})
+	narrow := im.GetContentRegionAvail().x < 260
+	im.PushStyleVarVec2(.FramePadding, {6 if narrow else 8, 4})
 	im.PushStyleVar(.FrameRounding, 12)
 	defer im.PopStyleVar(2)
 	for f, i in b.favorites {
 		icon := ui.ICON_FOLDER_HEART if f.project else ui.ICON_STAR
-		label := fmt.ctprintf("%s %s##fav%d", icon, f.name, i)
+		label := fmt.ctprintf("%s##fav%d", icon, i) if narrow && i != b.tab else fmt.ctprintf("%s %s##fav%d", icon, f.name, i)
 		if i > 0 do ui.flow(ui.button_width(label), 4)
 		on := i == b.tab
 		if on {
@@ -214,7 +217,8 @@ draw_favorite_tabs :: proc(a: ^App) {
 		if im.Button(label) && !on do pm.browser_set_tab(b, i)
 		if on do im.PopStyleColor(3)
 		ui.name(fmt.tprintf("tab %s", f.name)) // for a test: "tab Documents"
-		if im.IsItemHovered({.DelayNormal}) do im.SetTooltip("%s", fmt.ctprintf("%s (right-click to rename, move or remove)", favorite_where(b, i)))
+		if narrow && !on && im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s: %s (right-click to rename, move or remove)", f.name, favorite_where(b, i)))
+		else if im.IsItemHovered({.DelayNormal}) do im.SetTooltip("%s", fmt.ctprintf("%s (right-click to rename, move or remove)", favorite_where(b, i)))
 		if im.BeginPopupContextItem(fmt.ctprintf("##favmenu%d", i)) {
 			if v.renaming != i {
 				v.renaming = i

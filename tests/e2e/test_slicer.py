@@ -173,8 +173,10 @@ def test_slices_to_a_sequence_and_a_pad(app, fixtures):
 
 def test_keyboard_mode_plays_slices(app, fixtures):
     sliced_loop(app, fixtures)
-    app.click("Thru", window="detail")  # (a slice plays on to the sample's end: long enough to see)
+    app.click("slice playing", window="detail")  # how it plays: the toolbar's first menu
+    app.click("Thru")  # (a slice plays on to the sample's end: long enough to see)
     assert slicer(app, 0)["thru"]
+    app.key("esc")
     app.cmd("mode keys")
     app.screenshot("slicer_keys")
     app.click("pad A3", window="detail")  # slice 3

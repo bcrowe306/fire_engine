@@ -297,15 +297,19 @@ toasts_destroy :: proc(ts: ^Toasts) {
 	delete(ts.log)
 }
 
-// Draws the toasts at the bottom right of the rectangle `at`, `size` (the
-// viewport's work area if it is empty) and ages them by this frame's time.
+// Draws the toasts at the top right of the rectangle `at`, `size` (the
+// viewport's work area if it is empty), in the strip a docked panel's tabs
+// leave free, stacked down from there, and ages them by this frame's time.
+// While a popup is open they wait (unseen, not ageing): they would draw over
+// it.
 toasts_draw :: proc(ts: ^Toasts, at: im.Vec2 = {}, size: im.Vec2 = {}) {
 	t := current
 	vp := im.GetMainViewport()
 	area_pos, area_size := at, size
 	if size.x <= 0 do area_pos, area_size = vp.WorkPos, vp.WorkSize
+	if im.IsPopupOpen(nil, POPUP_ANY) do return
 	dt := im.GetIO().DeltaTime
-	y := area_pos.y + area_size.y - 16
+	y := area_pos.y + 3
 	#reverse for &x, i in ts.items {
 		x.age += dt
 		if x.age > x.life {
@@ -325,17 +329,20 @@ toasts_draw :: proc(ts: ^Toasts, at: im.Vec2 = {}, size: im.Vec2 = {}) {
 		text := strings.clone_to_cstring(x.text, context.temp_allocator)
 		ic := strings.clone_to_cstring(icon, context.temp_allocator)
 		ts_ := im.CalcTextSize(text)
-		w := ts_.x + 56
-		h := ts_.y + 22
-		pos := im.Vec2{area_pos.x + area_size.x - w - 16, y - h}
+		w := ts_.x + 48
+		h := ts_.y + 10
+		pos := im.Vec2{area_pos.x + area_size.x - w - 10, y}
 		dl := im.GetForegroundDrawList()
 		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, col(with_alpha(t.surface, alpha)), t.radius_big)
 		im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, col(with_alpha(t.border, alpha)), t.radius_big)
-		im.DrawList_AddText(dl, {pos.x + 14, pos.y + 11}, col(with_alpha(color, alpha)), ic)
-		im.DrawList_AddText(dl, {pos.x + 40, pos.y + 11}, col(with_alpha(t.text, alpha)), text)
-		y = pos.y - 8
+		im.DrawList_AddText(dl, {pos.x + 12, pos.y + 5}, col(with_alpha(color, alpha)), ic)
+		im.DrawList_AddText(dl, {pos.x + 34, pos.y + 5}, col(with_alpha(t.text, alpha)), text)
+		y = pos.y + h + 4
 	}
 }
+
+// Any popup at any level (for IsPopupOpen).
+@(private) POPUP_ANY :: im.PopupFlags{.AnyPopupId, .AnyPopupLevel}
 
 // --- workspace -------------------------------------------------------------------------------
 

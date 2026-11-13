@@ -26,9 +26,15 @@ draw_pads :: proc(user: rawptr) {
 	im.Spacing()
 
 	avail := im.GetContentRegionAvail()
+	// Square pads that fit the room both ways (a short area: smaller pads,
+	// closer together, all four rows still showing).
 	gap: f32 = 10
 	side := min((avail.x - 3 * gap) / 4, (avail.y - 3 * gap) / 4)
-	side = max(side, 48)
+	if side < 64 {
+		gap = 4
+		side = min((avail.x - 3 * gap) / 4, (avail.y - 3 * gap) / 4)
+	}
+	side = max(side, 24)
 	origin := im.GetCursorScreenPos()
 	origin.x += (avail.x - (4 * side + 3 * gap)) / 2 // centred
 	for row in 0 ..< 4 do for col in 0 ..< 4 {

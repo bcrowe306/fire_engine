@@ -86,7 +86,7 @@ show_pad_chain :: proc(a: ^App, index: int) {
 	st := &a.detail
 	if st.track == {.Pad, index} do return
 	st.track = {.Pad, index}
-	if st.device.kind == .Slot do st.device = {.Instrument, 0}
+	if st.device.kind == .Slot || st.device.kind == .Midi do st.device = {.Instrument, 0}
 	st.show = 2
 }
 
@@ -95,6 +95,7 @@ show_pad_chain :: proc(a: ^App, index: int) {
 show_midi :: proc(a: ^App) {
 	st := &a.detail
 	st.track, st.device, st.show = {.Pad, a.selected}, {.Midi, 0}, 2
+	st.selected_was = a.selected
 	a.ws.bottom_folded = false
 }
 
@@ -200,12 +201,13 @@ draw_pad_bar :: proc(a: ^App) {
 draw_detail :: proc(user: rawptr) {
 	a := (^App)(user)
 	st := &a.detail
-	// Choosing a pad shows its chain.
+	// Choosing a pad shows its chain, its sound in front (its MIDI page, or
+	// an insert the other pad had, would hide it).
 	if a.selected != st.selected_was {
 		st.selected_was = a.selected
 		if st.track.kind != .Pad || st.track.index != a.selected {
 			st.track = {.Pad, a.selected}
-			if st.device.kind == .Slot do st.device = {.Instrument, 0}
+			if st.device.kind == .Slot || st.device.kind == .Midi do st.device, st.show = {.Instrument, 0}, 2
 		}
 	}
 	t := ui.theme()

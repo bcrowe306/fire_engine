@@ -22,6 +22,7 @@ Mixer_State :: struct {
 	pads:  [pm.PADS][2]Meter_View,
 	buses: [pm.BUSES + 1][2]Meter_View,
 	inputs: [pm.MAX_INPUTS / 2][2]Meter_View, // the device's input channels, a pair each
+	cue:    [2]Meter_View, // the cue mix
 	multi: bool, // an edit of several strips at once is open (one undo step)
 	rename_bus: int, // the bus being renamed (1..BUSES; 0: none)
 	rename_buf: [16]u8,
@@ -57,6 +58,10 @@ update_meters :: proc(a: ^App) {
 	for b in 0 ..= pm.BUSES {
 		pk, rms := pm.bus_level(e, b)
 		meter_update(&a.mixer.buses[b], pk, rms, dt, a.settings.meters)
+	}
+	{
+		pk, rms := pm.cue_level(e)
+		meter_update(&a.mixer.cue, pk, rms, dt, a.settings.meters)
 	}
 	for k in 0 ..< pm.MAX_INPUTS / 2 {
 		pk, rms := pm.input_level(e, k)
@@ -118,6 +123,15 @@ draw_mixer :: proc(user: rawptr) {
 		strip_view = {inserts = true, eq = true, sends = true, io = true}
 	}
 	avail := im.GetContentRegionAvail()
+	// A short mixer (a small window): the EQ curves, then the I/O rows,
+	// give way, so every strip shows whole down to its name (the fader
+	// keeps 50 points and a row of inserts or sends stays).
+	{
+		room_h := avail.y - im.GetStyle().ScrollbarSize - 8
+		need :: proc() -> f32 { return strip_fixed_h() + ROW_H + 2 + 4 + 50 }
+		if strip_view.eq && need() > room_h do strip_view.eq = false
+		if strip_view.io && need() > room_h do strip_view.io = false
+	}
 	p := &m.project
 	n_buses := p.bus_count
 	add_w: f32 = 26 if n_buses < pm.BUSES else 0 // the + that adds a bus
@@ -551,10 +565,10 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 	color := t.text if s.on else t.text_dim
 	if failed do color = t.danger
 	_, _, clicked := row(a, fmt.ctprintf("##slot %d", target.slot + 1), name, color, a.fx == target)
-	if s.kind == .None && im.IsItemHovered() {
+	if s.kind == .None { // empty: a faint +, clear on hover (click: add an effect)
 		lo, hi := im.GetItemRectMin(), im.GetItemRectMax()
 		small(a)
-		text_in(im.GetWindowDrawList(), lo, hi, "+", t.text_dim)
+		text_in(im.GetWindowDrawList(), lo, hi, "+", t.text_dim if im.IsItemHovered() else ui.with_alpha(t.text_dim, 0.35))
 		im.PopFont()
 	}
 	if clicked do show_device(a, target)
@@ -1097,7 +1111,7 @@ strip_fixed_h :: proc(compact := false) -> f32 {
 
 // The rows of inserts and sends (on a bus: slots) every strip shows: as
 // many as they have (the most of any), or as fit, leaving the fader at
-// least 70 points (the rest scroll).
+// least 70 points (the rest scroll; one row at the least).
 @(private)
 block_rows :: proc(a: ^App, h: f32) -> int {
 	want := 0
@@ -1107,7 +1121,7 @@ block_rows :: proc(a: ^App, h: f32) -> int {
 	pad_rows := (pm.PAD_INSERTS if strip_view.inserts else 0) + (p.bus_count + cue if strip_view.sends else 0)
 	want = max(want, pad_rows)
 	fit := int((h - strip_fixed_h() - 70 - 4) / (ROW_H + 2))
-	return clamp(want, 0, max(fit, 2 if want > 0 else 0))
+	return clamp(want, 0, max(fit, 1 if want > 0 else 0))
 }
 
 // --- strips --------------------------------------------------------------------------------

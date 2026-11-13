@@ -119,8 +119,8 @@ sync_outputs :: proc(e: ^Engine) -> bool {
 	}
 	// The cue.
 	if was.cue != want.cue {
-		for c in 0 ..< 2 do if was.cue[c] >= 0 do graph.disconnect(g, mx.out_cue, c, graph.OUTPUT, was.cue[c])
-		for c in 0 ..< 2 do if want.cue[c] >= 0 do graph.connect(g, mx.out_cue, c, graph.OUTPUT, want.cue[c])
+		for c in 0 ..< 2 do if was.cue[c] >= 0 do graph.disconnect(g, mx.cue_meter_id, c, graph.OUTPUT, was.cue[c])
+		for c in 0 ..< 2 do if want.cue[c] >= 0 do graph.connect(g, mx.cue_meter_id, c, graph.OUTPUT, want.cue[c])
 	}
 	if !was.set || was.cue_db != want.cue_db do graph.set_param(g, mx.out_cue, dsp.GAIN_PARAM_DB, f64(want.cue_db))
 	// The click.

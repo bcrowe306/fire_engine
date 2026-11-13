@@ -303,35 +303,55 @@ draw_perf_fx :: proc(a: ^App) {
 	im.Dummy({1, 1})
 }
 
-// Main's level (its fader and meter, as in the mixer) and the cue's (the
-// headphones' level: Settings sets where it plays).
+// Main's level and the cue's (the headphones': Settings sets where it
+// plays), each a fader with its meter as in the mixer, their names and
+// levels under them on one line.
 @(private)
 draw_perf_levels :: proc(a: ^App) {
 	m := &a.m
 	perf_title("Levels")
 	avail := im.GetContentRegionAvail()
-	h := max(avail.y - 2 * im.GetTextLineHeightWithSpacing() - 12, 80)
+	line := im.GetTextLineHeightWithSpacing()
+	total := max(avail.y - 4, 100)
+	h := total - 2 * STRIP_PAD - line - 6
+	// Narrow strips, as the mixer's: the two side by side in the column.
+	was := strip_w_cur
+	strip_w_cur = STRIP_NARROW_W
+	defer strip_w_cur = was
 	b := m.project.main
 	vol := b.volume
-	im.BeginGroup()
+	label :: proc(text: cstring) {
+		w := inner_w()
+		at := im.GetCursorPosX()
+		im.SetCursorPosX(at + max((w - im.CalcTextSize(text).x) / 2, 0))
+		im.TextDisabled("%s", text)
+	}
+	top := im.GetCursorScreenPos()
+	strip_begin(total, false)
 	strip_name = "Main" // (its fader: "Main fader", as in the mixer)
 	if e := fader_meter(a, &vol, &a.mixer.buses[pm.BUSES], h); e.changed || e.ended {
 		b.volume = vol
 		if e.changed do pm.set_bus(m, pm.BUSES, 0, "Main Volume", b)
 		if e.ended do app.seal(&m.history)
 	}
-	im.TextDisabled("%s", fmt.ctprintf("Main %.1f", vol))
-	im.EndGroup()
-	im.SameLine(0, 8)
-	im.BeginGroup()
+	label(fmt.ctprintf("Main %.1f", vol))
+	strip_end(top, total)
+	im.SameLine(0, STRIP_GAP)
+	top = im.GetCursorScreenPos()
+	strip_begin(total, false)
 	cue := a.settings.audio.cue_db
 	has_cue := m.engine.outputs.cue >= 0
-	if e := ui.fader("Cue", &cue, -60, 6, 0, {20, h}); e.changed {
-		a.settings.audio.cue_db = cue
-		outputs_apply(a)
+	strip_name = "Cue"
+	if e := fader_meter(a, &cue, &a.mixer.cue, h); e.changed || e.ended {
+		if e.changed {
+			a.settings.audio.cue_db = clamp(cue, -60, 6)
+			outputs_apply(a)
+		}
+		if e.ended do settings_save(a) // (an app setting, kept with the others)
 	}
 	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("The cue (headphones) level%s", "" if has_cue else ": set a cue output in Settings to hear it"))
-	im.EndGroup()
+	label(fmt.ctprintf("Cue %.1f", cue) if has_cue else "Cue (off)")
+	strip_end(top, total)
 }
 
 // A combo of step lengths.

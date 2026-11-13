@@ -457,9 +457,16 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	// line (its kind), small. Without: the name (a "+": drop one here)
 	// in the middle, dim, and the middle line (its key) under it.
 	big := clamp(size.y * 0.2, TEXT_SIZE[.Body], 20)
+	room := size.x - 2 * pad_x - (badge_w + 2 if badge_w > 0 else 0)
 	if face.name != "" {
-		im.PushFontFloat(nil, big)
+		// Too long: smaller (down to the body size), then cut with "…".
 		nc := strings.clone_to_cstring(face.name, context.temp_allocator)
+		im.PushFontFloat(nil, big)
+		if w := im.CalcTextSize(nc).x; w > room && face.has_sound {
+			im.PopFont()
+			im.PushFontFloat(nil, max(big * room / w, TEXT_SIZE[.Body] - 1))
+		}
+		nc = fit_text(face.name, room)
 		ns := im.CalcTextSize(nc)
 		x := pos.x + max((size.x - ns.x) / 2, pad_x) // too long: from the left, cut at the right
 		y := pos.y + pad_y if face.has_sound else pos.y + (size.y - ns.y) / 2 - (TEXT_SIZE[.Caption] / 2 if face.middle != "" else 0)
@@ -470,7 +477,7 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 	}
 	if face.middle != "" {
 		text_push(.Caption if !face.has_sound else .Label)
-		mc := strings.clone_to_cstring(face.middle, context.temp_allocator)
+		mc := fit_text(face.middle, size.x - 2 * pad_x)
 		ms := im.CalcTextSize(mc)
 		y := pos.y + pad_y + big + 3 if face.has_sound else pos.y + (size.y + big) / 2 - 2
 		at := im.Vec2{math.round(pos.x + max((size.x - ms.x) / 2, pad_x)), math.round(y)}
@@ -793,6 +800,23 @@ flow :: proc(width: f32, spacing: f32 = -1) {
 // The width of a button labelled `label` (for flow).
 button_width :: proc(label: cstring) -> f32 {
 	return im.CalcTextSize(label).x + im.GetStyle().FramePadding.x * 2
+}
+
+// `text` in the current font, cut to `width` with "…" when it is wider.
+fit_text :: proc(text: string, width: f32) -> cstring {
+	c := strings.clone_to_cstring(text, context.temp_allocator)
+	if im.CalcTextSize(c).x <= width do return c
+	ell :: "…"
+	room := width - im.CalcTextSize(ell).x
+	n := len(text)
+	for n > 0 {
+		// back a whole UTF-8 character
+		n -= 1
+		for n > 0 && (text[n] & 0xC0) == 0x80 do n -= 1
+		cut := strings.clone_to_cstring(text[:n], context.temp_allocator)
+		if im.CalcTextSize(cut).x <= room do return strings.clone_to_cstring(strings.concatenate({strings.trim_right_space(text[:n]), ell}, context.temp_allocator), context.temp_allocator)
+	}
+	return ell
 }
 
 // The name a widget gets for the probe: its label as shown, or `kind`.
