@@ -236,7 +236,12 @@ records.
     its beats are drawn over the waveform (bars numbered). The warped
     sound is rendered in the background into the project's `warped/`
     folder, kept there for the next time, and played once ready (it
-    shows "Rendering..." until then, the ratio after).
+    shows "Rendering..." until then, the ratio after). Warped, the pad's
+    **Transpose** (and Fine) keeps its timing: Tones and Complex shift the
+    pitch in the stretch, Beats re-pitches each piece where it falls (its
+    hits on time); the rendering has the pitch in it (until it is ready,
+    the pad plays transposed the old way). In Re-pitch, pitch and speed
+    are one, so Transpose plays it faster or slower as before.
   - **The waveform**, on black: drag **S** and **E** (by their tags or
     their lines) to set the region the pad plays, **L** for the loop;
     drag the squares under the tags in from the region's ends to fade it

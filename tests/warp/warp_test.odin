@@ -110,6 +110,47 @@ tones_keeps_the_pitch :: proc(t: ^testing.T) {
 	}
 }
 
+// Transposed: Tones and Complex move the pitch (an octave up: 880 Hz;
+// seven semitones down: 293.66 Hz), the length exact, at any ratio.
+@(test)
+tones_and_complex_transpose_keeping_the_timing :: proc(t: ^testing.T) {
+	x := sine(440)
+	for mode in ([]stretch.Warp_Mode{.Tones, .Complex}) do for c in ([]struct{ratio, semis, hz: f64}{{1.3, 12, 880}, {0.8, -7, 293.66}, {1, 12, 880}}) {
+		y, _ := stretch.warp(x, SR, c.ratio, {mode = mode, transpose = c.semis})
+		defer stretch.warp_destroy(y)
+		n := len(y[0])
+		testing.expect_value(t, n, int(math.round(f64(len(x[0])) * c.ratio)))
+		sp := kit.spectrum(y[0][n / 4:3 * n / 4], SR, allocator = context.temp_allocator)
+		_, hz, _ := kit.spectrum_peak(sp)
+		testing.expectf(t, abs(hz - c.hz) < c.hz * 0.01, "%v ×%v %+v st: %v Hz (%v)", mode, c.ratio, c.semis, c.hz, hz)
+	}
+}
+
+// Beats, transposed: every hit still on time (each piece re-pitched where
+// it falls), the length exact, the pitch moved (a sine piece up an octave).
+@(test)
+beats_transposes_each_piece_on_time :: proc(t: ^testing.T) {
+	x := drums()
+	in_hits := hits(x[0])
+	for c in ([]struct{ratio, semis: f64}{{1.25, 5}, {0.8, -5}, {1, 12}}) {
+		y, _ := stretch.warp(x, SR, c.ratio, {mode = .Beats, transpose = c.semis})
+		defer stretch.warp_destroy(y)
+		testing.expect_value(t, len(y[0]), int(math.round(f64(len(x[0])) * c.ratio)))
+		want := make([]i64, len(in_hits), context.temp_allocator)
+		for h, i in in_hits do want[i] = i64(math.round(f64(h) * c.ratio))
+		// (Each piece starts on its exact frame; a re-pitched attack has
+		// another shape, so the onset detector reads it a little off: 1.5 ms.)
+		miss := worst_miss(want, hits(y[0]))
+		testing.expectf(t, miss <= 72, "×%v %+v st: every hit on time (worst %d frames)", c.ratio, c.semis, miss)
+	}
+	// One piece of sine (a grid of a whole second): an octave up.
+	y, _ := stretch.warp(sine(440), SR, 1, {mode = .Beats, grain = .Quarter, beat_frames = SR, transpose = 12})
+	defer stretch.warp_destroy(y)
+	sp := kit.spectrum(y[0][int(0.1 * SR):int(0.4 * SR)], SR, allocator = context.temp_allocator)
+	_, hz, _ := kit.spectrum_peak(sp)
+	testing.expectf(t, abs(hz - 880) < 9, "880 Hz (%v)", hz)
+}
+
 // Re-pitch: twice as long is an octave down.
 @(test)
 repitch_moves_the_pitch :: proc(t: ^testing.T) {

@@ -70,3 +70,40 @@ a_warped_pad_follows_the_tempo :: proc(t: ^testing.T) {
 	testing.expectf(t, len(got) >= 2 && abs(got[1] - got[0] - 28_800) <= 48, "warp off: 0.6 s apart (%v)", got)
 	_ = stretch.Warp_Mode.Beats
 }
+
+// Transpose on a warped pad (Tones): an octave up, its length kept (the
+// rendering has the pitch in it; the sampler plays it as it is). Re-pitch:
+// the sampler's transpose, faster (half as long).
+@(test)
+transpose_keeps_a_warped_pads_timing :: proc(t: ^testing.T) {
+	r := rig_make(t, "warp_transpose")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "tone.wav", 440, 0.5))
+	render(r, 256)
+	p := m.project.pads[0]
+	p.pitch = 12
+	pm.set_pad(m, 0, .Pitch, "Transpose", p)
+	pm.set_warp(m, 0, {on = true, mode = .Tones, bpm = 120}) // (the project's tempo: only the transpose renders)
+	if !testing.expect(t, warp_ready(r, 0), "rendered") do return
+	played :: proc(r: ^Rig) -> (hz: f64, seconds: f64) {
+		render(r, 4800)
+		pm.hit(&r.m.engine, 0, true)
+		out := render(r, 48_000)
+		pm.hit(&r.m.engine, 0, false)
+		render(r, 4800)
+		x := out[0]
+		last := 0
+		for v, i in x do if abs(v) > 0.01 do last = i
+		return hz_of(x[2400:12_000]), f64(last) / SR
+	}
+	hz, secs := played(r)
+	testing.expectf(t, abs(hz - 880) < 20, "an octave up (%v Hz)", hz)
+	testing.expectf(t, abs(secs - 0.5) < 0.03, "as long as the sample (%v s)", secs)
+	// Re-pitch: faster, so half as long.
+	pm.set_warp(m, 0, {on = true, mode = .Repitch, bpm = 120})
+	warp_ready(r, 0)
+	hz, secs = played(r)
+	testing.expectf(t, abs(hz - 880) < 20, "re-pitch: an octave up (%v Hz)", hz)
+	testing.expectf(t, abs(secs - 0.25) < 0.03, "re-pitch: half as long (%v s)", secs)
+}

@@ -133,6 +133,7 @@ Warp_Settings :: struct {
 	beat_frames: f64,
 	fill_gaps: bool,
 	sensitivity: f64,
+	transpose: f64,
 }
 ```
 
@@ -145,6 +146,7 @@ Settings for `warp`.
 | `beat_frames` | a beat of the sound, in its frames (for a grid grain); 0 = half a second |
 | `fill_gaps` | Beats, made longer: a piece's gap filled by looping its tail (else it fades to silence) |
 | `sensitivity` | how quiet a hit still cuts (0..1; 0 = 0.5) |
+| `transpose` | semitones, its timing kept: Tones and Complex shift the pitch in the stretch; Beats re-pitches each piece where it falls (its hit on time). Not Repitch (pitch and speed are one there) |
 
 ## Procedures
 

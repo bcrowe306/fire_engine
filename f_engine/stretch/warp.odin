@@ -29,6 +29,7 @@ Warp_Settings :: struct {
 	beat_frames: f64,        // a beat of the sound, in its frames (for a grid grain); 0 = half a second
 	fill_gaps:   bool,       // Beats, made longer: a piece's gap filled by looping its tail (else it fades to silence)
 	sensitivity: f64,        // how quiet a hit still cuts (0..1; 0 = 0.5)
+	transpose:   f64,        // semitones, its timing kept: Tones and Complex shift the pitch in the stretch; Beats re-pitches each piece where it falls (its hit on time). Not Repitch (pitch and speed are one there)
 }
 
 // Control thread. `input` (planar, `sample_rate`) made `ratio` times as long
@@ -51,7 +52,7 @@ warp :: proc(input: [][]f32, sample_rate: f64, ratio: f64, settings := Warp_Sett
 	case .Repitch: warp_repitch(input, output)
 	case .Beats:   warp_beats(input, output, sample_rate, ratio, settings)
 	case .Tones:
-		if !stretch_whole(input, output, sample_rate) do warp_beats(input, output, sample_rate, ratio, settings)
+		if !stretch_whole(input, output, sample_rate, settings.transpose) do warp_beats(input, output, sample_rate, ratio, settings)
 	case .Complex: warp_complex(input, output, sample_rate, ratio, settings)
 	}
 	return
@@ -69,18 +70,23 @@ warp_destroy :: proc(output: [][]f32, allocator := context.allocator) {
 // (cubic, Catmull-Rom).
 @(private)
 warp_repitch :: proc(input, output: [][]f32) {
-	n, m := len(input[0]), len(output[0])
+	for c in 0 ..< len(input) do resample_cubic(input[c], output[c])
+}
+
+// `x` read into all of `y` (as fast as their lengths say), between its
+// frames (cubic, Catmull-Rom).
+@(private)
+resample_cubic :: proc(x, y: []f32) {
+	n, m := len(x), len(y)
+	if n == 0 || m == 0 do return
 	step := f64(n) / f64(m)
-	for c in 0 ..< len(input) {
-		x, y := input[c], output[c]
-		at :: #force_inline proc(x: []f32, i: int) -> f32 { return x[clamp(i, 0, len(x) - 1)] }
-		for k in 0 ..< m {
-			pos := f64(k) * step
-			i := int(pos)
-			t := f32(pos - f64(i))
-			p0, p1, p2, p3 := at(x, i - 1), at(x, i), at(x, i + 1), at(x, i + 2)
-			y[k] = p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
-		}
+	at :: #force_inline proc(x: []f32, i: int) -> f32 { return x[clamp(i, 0, len(x) - 1)] }
+	for k in 0 ..< m {
+		pos := f64(k) * step
+		i := int(pos)
+		t := f32(pos - f64(i))
+		p0, p1, p2, p3 := at(x, i - 1), at(x, i), at(x, i + 1), at(x, i + 2)
+		y[k] = p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
 	}
 }
 
@@ -121,6 +127,10 @@ warp_beats :: proc(input, output: [][]f32, sample_rate, ratio: f64, s: Warp_Sett
 	sens := s.sensitivity if s.sensitivity > 0 else 0.5
 	cuts := warp_cuts(input, sample_rate, s, sens, 40, context.temp_allocator)
 	fade := max(int(sample_rate * 0.004), 1) // a cut or a gap: 4 ms, no click
+	// Transposed: each piece played faster or slower where it falls (its
+	// start, its hit, on time; the rest as a piece made shorter or longer).
+	speed := math.pow(2, s.transpose / 12)
+	src := make([][]f32, len(input), context.temp_allocator)
 	for k in 0 ..< len(cuts) {
 		a := int(cuts[k])
 		b := frames if k + 1 == len(cuts) else int(cuts[k + 1])
@@ -129,9 +139,18 @@ warp_beats :: proc(input, output: [][]f32, sample_rate, ratio: f64, s: Warp_Sett
 		e := out_frames if k + 1 == len(cuts) else int(math.round(f64(b) * ratio))
 		e = min(e, out_frames)
 		if e <= d do continue
-		piece, room := b - a, e - d
+		piece := b - a
+		for c in 0 ..< len(input) do src[c] = input[c][a:b]
+		if s.transpose != 0 {
+			piece = max(int(math.round(f64(b - a) / speed)), 1)
+			for c in 0 ..< len(input) {
+				src[c] = make([]f32, piece, context.temp_allocator)
+				resample_cubic(input[c][a:b], src[c])
+			}
+		}
+		room := e - d
 		n := min(piece, room)
-		for c in 0 ..< len(input) do copy(output[c][d:d + n], input[c][a:a + n])
+		for c in 0 ..< len(input) do copy(output[c][d:d + n], src[c][:n])
 		if room == piece do continue
 		if room < piece { // cut short: fade out its end
 			f := min(fade, n)
@@ -149,7 +168,7 @@ warp_beats :: proc(input, output: [][]f32, sample_rate, ratio: f64, s: Warp_Sett
 		at := d + n
 		for at < e {
 			for c in 0 ..< len(input) {
-				src := input[c][b - tail:b]
+				src := src[c][piece - tail:piece]
 				for i in 0 ..< tail {
 					if at + i >= e do break
 					w := f32(1)
@@ -167,10 +186,11 @@ warp_beats :: proc(input, output: [][]f32, sample_rate, ratio: f64, s: Warp_Sett
 // Tones: the whole stretched in one go (120 ms blocks every 30 ms). False
 // if it is too short for that.
 @(private)
-stretch_whole :: proc(input, output: [][]f32, sample_rate: f64) -> bool {
+stretch_whole :: proc(input, output: [][]f32, sample_rate: f64, transpose := 0.0) -> bool {
 	s: Stretch
 	if stretch_preset_default(&s, len(input), f32(sample_rate), allocator = context.temp_allocator) != .None do return false
 	defer stretch_destroy(&s)
+	if transpose != 0 do stretch_set_transpose_semitones(&s, f32(transpose))
 	return stretch_exact(&s, input, len(input[0]), output, len(output[0]))
 }
 
@@ -203,10 +223,11 @@ warp_complex :: proc(input, output: [][]f32, sample_rate, ratio: f64, s: Warp_Se
 		done := false
 		if ok {
 			stretch_reset(&st)
+			if s.transpose != 0 do stretch_set_transpose_semitones(&st, f32(s.transpose))
 			done = stretch_exact(&st, piece_in, b - a, piece_out, e - d)
 		}
 		if !done { // too short to stretch: as Beats
-			one := Warp_Settings{mode = .Beats, grain = .Quarter, beat_frames = f64(b - a), fill_gaps = s.fill_gaps}
+			one := Warp_Settings{mode = .Beats, grain = .Quarter, beat_frames = f64(b - a), fill_gaps = s.fill_gaps, transpose = s.transpose}
 			warp_beats(piece_in, piece_out, sample_rate, f64(e - d) / f64(b - a), one)
 		}
 		// Into place: a short crossfade from what is there (the last piece's end).

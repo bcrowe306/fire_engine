@@ -158,6 +158,7 @@ Pad_Nodes :: struct {
 	zone_src: ^stream.Source, // what its zone plays (its sample, or its warp's rendering)
 	track_in: graph.Node_Id,  // its own stream from the router (see `Track_In`)
 	warp_scale: f64, // how much longer that is than its sample (1: not warped)
+	warp_transposed: bool, // ... and it has the pad's transpose in it (the sampler doesn't transpose again)
 	fader:   graph.Node_Id, // its volume: after its inserts (the mixer wires it)
 	// Automation of the current sequence: a player into the sampler, one
 	// into the EQ, one into the fader.
@@ -415,19 +416,26 @@ sync :: proc(e: ^Engine) {
 		}
 		// The sample map: rebuilt when anything the zone holds changed.
 		// (A warped pad plays its rendering, once ready: its positions scaled.)
-		zsrc, scale := warp_source(e, pad, src)
+		zsrc, scale, transposed := warp_source(e, i, pad, src)
+		was_transposed := n.warp_transposed
 		if zone_changed(n.built, pad) || zsrc != n.zone_src {
 			m, err := sampler.sample_map_create(slicer_zones(pad, zsrc, scale) if pad.kind == .Slicer else []sampler.Sample_Zone{zone_of(pad, i, zsrc, scale)})
 			if err == .None {
 				sampler.sampler_set_map(n.handle, m)
 				sampler.sample_map_release(m)
 			}
-			n.zone_src, n.warp_scale = zsrc, scale
+			n.zone_src, n.warp_scale, n.warp_transposed = zsrc, scale, transposed
 		}
 		fresh := n.built.sample == 0 || e.resend
 		set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
 		// The voice: its envelopes, filter, pitch, LFOs and routes.
-		was, now := voice_params(n.built), voice_params(pad)
+		// (Its rendering transposed, timing kept: the sampler plays it as it is.)
+		untransposed :: proc(p: Pad, yes: bool) -> Pad {
+			p := p
+			if yes do p.pitch, p.voice.fine = 0, 0
+			return p
+		}
+		was, now := voice_params(untransposed(n.built, was_transposed)), voice_params(untransposed(pad, n.warp_transposed))
 		for v, k in now do if fresh || v != was[k] do graph.set_param(g, n.voice, fc.Param_Id(k + 1), v)
 		for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), pad_eq(n.built)[b], pad_eq(pad)[b], fresh)
 		n.built = pad

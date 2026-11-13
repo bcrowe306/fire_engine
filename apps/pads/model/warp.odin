@@ -32,6 +32,14 @@ WARP_MODE_NAMES := [stretch.Warp_Mode]cstring{.Beats = "Beats", .Tones = "Tones"
 // Beats grain names.
 WARP_GRAIN_NAMES := [stretch.Warp_Grain]cstring{.Transients = "Transients", .Sixteenth = "1/16", .Eighth = "1/8", .Quarter = "1/4"}
 
+// The semitones a warped pad's rendering is transposed by, its timing kept
+// (its Transpose and Fine: in Beats, Tones and Complex; Re-pitch plays
+// faster or slower, so its pitch is the sampler's there). 0: none.
+warp_transpose :: proc(pad: Pad) -> f64 {
+	if !pad.warp.on || pad.warp.mode == .Repitch do return 0
+	return f64(pad.pitch) + f64(pad.voice.fine) / 100
+}
+
 // How much longer pad `pad`'s sample plays at `tempo` BPM (1: as it is).
 warp_ratio :: proc(pad: Pad, tempo: f64) -> f64 {
 	if !pad.warp.on || pad.warp.bpm <= 0 || tempo <= 0 do return 1
@@ -72,9 +80,10 @@ set_warp :: proc(m: ^Model, index: int, w: Warp, name := "Warp") {
 // Where pad `pad`'s rendering at `ratio` goes: named for the sample, the
 // mode and the ratio, so each is made once.
 @(private)
-warp_path :: proc(p: ^Project, sample_path: string, w: Warp, ratio: f64) -> string {
+warp_path :: proc(p: ^Project, sample_path: string, w: Warp, ratio: f64, transpose := 0.0) -> string {
 	base := strings.trim_suffix(filepath.base(sample_path), filepath.ext(sample_path))
 	name := fmt.tprintf("%s.%v.%v.%d.%d.wav", base, w.mode, w.grain, 1 if w.fill_gaps else 0, int(math.round(ratio * 100_000)))
+	if transpose != 0 do name = fmt.tprintf("%s.%v.%v.%d.%d.t%d.wav", base, w.mode, w.grain, 1 if w.fill_gaps else 0, int(math.round(ratio * 100_000)), int(math.round(transpose * 100)))
 	path, _ := filepath.join({p.dir, "warped", name}, context.temp_allocator)
 	return path
 }
@@ -83,6 +92,7 @@ warp_path :: proc(p: ^Project, sample_path: string, w: Warp, ratio: f64) -> stri
 @(private)
 Warp_Job :: struct {
 	src_path, out_path: string, // (owned)
+	pad:      int, // whose (one at a time a pad: a drag of its Transpose renders its last value)
 	ratio:    f64,
 	settings: stretch.Warp_Settings,
 	done:     bool, // atomic
@@ -90,30 +100,33 @@ Warp_Job :: struct {
 	th:       ^thread.Thread,
 }
 
-// The source pad `pad` plays: its warped rendering when that is ready
-// (and how much longer it is), else its sample (a rendering is started).
+// The source pad `index` plays: its warped rendering when that is ready
+// (how much longer it is, and whether it has the pad's transpose in it:
+// then the sampler doesn't transpose it again), else its sample (a
+// rendering is started, one at a time a pad).
 @(private)
-warp_source :: proc(e: ^Engine, pad: Pad, src: ^stream.Source) -> (^stream.Source, f64) {
+warp_source :: proc(e: ^Engine, index: int, pad: Pad, src: ^stream.Source) -> (out: ^stream.Source, scale: f64, transposed: bool) {
 	r := warp_ratio(pad, e.warp_bpm)
-	if r == 1 || src == nil do return src, 1
+	tr := warp_transpose(pad)
+	if (r == 1 && tr == 0) || src == nil do return src, 1, false
 	s := app_sample(e, pad.sample)
-	if s == nil do return src, 1
-	path := warp_path(e.project, s.path, pad.warp, r)
-	if ws, ok := e.warp_sources[path]; ok do return ws, r
+	if s == nil do return src, 1, false
+	path := warp_path(e.project, s.path, pad.warp, r, tr)
+	if ws, ok := e.warp_sources[path]; ok do return ws, r, tr != 0
 	if os.exists(path) {
 		if ws, err := stream.source_open(e.host.streamer, path); err == .None {
 			e.warp_sources[strings.clone(path)] = ws
-			return ws, r
+			return ws, r, tr != 0
 		}
 	}
-	for j in e.warp_jobs do if j.out_path == path do return src, 1 // rendering
+	for j in e.warp_jobs do if j.out_path == path || j.pad == index do return src, 1, false // rendering (when it ends, the pad looks again)
 	beat := s.rate * 60 / pad.warp.bpm
 	j := new(Warp_Job)
-	j^ = {src_path = strings.clone(s.path), out_path = strings.clone(path), ratio = r,
-		settings = {mode = pad.warp.mode, grain = pad.warp.grain, beat_frames = beat, fill_gaps = pad.warp.fill_gaps}}
+	j^ = {src_path = strings.clone(s.path), out_path = strings.clone(path), pad = index, ratio = r,
+		settings = {mode = pad.warp.mode, grain = pad.warp.grain, beat_frames = beat, fill_gaps = pad.warp.fill_gaps, transpose = tr}}
 	j.th = thread.create_and_start_with_poly_data(j, render_warp)
 	append(&e.warp_jobs, j)
-	return src, 1
+	return src, 1, false
 }
 
 // [worker thread] Renders a job: reads the sample, warps it, writes it.
@@ -161,7 +174,8 @@ warp_poll :: proc(e: ^Engine) {
 warp_rendering :: proc(e: ^Engine, index: int) -> bool {
 	pad := e.project.pads[index]
 	r := warp_ratio(pad, e.warp_bpm)
-	return r != 1 && abs(e.nodes[index].warp_scale - r) > 1e-9
+	n := &e.nodes[index]
+	return (r != 1 && abs(n.warp_scale - r) > 1e-9) || (warp_transpose(pad) != 0 && !n.warp_transposed)
 }
 
 // Waits for every rendering and lets go of the warped sources.
