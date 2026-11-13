@@ -45,7 +45,8 @@ expect playing 1
 key space                 # stop
 wait 4
 expect playing 0
-# Record: Cmd+R arms and plays; the Z key plays (and records) pad A1.
+count_in 0
+# Record: Cmd+R arms and plays (no count-in: the script's timing); the Z key plays (and records) pad A1.
 key cmd+r
 wait 20
 key z

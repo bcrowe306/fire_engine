@@ -413,6 +413,7 @@ draw_empty_pad :: proc(a: ^App, i: int) {
 		if im.IsItemHovered() do im.SetTooltip("%s", tip)
 		return clicked
 	}
+	row_x := im.GetCursorScreenPos().x
 	if choice(ui.ICON_FOLDER_OPEN + "  Browse", "Show the Library's Browser: drag a sound onto the pad, or select it and press Enter") do library_show(a, 0)
 	im.SameLine()
 	if choice(ui.ICON_MIC + "  Record", "Make it an audio track, to record into") do put_device(a, i, "inst audio")
@@ -431,4 +432,22 @@ draw_empty_pad :: proc(a: ^App, i: int) {
 		}
 		im.EndPopup()
 	}
+	// Hold to record: a sample into the pad while it is held (as an
+	// Option-press of the pad), from the pad's input.
+	row_w := im.GetItemRectMax().x - row_x
+	im.Spacing()
+	recording := a.rec.active && a.rec.pad == i
+	t := ui.theme()
+	if recording {
+		im.PushStyleColorVec4(.Button, transmute(im.Vec4)ui.mix(t.raised, t.danger, 0.6))
+		im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)ui.mix(t.raised, t.danger, 0.7))
+		im.PushStyleColorVec4(.ButtonActive, transmute(im.Vec4)t.danger)
+	}
+	hold_label: cstring = ui.ICON_CIRCLE_DOT + "  Recording… (let go to stop)###holdrec" if recording else ui.ICON_CIRCLE_DOT + "  Hold to Record###holdrec" // (one id: the press is kept)
+	im.Button(hold_label, {max(row_w, 200), im.GetFrameHeight() * 1.6})
+	if recording do im.PopStyleColor(3)
+	ui.name("Hold to Record")
+	if im.IsItemActivated() do sample_press(a, i, true)
+	if im.IsItemDeactivated() do sample_release(a, i)
+	if im.IsItemHovered() && !recording do im.SetTooltip("Hold it: a sample is recorded into the pad from its input while you hold (as Option-pressing the pad)")
 }

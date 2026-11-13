@@ -86,6 +86,10 @@ sequence_head :: proc(a: ^App) {
 	m := &a.m
 	slot := m.project.slot
 	name := pm.sequence_name(&m.project, slot)
+	// The sequence before and after it (as the toolbar's arrows).
+	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = slot == 0) do pm.select_slot(m, slot - 1)
+	ui.name("sequence before")
+	im.SameLine(0, 0)
 	im.PushFontFloat(a.platform.fonts.semibold, 15)
 	label := fmt.ctprintf("%s###seqname", name)
 	w := im.CalcTextSize(label).x + 16
@@ -104,6 +108,9 @@ sequence_head :: proc(a: ^App) {
 		sequence_menu_items(a, slot)
 		im.EndPopup()
 	}
+	im.SameLine(0, 0)
+	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = slot >= pm.SLOTS - 1) do pm.select_slot(m, slot + 1)
+	ui.name("sequence after")
 	im.SameLine(0, 4)
 	if ui.icon_button(ui.ICON_COPY_PLUS, "Duplicate to the next empty sequence (Cmd+D)") do pm.duplicate_sequence(m, slot)
 	// Its own tempo: on, and how fast.

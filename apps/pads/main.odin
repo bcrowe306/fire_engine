@@ -59,6 +59,7 @@ App :: struct {
 	held:     [pm.PADS]bool,
 	rec:      pm.Recording,
 	sample_armed:   bool, // the Sample control is on: the next pad pressed records (Arm, Threshold, Bars)
+	sample_latched: bool, // ... and stays on after each take (Ctrl- or Cmd-click it)
 	sample_holding: int,  // the pad recording while it is held (-1: none); its release stops it
 	wave:     Wave_State,
 	device:   Device_State, // the device tabs' LFO traces
@@ -229,6 +230,7 @@ main :: proc() {
 	} else {
 		pm.model_new(&a.m, project)
 	}
+	a.m.engine.metronome = true // (the click on; a new project's clicks only while recording: see Project_Defaults.recording)
 	a.proj.untitled = untitled
 	a.proj.last_save = time.tick_now()
 	a.proj.last_backup = time.tick_now()
@@ -383,6 +385,7 @@ frame :: proc(a: ^App) {
 	}
 	pm.launch_record_poll(&a.m)
 	if a.host.opened do pm.record_prepare(&a.m, &a.rec, a.selected) // (ready before a press: no take loses its start)
+	if n := pm.inputs_follow(&a.m); n > 0 do ui.toast(&a.ws.toasts, .Info, fmt.tprintf("%d audio track%s moved to the interface's first input (%s wasn't there)", n, "" if n == 1 else "s", "its" if n == 1 else "theirs"))
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))
 	dt := im.GetIO().DeltaTime
 	for &l in a.lit do l = max(l - dt, 0)
@@ -613,7 +616,7 @@ sample_press :: proc(a: ^App, index: int, alt: bool) -> bool {
 		method = .Hold
 	case a.sample_armed && a.settings.sample_method != .Hold:
 		method = a.settings.sample_method
-		a.sample_armed = false
+		a.sample_armed = a.sample_latched // (latched: on for the next one too)
 	case:
 		return false
 	}

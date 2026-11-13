@@ -401,3 +401,41 @@ each_pass_onto_a_track_of_its_own :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(hz_of(a.channels[0][bar / 4:][:bar / 2]) - 440) < 20, "pass 1 on pad 0")
 	testing.expectf(t, abs(hz_of(b.channels[0][bar / 4:][:bar / 2]) - 880) < 20, "pass 2 on pad 1")
 }
+
+@(test)
+inputs_follow_the_interface :: proc(t: ^testing.T) {
+	// The interface has inputs 1 and 2. A track on input 6 (gone) takes
+	// 1/2 (it is stereo: the first pair); a mono one on input 8, input 1;
+	// one on 1/2 stays. One undo step.
+	r := rig_cabled(t, "inputs_follow")
+	defer rig_destroy(r)
+	m := &r.m
+	for k in 0 ..< 3 do pm.set_pad_kind(m, k, .Audio)
+	set :: proc(m: ^pm.Model, k: int, x: pm.Audio_Input) {
+		p := m.project.pads[k]
+		p.input = x
+		pm.set_pad(m, k, .Input, "Input", p)
+	}
+	set(m, 0, {channel = 5, stereo = true})
+	set(m, 1, {channel = 7})
+	set(m, 2, {channel = 0, stereo = true})
+	app.seal(&m.history)
+	testing.expect_value(t, pm.inputs_follow(m), 2)
+	testing.expect_value(t, m.project.pads[0].input, pm.Audio_Input{channel = 0, stereo = true})
+	testing.expect_value(t, m.project.pads[1].input, pm.Audio_Input{channel = 0})
+	testing.expect_value(t, m.project.pads[2].input, pm.Audio_Input{channel = 0, stereo = true})
+	testing.expect_value(t, app.undo_name(&m.history), "Audio Inputs")
+	testing.expect_value(t, pm.inputs_follow(m), 0) // (nothing more to do)
+}
+
+@(test)
+a_new_projects_recording_defaults :: proc(t: ^testing.T) {
+	r := rig_make(t, "new_defaults")
+	defer rig_destroy(r)
+	m := &r.m
+	testing.expect_value(t, m.project.transport.count_in, 0) // (a bare project: none)
+	m.defaults = {recording = true}
+	testing.expect_value(t, pm.model_new(m, r.dir), fc.Error.None)
+	testing.expect_value(t, m.project.transport.count_in, 1)
+	testing.expect(t, m.project.transport.metro_rec_only, "the click only while recording")
+}

@@ -857,6 +857,42 @@ audio_in_row :: proc(a: ^App, pad: int) {
 	}
 }
 
+// An audio track's monitoring (Auto: its input heard while armed; In:
+// always; Off: never, it still records), a menu as Live's; a blank row
+// for any other track (the strips' faders stay in line).
+@(private)
+monitor_row :: proc(a: ^App, pad: int, h: f32) {
+	m := &a.m
+	t := ui.theme()
+	p := m.project.pads[pad]
+	if p.kind != .Audio {
+		im.Dummy({inner_w(), h})
+		im.SetCursorPosY(im.GetCursorPosY() + 2) // (as a row's gap)
+		return
+	}
+	internal := p.input.from != .Interface
+	NAMES := [pm.Monitor]string{.Auto = "Auto", .In = "In", .Off = "Off"}
+	text := "—" if internal else (NAMES[p.monitor] if narrow() || h <= ROW_H else fmt.tprintf("Monitor: %s", NAMES[p.monitor]))
+	_, _, clicked := row(a, "##monitor", fmt.tprintf("%s %s", ui.ICON_HEADPHONES, text), t.text_dim if !internal else ui.with_alpha(t.text_dim, 0.5), highlight = !internal && p.monitor == .In, h = h)
+	if im.IsItemHovered() && !clicked {
+		tip := "Resampling: its source is heard already, so it isn't monitored" if internal else "Monitoring: Auto (its input heard while it is armed), In (always), Off (never; it still records). Use headphones."
+		im.SetTooltip("%s", fmt.ctprintf("%s", tip))
+	}
+	if clicked && !internal do im.OpenPopup("##monitormenu")
+	if im.BeginPopup("##monitormenu") {
+		for mo in pm.Monitor {
+			if im.MenuItem(fmt.ctprintf("%s###mon%d", NAMES[mo], int(mo)), nil, p.monitor == mo) {
+				x := m.project.pads[pad]
+				x.monitor = mo
+				pm.set_pad(m, pad, .Monitor, "Monitor", x)
+				app.seal(&m.history)
+			}
+			ui.name(fmt.tprintf("monitor %s", NAMES[mo]))
+		}
+		im.EndPopup()
+	}
+}
+
 // Track `pad`'s MIDI input (with its activity light); click to choose.
 @(private)
 midi_in_row :: proc(a: ^App, pad: int) {
@@ -1204,8 +1240,8 @@ fader_h :: proc(h: f32, compact := false, block: f32 = 0) -> f32 {
 @(private)
 strip_fixed_h :: proc(compact := false) -> f32 {
 	fixed: f32 = 2 * STRIP_PAD + 4 + pan_h() + 4 + 21 + 4 + ms_h() + 4 + 21
-	if compact do fixed += 2 * (ROW_H + 2) + 4
-	else if strip_view.io do fixed += 4 * (io_h() + 2) + 8 // (two in above the pan, two out at the foot)
+	if compact do fixed += 3 * (ROW_H + 2) + 4 // (in, its monitoring, out)
+	else if strip_view.io do fixed += 5 * (io_h() + 2) + 8 // (two in and the monitoring above the pan, two out at the foot)
 	if !compact && strip_view.eq do fixed += EQ_H + 4
 	return fixed
 }
@@ -1301,6 +1337,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	// What comes in: its audio input and its MIDI input, above its pan.
 	if strip_view.io && !compact {
 		audio_in_row(a, i)
+		monitor_row(a, i, io_h())
 		midi_in_row(a, i)
 		gap()
 	}
@@ -1357,6 +1394,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	gap()
 	if compact {
 		input_row(a, i) // what comes in: MIDI (and its light), or audio (and its level)
+		monitor_row(a, i, ROW_H) // an audio track's monitoring
 		output_row(a, i) // where it goes, right above its name
 		gap()
 	} else if strip_view.io {

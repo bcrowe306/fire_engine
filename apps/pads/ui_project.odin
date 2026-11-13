@@ -138,6 +138,7 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 new_project :: proc(a: ^App) {
 	dir, _ := os.make_directory_temp("", "Untitled.pads", context.temp_allocator)
 	if pm.model_new(&a.m, dir) != .None do ui.toast(&a.ws.toasts, .Error, "Could not start a new project")
+	a.m.engine.metronome = true // (its click on: while recording, as a new project's is)
 	a.proj.untitled = true
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1

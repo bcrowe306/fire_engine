@@ -194,3 +194,38 @@ input_open :: proc(e: ^Engine, index: int) -> bool {
 	if app.host_input_channel(e.host, first) < 0 do return false
 	return !in_.stereo || app.host_input_channel(e.host, first + 1) >= 0
 }
+
+// Audio tracks whose input isn't open on the interface (it changed, or the
+// project came from another) take the first one that is: the first pair
+// for a stereo input (or, with none, the first channel), the first channel
+// for a mono one. One undo step ("Audio Inputs"); nothing while the device
+// isn't open or has no input. Returns how many changed. Cheap: call it
+// each frame.
+inputs_follow :: proc(m: ^Model) -> (changed: int) {
+	e := &m.engine
+	h := e.host
+	if !h.opened || h.open_inputs == {} do return
+	first, pair := -1, -1
+	for c in 0 ..< 64 do if c in h.open_inputs {
+		if first < 0 do first = c
+		if pair < 0 && c % 2 == 0 && c + 1 in h.open_inputs do pair = c
+	}
+	if first < 0 do return
+	for pad, i in m.project.pads {
+		if pad.kind != .Audio || pad.input.from != .Interface || input_open(e, i) do continue
+		p := pad
+		if p.input.stereo && pair >= 0 do p.input.channel = u8(pair)
+		else do p.input = {channel = u8(first), stereo = false}
+		if changed == 0 {
+			app.seal(&m.history)
+			app.begin(&m.history, "Audio Inputs")
+		}
+		set_pad(m, i, .Input, "Audio Inputs", p)
+		changed += 1
+	}
+	if changed > 0 {
+		app.end(&m.history)
+		app.seal(&m.history)
+	}
+	return
+}

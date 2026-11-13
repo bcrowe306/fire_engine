@@ -92,6 +92,7 @@ State :: struct {
 	settings_open: bool,
 	sample_method: string, // the Sample control's: Hold, Arm, Threshold, Bars
 	sample_armed:  bool,
+	sample_latched: bool,
 	sampling:      int, // the pad a sample is recording into (-1: none)
 	clock_out:  bool,   // MIDI clock goes out
 	sync:       string, // what the tempo follows: Internal, Midi_Clock, Link
@@ -420,6 +421,7 @@ state_json :: proc(a: ^App) -> string {
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
 	s.sample_method, s.sample_armed, s.sampling = enum_name(a.settings.sample_method), a.sample_armed, a.rec.pad if a.rec.active else -1
+	s.sample_latched = a.sample_latched
 	s.clock_out, s.sync = a.settings.clock_out, enum_name(a.settings.sync) // (the setting: with no output port open nothing is sent)
 	s.plugins = len(a.plugins.entries)
 	s.plugin_effects = make([dynamic]string, context.temp_allocator)

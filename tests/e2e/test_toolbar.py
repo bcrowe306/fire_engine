@@ -32,6 +32,11 @@ def test_loop_off_plays_once_and_stops(app, fixtures):
 
 def test_count_in_then_record(app, fixtures):
     loaded(app, fixtures)
+    assert app.state()["count_in"] == 1  # (a new project's)
+    app.click("Count-in: 1 bar (click to change)")
+    assert app.state()["count_in"] == 2
+    app.click("Count-in: 2 bars (click to change)")
+    assert app.state()["count_in"] == 0
     app.click("Count-in: off (click to change)")
     assert app.state()["count_in"] == 1
     app.click("Record (Cmd+R)")
@@ -89,9 +94,10 @@ def test_time_signature_and_the_sequence(app, fixtures):
 
 
 def test_metronome_and_quantize_settings(app):
+    assert app.state()["metro_rec_only"]  # (a new project's: the click while recording)
     app.click("Metronome settings")
     app.click("Only while recording")
-    assert app.state()["metro_rec_only"]
+    assert not app.state()["metro_rec_only"]
     app.click("2 bars")
     assert app.state()["count_in"] == 2
     app.key("esc")

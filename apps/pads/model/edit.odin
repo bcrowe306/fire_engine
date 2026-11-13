@@ -32,6 +32,7 @@ Project_Defaults :: struct {
 	bars:  int,      // each sequence's length; 0 = 1
 	buses: int,      // 0 = DEFAULT_BUSES
 	lanes: int,      // the launcher's; 0 = DEFAULT_LANES
+	recording: bool, // the app's: a bar of count-in, and the click only while recording (the transport's own default: neither)
 }
 
 // Puts `d` into a project just made (its tempo, time signature, sequences'
@@ -42,6 +43,10 @@ apply_defaults :: proc(p: ^Project, d: Project_Defaults) {
 	if d.bars > 0 do for &s in p.sequences do s.bars = clamp(d.bars, 1, MAX_BARS)
 	if d.buses > 0 do p.bus_count = clamp(d.buses, 1, BUSES)
 	if d.lanes > 0 do p.lanes = default_lanes(d.lanes)
+	if d.recording {
+		p.transport.count_in = 1
+		p.transport.metro_rec_only = true
+	}
 }
 
 // Which part of a pad an edit changes: consecutive edits of the same part

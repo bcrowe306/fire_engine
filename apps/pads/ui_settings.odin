@@ -1003,9 +1003,8 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 	in_dev := find_device(s, st.input, false)
 	if st.output != "" && out_dev == nil do warn(fmt.tprintf("%s is not connected: the system's output plays until it is back.", device_name(s, st.output, true)))
 	if st.input != "" && in_dev == nil do warn(fmt.tprintf("%s is not connected: the system's input is used until it is back.", device_name(s, st.input, false)))
-	when ODIN_OS == .Darwin {
-		if st.input != "" && st.output != "" && st.input != st.output do warn("Separate input and output interfaces need an aggregate device on macOS (Audio MIDI Setup).")
-	}
+	// (Separate input and output devices on macOS: the engine joins them
+	// itself, in a private aggregate device the user never sees.)
 	// What the output device offers.
 	dev := out_dev
 	label("Sample rate")
@@ -1371,7 +1370,7 @@ page_project :: proc(a: ^App) -> (changed: bool) {
 // the settings.
 project_defaults_apply :: proc(a: ^App) {
 	s := &a.settings
-	a.m.defaults = {bpm = s.default_bpm, sig = {s.default_sig[0], s.default_sig[1]}, bars = s.default_bars, buses = s.default_buses, lanes = s.default_lanes}
+	a.m.defaults = {bpm = s.default_bpm, sig = {s.default_sig[0], s.default_sig[1]}, bars = s.default_bars, buses = s.default_buses, lanes = s.default_lanes, recording = true}
 	a.proj.settings.rate = s.export_rate
 	a.proj.settings.encoding = .Int16 if s.export_bits == 16 else (.Float32 if s.export_bits == 32 else .Int24)
 }

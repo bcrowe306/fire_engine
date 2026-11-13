@@ -65,7 +65,7 @@ draw_toolbar :: proc(user: rawptr) {
 	// say what they are), the groups closer.
 	tool_compact = im.GetWindowSize().x < TOOLBAR_COMPACT_W
 	group_gap: f32 = 8 if tool_compact else 16
-	st.left.justify, st.left.gap = .End, group_gap
+	st.left.justify, st.left.gap = .Start, group_gap
 	st.center.justify, st.center.gap = .Start, 2
 	st.right.justify, st.right.gap = .Start, group_gap
 	// Three rows: the transport (play, stop, record, loop) centred on the
@@ -75,11 +75,16 @@ draw_toolbar :: proc(user: rawptr) {
 	pad_x := im.GetStyle().WindowPadding.x
 	x0, width := win.x + pad_x, im.GetWindowSize().x - 2 * pad_x
 	side_gap: f32 = 14 if tool_compact else 28
+	// One row from the left: the tempo and click, what plays and where,
+	// then the transport (centred on the window when there is room).
 	cw := ui.flex_width(&st.center)
-	cx := x0 + (width - cw) / 2
+	tw := ui.flex_width(&st.right)
+	lw := ui.flex_width(&st.left)
+	lx := x0 + tw + side_gap
+	cx := max(x0 + (width - cw) / 2, lx + lw + side_gap)
 
-	im.SetCursorScreenPos({x0, win.y})
-	ui.flex_begin(&st.left, {max(cx - side_gap - x0, 1), TOOLBAR_H})
+	im.SetCursorScreenPos({lx, win.y})
+	ui.flex_begin(&st.left, {max(cx - side_gap - lx, 1), TOOLBAR_H})
 	ui.flex_next(&st.left)
 	// The sequence.
 	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pm.select_slot(m, p.slot - 1)
@@ -163,6 +168,13 @@ draw_toolbar :: proc(user: rawptr) {
 	// Record: red whatever the accent, and blinking while it records.
 	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = st.clock) do toggle_record(a)
 	im.SameLine(0, 2)
+	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
+		n := tr
+		n.loop = !n.loop
+		pm.set_transport(m, .Loop, "Loop", n)
+		app.seal(&m.history)
+	}
+	im.SameLine(0, 2)
 	// Recording knob moves: only when this is on (off by default).
 	if tool_toggle(ui.ICON_SPLINE, "Auto", "Record automation: on (knobs and faders moved while recording are written into the sequence)" if a.auto_rec.armed else "Record automation: off (knobs only change the sound)", a.auto_rec.armed, t.danger, big) {
 		a.auto_rec.armed = !a.auto_rec.armed
@@ -171,19 +183,15 @@ draw_toolbar :: proc(user: rawptr) {
 	im.SameLine(0, 2)
 	draw_sample_control(a, big)
 	im.SameLine(0, 2)
-	draw_repeat_control(a, big)
+	draw_play_mode(a)
 	im.SameLine(0, 2)
-	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
-		n := tr
-		n.loop = !n.loop
-		pm.set_transport(m, .Loop, "Loop", n)
-		app.seal(&m.history)
-	}
+	draw_repeat_control(a, big)
+
 	ui.flex_end(&st.center)
 
-	right := cx + cw + side_gap
-	im.SetCursorScreenPos({right, win.y})
-	ui.flex_begin(&st.right, {max(x0 + width - right, 1), TOOLBAR_H})
+	// The tempo and click, at the far left.
+	im.SetCursorScreenPos({x0, win.y})
+	ui.flex_begin(&st.right, {max(tw, 1) if tw > 0 else max(lx - x0, 1), TOOLBAR_H})
 	ui.flex_next(&st.right)
 	// Tempo: drag by 1 (Shift: 0.1), tap, and the time signature.
 	bpm := p.bpm
@@ -402,16 +410,35 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 	}
 	tip := tips[s.sample_method]
 	if recording do tip = "Sample: recording (click to stop)"
-	if tool_toggle(ui.ICON_MIC, "Sample", tip, a.sample_armed || recording, t.danger, h, blink = recording, time = a.transport.clock) {
-		if recording {
+	io := im.GetIO()
+	label := "Sample · latched" if a.sample_latched && !tool_compact else "Sample"
+	if tool_toggle(ui.ICON_MIC, label, tip, a.sample_armed || recording, t.danger, h, blink = recording, time = a.transport.clock) {
+		latch := io.KeyCtrl || io.KeySuper // (Ctrl- or Cmd-click)
+		switch {
+		case recording && !a.sample_latched:
 			pm.record_stop(&a.rec)
 			a.sample_holding = -1
-		} else if s.sample_method == .Hold {
+		case s.sample_method == .Hold:
 			ui.toast(&a.ws.toasts, .Info, "Option-press (Alt) a pad to record into it while you hold it")
-		} else {
-			a.sample_armed = !a.sample_armed
+		case latch:
+			// Latched: on after each take, until a click turns it off.
+			a.sample_latched = !a.sample_latched
+			a.sample_armed = a.sample_latched
+		case:
+			if recording {
+				pm.record_stop(&a.rec)
+				a.sample_holding = -1
+			}
+			a.sample_armed = !a.sample_armed && !a.sample_latched
+			a.sample_latched = false
 		}
 	}
+	// Ctrl-click on a Mac is a right-click: that latches too.
+	if im.IsItemClicked(.Right) && s.sample_method != .Hold && !recording {
+		a.sample_latched = !a.sample_latched
+		a.sample_armed = a.sample_latched
+	}
+	if im.IsItemHovered() && s.sample_method != .Hold do im.SetTooltip("%s", fmt.ctprintf("%s\n%s", tip, "Latched: it stays on after each take (click: off)" if a.sample_latched else "Ctrl-click (or right-click, Cmd-click): latch it on, to stay on after each take"))
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Sample settings") do im.OpenPopup("##samplemenu")
 	if im.BeginPopup("##samplemenu") {
@@ -429,6 +456,11 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 			.Bars      = "Turn Sample on; the next pad you press records the next bars,\nfrom the next bar's start (playing starts if stopped).",
 		}
 		im.TextDisabled("%s", HINTS[s.sample_method])
+		if s.sample_method != .Hold {
+			if ui.toggle("Latch##samplelatch", &a.sample_latched) do a.sample_armed = a.sample_latched
+			ui.name("sample latch")
+			if im.IsItemHovered() do im.SetTooltip("On after each take, for the next pad (Ctrl- or Cmd-click the button)")
+		}
 		#partial switch s.sample_method {
 		case .Threshold:
 			db := f64(s.sample_threshold_db)
@@ -443,6 +475,20 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 		}
 		im.EndPopup()
 	}
+}
+
+// How the pads play (as the bottom area's header has it): each its own
+// sound, the selected one as a keyboard, or at 16 velocities.
+@(private = "file")
+draw_play_mode :: proc(a: ^App) {
+	NAMES := [pm.Play_Mode]cstring{.Pads = "Pads", .Keyboard = "Keyboard", .Velocity = "Vel"}
+	im.SetNextItemWidth(96)
+	if ui.combo("##toolplaymode", NAMES[a.play_mode]) {
+		for mode in pm.Play_Mode do if im.Selectable(NAMES[mode], mode == a.play_mode) do set_play_mode(a, mode)
+		im.EndCombo()
+	}
+	ui.name("toolbar play mode")
+	if im.IsItemHovered() do im.SetTooltip("How the pads play: each its own sound (Pads), the selected pad as a keyboard, or the selected pad at 16 velocities (Vel)")
 }
 
 // Note Repeat, MPC-style: on, whatever pad you hold repeats at its rate

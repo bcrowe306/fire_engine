@@ -19,8 +19,9 @@ def test_play_stop_and_the_metronome(app, fixtures):
     app.key("space")
     assert app.state()["playing"]
     app.key("space")
-    app.click("Metronome")
-    assert app.state()["metronome"]
+    assert app.state()["metronome"]  # (a new project's: on, while recording)
+    app.click("Metronome (only while recording)")
+    assert not app.state()["metronome"]
 
 
 def test_notes_by_clicking_the_piano_roll(app, fixtures):
@@ -53,6 +54,7 @@ def test_length_double_and_clear(app, fixtures):
 
 def test_recording_by_playing_the_pads(app, fixtures):
     loaded(app, fixtures)
+    app.cmd("count_in 0")  # (recording at once: the test's timing)
     app.click("Record (Cmd+R)")
     s = app.state()
     assert s["recording"] and s["playing"]

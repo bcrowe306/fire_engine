@@ -1,0 +1,14 @@
+# The latest tweaks: the toolbar (tempo at the left, Loop after Rec, the
+# play mode beside Repeat), an audio track's Monitor on its strips, the
+# Rows control's text, an empty pad's Hold to Record, the sequence's arrows.
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+note 0 0 0.25 1
+command pad.audio pad 1
+select 1
+screenshot tweaks2_sequence
+select 2
+screenshot tweaks2_empty_pad
+panel mixer
+wait 3
+screenshot tweaks2_mixer

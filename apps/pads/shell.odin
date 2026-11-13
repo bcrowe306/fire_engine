@@ -615,6 +615,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		pm.set_pad(&a.m, i, .Input, "Set Input", p)
 		app.seal(&a.m.history)
 		return true
+	case "count_in": // count_in BARS (0..2): bars of click before recording (a new project's: 1)
+		if len(w) < 2 do return false
+		n := a.m.project.transport
+		n.count_in = clamp(num(w, 1), 0, 2)
+		pm.set_transport(&a.m, .Count_In, "Count-in", n)
+		app.seal(&a.m.history)
+		return true
 	case "track_loop": // track_loop PAD BEATS: the pad's own loop in the current sequence (0: none)
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
 			pm.set_track_loop(&a.m, a.m.project.slot, i, f64(numf(w, 2)))

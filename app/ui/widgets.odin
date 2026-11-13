@@ -620,7 +620,9 @@ value_bar :: proc(id: cstring, label: cstring, value: ^f64, lo, hi, step, fine: 
 			im.DrawList_PopClipRect(dl)
 		}
 	}
-	shown := fmt.ctprintf(string(format), value^) // (Odin's fmt reads C-style verbs: "%.1f")
+	// (Odin's fmt reads C-style verbs: "%.1f". A format with none — "Rows: fit" —
+	// is shown as it is: fmt would add the value it didn't use.)
+	shown := fmt.ctprintf(string(format), value^) if strings.contains_rune(string(format), '%') else format
 	ts := im.CalcTextSize(shown)
 	ty := math.round(pos.y + (h - ts.y) / 2)
 	if label != nil {

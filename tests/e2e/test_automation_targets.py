@@ -45,6 +45,7 @@ def test_touch_a_control_learns_it(app, fixtures):
 
 def test_knob_moves_are_recorded_only_when_armed(app, fixtures):
     loaded(app, fixtures)
+    app.cmd("count_in 0")  # (recording at once: the test's timing)
     app.cmd("panel filter")
     app.wait(3)
     # Recording without the arm: the knob only changes the sound.

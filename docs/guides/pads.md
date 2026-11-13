@@ -248,7 +248,7 @@ records.
     same as on the Global and Env tabs).
 
 - **Sequence** (middle tab): the sequencer, editing the sequence the
-  toolbar picks. Its name (double-click it, press F2, or right-click it
+  toolbar picks (or its own arrows, either side of its name). Its name (double-click it, press F2, or right-click it
   or its entry in the toolbar's list to rename it); **Duplicate** (Cmd+D:
   into the next empty sequence, named "… copy", with its audio takes);
   **Own tempo** (it plays at its own tempo, which takes over exactly where
@@ -735,7 +735,9 @@ plays is a **take** per sequence:
   on both sides), **Arm** it (or click **R** on its strip; its pad reads
   *armed*), and choose its **monitoring**: **Auto** (the default: its
   input heard through its strip and effects while it is armed), **In**
-  (always) or **Off** (you hear it on the interface). Use headphones.
+  (always) or **Off** (you hear it on the interface; it still records).
+  Use headphones. Its strip has it too, under its input (a menu, as
+  Live's): in the Mixer and in the bottom area, wherever you record from.
 - Press **Record** (Cmd+R). After the count-in, if one is set, the input
   is recorded while the sequence plays; when you stop, each loop pass is
   a **take** of the track's part in that sequence, placed where it was
@@ -1025,11 +1027,14 @@ Plug-in effects have **Open editor** on their pages too.
 ## The transport
 
 The toolbar under the menus, always showing: what is needed while
-playing. The transport (play, stop, Rec and Loop) sits at the centre of
-the window; the sequence, Pattern | Song and the position to its left;
-the tempo, Tap, the time signature, Count-in and Click to its right. Play
-and stop are icons; Rec, Loop, Count-in and Click are labelled lit
-buttons.
+playing. From the left: the tempo, Tap, the time signature, Count-in and
+Click; the sequence, Pattern | Song and the position; then the transport
+(centred on the window when there is room): play, stop, Rec, Loop, Auto,
+Sample, how the pads play (**Pads**, **Keyboard**, **Vel**: as in the
+bottom area's header) and Note Repeat. Play and stop are icons; the rest
+are labelled lit buttons. A new project counts in a bar and clicks while
+recording (the Click on, only while recording; both in the metronome's
+menu).
 
 - **Play** (green while playing) and **Stop**, or Space for both. Press
   **Stop** twice (or when stopped) to silence every sound still ringing.
@@ -1048,8 +1053,13 @@ buttons.
     bars in time, from the next bar's start (playback starts if stopped),
     and stops by itself: a sample exactly that many bars long.
   It records the pad's own input (as an audio track's: Global tab), moved
-  by the device's latency like every take; Sample turns off after one;
-  the pad shows **REC** while it records, and clicking Sample stops it.
+  by the device's latency like every take; Sample turns off after one,
+  unless **latched**: Ctrl-click it (a right-click, or Cmd-click; or
+  Latch in its menu) and it stays on for pad after pad, until a click
+  turns it off ("Sample · latched"). The pad shows **REC** while it
+  records, and clicking Sample stops it. An empty pad's page has a wide
+  **Hold to Record** button: it records into the pad while you hold it,
+  as Option-pressing the pad does.
 - **Loop**: on, a sequence (or the song) goes round; off, it plays once
   and stops. **Count-in** (click for off, 1 bar, 2 bars; the button says
 how many):
@@ -1157,8 +1167,9 @@ it.
   so; the device lists follow what is plugged in); a channel it no longer has is left out (kept, with
   **Forget them**); main on a pair that isn't open plays on the first
   open one; the settings and the project keep everything for when the
-  hardware is back. On macOS, separate input and output interfaces need
-  an aggregate device (the page says so). Changes wait for **Apply**,
+  hardware is back. An audio track whose input isn't on the interface
+  (another one is, or the project came from elsewhere) takes its first
+  input (pair), one undo step. Changes wait for **Apply**,
   which opens the device with them; keep them within 10 s or they go
   back (no getting stuck without sound). Below, the engine now: the rate
   and buffer it runs at, the latency in, out and round trip, its block,
@@ -1460,6 +1471,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_repeat_toolbar.py` | the toolbar's Note Repeat: on and off, its rate from its dropdown, Quantize's grid with it |
 | `test_track_loop.py` | per-track loops: a row's menu giving the kick 3 beats, off, undo; an audio track's loop typed in the Audio tab |
 | `test_vertical_zoom.py` | the Sequence view's vertical zoom: Cmd+wheel over the rows, the Rows control dragged, back to fit |
+| `test_tweaks2.py` | a new project's count-in and click; Monitor from both strips; the toolbar's play mode; the sequence's arrows; Sample latched (right-click, Cmd-click) and on after a take; Hold to Record |
 | `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
