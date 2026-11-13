@@ -1235,7 +1235,8 @@ there), `Recorded/` (sampled into pads, audio tracks' takes) and
 `Processed/` (bounces, freezes, consolidations, edits' results, exports to
 a pad). Every new file gets a name no file there has: nothing is ever
 written over. `cache/` holds what can be made again (warp and comp
-renderings): deleting it is safe. A project moves as one folder, between
+renderings): deleting it is safe. Closing a project trims it: what the
+project plays stays, and of the rest the newest 1 GB. A project moves as one folder, between
 systems too (its paths are stored relative, with `/`).
 
 Projects from before keep their `samples/` folder: it still opens, and

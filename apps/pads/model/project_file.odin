@@ -230,6 +230,7 @@ load_from :: proc(m: ^Model, dir, path: string) -> fc.Error {
 	}
 	host, bus := m.engine.host, m.history.bus
 	engine_clear(&m.engine)
+	cache_trim(&m.project) // (the project closed: no rendering under way now)
 	app.history_destroy(&m.history)
 	project_destroy(&m.project)
 	m.project = fresh^
@@ -1310,6 +1311,7 @@ legacy_input :: proc(x: Audio_Input) -> u8 {
 model_new :: proc(m: ^Model, dir: string) -> fc.Error {
 	host, bus := m.engine.host, m.history.bus
 	engine_clear(&m.engine)
+	cache_trim(&m.project)
 	app.history_destroy(&m.history)
 	project_destroy(&m.project)
 	project_init(&m.project, dir)

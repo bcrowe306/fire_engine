@@ -120,6 +120,7 @@ model_init :: proc(m: ^Model, host: ^app.Host, dir: string, bus: ^app.Bus = nil)
 // Frees the model.
 model_destroy :: proc(m: ^Model) {
 	engine_destroy(&m.engine)
+	cache_trim(&m.project) // (no rendering under way now)
 	app.history_destroy(&m.history)
 	project_destroy(&m.project)
 }

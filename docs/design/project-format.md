@@ -1,6 +1,6 @@
 # Project folders and files
 
-Status: steps 1–3 built (decisions taken 2026-11-13); steps 4–7 planned.
+Status: steps 1–4 built (decisions taken 2026-11-13); steps 4–7 planned.
 "Today" below is the survey from before.
 
 ## Today (surveyed)
@@ -111,10 +111,14 @@ needed for the layout; the separator change is read-compatible.
 
 ## Cache trimming
 
-On close and on Clean Up: files in `cache/` that the current project
-doesn't use (no pad's warp key, no clip's comp hash) go. A size cap (say
-2 GB) removes the least recently used first. Deleting `cache/` by hand is
-always safe: it renders again.
+Built (`cache_trim`, apps/pads/model/cache.odin). When a project closes
+(another opened, a new one, Pads quitting): every rendering it plays now
+stays (each warped pad at the project's tempo and every sequence's, each
+audio part's comp); of the rest, the newest are kept up to 1 GB
+(`CACHE_KEEP_BYTES`: a warp mode or comp undone comes back at once) and
+the older go; half-made `.part` files go; an older project's `warped/`
+and `renders/` go (nothing names them now). `cache/recording` is left
+alone. Deleting `cache/` by hand is always safe: it renders again.
 
 ## Clean Up Project
 
@@ -133,7 +137,8 @@ Linux the freedesktop Trash in `~/.local/share/Trash`).
    stored absolute (not `../..`).
 3. **Copies keep the layout.** Built: Save As, Save a Copy, templates,
    unique names for outside files (tests/pads_model project_paths).
-4. **`cache/`** for warps and comps, trimming, not copied.
+4. **`cache/`** for warps and comps, trimming, not copied. Built
+   (tests/pads_model cache_test).
 5. **Unsaved folder:** the setting, saving moves it, left-overs offered.
 6. **Clean Up Project** with the Trash on all three platforms.
 7. **Docs:** this file to "built", pads.md's project section, reference.
