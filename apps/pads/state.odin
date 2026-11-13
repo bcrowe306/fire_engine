@@ -77,6 +77,7 @@ State :: struct {
 	record_latency: int, // what a take is moved earlier by
 	input_peaks: [4]f32, // the first input channels' meters now (linear)
 	seq_rows:   int,    // the rows the Sequence view shows at once (its vertical zoom)
+	seq_row0:   int,    // ... the first of them (its scroll)
 	row_h:      f32,    // ... its rows' height when zoomed (0: as many as fit)
 	seq_mode:   string, // the Sequence view's tab: "Notes", "Automation" or "Audio"
 	audio:      State_Audio_View, // the Audio tab's selection
@@ -397,7 +398,7 @@ state_json :: proc(a: ^App) -> string {
 	li, lo, lr := app.host_latency(&a.host)
 	s.latency, s.record_latency = {li, lo, lr}, pm.record_latency(&a.m.engine)
 	for k in 0 ..< 4 do s.input_peaks[k] = input_view(a, k).peak
-	s.seq_rows, s.row_h = a.seq.view.keys, a.seq.row_h
+	s.seq_rows, s.row_h, s.seq_row0 = a.seq.view.keys, a.seq.row_h, a.seq.view.key0
 	s.audio = {region = a.seq.aud.region, range = a.seq.aud.range, cursor = a.seq.aud.cursor, has_clip = a.seq.aud.has_clip}
 	s.chances = make([]f32, len(seq.notes), context.temp_allocator)
 	s.ccs = len(seq.ccs)

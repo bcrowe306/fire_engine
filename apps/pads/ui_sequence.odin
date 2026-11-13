@@ -43,6 +43,7 @@ Seq_State :: struct {
 	menu_target: Target, // what the open note or point menu is for
 	aud:      Audio_View, // the Audio tab's
 	row_h:    f32, // vertical zoom: the rows' height in points (0: as many as fit, ROW_MIN or more)
+	drawn:    i32, // the frame the view was last drawn (one missed: it came back into sight, the selected pad's row brought into view)
 }
 
 // The row menu's Track Loop: pad `pad`'s own loop in sequence `slot`
@@ -153,6 +154,9 @@ draw_sequence :: proc(user: rawptr) {
 	st := &a.seq
 	slot := m.project.slot
 	s := pm.current_sequence(m)
+	frame := im.GetFrameCount()
+	back := frame - st.drawn > 1 // (shown again: from the Mixer, say)
+	st.drawn = frame
 	if st.slot_was != slot || st.bars_was != s.bars {
 		st.selected = -1
 		clear(&st.sel)
@@ -280,6 +284,14 @@ draw_sequence :: proc(user: rawptr) {
 	} else if st.view.keys != keys {
 		// (Zoomed: the bottom row stays where it was.)
 		st.view.keys = keys
+	}
+	// Back in sight: the selected pad's row in view (its middle, if it
+	// was scrolled away).
+	if back && !st.piano && !slicer {
+		for r, k in row_pad do if r == a.selected {
+			if k < st.view.key0 || k >= st.view.key0 + keys do st.view.key0 = k - keys / 2
+			break
+		}
 	}
 	st.view.key0 = clamp(st.view.key0, 0, max(n_rows - keys, 0))
 	roll_h = f32(keys) * (roll_h / f32(keys))

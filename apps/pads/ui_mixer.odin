@@ -182,12 +182,31 @@ draw_mixer :: proc(user: rawptr) {
 	}
 	im.PushStyleVarVec2(.ItemSpacing, {STRIP_GAP, 0})
 	defer im.PopStyleVar()
+	// Back in sight (from the Sequence view, say): the selected pad's or
+	// bus's strip scrolled into view.
+	@(static) drawn: i32
+	frame := im.GetFrameCount()
+	back := frame - drawn > 1
+	drawn = frame
+	@(static) want_x: f32 // (the selected strip's place, found while drawing)
+	reveal :: proc(x: f32) {
+		w := im.GetWindowWidth() - 2 * im.GetStyle().WindowPadding.x
+		sx := im.GetScrollX()
+		if x < sx do im.SetScrollX(max(x - STRIP_GAP, 0))
+		else if x + strip_w_cur > sx + w do im.SetScrollX(x + strip_w_cur - w + STRIP_GAP)
+	}
+	sel_pad := a.selected if a.detail.track.kind == .Pad else -1
+	sel_bus := a.detail.track.index if a.detail.track.kind == .Bus else -1
 	if im.BeginChild("##pads", {pads_w, avail.y}, {}, {.HorizontalScrollbar} if pads_need > pads_w else {.NoScrollbar}) {
 		h := im.GetContentRegionAvail().y
 		any := false
+		want_x = -1
+		@(static) target: int
+		target = sel_pad
 		strip :: proc(a: ^App, i: int, h: f32, any: ^bool) {
 			if any^ do im.SameLine()
 			any^ = true
+			if i == target do want_x = im.GetCursorPosX()
 			// Off to the side (scrolled away): only its room.
 			if !im.IsRectVisibleBySize({strip_w_cur, h}) {
 				im.Dummy({strip_w_cur, h})
@@ -208,6 +227,7 @@ draw_mixer :: proc(user: rawptr) {
 			im.SetCursorPos({12, 12})
 			im.TextDisabled("Pads with a sound get a channel strip here.")
 		}
+		if back && want_x >= 0 do reveal(want_x)
 	}
 	im.EndChild()
 	im.SameLine(0, 8)
@@ -223,10 +243,13 @@ draw_mixer :: proc(user: rawptr) {
 	im.DrawList_AddLine(im.GetWindowDrawList(), {pos.x - 5, pos.y + 4}, {pos.x - 5, pos.y + avail.y - 4}, ui.col(ui.theme().border), 1)
 	if im.BeginChild("##buses", {buses_w, avail.y}, {}, {.HorizontalScrollbar} if buses_need > buses_w else {.NoScrollbar}) {
 		h := im.GetContentRegionAvail().y
+		bus_x: f32 = -1
 		for b in 0 ..< n_buses {
 			if b > 0 do im.SameLine()
+			if b == sel_bus do bus_x = im.GetCursorPosX()
 			bus_strip(a, b, h)
 		}
+		if back && bus_x >= 0 do reveal(bus_x)
 		// A bus just added: scrolled into sight (its room known a frame later).
 		if bus_added > 0 {
 			bus_added -= 1
