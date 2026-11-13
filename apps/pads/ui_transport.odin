@@ -169,6 +169,8 @@ draw_toolbar :: proc(user: rawptr) {
 		if !a.auto_rec.armed do record_release(a)
 	}
 	im.SameLine(0, 2)
+	draw_sample_control(a, big)
+	im.SameLine(0, 2)
 	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
 		n := tr
 		n.loop = !n.loop
@@ -378,6 +380,67 @@ draw_play_modes :: proc(a: ^App) {
 		if ui.icon_button(md.icon, md.tip, on = a.play_mode == md.mode) do set_play_mode(a, md.mode)
 	}
 
+}
+
+// The Sample control: recording a sample into a pad. On (armed), the next
+// pad pressed records by its method (Arm, Threshold, Bars); lit and
+// blinking while one records (pressing it then stops it). In Hold, Option-
+// or Alt-press a pad instead. Its arrow: the method, Threshold's level,
+// Bars' count.
+@(private = "file")
+draw_sample_control :: proc(a: ^App, h: f32) {
+	t := ui.theme()
+	s := &a.settings
+	recording := a.rec.active
+	tips := [pm.Sampling]cstring{
+		.Hold      = "Sample: Option-press (Alt) a pad to record into it while held",
+		.Arm       = "Sample: on, the next pad you press records while you hold it",
+		.Threshold = "Sample: on, the next pad you press records while held, starting where the sound passes the level",
+		.Bars      = "Sample: on, the next pad you press records the next bars in time",
+	}
+	tip := tips[s.sample_method]
+	if recording do tip = "Sample: recording (click to stop)"
+	if tool_toggle(ui.ICON_MIC, "Sample", tip, a.sample_armed || recording, t.danger, h, blink = recording, time = a.transport.clock) {
+		if recording {
+			pm.record_stop(&a.rec)
+			a.sample_holding = -1
+		} else if s.sample_method == .Hold {
+			ui.toast(&a.ws.toasts, .Info, "Option-press (Alt) a pad to record into it while you hold it")
+		} else {
+			a.sample_armed = !a.sample_armed
+		}
+	}
+	im.SameLine(0, 0)
+	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Sample settings") do im.OpenPopup("##samplemenu")
+	if im.BeginPopup("##samplemenu") {
+		im.TextDisabled("Record a sample into a pad")
+		method := int(s.sample_method)
+		if ui.segmented("sample method", {"Hold", "Arm", "Threshold", "Bars"}, &method) {
+			s.sample_method = pm.Sampling(method)
+			a.sample_armed = false
+			settings_save(a)
+		}
+		HINTS := [pm.Sampling]cstring{
+			.Hold      = "Option-press (Alt) a pad: it records while you hold it.",
+			.Arm       = "Turn Sample on; the next pad you press (or play from MIDI)\nrecords while you hold it.",
+			.Threshold = "Turn Sample on; the next pad you press records while you hold it,\nthe sample starting where the sound first passes the level.",
+			.Bars      = "Turn Sample on; the next pad you press records the next bars,\nfrom the next bar's start (playing starts if stopped).",
+		}
+		im.TextDisabled("%s", HINTS[s.sample_method])
+		#partial switch s.sample_method {
+		case .Threshold:
+			db := f64(s.sample_threshold_db)
+			e := ui.number_drag("sample threshold", &db, -80, 0, 1, 0.1, "Starts at %.0f dB", 200)
+			if e.changed do s.sample_threshold_db = f32(db)
+			if e.ended do settings_save(a)
+		case .Bars:
+			n := f64(s.sample_bars)
+			e := ui.number_drag("sample bars", &n, 1, 16, 1, 1, "%.0f bars" if s.sample_bars != 1 else "%.0f bar", 200)
+			if e.changed do s.sample_bars = int(n)
+			if e.ended do settings_save(a)
+		}
+		im.EndPopup()
+	}
 }
 
 // A toolbar button that turns something on and off, an icon and a label:

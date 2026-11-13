@@ -217,7 +217,7 @@ Pad :: struct {
 	sends:      [BUSES]Send, // to the buses, besides its output
 	kind:       Pad_Kind,
 	input:      Audio_Input, // an audio pad's
-	monitor:    bool,        // an armed audio pad plays its input through its strip
+	monitor:    Monitor,     // an audio track's input through its strip: while armed (Auto), always (In), never (Off)
 	voice:      Voice,       // a sampler pad's voice (envelopes, filter, pitch, LFOs)
 	warp:       Warp,        // following the tempo (see `Warp`)
 	slicer:     Slicer,      // a slicer's slices and settings (kept when it is a sampler again)
@@ -235,6 +235,15 @@ Sample :: struct {
 	frames:   i64,
 	rate:     f64,
 	channels: int,
+}
+
+// Whether an audio track plays its input through its strip (software
+// monitoring, through its effects): while it is armed (Auto), always (In),
+// or never (Off: you hear it on the interface).
+Monitor :: enum u8 {
+	Auto,
+	In,
+	Off,
 }
 
 // How the app was left with a project (written by the app, saved with

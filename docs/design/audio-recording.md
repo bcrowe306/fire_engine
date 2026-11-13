@@ -1,6 +1,6 @@
 # Audio recording, resampling and audio editing
 
-Status: steps 1 (recording timing) and 2 (drivers) built; the rest planned (decisions taken 2026-11-13).
+Status: steps 1–3 (recording timing, drivers, sampler recording) built; the rest planned (decisions taken 2026-11-13).
 
 ## What there is now (surveyed)
 
@@ -148,8 +148,13 @@ Status: steps 1 (recording timing) and 2 (drivers) built; the rest planned (deci
    `host_set_driver`; the Driver dropdown in Settings > Audio (Windows,
    Linux), saved; a private CoreAudio aggregate when the input and output
    devices differ (tested opening BlackHole in and another device out).
-3. **Sampler recording**: the toolbar's Sample control, the four methods,
-   monitoring per track.
+3. **Sampler recording** (built): the toolbar's Sample control (Hold:
+   Option/Alt-press, asked after Cmd-click turned out to select; Arm;
+   Threshold: the start marker 5 ms before the level; Bars: a timeline
+   recorder punched from the next bar), the pad's own input, `REC` on the
+   pad, MIDI presses too; the recorder made ready for the selected pad
+   ahead (one made at the press would lose the round trip of history);
+   monitoring per audio track Auto / In / Off (project file v34).
 4. **Resampling and bounces**: track inputs from pads, buses, main; offline
    bounce to a pad; bounce in place.
 5. **Audio clips in the Sequence view**: the clip model (non-destructive),

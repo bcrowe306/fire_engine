@@ -703,8 +703,9 @@ plays is a **take** per sequence:
 
 - In the Global tab pick its **input** (inputs 1 + 2, or input 1 or 2 alone,
   on both sides), **Arm** it (or click **R** on its strip; its pad reads
-  *armed*), and turn **Monitor** on to hear the input through its strip
-  while armed (use headphones).
+  *armed*), and choose its **monitoring**: **Auto** (the default: its
+  input heard through its strip and effects while it is armed), **In**
+  (always) or **Off** (you hear it on the interface). Use headphones.
 - Press **Record** (Cmd+R). After the count-in, if one is set, the input
   is recorded while the sequence plays; when you stop, the take is folded
   into the current sequence's take for that pad, exactly one sequence
@@ -943,6 +944,21 @@ buttons.
   **Stop** twice (or when stopped) to silence every sound still ringing.
   **Rec** (red whatever the accent, blinking while it records; Cmd+R)
   arms recording: from a stop it plays, after the count-in.
+- **Sample** (beside Auto): recording a sample straight into a pad, from
+  the pad, by the method its arrow chooses:
+  - **Hold**: **Option-press** (Alt) a pad: it records the input while you
+    hold it, and the take becomes its sample (Cmd-click still selects).
+  - **Arm**: turn **Sample** on; the next pad you press (on the grid, its
+    key, or from a MIDI controller) records while you hold it.
+  - **Threshold**: as Arm, the sample starting where the sound first
+    passes the level (its start marker 5 ms before, so the attack is
+    whole; nothing kept if it never does).
+  - **Bars**: turn Sample on; the next pad you press records the next 1–16
+    bars in time, from the next bar's start (playback starts if stopped),
+    and stops by itself: a sample exactly that many bars long.
+  It records the pad's own input (as an audio track's: Global tab), moved
+  by the device's latency like every take; Sample turns off after one;
+  the pad shows **REC** while it records, and clicking Sample stops it.
 - **Loop**: on, a sequence (or the song) goes round; off, it plays once
   and stops. **Count-in** (click for off, 1 bar, 2 bars; the button says
 how many):
@@ -1001,8 +1017,8 @@ same for all MIDI.
 track arms it, and the one armed before by selecting goes back (Settings >
 Recording turns this off); click R to arm only that track, or Cmd-click
 to arm more (those stay armed when the selection moves). An armed audio
-track records its input when you record (and monitors it, with
-**Monitor**); an armed sampler track plays its own port's notes and
+track records its input when you record (and monitors it: **Auto**,
+**In**, **Off**); an armed sampler track plays its own port's notes and
 records them. Pads hit on the grid or the computer keyboard, and notes
 by the drum map, record onto any pad, armed or not.
 
@@ -1326,6 +1342,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 |---|---|
 | `test_browser.py` | the tree (click, double-click), back/forward/up and the path, keys, favourites (star, pills, right-click), search, the preview's buttons, loading onto the selected pad or the next empty one (Shift+Enter, the foot's buttons), dragging files and search results onto pads |
 | `test_pads.py` | pads by mouse and keys, banks, playback (modes, Reverse) and the Global tab (knobs, Clear Pad, undo), the Sample tab (edits, chop, stretch), files dropped from the desktop |
+| `test_sampling.py` | a sample recorded into a pad by Option-press (Hold), and by the Sample control armed (Arm): the take on the pad, the control disarmed |
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
 | `test_devices_panel.py` | the Library's devices: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (its column back to what it had when let go), their banks |

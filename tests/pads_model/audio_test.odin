@@ -139,7 +139,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 
 	// Saved and loaded: the pad's kind and input, and the clip.
 	pad := m.project.pads[3]
-	pad.input, pad.monitor = {channel = 1}, true
+	pad.input, pad.monitor = {channel = 1}, .In
 	pm.set_pad(m, 3, .Input, "Input", pad)
 	testing.expect_value(t, pm.model_save(m), fc.Error.None)
 	r2 := rig_make(t, "audio_count2")
@@ -148,7 +148,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 	p2 := &r2.m.project
 	testing.expect_value(t, p2.pads[3].kind, pm.Pad_Kind.Audio)
 	testing.expect_value(t, p2.pads[3].input, pm.Audio_Input{channel = 1})
-	testing.expect(t, p2.pads[3].monitor, "monitor")
+	testing.expect_value(t, p2.pads[3].monitor, pm.Monitor.In)
 	testing.expect_value(t, p2.clips[0][3].bpm, 120)
 	testing.expect(t, app.store_get(&p2.samples, p2.clips[0][3].sample) != nil, "the clip's sample")
 	render(r2, 4800) // builds the audio pad on a device without inputs
@@ -205,6 +205,9 @@ an_audio_take_lines_up_with_what_was_heard :: proc(t: ^testing.T) {
 	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 0, velocity = 1})
 	pm.add_note(m, 0, {start = 2.5, length = 0.25, pad = 0, velocity = 1})
 	pm.set_pad_kind(m, 1, .Audio)
+	off := m.project.pads[1]
+	off.monitor = .Off // (with a cable back to the input, monitoring would feed back)
+	pm.set_pad(m, 1, .Monitor, "Monitor", off)
 	pm.arm_track(m, 1, true)
 	m.engine.record_offset = LOOP
 	render(r, 512)
@@ -290,6 +293,9 @@ the_drivers_round_trip_is_compensated :: proc(t: ^testing.T) {
 	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 0, velocity = 1})
 	pm.add_note(m, 0, {start = 2.5, length = 0.25, pad = 0, velocity = 1})
 	pm.set_pad_kind(m, 1, .Audio)
+	off := m.project.pads[1]
+	off.monitor = .Off // (with a cable back to the input, monitoring would feed back)
+	pm.set_pad(m, 1, .Monitor, "Monitor", off)
 	pm.arm_track(m, 1, true)
 	run(r, 4096)
 	_, _, round_trip := app.host_latency(&r.host)

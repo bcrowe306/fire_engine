@@ -124,7 +124,7 @@ an_audio_track_records_from_its_physical_input :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.host_input_channel(&r.host, 5), 2)
 	pm.set_pad_kind(m, 3, .Audio)
 	pad := m.project.pads[3]
-	pad.input, pad.monitor = {channel = 5}, true
+	pad.input, pad.monitor = {channel = 5}, .Auto
 	pm.set_pad(m, 3, .Whole, "Input", pad)
 	app.seal(&m.history)
 	pm.arm_track(m, 3, true)

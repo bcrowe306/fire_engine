@@ -58,6 +58,8 @@ App :: struct {
 	lit:      [pm.PADS]f32, // seconds a pad stays lit after a hit
 	held:     [pm.PADS]bool,
 	rec:      pm.Recording,
+	sample_armed:   bool, // the Sample control is on: the next pad pressed records (Arm, Threshold, Bars)
+	sample_holding: int,  // the pad recording while it is held (-1: none); its release stops it
 	wave:     Wave_State,
 	device:   Device_State, // the device tabs' LFO traces
 	seq_ops:  Seq_Ops, // renaming, copying bars, the copied part
@@ -161,6 +163,7 @@ main :: proc() {
 	a.control_size = control_size
 	a.dark, a.pad_waves = true, true
 	a.io.by_select = -1
+	a.sample_holding = -1
 	a.peaks = make(map[app.Id][]ui.Peak)
 	defer {
 		for _, p in a.peaks do delete(p)
@@ -236,6 +239,8 @@ main :: proc() {
 	a.seq.selected, a.seq.grid = -1, .Sixteenth
 	app.subscribe(&a.bus, app.Host_Engine_Changed, proc(user: rawptr, e: ^app.Host_Engine_Changed) {
 		a := (^App)(user)
+		pm.record_forget(&a.rec) // (its recorders were the old graph's)
+		a.sample_holding = -1
 		pm.engine_rebuild(&a.m.engine)
 		sync_apply(a) // (the clock out and what it follows: on the new clock)
 	}, a)
@@ -367,7 +372,14 @@ frame :: proc(a: ^App) {
 	pm.plugins_idle(&a.m)
 	editors_frame(a)
 	pm.capture_poll(&a.m, &a.capture)
+	// A MIDI pad pressed while the Sample control is armed records into it
+	// (and its release stops it); the note itself played already.
+	for t in a.capture.midi_presses {
+		if t.on do sample_press(a, int(t.pad), false)
+		else do sample_release(a, int(t.pad))
+	}
 	pm.launch_record_poll(&a.m)
+	if a.host.opened do pm.record_prepare(&a.m, &a.rec, a.selected) // (ready before a press: no take loses its start)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))
 	dt := im.GetIO().DeltaTime
 	for &l in a.lit do l = max(l - dt, 0)
@@ -406,6 +418,7 @@ run_fake :: proc(a: ^App) {
 // velocity modes the pad's place in the grid says how to play the
 // selected pad instead.
 press :: proc(a: ^App, index: int, velocity: f32 = 1) {
+	if a.play_mode == .Pads && sample_press(a, index, im.GetIO().KeyAlt) do return // (recording into it instead of playing it)
 	k := index % pm.PADS_PER_BANK
 	g := &a.grid_held[k]
 	if g.on do release(a, index)
@@ -466,6 +479,7 @@ keyboard_in_range :: proc(ps: []int) -> bool {
 
 // Releases pad `index` (what its press played).
 release :: proc(a: ^App, index: int) {
+	sample_release(a, index)
 	k := index % pm.PADS_PER_BANK
 	g := &a.grid_held[k]
 	a.held[index] = false
@@ -581,4 +595,38 @@ run_profile :: proc(a: ^App, frames: int) {
 	rest := times[frames / 10:]
 	slice.sort(rest)
 	fmt.printfln("%d frames: median %.3f ms, p99 %.3f ms", len(rest), rest[len(rest) / 2], rest[len(rest) * 99 / 100])
+}
+
+// A pad pressed (on the grid in Pads mode, or by MIDI): recorded into
+// instead of played when Option/Alt is held (`alt`, Hold) or the Sample
+// control is armed (its method; it disarms). True when it is recording (or
+// tried to).
+sample_press :: proc(a: ^App, index: int, alt: bool) -> bool {
+	method: pm.Sampling
+	switch {
+	case alt:
+		method = .Hold
+	case a.sample_armed && a.settings.sample_method != .Hold:
+		method = a.settings.sample_method
+		a.sample_armed = false
+	case:
+		return false
+	}
+	s := &a.settings
+	if pm.record_start(&a.m, &a.rec, index, method, s.sample_threshold_db, s.sample_bars) != .None {
+		ui.toast(&a.ws.toasts, .Warning, "No audio input to record from")
+		return true
+	}
+	a.selected = index
+	a.pad_sel, a.pad_anchor = {index}, index
+	show_pad_chain(a, index)
+	a.sample_holding = index if method != .Bars else -1 // (Bars stop by themselves)
+	return true
+}
+
+// A pad let go: the sample being recorded into it while held stops.
+sample_release :: proc(a: ^App, index: int) {
+	if a.sample_holding != index || index < 0 do return
+	pm.record_stop(&a.rec)
+	a.sample_holding = -1
 }

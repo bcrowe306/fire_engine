@@ -63,7 +63,7 @@ draw_pads :: proc(user: rawptr) {
 			buttons   = has,
 			drop_type = "PADS_FILE",
 			device_type = PADS_DEVICE_PAYLOAD,
-			badge     = fmt.tprintf("C%d", pad.choke) if pad.choke > 0 && has else "",
+			badge     = "REC" if a.rec.active && a.rec.pad == index else (fmt.tprintf("C%d", pad.choke) if pad.choke > 0 && has else ""), // (a sample recording into it)
 			armed     = pm.track_armed(&a.m, index),
 			drop_zones = !has,
 		}

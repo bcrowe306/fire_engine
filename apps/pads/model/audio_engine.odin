@@ -128,7 +128,7 @@ sync_audio :: proc(e: ^Engine) {
 			if rec do record.audio_recorder_set_latency(n.rec, record_latency(e))
 			if record.audio_recorder_arm(n.rec, rec) == .None do n.rec_on = rec
 		}
-		mon := e.armed[i] && pad.monitor
+		mon := pad.monitor == .In || (pad.monitor == .Auto && e.armed[i])
 		if n.monitor_id != {} && mon != n.monitor_on {
 			graph.set_param(g, n.monitor_id, dsp.GAIN_PARAM_DB, 0 if mon else MONITOR_OFF_DB)
 			n.monitor_on = mon

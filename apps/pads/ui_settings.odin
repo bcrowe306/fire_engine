@@ -53,6 +53,11 @@ App_Settings :: struct {
 	// Recording.
 	arm_selected: bool, // the selected track is armed
 	count_in_click: bool,
+	// Recording a sample into a pad (the toolbar's Sample control): how,
+	// Threshold's level, Bars' count.
+	sample_method:       pm.Sampling,
+	sample_threshold_db: f32,
+	sample_bars:         int,
 	preroll:   Preroll,
 	// New projects.
 	default_bpm: f64,
@@ -227,6 +232,10 @@ settings_load :: proc(a: ^App) {
 	s.record_offset = clamp(app.ini_int(ini_, "recording", "offset_frames", 0), -RECORD_OFFSET_MAX, RECORD_OFFSET_MAX)
 	// Recording (settings.txt's, the first time).
 	s.count_in_click = app.ini_bool(ini_, "recording", "count_in_click", true)
+	s.sample_method = .Hold
+	if v, has := app.ini_get(ini_, "sampling", "method"); has do for mth in pm.Sampling do if enum_name(mth) == v do s.sample_method = mth
+	s.sample_threshold_db = f32(clamp(app.ini_f64(ini_, "sampling", "threshold_db", -40), -80, 0))
+	s.sample_bars = clamp(app.ini_int(ini_, "sampling", "bars", 1), 1, 16)
 	s.arm_selected = app.ini_bool(ini_, "recording", "arm_selected", true)
 	s.preroll = Preroll(clamp(app.ini_int(ini_, "recording", "preroll", int(Preroll.Sixteenth)), 0, int(max(Preroll))))
 	if _, has := app.ini_get(ini_, "recording", "preroll"); !has do migrate_settings_txt(a)
@@ -288,6 +297,9 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_f64(ini, "midi", "input_offset_ms", f64(s.midi_offset_ms))
 	app.ini_set_int(ini, "recording", "offset_frames", s.record_offset)
 	app.ini_set_bool(ini, "recording", "count_in_click", s.count_in_click)
+	app.ini_set(ini, "sampling", "method", enum_name(s.sample_method))
+	app.ini_set_f64(ini, "sampling", "threshold_db", f64(s.sample_threshold_db))
+	app.ini_set_int(ini, "sampling", "bars", s.sample_bars)
 	app.ini_set_bool(ini, "recording", "arm_selected", s.arm_selected)
 	app.ini_set_int(ini, "recording", "preroll", int(s.preroll))
 	app.ini_set_f64(ini, "project", "tempo", s.default_bpm)

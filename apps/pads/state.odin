@@ -83,6 +83,9 @@ State :: struct {
 	theme:      string, // the theme in use
 	zoom:       f32,
 	settings_open: bool,
+	sample_method: string, // the Sample control's: Hold, Arm, Threshold, Bars
+	sample_armed:  bool,
+	sampling:      int, // the pad a sample is recording into (-1: none)
 	clock_out:  bool,   // MIDI clock goes out
 	sync:       string, // what the tempo follows: Internal, Midi_Clock, Link
 	plugins:    int,    // plug-ins found
@@ -191,7 +194,7 @@ State_Pad :: struct {
 	slicer:  State_Slicer, // a slicer's slices
 	synth:   State_Synth,  // a synth's patch
 	input:   string,
-	monitor: bool,
+	monitor: string, // Auto, In, Off
 	armed:   bool,
 	midi_in: string, // what MIDI plays it: "All MIDI", "No MIDI", a port's name
 	midi_in_notes: u32, // MIDI notes that have played it
@@ -389,6 +392,7 @@ state_json :: proc(a: ^App) -> string {
 	}
 	s.silences = a.transport.silences
 	s.theme, s.zoom, s.settings_open = a.settings.theme.name, a.settings.zoom, a.settings.open
+	s.sample_method, s.sample_armed, s.sampling = enum_name(a.settings.sample_method), a.sample_armed, a.rec.pad if a.rec.active else -1
 	s.clock_out, s.sync = a.settings.clock_out, enum_name(a.settings.sync) // (the setting: with no output port open nothing is sent)
 	s.plugins = len(a.plugins.entries)
 	s.plugin_effects = make([dynamic]string, context.temp_allocator)
@@ -431,7 +435,7 @@ state_json :: proc(a: ^App) -> string {
 		sp.fade_in, sp.fade_out = pad.fade_in, pad.fade_out
 		f, ok := pm.pad_playhead(&m.engine, i)
 		sp.playhead = f if ok else -1
-		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), audio_in_text(a, i), pad.monitor, pm.track_armed(m, i)
+		sp.kind, sp.input, sp.monitor, sp.armed = enum_name(pad.kind), audio_in_text(a, i), enum_name(pad.monitor), pm.track_armed(m, i)
 		sp.midi_in = midi_in_text(a, i)
 		if pad.kind == .Synth {
 			sy := &pad.synth

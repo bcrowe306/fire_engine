@@ -11,6 +11,8 @@ import "fire:dsp"
 import "fire:graph"
 import "fire:record"
 import "fire:stretch"
+import "fire:transport"
+import tb "fire:timebase"
 
 // A sample's audio, decoded: one slice per channel.
 Audio :: struct {
@@ -267,57 +269,192 @@ bounce_to_pad :: proc(m: ^Model, index: int, selection: [2]i64) -> int {
 
 // --- recording -----------------------------------------------------------------------------
 
+// How a sample is recorded into a pad (the toolbar's Sample control):
+// pressed and held (Option/Alt-press, or the next press once armed),
+// waiting for the input to pass a level, or a number of bars in time.
+Sampling :: enum u8 {
+	Hold,      // Option/Alt-press a pad: records while it is held
+	Arm,       // armed, the next pad pressed records while it is held
+	Threshold, // armed, the next pad pressed records while held, the sample starting where the input first passes the level
+	Bars,      // armed, the next pad pressed records the next bars in time (from the next bar's start; starts playback if stopped)
+}
+
 // Records the input onto a pad: arm with `record_start`, stop with
-// `record_stop`; `record_poll` (once per frame) puts the take on the pad.
+// `record_stop` (Bars stop by themselves); `record_poll` (once per frame)
+// puts the take on the pad. Every take is moved by the device's latency
+// (`record_latency`): it is what was played, where it was played.
 Recording :: struct {
 	node:    graph.Node_Id,
-	handle:  ^record.Audio_Recorder,
+	handle:  ^record.Audio_Recorder, // free: records while armed
+	inputs:  [2]int, // the graph inputs `handle` takes (a pad's input, as an audio track's)
+	timed_node: graph.Node_Id,
+	timed:   ^record.Audio_Recorder, // on the sequencer's timeline, punched: Bars
+	timed_inputs: [2]int,
 	pad:     int,
+	method:  Sampling,
+	threshold_db: f32, // Threshold: the level the sample starts at
+	from, to: f64, // Bars: the timeline range recorded
 	active:  bool,
 	waiting: bool, // stopped; the take is being finished
 }
 
-// Starts recording the host's first two inputs for pad `index`.
-record_start :: proc(m: ^Model, rec: ^Recording, index: int) -> fc.Error {
+// A Threshold sample starts this long before the input passes the level
+// (the attack's own start).
+SAMPLE_PREROLL_S :: 0.005
+
+// The graph inputs pad `index` records from: its input (a channel, or a
+// stereo pair), as an audio track records; the first two when it has none
+// open. -1: none.
+@(private)
+sample_inputs :: proc(m: ^Model, index: int) -> (src: [2]int, channels: int) {
 	h := m.engine.host
-	if h.settings.inputs <= 0 do return .Unsupported
-	if rec.handle == nil {
-		dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
-		node, r, err := record.audio_recorder_create(h.disk, {channels = min(h.settings.inputs, 2), directory = dir, name = "Recording", encoding = .Float32, latency_frames = record_latency(&m.engine)})
-		if err != .None do return err
-		id := graph.add_node(h.graph, node, min(h.settings.inputs, 2), 0) or_return
-		for c in 0 ..< min(h.settings.inputs, 2) do graph.connect(h.graph, graph.INPUT, c, id, c)
-		graph.commit(h.graph)
-		rec.node, rec.handle = id, r
-	}
-	rec.pad = index
-	rec.active = true
-	record.audio_recorder_set_latency(rec.handle, record_latency(&m.engine)) // (as the device is now)
-	return record.audio_recorder_arm(rec.handle, true)
+	in_ := m.project.pads[index].input
+	first := int(in_.channel)
+	phys := [2]int{first, first + 1} if in_.stereo else [2]int{first, first}
+	src = {app.host_input_channel(h, phys[0]), app.host_input_channel(h, phys[1])}
+	if src[0] < 0 || src[1] < 0 do src = {0, min(1, h.settings.inputs - 1)}
+	return src, 2
 }
 
-// Stops recording; the take arrives at a later `record_poll`.
+// The recorder for `method` (made, or remade for other inputs).
+@(private)
+sample_recorder :: proc(m: ^Model, rec: ^Recording, timed: bool, src: [2]int) -> (^record.Audio_Recorder, fc.Error) {
+	h := m.engine.host
+	handle := &rec.timed if timed else &rec.handle
+	node := &rec.timed_node if timed else &rec.node
+	have := &rec.timed_inputs if timed else &rec.inputs
+	if handle^ != nil && have^ == src do return handle^, .None
+	if handle^ != nil {
+		graph.remove_node(h.graph, node^) // (other inputs: made again)
+		handle^ = nil
+	}
+	dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
+	settings := record.Audio_Recorder_Settings{channels = 2, directory = dir, name = "Recording", encoding = .Float32, latency_frames = record_latency(&m.engine)}
+	if timed do settings.timeline = m.engine.timeline
+	n, r, err := record.audio_recorder_create(h.disk, settings)
+	if err != .None do return nil, err
+	id, aerr := graph.add_node(h.graph, n, 2, 0)
+	if aerr != .None do return nil, aerr
+	for c in 0 ..< 2 do graph.connect(h.graph, graph.INPUT, src[c], id, c)
+	graph.commit(h.graph)
+	node^, handle^, have^ = id, r, src
+	return r, .None
+}
+
+// Forgets the recorders (their nodes went with the graph: a new engine,
+// another device's rate or channels). A take in progress is lost; the next
+// `record_prepare` makes them again on the new graph.
+record_forget :: proc(rec: ^Recording) {
+	rec^ = {}
+}
+
+// Makes the free recorder for pad `index`'s input ready ahead of a take
+// (call each frame for the selected pad): a recorder looks back the round
+// trip into its own history, so one made at the press would lose that much
+// of the take's start. Nothing while recording or without inputs.
+record_prepare :: proc(m: ^Model, rec: ^Recording, index: int) {
+	if rec.active || m.engine.host.settings.inputs <= 0 || m.engine.host.graph == nil do return
+	src, _ := sample_inputs(m, index)
+	sample_recorder(m, rec, false, src)
+	sample_recorder(m, rec, true, src)
+}
+
+// Starts recording pad `index`'s input into it by `method` (Threshold: the
+// sample starts where the input first passes `threshold_db`; Bars:
+// `bars` bars from the next bar's start, playback started if stopped).
+record_start :: proc(m: ^Model, rec: ^Recording, index: int, method := Sampling.Hold, threshold_db: f32 = -40, bars := 1) -> fc.Error {
+	h := m.engine.host
+	if h.settings.inputs <= 0 do return .Unsupported
+	if rec.active do record_stop(rec)
+	src, _ := sample_inputs(m, index)
+	timed := method == .Bars
+	r := sample_recorder(m, rec, timed, src) or_return
+	rec.pad, rec.method, rec.threshold_db = index, method, threshold_db
+	record.audio_recorder_set_latency(r, record_latency(&m.engine)) // (as the device is now)
+	if timed {
+		// From the next bar's start (the one after, if it is too close to
+		// reach: the arm takes a block), for `bars` bars.
+		e := &m.engine
+		pos, playing, _ := transport.timeline_status(h.clock, e.timeline)
+		if !playing {
+			play(e)
+			pos = 0
+		}
+		ts := m.project.transport.time_sig
+		bar := f64(ts.num) * 4 / f64(max(ts.den, 1))
+		from := math.ceil(f64(pos) / bar - 1e-9) * bar
+		if playing && from - f64(pos) < 0.05 do from += bar
+		rec.from, rec.to = from, from + f64(max(bars, 1)) * bar
+		record.audio_recorder_set_punch(r, tb.Beats(rec.from), tb.Beats(rec.to))
+	}
+	rec.active = true
+	return record.audio_recorder_arm(r, true)
+}
+
+// Stops recording (Bars: early); the take arrives at a later `record_poll`.
 record_stop :: proc(rec: ^Recording) {
 	if !rec.active do return
-	record.audio_recorder_arm(rec.handle, false)
+	r := rec.timed if rec.method == .Bars else rec.handle
+	if r != nil do record.audio_recorder_arm(r, false)
 	rec.active, rec.waiting = false, true
 }
 
 // Puts a finished take on the pad it was recorded for (one undo step).
-// True when it did.
+// True when it did. A Threshold take starts (its start marker) just before
+// the input first passed the level; none that never did is kept.
 record_poll :: proc(m: ^Model, rec: ^Recording) -> bool {
-	if rec.handle == nil do return false
-	take, ok := record.audio_recorder_poll(rec.handle)
-	if !ok do return false
-	defer record.take_destroy(&take)
-	rec.waiting = false
-	if take.frames <= 0 do return false
-	app.begin(&m.history, "Record")
-	defer app.end(&m.history)
-	id := add_sample(m, take.path, {sample_rate = take.sample_rate, channels = take.channels, frames = take.frames})
-	assign_sample(m, rec.pad, id)
-	if m.project.pads[rec.pad].kind == .Slicer do slice_pad(m, rec.pad, .Transients) // (recorded into a slicer: sliced)
-	return true
+	for r in ([]^record.Audio_Recorder{rec.handle, rec.timed}) {
+		if r == nil do continue
+		take, ok := record.audio_recorder_poll(r)
+		if !ok do continue
+		defer record.take_destroy(&take)
+		// Bars: the take ends by itself at the punch's end.
+		if r == rec.timed && rec.active && rec.method == .Bars {
+			record.audio_recorder_arm(r, false)
+			rec.active = false
+		}
+		rec.waiting = false
+		if take.frames <= 0 do continue
+		start: i64 = 0
+		if r == rec.handle && rec.method == .Threshold {
+			at := first_above(take.path, rec.threshold_db)
+			if at < 0 do continue // (never loud enough: nothing kept)
+			start = max(at - i64(SAMPLE_PREROLL_S * take.sample_rate), 0)
+		}
+		app.begin(&m.history, "Record")
+		defer app.end(&m.history)
+		id := add_sample(m, take.path, {sample_rate = take.sample_rate, channels = take.channels, frames = take.frames})
+		assign_sample(m, rec.pad, id)
+		if start > 0 {
+			p := m.project.pads[rec.pad]
+			p.start = start
+			set_pad(m, rec.pad, .Region, "Record", p)
+		}
+		if m.project.pads[rec.pad].kind == .Slicer do slice_pad(m, rec.pad, .Transients) // (recorded into a slicer: sliced)
+		return true
+	}
+	return false
+}
+
+// The first frame of the WAV at `path` where any channel passes `db`
+// (-1: none does).
+@(private)
+first_above :: proc(path: string, db: f32) -> i64 {
+	rd, err := audiofile.open(path, context.temp_allocator)
+	if err != .None do return -1
+	defer audiofile.close(rd)
+	info := audiofile.info(rd)
+	level := f32(math.pow(10, f64(db) / 20))
+	BLOCK :: 4096
+	chans := make([][]f32, info.channels, context.temp_allocator)
+	for &c in chans do c = make([]f32, BLOCK, context.temp_allocator)
+	at: i64 = 0
+	for {
+		n, rerr := audiofile.read(rd, chans, BLOCK)
+		if n <= 0 || rerr != .None do return -1
+		for i in 0 ..< n do for c in chans do if abs(c[i]) >= level do return at + i64(i)
+		at += i64(n)
+	}
 }
 
 @(private)

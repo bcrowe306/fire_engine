@@ -15,6 +15,9 @@ Capture :: struct {
 	midi_key:      int, // the last MIDI note that came in (-1: none yet), for MIDI learn
 	midi_count:    int, // MIDI notes that came in (to notice a new one)
 	preroll:       f64, // beats: a hit this much before a sequence's downbeat (or the end of the count-in) goes on the downbeat (0: none)
+	// The MIDI notes on pads that came in since the last poll (for the app:
+	// an armed Sample control starts on one), a hit each: on or off.
+	midi_presses:  [dynamic]Taken,
 	midi_offset:   f64, // seconds: notes from MIDI are recorded this much earlier (a controller's delay)
 }
 
@@ -55,12 +58,15 @@ input_quantize :: proc(q: Input_Quantize, beat: f64) -> f64 {
 // Frees the capture's buffers.
 capture_destroy :: proc(c: ^Capture) {
 	for &h in c.held do delete(h)
+	delete(c.midi_presses)
 }
 
 // Takes the hits the router played since the last call into the current
 // sequence. Call once per frame. True if notes were added.
 capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
+	clear(&c.midi_presses)
 	for t in rt.spsc_pop(&m.engine.router.taken) {
+		if t.midi_key >= 0 && !t.no_pad && !t.fx do append(&c.midi_presses, t)
 		if t.midi_key >= 0 && t.on {
 			c.midi_key = int(t.midi_key)
 			c.midi_count += 1
