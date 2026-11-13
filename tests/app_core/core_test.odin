@@ -1,5 +1,6 @@
 package test_app_core
 
+import "core:fmt"
 import "core:sync"
 import "core:testing"
 import "core:thread"
@@ -423,4 +424,44 @@ host_moves_the_engine_to_a_new_rate_and_renders_offline :: proc(t: ^testing.T) {
 	out := [2][]f32{make([]f32, 1000, context.temp_allocator), make([]f32, 1000, context.temp_allocator)}
 	app.host_render(&h, out[:], 1000)
 	for x in out[0] do testing.expect(t, x == x, "finite")
+}
+
+@(test)
+the_platforms_drivers_are_listed_and_switched :: proc(t: ^testing.T) {
+	// The list: the default first (and usable), each id once.
+	drivers := app.host_drivers(context.temp_allocator)
+	if !testing.expect(t, len(drivers) > 0, "a driver") do return
+	testing.expectf(t, drivers[0].needs == "", "the default is usable (%v)", drivers[0])
+	for d, i in drivers do for e in drivers[i + 1:] do testing.expectf(t, d.id != e.id, "%s twice", d.id)
+	for d in drivers do log_driver(d)
+
+	b: app.Bus
+	app.bus_init(&b)
+	defer app.bus_destroy(&b)
+	// A driver that won't make: the default instead. (A device that isn't
+	// there, so nothing real opens: tests never use speakers.)
+	h: app.Host
+	testing.expect_value(t, app.host_init(&h, {driver = "no such driver", output_device = "no such device", max_block = 256}, &b), fc.Error.None)
+	defer app.host_destroy(&h)
+	testing.expect_value(t, h.driver_id, drivers[0].id)
+	// Each usable one switched to: in use, its device opened or not.
+	for d in drivers do if d.needs == "" {
+		app.host_set_driver(&h, d.id)
+		testing.expect_value(t, h.driver_id, d.id)
+		testing.expect_value(t, h.settings.driver, d.id)
+	}
+	testing.expect(t, app.host_set_driver(&h, "no such driver") != .None, "an unknown driver: refused")
+	testing.expect(t, h.driver != nil, "the driver before kept")
+	// The simulated driver can't be switched from.
+	f: app.Host
+	app.host_init(&f, {fake = true, max_block = 256}, &b)
+	defer app.host_destroy(&f)
+	testing.expect_value(t, f.driver_id, "fake")
+	testing.expect_value(t, app.host_set_driver(&f, drivers[0].id), fc.Error.Unsupported)
+}
+
+@(private)
+log_driver :: proc(d: app.Driver_Choice) {
+	if d.needs == "" do fmt.printfln("driver %s (%s)", d.name, d.id)
+	else do fmt.printfln("driver %s (%s): %s", d.name, d.id, d.needs)
 }

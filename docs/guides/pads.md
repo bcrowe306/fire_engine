@@ -1026,7 +1026,12 @@ it.
   Comfortable 34 pt, Touch 44 pt: how tall buttons and fields are; Auto
   is Comfortable in this layout); the pads' waveforms; whether the layout is
   remembered, and **Reset layout**.
-- **Audio**: the output and input interfaces, sample rate and buffer
+- **Audio**: the **driver** where there is a choice (WASAPI or ASIO on
+  Windows, ALSA or JACK on Linux; one not built in or not installed is
+  greyed with why; switching opens its default devices at once, kept with
+  **Keep** or back in 10 s), the output and input interfaces (on macOS an
+  input and output on different devices just work: one aggregate made of
+  the two), sample rate and buffer
   size (what each interface offers), then the interface's **channels**,
   inputs and outputs side by side: each one a switch, its number, the
   interface's own name for it (CoreAudio, ASIO and JACK give names;

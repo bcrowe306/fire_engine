@@ -162,7 +162,18 @@ for running {
 - If the device goes away (unplugged), the host closes it, announces
   `.Lost`, and retries every half second; when it is back, `.Restored`.
   The graph and clock carry on untouched.
+- **Drivers.** `host_drivers` lists the platform's audio drivers, its
+  default first (CoreAudio; WASAPI and ASIO; ALSA and JACK), each with why
+  it can't be used here, if it can't (built without ASIO, libjack not
+  installed). `Host_Settings.driver` picks one (one that won't make: the
+  default); `host_set_driver` switches while running (the device closes,
+  the new driver opens the devices in `settings`: its own ids, "" for its
+  defaults; the old one stays if the new one won't make). `driver_id` is
+  the one in use ("fake" for the simulated one).
 - `host_render` runs the engine without a device, for exporting.
+- **Timing tests.** The simulated driver can report latencies and loop its
+  outputs back to its inputs (`fake_latency`, `fake_loopback`): run it as
+  a device (`host_open`, `host_fake_run`) for a cable's round trip.
 - `fake = true` uses the simulated driver, for tests and headless runs.
   Its device runs when you call `host_fake_run` (manual mode): an app
   running it interactively gives it a frame's worth of callbacks each

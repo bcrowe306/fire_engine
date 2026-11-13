@@ -18,6 +18,7 @@ import "fire:transport"
 
 // What the host opens. Zero values are the system's defaults.
 Host_Settings :: struct {
+	driver:        string, // one of `host_drivers`' ids ("" = the platform's default); one that won't make falls back to the default
 	output_device: string, // a `backend.Device_Info.id`; "" = the default output
 	input_device:  string, // "" = the default input
 	sample_rate:   f64,    // 0 = the device's
@@ -58,6 +59,7 @@ Host :: struct {
 	settings:  Host_Settings,
 	bus:       ^Bus,
 	driver:    ^backend.Driver,
+	driver_id: string, // the driver in use (`host_drivers`' id; "fake" for the simulated one)
 	fake:      ^fake.Fake, // when `settings.fake`
 	device:    backend.Device,
 	format:    backend.Device_Format, // what the device opened at
@@ -125,9 +127,10 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 		cfg.input_latency_frames, cfg.output_latency_frames = settings.fake_latency[0], settings.fake_latency[1]
 		if settings.fake_loopback > 0 do cfg.loopback_latency = settings.fake_loopback
 		h.fake = fake.create(cfg)
-		h.driver = fake.driver(h.fake)
+		h.driver, h.driver_id = fake.driver(h.fake), "fake"
 	} else {
-		h.driver = platform_driver()
+		h.driver, h.driver_id = make_driver(settings.driver)
+		h.settings.driver = h.driver_id // (the one made: the default if that one wouldn't)
 	}
 	if h.driver == nil do return .Device_Error
 	backend.device_init(&h.device, h.driver)
@@ -279,6 +282,66 @@ host_midi_counts :: proc "contextless" (h: ^Host) -> (sent, received: u64) {
 // audio thread.
 host_midi_inject :: proc(h: ^Host, bytes: [3]u8, port: u8 = 0) {
 	midi.input_push_short(&h.midi_in, 0, port, bytes)
+}
+
+// One of a platform's audio drivers: its id (for `Host_Settings.driver`),
+// its name, and why it can't be used here ("" if it can).
+Driver_Choice :: struct {
+	id:    string,
+	name:  string,
+	needs: string,
+}
+
+// The platform's audio drivers, its default first (WASAPI and ASIO on
+// Windows, ALSA and JACK on Linux, CoreAudio on macOS), each with why it
+// can't be used if it can't: built without it, or its library missing
+// (tried by making it). Allocated with `allocator` (the strings are
+// constants). Control thread.
+host_drivers :: proc(allocator := context.allocator) -> []Driver_Choice {
+	out := make([]Driver_Choice, len(platform_drivers), allocator)
+	for c, i in platform_drivers {
+		out[i] = c
+		if c.needs != "" || i == 0 do continue
+		if d, err := platform_driver(c.id); err != .None || d == nil {
+			out[i].needs = "not installed"
+		} else {
+			backend.driver_destroy(d)
+		}
+	}
+	return out
+}
+
+// The driver `id` makes, or the platform's default when it won't.
+@(private)
+make_driver :: proc(id: string) -> (^backend.Driver, string) {
+	if id != "" {
+		if d, err := platform_driver(id); err == .None && d != nil do return d, id
+	}
+	d, _ := platform_driver("")
+	return d, platform_drivers[0].id
+}
+
+// Switches to driver `id` (`host_drivers`' ids; "" the default): the
+// device closes, the driver goes, the new one is made and the device in
+// `h.settings` opened with it (the devices are its own: set them first,
+// "" for its defaults). The driver before comes back if the new one won't
+// make. Control thread; not with the simulated driver.
+host_set_driver :: proc(h: ^Host, id: string) -> fc.Error {
+	if h.settings.fake do return .Unsupported
+	want := id if id != "" else platform_drivers[0].id
+	if want == h.driver_id && h.driver != nil {
+		h.settings.driver = want
+		return host_open(h)
+	}
+	d, err := platform_driver(want)
+	if err != .None || d == nil do return err if err != .None else .Unsupported
+	host_close(h)
+	backend.device_destroy(&h.device)
+	backend.driver_destroy(h.driver)
+	h.driver, h.driver_id = d, want
+	h.settings.driver = want
+	backend.device_init(&h.device, h.driver)
+	return host_open(h)
 }
 
 // Stops and closes everything, then frees it.

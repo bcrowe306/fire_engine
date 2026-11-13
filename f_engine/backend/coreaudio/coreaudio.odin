@@ -6,7 +6,10 @@ package coreaudio
 
 import "base:intrinsics"
 import "base:runtime"
+import "core:fmt"
 import "core:mem"
+import "core:os"
+import "core:strings"
 import CF "core:sys/darwin/CoreFoundation"
 import "core:time"
 
@@ -25,6 +28,7 @@ Core_Audio :: struct {
 	out_planes: []backend.Driver_Plane,
 	is_open:    bool,
 	started:    bool,
+	aggregate:  ca.AudioObjectID, // the private aggregate made for an input and output on different devices (destroyed on close)
 
 	// Shared with the IO thread.
 	active:      bool, // atomic
@@ -132,11 +136,30 @@ device_info :: proc(id: ca.AudioObjectID, allocator: mem.Allocator) -> (info: ba
 ca_open :: proc(d: ^backend.Driver, setup: backend.Device_Setup) -> (backend.Device_Format, core.Error) {
 	c := (^Core_Audio)(d.data)
 	if c.is_open do return {}, .Invalid_State
-	if setup.input_device_id != "" && setup.output_device_id != "" && setup.input_device_id != setup.output_device_id {
-		return {}, .Unsupported // separate devices need an aggregate device
+	setup := setup
+	// An input and an output on different devices (a USB microphone, the
+	// built-in speakers): one private aggregate device of the two, the
+	// output's clock leading, the input's drift corrected. Its inputs are
+	// the input device's channels, then the output device's; its outputs
+	// the input device's, then the output device's (so the asked-for output
+	// channels move up by the input device's outputs).
+	id: ca.AudioObjectID
+	if in_uid, out_uid, two := two_devices(setup); two {
+		agg, in_outs, err := make_aggregate(in_uid, out_uid)
+		if err != .None do return {}, err
+		c.aggregate, id = agg, agg
+		shifted: backend.Channel_Mask
+		for ch in setup.output_channels do if ch + in_outs < core.MAX_CHANNELS do shifted += {ch + in_outs}
+		setup.output_channels = shifted
+	} else {
+		found: bool
+		id, found = resolve_device(setup)
+		if !found do return {}, .Invalid_Argument
 	}
-	id, found := resolve_device(setup)
-	if !found do return {}, .Invalid_Argument
+	defer if !c.is_open && c.aggregate != ca.kAudioObjectUnknown {
+		ca.AudioHardwareDestroyAggregateDevice(c.aggregate)
+		c.aggregate = ca.kAudioObjectUnknown
+	}
 
 	ins, _ := channel_count(id, ca.kAudioObjectPropertyScopeInput)
 	outs, _ := channel_count(id, ca.kAudioObjectPropertyScopeOutput)
@@ -198,6 +221,100 @@ ca_close :: proc(d: ^backend.Driver) {
 	c.proc_id = nil
 	c.device = ca.kAudioObjectUnknown
 	c.is_open = false
+	if c.aggregate != ca.kAudioObjectUnknown {
+		ca.AudioHardwareDestroyAggregateDevice(c.aggregate)
+		c.aggregate = ca.kAudioObjectUnknown
+	}
+}
+
+// The input and output devices' UIDs when the setup takes them from two
+// different devices (a default resolved to the system's default device).
+@(private)
+two_devices :: proc(setup: backend.Device_Setup) -> (in_uid, out_uid: string, two: bool) {
+	if setup.input_channels == {} || setup.output_channels == {} do return
+	default_uid :: proc(sel: u32) -> string {
+		id, ok := get_value(ca.kAudioObjectSystemObject, sel, ca.AudioObjectID)
+		if !ok || id == ca.kAudioObjectUnknown do return ""
+		uid, _ := get_string(id, ca.kAudioDevicePropertyDeviceUID, context.temp_allocator)
+		return uid
+	}
+	in_uid = setup.input_device_id if setup.input_device_id != "" else default_uid(ca.kAudioHardwarePropertyDefaultInputDevice)
+	out_uid = setup.output_device_id if setup.output_device_id != "" else default_uid(ca.kAudioHardwarePropertyDefaultOutputDevice)
+	return in_uid, out_uid, in_uid != "" && out_uid != "" && in_uid != out_uid
+}
+
+// Makes a private aggregate device of `in_uid` (first, its drift
+// corrected) and `out_uid` (the clock), and waits until it answers. Also
+// how many outputs the input device has (the aggregate's outputs start
+// with them).
+@(private)
+make_aggregate :: proc(in_uid, out_uid: string) -> (id: ca.AudioObjectID, in_outs: int, err: core.Error) {
+	in_dev, out_dev: ca.AudioObjectID
+	if ids, ok := get_array(ca.kAudioObjectSystemObject, ca.kAudioHardwarePropertyDevices, ca.AudioObjectID, context.temp_allocator); ok {
+		for d in ids {
+			uid, _ := get_string(d, ca.kAudioDevicePropertyDeviceUID, context.temp_allocator)
+			if uid == in_uid do in_dev = d
+			if uid == out_uid do out_dev = d
+		}
+	}
+	if in_dev == ca.kAudioObjectUnknown || out_dev == ca.kAudioObjectUnknown do return ca.kAudioObjectUnknown, 0, .Invalid_Argument
+	in_outs, _ = channel_count(in_dev, ca.kAudioObjectPropertyScopeOutput)
+
+	str :: proc(s: string) -> ca.CFStringRef {
+		return ca.CFStringCreateWithCString(nil, strings.clone_to_cstring(s, context.temp_allocator), ca.kCFStringEncodingUTF8)
+	}
+	num :: proc(v: i32) -> ca.CFNumberRef {
+		x := v
+		return ca.CFNumberCreate(nil, ca.kCFNumberSInt32Type, &x)
+	}
+	dict :: proc() -> ca.CFDictionaryRef {
+		return ca.CFDictionaryCreateMutable(nil, 0, ca.cf_callbacks("kCFTypeDictionaryKeyCallBacks"), ca.cf_callbacks("kCFTypeDictionaryValueCallBacks"))
+	}
+	made: [dynamic]CF.TypeRef // released at the end (the dictionary keeps its own references)
+	made.allocator = context.temp_allocator
+	keep :: proc(made: ^[dynamic]CF.TypeRef, x: rawptr) -> rawptr {
+		append(made, CF.TypeRef(x))
+		return x
+	}
+	set :: proc(made: ^[dynamic]CF.TypeRef, d: ca.CFDictionaryRef, key: string, value: rawptr) {
+		ca.CFDictionarySetValue(d, keep(made, rawptr(str(key))), value)
+	}
+	defer for x in made do CF.CFRelease(x)
+
+	// A UID of its own each time (one process may make several).
+	@(static) serial: int
+	serial += 1
+	uid := fmt.tprintf("fire.aggregate.%d.%d", os.get_pid(), serial)
+	desc := ca.CFDictionaryRef(keep(&made, rawptr(dict())))
+	set(&made, desc, ca.kAudioAggregateDeviceUIDKey, keep(&made, rawptr(str(uid))))
+	set(&made, desc, ca.kAudioAggregateDeviceNameKey, keep(&made, rawptr(str("Fire (in and out)"))))
+	set(&made, desc, ca.kAudioAggregateDeviceIsPrivateKey, keep(&made, rawptr(num(1))))
+	set(&made, desc, ca.kAudioAggregateDeviceIsStackedKey, keep(&made, rawptr(num(0))))
+	set(&made, desc, ca.kAudioAggregateDeviceMainSubDeviceKey, keep(&made, rawptr(str(out_uid))))
+	subs := ca.CFArrayRef(keep(&made, rawptr(ca.CFArrayCreateMutable(nil, 2, ca.cf_callbacks("kCFTypeArrayCallBacks")))))
+	sub_in := ca.CFDictionaryRef(keep(&made, rawptr(dict())))
+	set(&made, sub_in, ca.kAudioSubDeviceUIDKey, keep(&made, rawptr(str(in_uid))))
+	set(&made, sub_in, ca.kAudioSubDeviceDriftCompensationKey, keep(&made, rawptr(num(1))))
+	sub_out := ca.CFDictionaryRef(keep(&made, rawptr(dict())))
+	set(&made, sub_out, ca.kAudioSubDeviceUIDKey, keep(&made, rawptr(str(out_uid))))
+	ca.CFArrayAppendValue(subs, rawptr(sub_in))
+	ca.CFArrayAppendValue(subs, rawptr(sub_out))
+	set(&made, desc, ca.kAudioAggregateDeviceSubDeviceListKey, rawptr(subs))
+
+	if ca.AudioHardwareCreateAggregateDevice(CF.TypeRef(desc), &id) != ca.NO_ERR || id == ca.kAudioObjectUnknown {
+		return ca.kAudioObjectUnknown, 0, .Device_Error
+	}
+	// The HAL builds it asynchronously: until it has both devices' channels.
+	want_in, _ := channel_count(in_dev, ca.kAudioObjectPropertyScopeInput)
+	want_out, _ := channel_count(out_dev, ca.kAudioObjectPropertyScopeOutput)
+	for _ in 0 ..< 200 {
+		ins, _ := channel_count(id, ca.kAudioObjectPropertyScopeInput)
+		outs, _ := channel_count(id, ca.kAudioObjectPropertyScopeOutput)
+		if ins >= want_in && outs >= in_outs + want_out do return id, in_outs, .None
+		time.sleep(10 * time.Millisecond)
+	}
+	ca.AudioHardwareDestroyAggregateDevice(id)
+	return ca.kAudioObjectUnknown, 0, .Device_Error
 }
 
 @(private)

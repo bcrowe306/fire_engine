@@ -11,6 +11,7 @@ import "fire:audiofile"
 import fc "fire:core"
 import pm "../../apps/pads/model"
 import "fire:record"
+import "fire:stream"
 import kit "fire:testkit"
 
 // A sine at `hz` into both inputs, `frames` long.
@@ -267,6 +268,9 @@ rig_cabled :: proc(t: ^testing.T, name: string) -> ^Rig {
 run :: proc(r: ^Rig, frames: int) {
 	for done := 0; done < frames; done += 256 {
 		pm.sync(&r.m.engine)
+		// (Samples loaded before they play, as `render` waits: a slow disk
+		// would otherwise play silence.)
+		for _, src in r.m.engine.sources do for stream.source_state(src) == .Loading do time.sleep(time.Millisecond)
 		app.host_fake_run(&r.host, 1)
 		record.disk_writer_service(r.host.disk)
 	}

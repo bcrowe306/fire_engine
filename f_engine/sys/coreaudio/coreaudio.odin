@@ -4,6 +4,7 @@
 package coreaudio_sys
 
 import CF "core:sys/darwin/CoreFoundation"
+import "core:sys/posix"
 
 foreign import CoreAudio "system:CoreAudio.framework"
 
@@ -143,3 +144,58 @@ kAudioDevicePropertyStreams                   :: u32('s') << 24 | u32('t') << 16
 kAudioDeviceProcessorOverload                 :: u32('o') << 24 | u32('v') << 16 | u32('e') << 8 | u32('r')
 kAudioDevicePropertyVolumeScalar              :: u32('v') << 24 | u32('o') << 16 | u32('l') << 8 | u32('m')
 kAudioStreamPropertyLatency                   :: kAudioDevicePropertyLatency
+
+// --- aggregate devices ---------------------------------------------------------------
+
+@(default_calling_convention = "c")
+foreign CoreAudio {
+	// Makes an aggregate device from a description (the keys below); its
+	// id in `outDeviceID`. A private one is unseen by other apps and goes
+	// when the process does.
+	AudioHardwareCreateAggregateDevice :: proc(inDescription: CF.TypeRef, outDeviceID: ^AudioObjectID) -> OSStatus ---
+	AudioHardwareDestroyAggregateDevice :: proc(inDeviceID: AudioObjectID) -> OSStatus ---
+}
+
+// An aggregate's description: keys (CFStrings).
+kAudioAggregateDeviceUIDKey          :: "uid"
+kAudioAggregateDeviceNameKey         :: "name"
+kAudioAggregateDeviceIsPrivateKey    :: "private"
+kAudioAggregateDeviceIsStackedKey    :: "stacked"
+kAudioAggregateDeviceSubDeviceListKey :: "subdevices"
+kAudioAggregateDeviceMainSubDeviceKey :: "master" // the clock
+// A sub-device's description.
+kAudioSubDeviceUIDKey                :: "uid"
+kAudioSubDeviceDriftCompensationKey  :: "drift"
+
+// --- CoreFoundation (what an aggregate's description needs) --------------------------
+
+foreign import CoreFoundation "system:CoreFoundation.framework"
+
+CFIndex :: CF.Index
+CFDictionaryRef :: distinct rawptr
+CFArrayRef      :: distinct rawptr
+CFNumberRef     :: distinct rawptr
+
+// CoreFoundation's own callbacks for dictionaries and arrays of CF objects
+// (kCFTypeDictionaryKeyCallBacks, ...): their addresses, looked up when
+// first needed (data symbols, so not foreign variables: those don't link
+// at every optimization level).
+cf_callbacks :: proc(name: cstring) -> rawptr {
+	RTLD_DEFAULT :: posix.Symbol_Table(uintptr(~uintptr(1))) // ((void*)-2 on macOS: every loaded image)
+	return posix.dlsym(RTLD_DEFAULT, name)
+}
+
+// CFNumberType: a 32-bit signed integer.
+kCFNumberSInt32Type :: CF.Index(3)
+// CFStringEncoding: UTF-8.
+kCFStringEncodingUTF8 :: u32(0x08000100)
+
+@(default_calling_convention = "c")
+foreign CoreFoundation {
+	CFDictionaryCreateMutable :: proc(allocator: rawptr, capacity: CFIndex, keyCallBacks: rawptr, valueCallBacks: rawptr) -> CFDictionaryRef ---
+	CFDictionarySetValue :: proc(theDict: CFDictionaryRef, key: rawptr, value: rawptr) ---
+	CFArrayCreateMutable :: proc(allocator: rawptr, capacity: CFIndex, callBacks: rawptr) -> CFArrayRef ---
+	CFArrayAppendValue :: proc(theArray: CFArrayRef, value: rawptr) ---
+	CFNumberCreate :: proc(allocator: rawptr, theType: CFIndex, valuePtr: rawptr) -> CFNumberRef ---
+	CFStringCreateWithCString :: proc(alloc: rawptr, cStr: cstring, encoding: u32) -> CFStringRef ---
+}

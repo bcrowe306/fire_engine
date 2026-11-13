@@ -79,6 +79,7 @@ App_Settings :: struct {
 
 // What the audio device opens with.
 Audio_Config :: struct {
+	driver:        string, // the audio driver (`app.host_drivers`' ids; "" = the platform's default)
 	output, input: string, // device ids ("" = the system default)
 	rate:   f64, // 0 = the device's
 	buffer: int, // frames; 0 = the device's
@@ -191,6 +192,7 @@ settings_load :: proc(a: ^App) {
 	}
 	// Audio.
 	s.audio = {
+		driver = strings.clone(g(ini_, "audio", "driver", "")),
 		output = strings.clone(g(ini_, "audio", "output", "")),
 		input  = strings.clone(g(ini_, "audio", "input", "")),
 		rate   = app.ini_f64(ini_, "audio", "sample_rate", 0),
@@ -268,6 +270,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_bool(ini, "mixer", "io", s.mixer_view.io)
 	app.ini_set_bool(ini, "mixer", "narrow", s.mixer_view.narrow)
 	app.ini_set_bool(ini, "mixer", "meters_folded", s.mixer_view.meters_folded)
+	app.ini_set(ini, "audio", "driver", s.audio.driver)
 	app.ini_set(ini, "audio", "output", s.audio.output)
 	app.ini_set(ini, "audio", "input", s.audio.input)
 	app.ini_set_f64(ini, "audio", "sample_rate", s.audio.rate)
@@ -404,7 +407,7 @@ find_preset :: proc(s: ^App_Settings, name: string) -> (ui.Theme, bool) {
 @(private)
 audio_clone :: proc(c: Audio_Config) -> Audio_Config {
 	c := c
-	c.output, c.input = strings.clone(c.output), strings.clone(c.input)
+	c.output, c.input, c.driver = strings.clone(c.output), strings.clone(c.input), strings.clone(c.driver)
 	c.interfaces = interfaces_clone(c.interfaces)
 	return c
 }
@@ -413,6 +416,7 @@ audio_clone :: proc(c: Audio_Config) -> Audio_Config {
 audio_free :: proc(c: ^Audio_Config) {
 	delete(c.output)
 	delete(c.input)
+	delete(c.driver)
 	interfaces_free(&c.interfaces)
 	c^ = {}
 }
@@ -470,6 +474,7 @@ host_settings :: proc(a: ^App, fake: bool) -> app.Host_Settings {
 	s := &a.settings
 	hs := app.Host_Settings{
 		fake = fake, max_block = 512, ram_bytes = 512 << 20, rebuild_on_rate_change = true,
+		driver = s.audio.driver,
 		output_device = s.audio.output, input_device = s.audio.input,
 		sample_rate = s.audio.rate, buffer_frames = s.audio.buffer,
 		midi = s.midi_on, midi_output = s.midi_output, midi_inputs_off = s.midi_off[:],
@@ -534,7 +539,14 @@ audio_reopen :: proc(a: ^App) -> bool {
 	h.settings.output_device, h.settings.input_device = hs.output_device, hs.input_device
 	h.settings.sample_rate, h.settings.buffer_frames = hs.sample_rate, hs.buffer_frames
 	h.settings.input_channels, h.settings.output_channels = hs.input_channels, hs.output_channels
-	ok := app.host_open(h) == .None
+	ok: bool
+	want := hs.driver if hs.driver != "" else (app.host_drivers(context.temp_allocator)[0].id)
+	if !h.settings.fake && want != h.driver_id {
+		ok = app.host_set_driver(h, hs.driver) == .None // (another driver: its own devices)
+		refresh_devices(a)
+	} else {
+		ok = app.host_open(h) == .None
+	}
 	outputs_apply(a)
 	return ok
 }
@@ -901,6 +913,35 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 	if h.settings.fake {
 		im.TextColored(transmute(im.Vec4)ui.theme().warn, "Running with the simulated device (--fake): its own devices are listed; the others apply on a normal start.")
 		im.Spacing()
+	}
+	// The driver (where there is more than one: Windows, Linux).
+	if drivers := app.host_drivers(context.temp_allocator); len(drivers) > 1 && !h.settings.fake {
+		label("Driver")
+		im.SetNextItemWidth(360)
+		cur := h.driver_id
+		cur_name := cur
+		for d in drivers do if d.id == cur do cur_name = d.name
+		if ui.combo("##driver", fmt.ctprintf("%s", cur_name)) {
+			for d in drivers {
+				if d.needs != "" {
+					im.BeginDisabled()
+					im.Selectable(fmt.ctprintf("%s (%s)###d%s", d.name, d.needs, d.id), false)
+					im.EndDisabled()
+					continue
+				}
+				if im.Selectable(fmt.ctprintf("%s###d%s", d.name, d.id), d.id == cur) && d.id != cur {
+					// Another driver: its own devices (their defaults to start),
+					// opened now (Keep, or back in 10 s).
+					set_string(&st.driver, d.id)
+					set_string(&st.output, "")
+					set_string(&st.input, "")
+					audio_apply(a)
+				}
+			}
+			im.EndCombo()
+		}
+		ui.name("audio driver")
+		hint("ASIO (Windows) and JACK (Linux) for the lowest latency; each lists its own devices.")
 	}
 	// The interfaces.
 	label("Output")

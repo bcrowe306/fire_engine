@@ -349,3 +349,46 @@ latency_probe_measures_blackhole :: proc(t: ^testing.T) {
 	testing.expectf(t, quality > 0.99, "quality %v", quality)
 	testing.expect_value(t, frames, 2 * dev.format.buffer_frames) // as the loopback test measures
 }
+
+// An input on one device and the output on another: the driver makes a
+// private aggregate of the two (BlackHole's inputs; another device's
+// outputs), opens it, and the channels asked for are the right ones of it.
+// Opened, not started, its rate and buffer left as they are: nothing
+// plays or listens.
+@(test)
+two_devices_open_as_one_aggregate :: proc(t: ^testing.T) {
+	lock := kit.device_lock("blackhole")
+	defer kit.device_unlock(lock)
+	d := cad.create()
+	defer backend.driver_destroy(d)
+	bh, _, found := find_blackhole(t, d)
+	if !found do return
+	infos, _ := backend.driver_enumerate(d, context.temp_allocator)
+	out_id, out_name: string
+	out_ins, out_outs := 0, 0
+	for info in infos do if info.id != bh && info.output_channels >= 2 && out_id == "" {
+		out_id, out_name, out_ins, out_outs = info.id, info.name, info.input_channels, info.output_channels
+	}
+	if out_id == "" {
+		log.info("no second output device; skipping")
+		return
+	}
+	dev: backend.Device
+	backend.device_init(&dev, d)
+	defer backend.device_destroy(&dev)
+	setup := backend.Device_Setup{input_device_id = bh, output_device_id = out_id, input_channels = {0, 1}, output_channels = {0, 1}}
+	err := backend.device_open(&dev, setup, 256)
+	if !testing.expectf(t, err == .None, "BlackHole in, %s out: %v", out_name, err) do return
+	f := dev.format
+	log.infof("aggregate: BlackHole in + %s out: %d in, %d out, %v Hz, %d frames, latency in %d out %d", out_name, f.device_input_channels, f.device_output_channels, f.sample_rate, f.buffer_frames, f.input_latency_frames, f.output_latency_frames)
+	// Its inputs: BlackHole's 2, then the other's; its outputs: BlackHole's
+	// 2, then the other's (the asked-for outputs, 2 up).
+	testing.expect_value(t, f.device_input_channels, 2 + out_ins)
+	testing.expect_value(t, f.device_output_channels, 2 + out_outs)
+	testing.expect_value(t, f.input_channels, backend.Channel_Mask{0, 1})
+	testing.expect_value(t, f.output_channels, backend.Channel_Mask{2, 3})
+	backend.device_close(&dev)
+	// Gone with the close: the next open makes another, and works.
+	testing.expect_value(t, backend.device_open(&dev, setup, 256), core.Error.None)
+	backend.device_close(&dev)
+}

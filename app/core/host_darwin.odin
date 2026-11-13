@@ -7,9 +7,17 @@ import "fire:midi"
 import coremidi "fire:midi/coremidi"
 import "fire:backend/coreaudio"
 
+// The drivers macOS has (the first, its default).
 @(private)
-platform_driver :: proc() -> ^backend.Driver {
-	return coreaudio.create()
+platform_drivers := []Driver_Choice{{id = "coreaudio", name = "CoreAudio"}}
+
+// Makes the platform's driver `id` ("": the default).
+@(private)
+platform_driver :: proc(id: string) -> (^backend.Driver, fc.Error) {
+	switch id {
+	case "", "coreaudio": return coreaudio.create(), .None
+	}
+	return nil, .Invalid_Argument
 }
 
 @(private)

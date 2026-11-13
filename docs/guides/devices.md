@@ -69,7 +69,14 @@ backend.device_stop(&dev) // no callback runs after this returns
 
 - `Device_Setup` picks devices by ID (from `backend.driver_enumerate`; empty
   means the default), channels as bit sets, and optionally a sample rate and
-  buffer size. CoreAudio changes the device's rate if asked; WASAPI shared mode
+  buffer size. **Two devices on CoreAudio** (an input on one, the output on
+  another: a USB microphone and the built-in speakers) open as one: the
+  driver makes a private aggregate device of the two (the output's clock
+  leading, the input's drift corrected; unseen by other apps, gone on
+  close). The input channels are the input device's, the output channels
+  the output device's, as asked; its latencies are the aggregate's.
+  `tests/coreaudio` opens one (BlackHole in, another device out) without
+  starting it. CoreAudio changes the device's rate if asked; WASAPI shared mode
   and JACK report `.Unsupported` instead of resampling.
 - Your callback receives an `Io_Block`: `inputs` and `outputs` (planar, only
   the channels you selected), `frames`, and timestamps on the host clock

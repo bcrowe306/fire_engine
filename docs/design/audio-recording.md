@@ -1,6 +1,6 @@
 # Audio recording, resampling and audio editing
 
-Status: step 1 (recording timing) built; the rest planned (decisions taken 2026-11-13).
+Status: steps 1 (recording timing) and 2 (drivers) built; the rest planned (decisions taken 2026-11-13).
 
 ## What there is now (surveyed)
 
@@ -144,8 +144,10 @@ Status: step 1 (recording timing) built; the rest planned (decisions taken 2026-
    `fake_loopback`) for tests that run a cabled device and require takes
    and hits on their frame. (Plug-in latency for taps comes with taps, in
    step 4.)
-2. **Drivers**: the Driver dropdown, ASIO and JACK through the app layer,
-   the macOS aggregate device.
+2. **Drivers** (built): `app.host_drivers` / `Host_Settings.driver` /
+   `host_set_driver`; the Driver dropdown in Settings > Audio (Windows,
+   Linux), saved; a private CoreAudio aggregate when the input and output
+   devices differ (tested opening BlackHole in and another device out).
 3. **Sampler recording**: the toolbar's Sample control, the four methods,
    monitoring per track.
 4. **Resampling and bounces**: track inputs from pads, buses, main; offline
