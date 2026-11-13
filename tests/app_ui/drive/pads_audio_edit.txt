@@ -1,0 +1,12 @@
+# Audio clips: a loop as audio track A2's take, its condensed waveform on
+# its row in the Notes grid, then the Audio tab: split, a region selected.
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+note 0 0 0.25 1
+note 0 2 0.25 1
+take 1 tests/app_ui/fixtures/loop.wav
+expect undo Add Take
+screenshot audio_rows
+lane audio
+wait 3
+screenshot audio_tab

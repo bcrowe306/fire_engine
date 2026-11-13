@@ -21,7 +21,7 @@ def test_channels_chosen_named_and_kept():
     app = Pads(prefs=prefs, extra=("--fake-interface",))
     try:
         app.key("cmd+,")
-        app.click("Audio")
+        app.click("Audio", window="settings")
         app.click("output interface")
         app.click(IFACE)
         app.click("input interface")

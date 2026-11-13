@@ -1,6 +1,6 @@
 # Audio recording, resampling and audio editing
 
-Status: steps 1–4 (recording timing, drivers, sampler recording, resampling and bounces) built; the rest planned (decisions taken 2026-11-13).
+Status: steps 1–5 (recording timing, drivers, sampler recording, resampling and bounces, audio clips) built; the rest planned (decisions taken 2026-11-13).
 
 ## What there is now (surveyed)
 
@@ -165,9 +165,20 @@ Status: steps 1–4 (recording timing, drivers, sampler recording, resampling an
    only those heard, taken at main's input); Bounce in Place
    (`bounce_in_place_begin`: freeze's renderings onto a new audio track,
    the pad muted). Exports wait for samples and takes to load.
-5. **Audio clips in the Sequence view**: the clip model (non-destructive),
-   the Audio tab and the condensed rows, the tools, takes, takes to
-   tracks, Consolidate.
+5. **Audio clips in the Sequence view** (built): `Audio_Part` (a clip's
+   takes and regions, `Project.parts`, project file v36; a clip without
+   one plays its sample whole, as before); each pass a take placed where
+   it was played; edits as values (`split_at`, `delete_range`, `crop_to`,
+   `move_region`, `trim_region`, `set_region`, `normalize_region`,
+   `use_take`, `copy_range`/`paste_at`, `consolidate`, `spread_takes`,
+   `add_take_file`), each one undo step; the engine plays a mix of the
+   regions (`comp_source`: rendered on a worker, kept by a hash of what
+   went into it, the last one playing until the next is ready; a plain
+   take plays as it is); Repitch or Stretch (and transpose) by the
+   player. The Audio tab, the rows' condensed waveforms, the Sample tab's
+   view of the part; passes onto tracks of their own (a recording
+   setting). Not yet: crossfades drawn between overlapping regions,
+   zoom in the Audio tab.
 6. **Per-track loops** (notes and audio, recording into them).
 7. **Vertical zoom** in the Sequence view.
 

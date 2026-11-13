@@ -50,6 +50,7 @@ App_Settings :: struct {
 	link_start_stop: bool,
 	midi_offset_ms: f32, // MIDI notes recorded this much earlier (a controller's latency)
 	record_offset:  int, // frames added to the device's round trip when recording audio (a loopback's correction; may be < 0)
+	passes_to_tracks: bool, // audio: each loop pass after the first onto a track of its own
 	// Recording.
 	arm_selected: bool, // the selected track is armed
 	count_in_click: bool,
@@ -230,6 +231,7 @@ settings_load :: proc(a: ^App) {
 	s.link_start_stop = app.ini_bool(ini_, "midi", "link_start_stop", true)
 	s.midi_offset_ms = f32(app.ini_f64(ini_, "midi", "input_offset_ms", 0))
 	s.record_offset = clamp(app.ini_int(ini_, "recording", "offset_frames", 0), -RECORD_OFFSET_MAX, RECORD_OFFSET_MAX)
+	s.passes_to_tracks = app.ini_bool(ini_, "recording", "passes_to_tracks", false)
 	// Recording (settings.txt's, the first time).
 	s.count_in_click = app.ini_bool(ini_, "recording", "count_in_click", true)
 	s.sample_method = .Hold
@@ -296,6 +298,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_bool(ini, "midi", "link_start_stop", s.link_start_stop)
 	app.ini_set_f64(ini, "midi", "input_offset_ms", f64(s.midi_offset_ms))
 	app.ini_set_int(ini, "recording", "offset_frames", s.record_offset)
+	app.ini_set_bool(ini, "recording", "passes_to_tracks", s.passes_to_tracks)
 	app.ini_set_bool(ini, "recording", "count_in_click", s.count_in_click)
 	app.ini_set(ini, "sampling", "method", enum_name(s.sample_method))
 	app.ini_set_f64(ini, "sampling", "threshold_db", f64(s.sample_threshold_db))
@@ -616,6 +619,7 @@ draw_settings :: proc(a: ^App) {
 	a.capture.preroll = preroll_beats(s.preroll)
 	a.capture.midi_offset = f64(s.midi_offset_ms) / 1000
 	a.m.engine.record_offset = s.record_offset
+	a.m.passes_to_tracks = s.passes_to_tracks
 	if s.keep.active && a.transport.clock >= s.keep.until do audio_revert(a)
 	if !s.open {
 		if s.keep.active do draw_keep(a)
@@ -1224,6 +1228,11 @@ page_recording :: proc(a: ^App) -> (changed: bool) {
 		im.EndCombo()
 	}
 	hint("A hit this much before a sequence's first beat (at the end of the loop, or of the count-in) is recorded on it.")
+	im.SeparatorText("Audio takes")
+	label("Loop passes")
+	if ui.toggle("Each pass onto a track of its own##passes", &s.passes_to_tracks) do changed = true
+	ui.name("passes to tracks")
+	hint("Recording an audio track over a loop: each pass after the first goes onto the next empty pad, an audio track lined up with it (doubling). Off: every pass is a take of the one track, the last heard (pick another in the Audio tab's Takes).")
 	// Audio takes are moved earlier by the round trip the device reports,
 	// and by this: what a loopback measured it misreports.
 	im.SeparatorText("Timing")

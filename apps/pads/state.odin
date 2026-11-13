@@ -69,7 +69,8 @@ State :: struct {
 	arrangement: int, // 1-based
 	snap:       bool, // the sequence editor snaps to its grid
 	curved:     int, // automation points of the current sequence bending the line after them
-	seq_mode:   string, // the Sequence view's tab: "Notes" or "Automation"
+	seq_mode:   string, // the Sequence view's tab: "Notes", "Automation" or "Audio"
+	audio:      State_Audio_View, // the Audio tab's selection
 	chances:    []f32,  // each note's chance (0..1) in the current sequence
 	ccs:        int,    // MIDI CC steps in the current sequence
 	auto_lane:  string, // the automation the Automation tab shows ("A1 Volume")
@@ -198,10 +199,20 @@ State_Pad :: struct {
 	armed:   bool,
 	midi_in: string, // what MIDI plays it: "All MIDI", "No MIDI", a port's name
 	midi_in_notes: u32, // MIDI notes that have played it
-	take:    i64, // an audio pad's take in the current sequence: its frames (0: none)
+	take:    i64, // an audio pad's take in the current sequence: its frames (0: none; with a part, the sequence's)
+	regions: int, // its part's regions in the current sequence
+	takes:   int, // ... and takes
 	attack, release: f32,
 	voice:   pm.Voice, // its envelopes, filter, pitch, LFOs and routes
 	cutoff_now: f64, // the filter's cutoff as it plays now (modulated, automated)
+}
+
+// The Audio tab's selection.
+State_Audio_View :: struct {
+	region:   int, // -1: none
+	range:    [2]f64,
+	cursor:   f64,
+	has_clip: bool, // something copied
 }
 
 State_Sequence :: struct {
@@ -365,7 +376,8 @@ state_json :: proc(a: ^App) -> string {
 	seq := pm.current_sequence(m)
 	s.notes, s.points, s.bars = len(seq.notes), len(seq.points), seq.bars
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
-	s.seq_mode = "Automation" if a.seq.mode == .Automation else "Notes"
+	s.seq_mode = enum_name(a.seq.mode)
+	s.audio = {region = a.seq.aud.region, range = a.seq.aud.range, cursor = a.seq.aud.cursor, has_clip = a.seq.aud.has_clip}
 	s.chances = make([]f32, len(seq.notes), context.temp_allocator)
 	s.ccs = len(seq.ccs)
 	for n, k in seq.notes do s.chances[k] = n.probability
@@ -466,6 +478,13 @@ state_json :: proc(a: ^App) -> string {
 		sp.color = pad.color
 		if l, live := pm.pad_live(&m.engine, i); live do sp.cutoff_now = l.cutoff
 		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames
+		if pm.current_clip(m, i).part != 0 {
+			x := pm.part_of(p, p.slot, i)
+			sp.regions, sp.takes = x.count, x.take_count
+			if x.count > 0 && x.take_count > 0 do sp.take = i64(math.round(pm.seq_beats(p, p.sequences[p.slot]) * pm.frames_per_beat_of(p, p.slot, i, x.takes[0])))
+		} else if sp.take > 0 {
+			sp.regions, sp.takes = 1, 1
+		}
 		append(&s.pads, sp)
 	}
 	s.buses = make([dynamic]State_Bus, context.temp_allocator)

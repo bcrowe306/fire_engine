@@ -128,8 +128,9 @@ Midi_In :: struct {
 // tempo it was recorded at), looping with the sequence and following the
 // tempo.
 Clip :: struct {
-	sample: app.Id, // 0 = none
+	sample: app.Id, // 0 = none; with a part, its latest take
 	bpm:    f64,
+	part:   app.Id, // its regions and takes (`Project.parts`; 0: its sample whole, see `Audio_Part`)
 }
 
 // The sampler's voice beyond its amp's attack and release: the rest of
@@ -271,11 +272,12 @@ View_State :: struct {
 	seq_mode:  Seq_Mode, // the Sequence view's tab: Notes or Automation
 }
 
-// The Sequence view's two tabs: notes (and their velocity, chance and CC),
-// or one automation at a time.
+// The Sequence view's tabs: notes (and their velocity, chance and CC), one
+// automation at a time, or an audio track's part.
 Seq_Mode :: enum u8 {
 	Notes,
 	Automation,
+	Audio, // the selected audio track's part, large (see the app's Audio tab)
 }
 
 // A project.
@@ -290,6 +292,7 @@ Project :: struct {
 	view:    View_State, // how the app was left: kept with the project, so it opens as it was
 	sequences: [SLOTS]Sequence,
 	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence
+	parts:   app.Store(Audio_Part), // their edits (see `Audio_Part`; only those a clip names are saved)
 	freezes: [SLOTS][PADS]Clip, // frozen pads' renderings, per sequence (see `freeze_begin`)
 	slot:    int, // the current sequence: what plays and is edited
 	midi_map: [128]i16, // MIDI key → the pad it plays (-1: none); default: key N plays pad N (A1 = 0, H16 = 127)
@@ -365,6 +368,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	for &k, key in p.midi_map do k = i16(key) if key < PADS else -1 // note N plays pad N (A1 = 0)
 	app.store_init(&p.samples)
 	app.store_init(&p.wave_docs)
+	app.store_init(&p.parts)
 	strings.intern_init(&p.strings)
 	p.dir = intern(p, dir)
 }
@@ -374,6 +378,7 @@ project_destroy :: proc(p: ^Project) {
 	for &s in p.sequences do delete_sequence(&s)
 	app.store_destroy(&p.samples)
 	app.store_destroy(&p.wave_docs)
+	app.store_destroy(&p.parts)
 	strings.intern_destroy(&p.strings)
 }
 

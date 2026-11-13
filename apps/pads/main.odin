@@ -95,6 +95,7 @@ App :: struct {
 	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
 	seq:      Seq_State,
+	take_peaks: map[string]Peaks, // takes' waveforms, for the Audio tab and the rows (by path)
 	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
 	pad_sel:  Pad_Set, // pads selected together (Shift: a range, Cmd: one more); see `selected_pads`
@@ -168,6 +169,8 @@ main :: proc() {
 	defer {
 		for _, p in a.peaks do delete(p)
 		delete(a.peaks)
+		take_peaks_clear(a)
+		delete(a.take_peaks)
 		browser_view_destroy(&a.bview)
 		delete(a.auto_rec.points)
 	}

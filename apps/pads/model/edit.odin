@@ -15,6 +15,14 @@ Model :: struct {
 	engine:  Engine,
 	history: app.History,
 	defaults: Project_Defaults, // what a new project starts with (the app's settings)
+	passes_to_tracks: bool, // recording audio: each loop pass after the first onto a track of its own (an app setting)
+	pass_runs: [PADS]Pass_Run, // the tracks this recording's passes went to
+}
+
+// Where a recording's passes went (see `Model.passes_to_tracks`).
+Pass_Run :: struct {
+	run:    int,
+	tracks: [MAX_TAKES]i16, // pass n's track (-1: not yet)
 }
 
 // What a new project starts with.
@@ -246,7 +254,7 @@ duplicate_pad :: proc(m: ^Model, index: int) -> int {
 	app.begin(&m.history, "Duplicate Pad")
 	defer app.end(&m.history)
 	set_pad(m, to, .Whole, "Duplicate Pad", m.project.pads[index])
-	for slot in 0 ..< SLOTS do if c := m.project.clips[slot][index]; c.sample != 0 do set_clip(m, slot, to, "Duplicate Pad", c)
+	for slot in 0 ..< SLOTS do if c := m.project.clips[slot][index]; c.sample != 0 do copy_clip(m, slot, index, slot, to, "Duplicate Pad")
 	app.seal(&m.history)
 	return to
 }

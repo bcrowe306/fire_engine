@@ -75,9 +75,13 @@ an_audio_pad_records_a_take_and_plays_it_with_the_sequence :: proc(t: ^testing.T
 	cl := poll_clip(r, &c, 0, 0)
 	testing.expect(t, cl.sample != 0, "a clip in sequence 1")
 	testing.expect_value(t, app.undo_name(&m.history), "Record Audio")
-	s := app.store_get(&m.project.samples, cl.sample)
-	if s == nil do return
-	testing.expect_value(t, s.frames, i64(bar)) // one sequence long
+	// A take a pass, placed where it was played: the part a sequence long.
+	testing.expect(t, cl.part != 0, "a part")
+	x := pm.part_of(&m.project, 0, 0)
+	testing.expect_value(t, x.take_count, 2)
+	whole, wok := pm.part_audio(m, 0, 0)
+	if !testing.expect(t, wok, "its audio") do return
+	testing.expect_value(t, len(whole.channels[0]), bar) // one sequence long
 
 	// Played back with the sequence: the last pass first, then the first's end.
 	// (Once the take's start is buffered, as the app's players are before a
@@ -130,7 +134,7 @@ counting_in_and_song_mode_record_nothing_and_clips_save :: proc(t: ^testing.T) {
 	s := app.store_get(&m.project.samples, cl.sample)
 	testing.expect(t, s != nil, "a clip")
 	if s == nil do return
-	a, ok := pm.sample_audio(m, cl.sample)
+	a, ok := pm.part_audio(m, 0, 3)
 	testing.expect(t, ok, "its audio")
 	if ok {
 		testing.expectf(t, abs(hz_of(a.channels[0][1000:][:bar / 8]) - 880) < 30, "from the top: what came after the count-in")
@@ -364,4 +368,36 @@ hits_are_recorded_where_they_were_heard :: proc(t: ^testing.T) {
 	if !testing.expect_value(t, len(notes), 1) do return
 	want := f64(48 * 256 - 312) / 24_000
 	testing.expectf(t, abs(notes[0].start - want) < 1e-6, "at %v beats (%v)", want, notes[0].start)
+}
+
+@(test)
+each_pass_onto_a_track_of_its_own :: proc(t: ^testing.T) {
+	// Passes to tracks on: two passes of pad 0 make pad 0's take (440 Hz)
+	// and pad 1's (880 Hz, an audio track named for the pass), lined up.
+	r := rig_make(t, "audio_passes", inputs = 2)
+	defer rig_destroy(r)
+	m := &r.m
+	m.passes_to_tracks = true
+	pm.set_pad_kind(m, 0, .Audio)
+	pm.arm_track(m, 0, true)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	bar := int(2 * SR)
+	render_in(r, sine_in(440, bar))
+	render_in(r, sine_in(880, bar))
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	render(r, 512)
+	poll_clip(r, &c, 0, 0)
+	poll_clip(r, &c, 0, 1)
+	p := &m.project
+	testing.expect_value(t, p.pads[1].kind, pm.Pad_Kind.Audio)
+	testing.expect_value(t, pm.pad_name(&p.pads[1]), "Audio A1 pass 2")
+	a, aok := pm.part_audio(m, 0, 0)
+	b, bok := pm.part_audio(m, 0, 1)
+	if !testing.expect(t, aok && bok, "both parts") do return
+	testing.expectf(t, abs(hz_of(a.channels[0][bar / 4:][:bar / 2]) - 440) < 20, "pass 1 on pad 0")
+	testing.expectf(t, abs(hz_of(b.channels[0][bar / 4:][:bar / 2]) - 880) < 20, "pass 2 on pad 1")
 }

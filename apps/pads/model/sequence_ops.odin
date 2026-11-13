@@ -74,7 +74,7 @@ duplicate_sequence :: proc(m: ^Model, from: int) -> int {
 	s.name = {}
 	copy(s.name[:len(s.name) - 1], fmt.tprintf("%s copy", sequence_name(&m.project, from)))
 	set_sequence(m, to, .Notes, "Duplicate Sequence", s)
-	for c, pad in m.project.clips[from] do if c.sample != 0 do set_clip(m, to, pad, "Duplicate Sequence", c)
+	for c, pad in m.project.clips[from] do if c.sample != 0 do copy_clip(m, from, pad, to, pad, "Duplicate Sequence")
 	app.seal(&m.history)
 	select_slot(m, to)
 	return to

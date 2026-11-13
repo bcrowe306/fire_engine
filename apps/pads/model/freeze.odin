@@ -76,7 +76,7 @@ freeze_finish :: proc(m: ^Model, x: ^Export) {
 		info := audiofile.info(r)
 		audiofile.close(r)
 		slot := x.passes[k].slot
-		p.freezes[slot][pad] = {add_sample(m, f, info), sequence_tempo(p, slot)}
+		p.freezes[slot][pad] = {sample = add_sample(m, f, info), bpm = sequence_tempo(p, slot)}
 	}
 	set_frozen(m, pad, true)
 	sync(&m.engine)

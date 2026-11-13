@@ -707,17 +707,53 @@ plays is a **take** per sequence:
   input heard through its strip and effects while it is armed), **In**
   (always) or **Off** (you hear it on the interface). Use headphones.
 - Press **Record** (Cmd+R). After the count-in, if one is set, the input
-  is recorded while the sequence plays; when you stop, the take is folded
-  into the current sequence's take for that pad, exactly one sequence
-  long: every frame lands where it was played, over what was there, so of
-  several passes the last is heard (and a short punch replaces only what
-  it covers). One undo step, **Record Audio**.
-- The take loops with its sequence and follows the tempo (it plays faster
-  or slower). Each sequence has its own: pick another sequence, or let
-  the song move on, and the pad plays that sequence's take, switching
-  exactly where the sequences change.
-- The Sample tab shows the current sequence's take with a playhead;
-  **Clear Take** empties it (Clear Pad empties every sequence's).
+  is recorded while the sequence plays; when you stop, each loop pass is
+  a **take** of the track's part in that sequence, placed where it was
+  played, over what was there: of several passes the last is heard, and a
+  short punch replaces only what it covers. The earlier passes stay, to
+  pick again. One undo step, **Record Audio**. With **Settings > Recording
+  > Each pass onto a track of its own**, each pass after the first goes
+  onto the next empty pad instead, an audio track lined up with it
+  (doubling).
+- The part loops with its sequence and follows the tempo (faster or
+  slower; or, set to **Stretch** in the Audio tab, at its pitch, and
+  transposed). Each sequence has its own: pick another sequence, or let
+  the song move on, and the pad plays that sequence's, switching exactly
+  where the sequences change.
+- A sound file dropped on an audio track's row in the Notes grid is a take
+  there, where it was let go (cut at the sequence's end).
+- In the Notes grid an audio track's row shows its part as a condensed
+  waveform. The Sample tab shows it too (**Edit**, or a double-click,
+  opens the Audio tab); **Clear Take** empties it (Clear Pad empties every
+  sequence's).
+
+### The Audio tab
+
+The Sequence view's third tab edits the selected audio track's part in
+the current sequence, large. Nothing touches the recorded files: a part
+is regions of its takes, and what plays is a mix of them made in the
+background (each region over what is under it, crossing through its
+fades) and kept by what went into it.
+
+- **Click** a region to select it (its fades, gain and pan show above, to
+  drag or type); a click also places the **cursor**. **Drag** a region to
+  move it, its **ends** to trim it, the **squares at its top corners** for
+  its fades. **Drag across empty space**, or **Shift-drag** anywhere, to
+  select a range of beats. Moves and trims snap to the grid (Snap, the
+  grid's menu; Cmd held: freely).
+- The tools act on the range, else the selected region, else the whole
+  part: **Split** (S: at the cursor, or the range's ends), **Cut** (Cmd+X),
+  **Copy** (Cmd+C), **Paste** (Cmd+V, at the cursor, on any audio track),
+  **Delete** (the range goes silent; a region goes and what is under it
+  plays again), **Crop**; on the region, **Normalize** (its loudest at
+  0 dB, by its gain), **Reverse** and **Mute**.
+- **Takes** lists the passes recorded: pick one for the range (comping a
+  phrase from another pass), the region, or everywhere. **Spread Takes**
+  puts each take after the first onto a track of its own, lined up.
+  **Consolidate** writes the part as it plays into a new take (the older
+  ones kept).
+- **Repitch | Stretch**: how the part follows another tempo; Stretch keeps
+  its pitch and can transpose it.
 
 Audio is recorded in pattern mode (not while the song plays). A project
 from before audio pads opens with every pad a sampler.
@@ -1390,6 +1426,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_layout.py` | the default window at the Comfortable size (the other tests run at Compact, `--control-size compact`, the size their positions were written for): the pads area folded to a bar and unfolded by a pad and by its button, one search finding a file and a device, Cmd+L, the control size in Settings |
 | `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
+| `test_audio_edit.py` | the Audio tab by mouse: a take, a click (cursor and region), Split, a Shift-dragged range deleted and undone, a region moved, its fade handle, Copy and Paste, Normalize, Reverse, Consolidate, the region's gain typed, a take picked |
 | `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |

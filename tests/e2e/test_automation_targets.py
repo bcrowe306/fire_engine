@@ -32,7 +32,7 @@ def test_right_click_a_fader_to_automate_it(app, fixtures):
 def test_touch_a_control_learns_it(app, fixtures):
     loaded(app, fixtures)
     app.panel("Sequence")
-    app.click("sequence mode", window="sequence", at=(0.75, 0.5))
+    app.click("sequence mode", window="sequence", at=(0.52, 0.5))
     app.click("automation", window="sequence")
     app.click("touch a control")
     app.cmd("panel filter")

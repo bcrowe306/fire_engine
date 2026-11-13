@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:math"
 import "core:path/filepath"
 import "core:slice"
 
@@ -40,6 +41,13 @@ Seq_State :: struct {
 	editing:  bool, // a paint, a sweep or a drag is under way (sealed when the mouse lets go)
 	paste_at: f64,  // where a paste from the menu goes (-1: the selection's bar)
 	menu_target: Target, // what the open note or point menu is for
+	aud:      Audio_View, // the Audio tab's
+}
+
+// `b` down to the grid of `snap` beats (0: as it is).
+@(private)
+snap_down :: proc(b, snap: f64) -> f64 {
+	return math.floor(b / snap + 1e-9) * snap if snap > 0 else b
 }
 
 // Whether note `n` is selected.
@@ -196,6 +204,10 @@ draw_sequence :: proc(user: rawptr) {
 		draw_automation_view(a, s, notes[:], len(rows), ui.roll_rows_width(rows), length, snap)
 		return
 	}
+	if st.mode == .Audio {
+		draw_audio_view(a, length, pm.grid_beats(st.grid) if !st.free && !ui.free_down() else 0)
+		return
+	}
 	// The lane's height: dragged by the bar between it and the grid (each
 	// kind keeps its own; automation starts with room to draw).
 	li := 0
@@ -222,6 +234,19 @@ draw_sequence :: proc(user: rawptr) {
 	}
 	top := im.GetCursorScreenPos()
 	e := ui.note_grid("seq", notes[:], rows, &st.view, snap, {avail.x, roll_h}, st.tool, beat if playing else -1, pm.bar_beats(&m.project), drop_type = "PADS_FILE")
+	// Audio tracks' rows: their part, a condensed waveform (the Audio tab
+	// edits it).
+	if !st.piano {
+		names_w := ui.roll_rows_width(rows)
+		row_h := roll_h / f32(max(st.view.keys, 1))
+		dl := im.GetWindowDrawList()
+		for k in st.view.key0 ..< min(st.view.key0 + st.view.keys, len(row_pad)) {
+			pad := row_pad[k]
+			if m.project.pads[pad].kind != .Audio do continue
+			y := top.y + roll_h - f32(k - st.view.key0 + 1) * row_h
+			draw_part(a, dl, slot, pad, {top.x + names_w, y + 1}, {top.x + avail.x, y + row_h - 1}, st.view.beat0, st.view.beats, ui.rgb(m.project.pads[pad].color))
+		}
+	}
 	// The bar between the grid and the lane: drag it to give the lane more
 	// room (or less).
 	im.SetCursorScreenPos({top.x, top.y + roll_h})
@@ -241,7 +266,12 @@ draw_sequence :: proc(user: rawptr) {
 	// A sample dropped on a row: onto that row's pad.
 	if e.row_drop >= 0 && e.row_drop < len(row_pad) {
 		pad := row_pad[e.row_drop]
-		if pm.load_onto_pad(m, pad, e.dropped) == .None {
+		if m.project.pads[pad].kind == .Audio {
+			// (An audio track: a take where it was let go.)
+			at := math.max(st.view.beat0 + f64(im.GetIO().MousePos.x - top.x - ui.roll_rows_width(rows)) / (f64(avail.x - ui.roll_rows_width(rows)) / max(st.view.beats, 1e-6)), 0)
+			if pm.add_take_file(m, slot, pad, e.dropped, snap_down(at, snap)) == .None do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A take on %s", pm.pad_label(pad)))
+			else do ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.dropped)))
+		} else if pm.load_onto_pad(m, pad, e.dropped) == .None {
 			a.selected = pad
 			show_pad_chain(a, pad)
 			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.dropped), pm.pad_label(pad)))
@@ -507,12 +537,14 @@ draw_mode_bar :: proc(a: ^App) {
 	mode := int(st.mode)
 	// Narrow (a small window): shorter labels, so the tools stay on one line.
 	seq_bar_narrow = im.GetContentRegionAvail().x < SEQ_BAR_NARROW_W
-	if ui.segmented("seq mode", {"Notes", "Automation"}, &mode) do st.mode = pm.Seq_Mode(mode)
+	if ui.segmented("seq mode", {"Notes", "Automation", "Audio"}, &mode) do st.mode = pm.Seq_Mode(mode)
 	ui.name("sequence mode")
 	im.SameLine(0, 16)
 	if st.mode == .Notes {
 		draw_editor_tools(a)
 		draw_grid_controls(a, quantize = true)
+	} else if st.mode == .Audio {
+		draw_audio_tools(a)
 	} else {
 		draw_automation_tools(a)
 		draw_grid_controls(a, quantize = false)

@@ -444,6 +444,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			a.selected = i
 			return true
 		}
+	case "take": // take PAD FILE: FILE a take of audio track PAD in the current sequence (at its top)
+		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
+			if a.m.project.pads[i].kind != .Audio do pm.set_pad_kind(&a.m, i, .Audio)
+			if pm.add_take_file(&a.m, a.m.project.slot, i, strings.join(w[2:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not add the take")
+			a.selected = i
+			return true
+		}
 	case "browse":
 		if len(w) > 1 {
 			pm.browser_go(&a.browser, absolute(strings.join(w[1:], " ", context.temp_allocator)))
@@ -645,6 +652,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "velocity":   a.seq.lane, a.seq.mode = 0, .Notes
 		case "chance":     a.seq.lane, a.seq.mode = 1, .Notes
 		case "automation": a.seq.mode = .Automation // (the Automation tab)
+		case "audio":      a.seq.mode = .Audio // (the Audio tab)
 		case: return false
 		}
 		if len(w) > 2 do for lp in pm.Lane_Param do if strings.has_prefix(strings.to_lower(string(pm.LANE_NAMES[lp]), context.temp_allocator), w[2]) || (w[2] == "low" && lp == .Eq_Low) || (w[2] == "mid" && lp == .Eq_Mid) || (w[2] == "high" && lp == .Eq_High) {

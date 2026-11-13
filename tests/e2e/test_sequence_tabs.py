@@ -19,7 +19,7 @@ def test_notes_is_the_default_and_the_tab_is_kept(app, fixtures, tmp_path):
     loaded(app, fixtures)
     assert app.state()["seq_mode"] == "Notes"
     app.expect_item("lane kind", window="sequence")
-    app.click("sequence mode", window="sequence", at=(0.75, 0.5))  # Automation
+    app.click("sequence mode", window="sequence", at=(0.52, 0.5))  # Automation
     assert app.state()["seq_mode"] == "Automation"
     app.expect_item("auto", window="sequence")
     app.expect_item("automation", window="sequence")
@@ -33,7 +33,7 @@ def test_notes_is_the_default_and_the_tab_is_kept(app, fixtures, tmp_path):
     # Saved with the project, and opened as it was left.
     project = str(tmp_path / "Tabs.pads")
     app.cmd(f"save_as {project}")
-    app.click("sequence mode", window="sequence", at=(0.25, 0.5))  # Notes
+    app.click("sequence mode", window="sequence", at=(0.12, 0.5))  # Notes
     assert app.state()["seq_mode"] == "Notes"
     app.cmd(f"open {project}")
     app.wait(5)
@@ -42,7 +42,7 @@ def test_notes_is_the_default_and_the_tab_is_kept(app, fixtures, tmp_path):
 
 def test_line_and_curve_tools_and_a_new_automation(app, fixtures):
     loaded(app, fixtures)
-    app.click("sequence mode", window="sequence", at=(0.75, 0.5))
+    app.click("sequence mode", window="sequence", at=(0.52, 0.5))
     assert app.state()["auto_lane"] == "A1 · Volume"
     # A new automation from the menu: the kick's sampler cutoff (a track, a
     # device, a parameter).

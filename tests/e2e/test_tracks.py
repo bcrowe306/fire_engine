@@ -63,6 +63,6 @@ def test_a_tracks_midi_input(app, fixtures):
 
 def test_input_meters(app):
     app.key("cmd+,")
-    app.click("Audio")
+    app.click("Audio", window="settings")
     app.expect_item("input meter 1")
     app.expect_item("input meter 2")

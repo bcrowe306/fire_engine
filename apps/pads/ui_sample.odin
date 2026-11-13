@@ -337,6 +337,41 @@ draw_take :: proc(a: ^App, i: int) {
 		im.TextDisabled("%s", fmt.ctprintf("No take on %s in sequence %d: arm it (Pad tab or its strip), then record", pm.pad_label(i), m.project.slot + 1))
 		return
 	}
+	if c.part != 0 {
+		// An edited part: what plays (the Audio tab edits it).
+		x := pm.part_of(&m.project, m.project.slot, i)
+		im.AlignTextToFramePadding()
+		im.TextDisabled("%s", fmt.ctprintf("%s · %d region%s of %d take%s at %.0f BPM", pm.sequence_name(&m.project, m.project.slot), x.count, "" if x.count == 1 else "s", x.take_count, "" if x.take_count == 1 else "s", c.bpm))
+		im.SameLine()
+		if im.Button(ui.ICON_AUDIO_LINES + "  Edit") {
+			a.seq.mode = .Audio
+			ui.panel_focus(&a.ws, "sequence")
+		}
+		ui.name("edit audio")
+		if im.IsItemHovered() do im.SetTooltip("In the Sequence view's Audio tab")
+		im.SameLine()
+		if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
+		im.Spacing()
+		avail := im.GetContentRegionAvail()
+		pos := im.GetCursorScreenPos()
+		size := im.Vec2{avail.x, max(avail.y - 4, 80)}
+		dl := im.GetWindowDrawList()
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + size.x, pos.y + size.y}, ui.col(ui.WAVE_BG), 4)
+		length := pm.seq_beats(&m.project, pm.current_sequence(m))
+		draw_part(a, dl, m.project.slot, i, pos, {pos.x + size.x, pos.y + size.y}, 0, length, ui.rgb(pad.color))
+		if rel, playing := pm.position(&m.engine); playing {
+			xx := pos.x + f32(rel / length) * size.x
+			im.DrawList_AddLine(dl, {xx, pos.y}, {xx, pos.y + size.y}, ui.col(ui.theme().accent), 2)
+		}
+		im.InvisibleButton("##partwave", size)
+		ui.name("wave")
+		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
+			a.seq.mode = .Audio
+			ui.panel_focus(&a.ws, "sequence")
+		}
+		item_menu(a, {kind = .Take, index = i}, "##takemenu")
+		return
+	}
 	w := &a.wave
 	if w.sample != c.sample {
 		delete(w.peaks)

@@ -61,7 +61,7 @@ def test_a_shortcut_changed_by_pressing_it(app):
 
 def test_audio_applied_and_kept_and_sync(app):
     app.key("cmd+,")
-    app.click("Audio")
+    app.click("Audio", window="settings")
     app.click("##buffer")
     app.click("128 frames (2.7 ms)")
     app.click("Apply")

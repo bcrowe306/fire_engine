@@ -110,7 +110,7 @@ bounce_in_place_finish :: proc(m: ^Model, x: ^Export) {
 		info := audiofile.info(r)
 		audiofile.close(r)
 		slot := x.passes[k].slot
-		set_clip(m, slot, to, "Bounce in Place", {add_sample(m, f, info), sequence_tempo(p, slot)})
+		set_clip(m, slot, to, "Bounce in Place", {sample = add_sample(m, f, info), bpm = sequence_tempo(p, slot)})
 	}
 	src.mute = true
 	set_pad(m, pad, .Mute, "Bounce in Place", src)

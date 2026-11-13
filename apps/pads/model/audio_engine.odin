@@ -41,7 +41,9 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 	g := e.host.graph
 	n.audio = true
 	for k in 0 ..< 2 {
-		node, player := clip.audio_player_create(clip.default_audio_player_settings(e.timeline, e.host.streamer))
+		ps := clip.default_audio_player_settings(e.timeline, e.host.streamer)
+		ps.stretcher = e.host.env.players.stretcher // (a clip that keeps its pitch)
+		node, player := clip.audio_player_create(ps)
 		id, err := graph.add_node(g, node, 0, 2)
 		if err != .None do continue
 		n.players[k], n.player_ids[k] = player, id
@@ -227,22 +229,32 @@ place_audio :: proc(e: ^Engine, beat: f64) {
 give :: proc(e: ^Engine, n: ^Pad_Nodes, pad, k: int, run: Audio_Run) {
 	if n.players[k] == nil do return
 	n.holds[k] = run
-	c: Clip
-	if run.valid do c = e.project.freezes[run.slot][pad] if e.project.pads[pad].frozen else e.project.clips[run.slot][pad]
+	src: ^stream.Source
+	bpm: f64
+	part: Audio_Part
+	if run.valid {
+		if e.project.pads[pad].frozen {
+			c := e.project.freezes[run.slot][pad]
+			src, bpm = source_of(e, c.sample), c.bpm
+		} else {
+			src, bpm, _ = comp_source(e, run.slot, pad)
+			part = part_of(e.project, run.slot, pad)
+		}
+	}
 	muted := run.valid && run.step >= 0 && !clip_heard(&e.project.song, run.step)
-	src := source_of(e, c.sample)
-	if src == nil || !(c.bpm > 0) || muted {
+	if src == nil || !(bpm > 0) || muted {
 		clip.audio_player_set(n.players[k], nil, {})
 		return
 	}
 	// A song step's part of the take: its frames.
 	info := stream.source_info(src)
-	fpb := info.sample_rate * 60 / c.bpm
+	fpb := info.sample_rate * 60 / bpm
 	first := i64(run.offset * fpb)
 	last := i64((run.offset + run.period) * fpb) if run.period > 0 else 0
 	if first <= 0 || first >= info.frames do first = 0
 	if last <= first || last > info.frames do last = 0
-	ac, err := clip.audio_clip_create(src, {start = first, end = last, bpm = c.bpm, mode = .Repitch, fade_in = -1, fade_out = -1})
+	mode := clip.Audio_Mode.Stretch if part.warp == .Stretch && e.host.env.players.stretcher != nil else .Repitch
+	ac, err := clip.audio_clip_create(src, {start = first, end = last, bpm = bpm, mode = mode, transpose = f64(part.transpose) if mode == .Stretch else 0, fade_in = -1, fade_out = -1})
 	if err != .None {
 		clip.audio_player_set(n.players[k], nil, {})
 		return
@@ -308,6 +320,7 @@ audio_runs :: proc(pl: Plan, beat: f64) -> (cur, next: Audio_Run) {
 // takes' starts are buffered): a take just recorded or placed needs a
 // moment from the disk.
 audio_ready :: proc(e: ^Engine) -> bool {
+	if comp_busy(e) do return false // (a part's rendering on its way)
 	for &n in e.nodes do if n.live && n.audio {
 		for pl in n.players do if pl != nil && !clip.audio_player_ready(pl) do return false
 	}

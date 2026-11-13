@@ -82,66 +82,96 @@ audio_poll :: proc(m: ^Model) -> (changed: bool) {
 	return
 }
 
-// Folds take `t` of pad `pad` into its clip in the sequence it was played
-// in: each frame lands where it was played within the sequence, over what
-// was there (so of several passes, the last is heard).
-fold_take :: proc(m: ^Model, pad: int, t: record.Take) -> fc.Error {
+// Folds take `t` of pad `pad` into its part in the sequence it was
+// played in: a take of the part (a file of what was recorded, a sequence
+// at most each: a longer one is a take a pass), placed where it was played
+// on top of what was there (so of several passes, the last is heard, and
+// a punch replaces only what it covers). One undo step, "Record Audio".
+fold_take :: proc(m: ^Model, armed: int, t: record.Take) -> fc.Error {
 	if t.frames <= 0 || t.channels < 1 || !(t.sample_rate > 0) do return .Invalid_Argument
 	p := &m.project
 	_, slot, rel, ok := plan_locate(m.engine.plan, f64(t.start), editing_slot(m))
 	if !ok do return .Invalid_Argument
-	bpm := p.bpm
-	fpb := t.sample_rate * 60 / bpm
 	length := seq_beats(p, p.sequences[slot])
-	total := int(math.round(length * fpb))
+	first := part_of(p, slot, armed)
+	bpm := p.clips[slot][armed].bpm if first.take_count > 0 && p.clips[slot][armed].bpm > 0 else sequence_tempo(p, slot)
+	fpb := t.sample_rate * 60 / bpm
+	total := i64(math.round(length * fpb))
 	if total <= 0 do return .Invalid_Argument
-	ch := t.channels
-	out := make([][]f32, ch, context.temp_allocator)
-	for &c in out do c = make([]f32, total, context.temp_allocator)
-
-	// What was there: the old clip, if it can be laid under the take.
-	old := p.clips[slot][pad]
-	if s := app.store_get(&p.samples, old.sample); s != nil && s.rate == t.sample_rate && old.bpm == bpm {
-		if r, err := audiofile.open(s.path); err == .None {
-			info := audiofile.info(r)
-			buf := make([][]f32, info.channels, context.temp_allocator)
-			for &b in buf do b = make([]f32, total, context.temp_allocator)
-			got, _ := audiofile.read(r, buf, total)
-			for c in 0 ..< ch do copy(out[c][:got], buf[min(c, info.channels - 1)][:got])
-			audiofile.close(r)
-		}
-	}
-
-	// The take, frame by frame where it was played.
-	r, err := audiofile.open(t.path)
+	a, err := read_audio(t.path, context.temp_allocator)
 	if err != .None do return .Device_Error
-	defer audiofile.close(r)
-	at := int(math.round(rel * fpb)) % total
-	CHUNK :: 4096
-	buf := make([][]f32, ch, context.temp_allocator)
-	for &b in buf do b = make([]f32, CHUNK, context.temp_allocator)
-	for {
-		n, rerr := audiofile.read(r, buf, CHUNK)
-		if n <= 0 || rerr != .None do break
-		for c in 0 ..< ch do for k in 0 ..< n do out[c][(at + k) % total] = buf[c][k]
-		at = (at + n) % total
-	}
-
-	// A file of its own in the project, and the clip.
+	frames := i64(len(a.channels[0]))
 	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
 	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return .Device_Error
-	name := fmt.tprintf("%s seq %d.wav", pad_name(&p.pads[pad]) if pad_name(&p.pads[pad]) != "" else pad_label(pad), slot + 1)
-	dest := unique_path(dir, name)
-	defer delete(dest)
-	w, werr := audiofile.writer_create(dest, {format = .Wav, encoding = .Float32, sample_rate = t.sample_rate, channels = ch})
-	if werr != .None do return .Device_Error
-	audiofile.writer_write(w, out, total)
-	if audiofile.writer_close(w) != .None do return .Device_Error
 	app.begin(&m.history, "Record Audio")
 	defer app.end(&m.history)
-	id := add_sample(m, dest, {format = .Wav, encoding = .Float32, sample_rate = t.sample_rate, channels = ch, frames = i64(total)})
-	set_clip(m, slot, pad, "Record Audio", {sample = id, bpm = bpm})
+	// The parts this take goes into (passes to tracks: one a pass).
+	Into :: struct { pad: int, part: Audio_Part }
+	into := make([dynamic]Into, context.temp_allocator)
+	part_for :: proc(m: ^Model, into: ^[dynamic]Into, slot, pad: int, bpm: f64) -> ^Audio_Part {
+		for &x in into do if x.pad == pad do return &x.part
+		p := &m.project
+		x := part_of(p, slot, pad)
+		if p.clips[slot][pad].bpm <= 0 || x.take_count == 0 {
+			c := p.clips[slot][pad]
+			c.bpm = bpm
+			set_clip(m, slot, pad, "Record Audio", c)
+		}
+		append(into, Into{pad, x})
+		return &into[len(into) - 1].part
+	}
+	// A take a pass: up to the sequence's end, then a sequence each.
+	at := math.mod(rel, length)
+	done: i64
+	pass := t.pass
+	for done < frames {
+		room := total - i64(math.round(at * fpb))
+		if room <= 0 do room = total
+		n := min(room, frames - done)
+		pad := pass_track(m, armed, t.run, pass)
+		x := part_for(m, &into, slot, pad, bpm)
+		views := make([][]f32, len(a.channels), context.temp_allocator)
+		for c, k in a.channels do views[k] = c[done:][:n]
+		name := fmt.tprintf("%s seq %d.wav", pad_name(&p.pads[pad]) if pad_name(&p.pads[pad]) != "" else pad_label(pad), slot + 1)
+		dest := unique_path(dir, name)
+		defer delete(dest)
+		w, werr := audiofile.writer_create(dest, {format = .Wav, encoding = .Float32, sample_rate = t.sample_rate, channels = len(a.channels)})
+		if werr != .None do return .Device_Error
+		audiofile.writer_write(w, views, int(n))
+		if audiofile.writer_close(w) != .None do return .Device_Error
+		id := add_sample(m, dest, {format = .Wav, encoding = .Float32, sample_rate = t.sample_rate, channels = len(a.channels), frames = n})
+		part_add_take(p, slot, pad, x, id, at)
+		done += n
+		pass += 1 // (each cut is the sequence's top: a pass begins)
+		at = 0
+	}
+	for x in into do put_part(m, slot, x.pad, "Record Audio", x.part)
 	return .None
+}
+
+// The track pass `pass` of recording `run` on pad `pad` goes to: the pad,
+// or (passes to tracks) the first pass the pad and each later one the
+// next empty pad, made an audio track as the pad is (its input, its
+// routing), named for the pass.
+@(private)
+pass_track :: proc(m: ^Model, pad: int, run, pass: int) -> int {
+	if !m.passes_to_tracks || pass <= 0 || pass >= MAX_TAKES do return pad
+	pr := &m.pass_runs[pad]
+	if pr.run != run + 1 {
+		pr.run = run + 1
+		for &x in pr.tracks do x = -1
+	}
+	if k := pr.tracks[pass]; k >= 0 do return int(k)
+	to := next_empty_pad(&m.project, pad)
+	if to < 0 do return pad
+	src := m.project.pads[pad]
+	tr := default_pad()
+	tr.kind = .Audio
+	tr.input, tr.monitor, tr.bus, tr.volume, tr.pan, tr.color = src.input, .Off, src.bus, src.volume, src.pan, src.color
+	set_pad_name(&tr, fmt.tprintf("%s pass %d", pad_name(&src) if pad_name(&src) != "" else pad_label(pad), pass + 1))
+	set_pad(m, to, .Whole, "Record Audio", tr)
+	pr.tracks[pass] = i16(to)
+	return to
 }
 
 // Empties pad `index`'s clip in the current sequence, undoably.

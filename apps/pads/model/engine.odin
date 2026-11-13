@@ -32,6 +32,9 @@ Engine :: struct {
 	sources: map[app.Id]^stream.Source, // opened samples (each retained once)
 	warp_sources: map[string]^stream.Source, // opened warp renderings, by path
 	warp_jobs: [dynamic]^Warp_Job, // renderings under way
+	comp_sources: map[string]^stream.Source, // audio parts' renderings, by path (see `comp_source`)
+	comp_jobs:    [dynamic]^Comp_Job,
+	comp_last:    map[int]^stream.Source, // what each clip (slot * PADS + pad) last played
 	warp_bpm:  f64, // the tempo warped pads follow (the one playing)
 	// A meter on each pair of the device's input channels.
 	input_meters: [MAX_INPUTS / 2]struct { id: graph.Node_Id, meter: ^dsp.Meter },
@@ -150,6 +153,8 @@ engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error 
 	e.host, e.project = host, project
 	e.sources = make(map[app.Id]^stream.Source)
 	e.warp_sources = make(map[string]^stream.Source)
+	e.comp_sources = make(map[string]^stream.Source)
+	e.comp_last = make(map[int]^stream.Source)
 	for &x in e.perf_live do x = -1
 	for &c in e.launch.cols do c = {slot = -1}
 	return build_fixed(e)
@@ -216,6 +221,10 @@ engine_destroy :: proc(e: ^Engine) {
 	warp_clear(e)
 	delete(e.warp_sources)
 	delete(e.warp_jobs)
+	comp_clear(e)
+	delete(e.comp_sources)
+	delete(e.comp_jobs)
+	delete(e.comp_last)
 	synth_cache_destroy(&e.synth_cache)
 }
 
@@ -247,6 +256,7 @@ sync :: proc(e: ^Engine) {
 	g := e.host.graph
 	preview_poll(e)
 	warp_poll(e)
+	comp_poll(e)
 	tone_frame(e)
 	structural := false
 	for i in 0 ..< PADS {
@@ -737,6 +747,8 @@ mark_all_sources_stale :: proc(e: ^Engine) {
 	for _, src in e.sources do stream.source_release(src)
 	clear(&e.sources)
 	warp_clear(e)
+	comp_clear(e)
+	e.audio_dirty = true
 	for &n in e.nodes do n.built.sample = 0 // their zones again
 	mark_all(e)
 }
