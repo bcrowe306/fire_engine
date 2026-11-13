@@ -28,7 +28,9 @@ the_arpeggiator_plays_a_held_chord_on_the_grid :: proc(t: ^testing.T) {
 	out := render(r, 48_000) // 8 sixteenths
 	got := onsets(out[0][:])
 	testing.expectf(t, len(got) >= 7 && len(got) <= 9, "a note a sixteenth (%v)", got)
-	for i in 1 ..< len(got) do testing.expectf(t, abs(got[i] - got[i - 1] - 6000) <= 1, "6000 frames apart (%v)", got)
+	// (Found by a level crossed: each pitch's waveform crosses it a frame or
+	// two sooner or later after its envelope starts, on the grid.)
+	for i in 1 ..< len(got) do testing.expectf(t, abs(got[i] - got[i - 1] - 6000) <= 3, "6000 frames apart (%v)", got)
 	// The third step is the fifth: 440 × 1.5 Hz.
 	if len(got) >= 3 {
 		seg := out[0][got[2]:][:2400]

@@ -126,11 +126,15 @@ env_value :: proc "contextless" (e: ^Env_State, p: ^Env_Params) {
 // worth of highs, which a compressor lifting quiet bands made a pop).
 env_render :: proc "contextless" (e: ^Env_State, p: ^Env_Params, out: []f32, sample_rate: f64) {
 	dt := f32(1 / sample_rate)
-	k := 1 - math.exp(-dt / ENV_ROUND_SECONDS)
-	for &v in out {
-		e.shaped += (env_step(e, p, dt) - e.shaped) * k
-		v = e.shaped
-	}
+	for &v in out do v = env_rounded(e, env_step(e, p, dt), dt)
+}
+
+// [rt] Envelope `e`'s `value`, `dt` seconds after the last, rounded as
+// `env_render` rounds an amp envelope's (a modulation envelope's too, a
+// control step at a time: no corner to tick a filter or a pitch).
+env_rounded :: proc "contextless" (e: ^Env_State, value, dt: f32) -> f32 {
+	e.shaped += (value - e.shaped) * (1 - math.exp(-dt / ENV_ROUND_SECONDS))
+	return e.shaped
 }
 
 // How long an amp envelope's corners are rounded over (a time constant).

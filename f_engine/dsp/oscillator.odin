@@ -112,14 +112,49 @@ Adsr_Stage :: enum u8 {
 // An ADSR envelope, 0..1: a linear attack to 1 in `attack_s`, then
 // exponential moves to `sustain` and, on release, to silence, each
 // covering all but 60 dB of the way in its time (as analog envelopes
-// sound, with a definite length).
+// sound, with a definite length). The attack starts on its frame and
+// reaches 1 in its time, easing into the top over its last millisecond
+// (or half of it) instead of meeting it at a corner; from the top on,
+// what it gives is rounded over half a millisecond (`ADSR_ROUND_SECONDS`):
+// the decay into the sustain and the release turn without a sharp corner,
+// and a zero release isn't a click.
 Adsr :: struct {
 	attack_s, decay_s, sustain, release_s: f64,
 	stage:                                 Adsr_Stage,
 	level:                                 f64,
 	attack_step:                           f64, // per frame
 	decay_coeff, release_coeff:            f64,
+	round_k:                               f64, // the rounding's step a frame (0: not set: unrounded)
+	shaped:                                f64, // the level as given (rounded)
+	attack_pos:                            f64, // 0..1 through the attack (its shape: `attack_shape`)
+	ease:                                  f64, // the part of the attack (0..0.5) that eases into the top
 }
+
+// [rt] An attack's level `p` (0..1) of the way through it: straight, then
+// over its last `w` easing to the top (its slope 0 there), scaled so it
+// still reaches 1.
+@(private)
+attack_shape :: proc "contextless" (p, w: f64) -> f64 {
+	if w <= 0 do return p
+	y := p
+	if p > 1 - w {
+		q := p - (1 - w)
+		y = (1 - w) + q - q * q / (2 * w)
+	}
+	return y / (1 - w / 2)
+}
+
+// [rt] Where in its attack an ADSR at `level` is (`attack_shape` turned
+// round), so an attack from part way up carries on from there.
+@(private)
+attack_pos_of :: proc "contextless" (level, w: f64) -> f64 {
+	y := clamp(level, 0, 1) * (1 - w / 2) if w > 0 else clamp(level, 0, 1)
+	if w <= 0 || y <= 1 - w do return y
+	return (1 - w) + w - math.sqrt(max(w * (2 - 2 * y - w), 0))
+}
+
+// How long an ADSR's corners are rounded over (a time constant).
+ADSR_ROUND_SECONDS :: 0.0005
 
 // [rt] Sets the times (seconds) and sustain level (0..1).
 adsr_set :: proc "contextless" (a: ^Adsr, attack_s, decay_s, sustain, release_s, sample_rate: f64) {
@@ -129,6 +164,8 @@ adsr_set :: proc "contextless" (a: ^Adsr, attack_s, decay_s, sustain, release_s,
 	coeff :: proc "contextless" (s, sr: f64) -> f64 { return math.pow(0.001, 1 / max(s * sr, 1)) }
 	a.decay_coeff = coeff(a.decay_s, sample_rate)
 	a.release_coeff = coeff(a.release_s, sample_rate)
+	a.round_k = 1 - math.exp(-1 / max(ADSR_ROUND_SECONDS * sample_rate, 1))
+	a.ease = clamp(0.001 / a.attack_s, 0, 0.5) if a.attack_s > 0 else 0
 }
 
 // [rt] Starts (gate on: from the current level, without a click) or
@@ -136,19 +173,29 @@ adsr_set :: proc "contextless" (a: ^Adsr, attack_s, decay_s, sustain, release_s,
 adsr_gate :: proc "contextless" (a: ^Adsr, on: bool) {
 	if on {
 		a.stage = .Attack
+		a.attack_pos = attack_pos_of(a.level, a.ease)
 	} else if a.stage != .Idle {
 		a.stage = .Release
 	}
 }
 
-// [rt] The level now, then advances one frame.
+// [rt] The level now (rounded), then advances one frame.
 adsr_next :: proc "contextless" (a: ^Adsr) -> f64 {
 	v := a.level
+	// The attack as it is (a hit starts on its frame, exactly); from its
+	// top on, rounded.
+	if a.round_k > 0 && a.stage != .Attack {
+		a.shaped += (v - a.shaped) * a.round_k
+		v = a.shaped
+	} else {
+		a.shaped = v
+	}
 	switch a.stage {
 	case .Idle:
 	case .Attack:
-		a.level += a.attack_step
-		if a.level >= 1 {
+		a.attack_pos += a.attack_step
+		a.level = attack_shape(min(a.attack_pos, 1), a.ease)
+		if a.attack_pos >= 1 {
 			a.level = 1
 			a.stage = .Decay
 		}

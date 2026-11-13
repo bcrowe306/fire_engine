@@ -1846,6 +1846,16 @@ its corners rounded over half a millisecond (where a stage turns into
 the next, a straight attack's top: a sharp corner there is a click's
 worth of highs, which a compressor lifting quiet bands made a pop).
 
+### env_rounded
+
+```odin
+env_rounded :: proc "contextless"(e: ^Env_State, value: f32, dt: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). Envelope `e`'s `value`, `dt` seconds after the last, rounded as
+`env_render` rounds an amp envelope's (a modulation envelope's too, a
+control step at a time: no corner to tick a filter or a pitch).
+
 ### env_done
 
 ```odin

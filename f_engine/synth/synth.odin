@@ -648,7 +648,7 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 	for i in 1 ..< ENVS {
 		if patch == nil || i not_in patch.used_envs do continue // (no route reads it)
 		p := env_params(s, v, i + 1)
-		env_vals[i] = env_step(&v.envs[i], &p, dt)
+		env_vals[i] = env_rounded(&v.envs[i], env_step(&v.envs[i], &p, dt), dt) // (its corners rounded)
 	}
 	env_vals[0] = v.envs[0].value
 	lfo_vals: [LFOS][2]f32

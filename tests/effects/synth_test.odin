@@ -93,6 +93,32 @@ adsr_keeps_its_times :: proc(t: ^testing.T) {
 	kit.expect_near(t, a.level, 0.5 * 0.001, 1e-6, "60 dB down after the release time")
 }
 
+// What it gives: the attack starting on its frame and at the top in its
+// time, easing into it; from its top on, no sharp corner (the slope never turns more
+// than a little a frame), and a zero release falls without a jump.
+@(test)
+adsr_turns_without_a_corner :: proc(t: ^testing.T) {
+	a: dsp.Adsr
+	dsp.adsr_set(&a, 0.003, 0.05, 0.2, 0, SR) // (3 ms up, then down to 0.2; no release at all)
+	dsp.adsr_gate(&a, true)
+	out := make([]f64, 9600, context.temp_allocator)
+	for &v, i in out {
+		if i == 4800 do dsp.adsr_gate(&a, false)
+		v = dsp.adsr_next(&a)
+	}
+	step := 1 / (0.003 * SR)
+	testing.expect(t, out[0] == 0 && out[1] > 0, "the attack starts on its frame")
+	kit.expect_near(t, out[144], 1, 1e-9, "and is at the top in its time")
+	worst := 0.0
+	for i in 2 ..< 4800 do worst = max(worst, abs(out[i] - 2 * out[i - 1] + out[i - 2]))
+	// (A straight attack's top into the decay turned by about the attack's
+	// slope, 0.007 a frame; rounded, a fraction of it.)
+	testing.expectf(t, worst < 0.25 * step, "no sharp corner: the slope turns at most %v a frame (the attack's slope %v)", worst, step)
+	jump := 0.0
+	for i in 4800 ..< len(out) do jump = max(jump, abs(out[i] - out[i - 1]))
+	testing.expectf(t, jump < 0.1, "a zero release falls over a few frames, not at once (%v)", jump)
+}
+
 // A clean sine synth: one oscillator, filter wide open, full sustain.
 clean_synth :: []kit.Timed_Event {
 	{0, core.Param_Value{dsp.SYNTH_PARAM_OSC1_SHAPE, f64(dsp.Osc_Shape.Sine)}},

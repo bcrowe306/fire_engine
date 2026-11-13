@@ -544,6 +544,14 @@ ONE_POLE_PARAM_CUTOFF_HZ : core.Param_Id : core.Param_Id(1)
 
 Parameter id of the `One_Pole_Lowpass` cutoff, in Hz (10..20000, default 1000).
 
+### ADSR_ROUND_SECONDS
+
+```odin
+ADSR_ROUND_SECONDS :: 0.0005
+```
+
+How long an ADSR's corners are rounded over (a time constant).
+
 ### PAN_PARAM_POSITION
 
 ```odin
@@ -1962,13 +1970,22 @@ Adsr :: struct {
 	attack_step: f64,
 	decay_coeff: f64,
 	release_coeff: f64,
+	round_k: f64,
+	shaped: f64,
+	attack_pos: f64,
+	ease: f64,
 }
 ```
 
 An ADSR envelope, 0..1: a linear attack to 1 in `attack_s`, then
 exponential moves to `sustain` and, on release, to silence, each
 covering all but 60 dB of the way in its time (as analog envelopes
-sound, with a definite length).
+sound, with a definite length). The attack starts on its frame and
+reaches 1 in its time, easing into the top over its last millisecond
+(or half of it) instead of meeting it at a corner; from the top on,
+what it gives is rounded over half a millisecond (`ADSR_ROUND_SECONDS`):
+the decay into the sustain and the release turn without a sharp corner,
+and a zero release isn't a click.
 
 | Field | Description |
 |-------|-------------|
@@ -1981,6 +1998,10 @@ sound, with a definite length).
 | `attack_step` | per frame |
 | `decay_coeff` |  |
 | `release_coeff` |  |
+| `round_k` | the rounding's step a frame (0: not set: unrounded) |
+| `shaped` | the level as given (rounded) |
+| `attack_pos` | 0..1 through the attack (its shape: `attack_shape`) |
+| `ease` | the part of the attack (0..0.5) that eases into the top |
 
 ### Oversampler
 
@@ -3274,7 +3295,7 @@ releases (gate off) the envelope.
 adsr_next :: proc "contextless"(a: ^Adsr) -> f64
 ```
 
-**Realtime-safe** (callable on the audio thread). The level now, then advances one frame.
+**Realtime-safe** (callable on the audio thread). The level now (rounded), then advances one frame.
 
 ### oversampler_init
 
