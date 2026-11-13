@@ -113,9 +113,8 @@ save_as_copies_the_samples :: proc(t: ^testing.T) {
 	os.remove_all(dir)
 	testing.expect_value(t, pm.model_save_as(m, dir), fc.Error.None)
 	testing.expect_value(t, m.project.dir, dir)
-	samples, _ := filepath.join({dir, "samples"}, context.temp_allocator)
 	for it in m.project.samples.items {
-		testing.expect(t, filepath.dir(it.value.path) == samples, "inside the new folder")
+		testing.expect(t, !filepath.is_abs(pm.stored_path(dir, it.value.path)), "inside the new folder")
 		testing.expect(t, os.exists(it.value.path), "copied")
 	}
 	pm.hit(&m.engine, 0, true)

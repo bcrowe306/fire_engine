@@ -121,8 +121,7 @@ favorites_are_tabs_that_persist :: proc(t: ^testing.T) {
 		testing.expect_value(t, len(pm.browser_rows(&b)), 1)
 		// The project tab follows the project.
 		pm.browser_set_project(&b, r.dir)
-		samples, _ := filepath.join({r.dir, "samples"}, context.temp_allocator)
-		testing.expect_value(t, pm.favorite_dir(&b, 2), samples)
+		testing.expect_value(t, pm.favorite_dir(&b, 2), pm.project_samples_root(r.dir))
 		testing.expect(t, pm.favorites_save(&b, file), "saved")
 	}
 	b: pm.Browser

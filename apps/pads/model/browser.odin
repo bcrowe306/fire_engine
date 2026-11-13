@@ -125,8 +125,7 @@ favorite_dir :: proc(b: ^Browser, i: int) -> string {
 	f := b.favorites[i]
 	if f.project {
 		if b.project_dir == "" do return ""
-		dir, _ := filepath.join({b.project_dir, "samples"}, context.temp_allocator)
-		return dir
+		return project_samples_root(b.project_dir)
 	}
 	return f.path
 }

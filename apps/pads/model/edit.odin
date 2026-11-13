@@ -179,17 +179,16 @@ apply_pad :: proc(ctx: rawptr, key: app.Key, value: Pad) {
 	mark(&m.engine, i)
 }
 
-// Copies the audio file at `path` into the project's samples folder and
+// Copies the audio file at `path` into the project's Samples/Imported and
 // adds it to the project, undoably. Returns its id.
 import_sample :: proc(m: ^Model, path: string) -> (id: app.Id, err: fc.Error) {
 	r, aerr := audiofile.open(path)
 	if aerr != .None do return 0, .Invalid_Data
 	info := audiofile.info(r)
 	audiofile.close(r)
-	dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
-	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return 0, .Device_Error // existing is fine
-	dest := unique_path(dir, filepath.base(path))
+	dest := project_new_file(m.project.dir, .Imported, filepath.base(path))
 	defer delete(dest) // the project keeps its own copy of the path
+	if dest == "" do return 0, .Device_Error
 	data, rerr := os.read_entire_file(path, context.temp_allocator)
 	if rerr != nil do return 0, .Device_Error
 	if os.write_entire_file(dest, data) != nil do return 0, .Device_Error

@@ -234,7 +234,7 @@ records.
     the pitch with it). Its own tempo is guessed from its length (a
     whole number of beats; drag or type it, or the wand guesses again);
     its beats are drawn over the waveform (bars numbered). The warped
-    sound is rendered in the background into the project's `warped/`
+    sound is rendered in the background into the project's `cache/warp/`
     folder, kept there for the next time, and played once ready (it
     shows "Rendering..." until then, the ratio after). Warped, the pad's
     **Transpose** (and Fine) keeps its timing: Tones and Complex shift the
@@ -1229,9 +1229,17 @@ Delete to clear them (each one undo step).
 
 A project is a folder, `Name.pads`: `project.fire` (a
 [fire:session](/guides/sessions/) file whose app chunks hold the pads,
-samples, sequences, song, mixer, MIDI map and settings) and `samples/`
-(every imported, recorded, edited, chopped or resampled file is copied
-there), so a project moves as one folder.
+samples, sequences, song, mixer, MIDI map and settings) and its audio
+in `Samples/`, by where it came from: `Imported/` (files brought in, copied
+there), `Recorded/` (sampled into pads, audio tracks' takes) and
+`Processed/` (bounces, freezes, consolidations, edits' results, exports to
+a pad). Every new file gets a name no file there has: nothing is ever
+written over. `cache/` holds what can be made again (warp and comp
+renderings): deleting it is safe. A project moves as one folder, between
+systems too (its paths are stored relative, with `/`).
+
+Projects from before keep their `samples/` folder: it still opens, and
+new files go to the new folders.
 
 Projects saved before there were 128 pads open with their 64 pads in
 banks A–D, and keep their own MIDI map (where key 36 played A1).
@@ -1246,7 +1254,8 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
 - **File > New** (Cmd+N), **Open…** (Cmd+O, a folder), **Open Recent**
   (the last 8, kept in the user's preferences folder), **Save** (Cmd+S),
   **Save As…** (Cmd+Shift+S: a name and a place; it becomes the folder
-  `<name>.pads`, the samples copied there), **Rename Project…** (its
+  `<name>.pads`, its files copied there, each at the same place in the
+  folder; a file from outside the folder goes into `Samples/Imported`), **Rename Project…** (its
   folder renamed beside where it is).
 - Everything a project holds is saved with it: every pad's and track's
   settings, devices, inserts and sends, the buses and performance

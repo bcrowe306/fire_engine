@@ -1,7 +1,5 @@
 package pads_model
 
-import "core:os"
-import "core:path/filepath"
 import "core:strings"
 
 import app "app:core"
@@ -47,11 +45,22 @@ freeze_begin :: proc(m: ^Model, x: ^Export, pad: int, prefix := "Freeze") -> boo
 	x^ = {settings = {source = .Sequence, encoding = .Float32, rate = rate}, to_pad = -1, freeze = pad, in_place = -1, made = -1, slot_was = p.slot}
 	x.passes = make([dynamic]Export_Pass)
 	x.files = make([dynamic]string)
-	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
-	os.make_directory_all(dir)
 	for slot in freeze_slots(p, pad) {
 		name := strings.concatenate({prefix, " ", pad_label(pad), " - ", sequence_name(p, slot), ".wav"}, context.temp_allocator)
-		path := unique_path(dir, name)
+		// (Free of the files there and of this freeze's others: two
+		// sequences may have one name.)
+		path := project_new_file(p.dir, .Processed, name)
+		for k := 2; path != "" && taken_by(x.passes[:], path); k += 1 {
+			delete(path)
+			path = project_new_file(p.dir, .Processed, strings.concatenate({prefix, " ", pad_label(pad), " - ", sequence_name(p, slot), " ", itoa(k), ".wav"}, context.temp_allocator))
+		}
+		if path == "" {
+			for q in x.passes do delete(q.path)
+			delete(x.passes)
+			delete(x.files)
+			x^ = {}
+			return false
+		}
 		secs := seq_beats(p, p.sequences[slot]) * 60 / sequence_tempo(p, slot)
 		append(&x.passes, Export_Pass{path, {kind = .Freeze, index = pad}, slot, max(int(secs * rate + 0.5), 1)})
 	}
@@ -106,4 +115,11 @@ flatten :: proc(m: ^Model, pad: int) {
 	pd.inserts = {}
 	pd.sample = 0
 	set_pad(m, pad, .Whole, "Flatten to Audio", pd)
+}
+
+// Whether one of `passes` already writes `path`.
+@(private)
+taken_by :: proc(passes: []Export_Pass, path: string) -> bool {
+	for q in passes do if q.path == path do return true
+	return false
 }

@@ -22,7 +22,7 @@ Audio_Recorder_Settings :: struct {
 	timeline:       core.Timeline_Id, // takes are placed on it and recorded while it plays; zero = record whenever armed
 	channels:       int,       // the node's inputs, and the takes' channels
 	directory:      string,    // where take files go (must exist)
-	name:           string,    // take files are `<directory>/<name>-<n>.wav`, n counting from 1
+	name:           string,    // take files are `<directory>/<name>-<n>.wav`: the first n from 1 no file there has (never one written over)
 	encoding:       audiofile.Sample_Format, // of the files: .Int16, .Int24, .Int32 or .Float32 (the zero value, .Int8, means .Float32)
 	latency_frames: int,       // round trip to compensate: see the package doc
 	buffer_seconds: f64,       // audio held for the disk at 48 kHz; 0 = 4 s
@@ -335,10 +335,19 @@ MAX_CHANNELS :: 64
 
 @(private)
 start :: proc(r: ^Audio_Recorder, m: Message) {
-	r.counter += 1
 	rate := transmute(f64)intrinsics.atomic_load(&r.rate_bits)
-	name := fmt.tprintf("%s-%d.wav", r.settings.name, r.counter)
-	path, _ := filepath.join({r.settings.directory, name}, r.allocator)
+	// The next name no file has: a recorder made again (a project opened,
+	// its input changed) counts from 1 again, and must not write over the
+	// takes it made before. (Every recorder of a disk writer starts its
+	// takes on its one thread: two can't pick the same name.)
+	path: string
+	for {
+		r.counter += 1
+		name := fmt.tprintf("%s-%d.wav", r.settings.name, r.counter)
+		path, _ = filepath.join({r.settings.directory, name}, r.allocator)
+		if !os.exists(path) do break
+		delete(path, r.allocator)
+	}
 	r.open = {
 		path = path, run = int(m.run), pass = int(m.pass), start = m.pos,
 		start_frame = m.frame, sample_rate = rate, channels = r.settings.channels,

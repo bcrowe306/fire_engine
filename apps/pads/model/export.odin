@@ -156,10 +156,9 @@ export_to_pad :: proc(m: ^Model, x: ^Export) -> bool {
 		break
 	}
 	if empty < 0 do return false
-	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
-	os.make_directory_all(dir)
-	path := unique_path(dir, strings.concatenate({"Resampled ", itoa(m.project.slot + 1), ".wav"}, context.temp_allocator))
+	path := project_new_file(p.dir, .Processed, strings.concatenate({"Resampled ", itoa(m.project.slot + 1), ".wav"}, context.temp_allocator))
 	defer delete(path)
+	if path == "" do return false
 	if !export_begin(m, x, {source = .Sequence, encoding = .Float32, tail = 0}, path) do return false
 	x.to_pad = empty
 	return true

@@ -1,8 +1,6 @@
 package pads_model
 
 import "core:fmt"
-import "core:os"
-import "core:path/filepath"
 import "core:strings"
 
 import app "app:core"
@@ -53,10 +51,9 @@ bounce_begin :: proc(m: ^Model, x: ^Export, solo: Export_Solo, after: int, label
 	p := &m.project
 	to := next_empty_pad(p, after)
 	if to < 0 do return false
-	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
-	os.make_directory_all(dir)
-	path := unique_path(dir, strings.concatenate({label, " - ", sequence_name(p, p.slot), ".wav"}, context.temp_allocator))
+	path := project_new_file(p.dir, .Processed, strings.concatenate({label, " - ", sequence_name(p, p.slot), ".wav"}, context.temp_allocator))
 	defer delete(path)
+	if path == "" do return false
 	if !export_begin(m, x, {source = .Sequence, encoding = .Float32, tail = 0}, path, solo) do return false
 	x.to_pad = to
 	x.bounce = strings.clone("Bounce to Pad")

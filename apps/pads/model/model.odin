@@ -312,7 +312,7 @@ Project :: struct {
 	transport: Transport, // loop, count-in, the metronome, the time signature, input quantize
 	song_mode: bool, // play the song, not the current sequence
 	switch_at: Switch_At, // when a sequence picked while playing takes over
-	dir:     string, // the project folder (samples/ inside it)
+	dir:     string, // the project folder (see project_paths.odin)
 	strings: strings.Intern, // sample names and paths
 }
 

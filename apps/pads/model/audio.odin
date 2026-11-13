@@ -3,7 +3,6 @@ package pads_model
 import "core:fmt"
 import "core:math"
 import "core:os"
-import "core:path/filepath"
 
 import app "app:core"
 import "fire:audiofile"
@@ -101,8 +100,7 @@ fold_take :: proc(m: ^Model, armed: int, t: record.Take) -> fc.Error {
 	a, err := read_audio(t.path, context.temp_allocator)
 	if err != .None do return .Device_Error
 	frames := i64(len(a.channels[0]))
-	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
-	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return .Device_Error
+	if project_folder_make(p.dir, .Recorded) == "" do return .Device_Error
 	app.begin(&m.history, "Record Audio")
 	defer app.end(&m.history)
 	// The parts this take goes into (passes to tracks: one a pass).
@@ -133,7 +131,7 @@ fold_take :: proc(m: ^Model, armed: int, t: record.Take) -> fc.Error {
 		views := make([][]f32, len(a.channels), context.temp_allocator)
 		for c, k in a.channels do views[k] = c[done:][:n]
 		name := fmt.tprintf("%s seq %d.wav", pad_name(&p.pads[pad]) if pad_name(&p.pads[pad]) != "" else pad_label(pad), slot + 1)
-		dest := unique_path(dir, name)
+		dest := project_new_file(p.dir, .Recorded, name)
 		defer delete(dest)
 		w, werr := audiofile.writer_create(dest, {format = .Wav, encoding = .Float32, sample_rate = t.sample_rate, channels = len(a.channels)})
 		if werr != .None do return .Device_Error

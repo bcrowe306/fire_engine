@@ -57,7 +57,7 @@ a_warped_pad_follows_the_tempo :: proc(t: ^testing.T) {
 		d := got[k] - got[k - 1]
 		testing.expectf(t, abs(d - 24_000) <= 48, "half a second apart at 120 (%d)", d)
 	}
-	entries, _ := os.read_all_directory_by_path(filepath.join({m.project.dir, "warped"}, context.temp_allocator) or_else "", context.temp_allocator)
+	entries, _ := os.read_all_directory_by_path(pm.project_folder(m.project.dir, .Warp), context.temp_allocator)
 	testing.expect(t, len(entries) == 1, "the rendering kept in the project")
 	// Off: as it is (0.6 s apart).
 	w := m.project.pads[0].warp

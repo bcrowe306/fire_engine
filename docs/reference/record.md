@@ -124,7 +124,7 @@ Settings for `audio_recorder_create`.
 | `timeline` | takes are placed on it and recorded while it plays; zero = record whenever armed |
 | `channels` | the node's inputs, and the takes' channels |
 | `directory` | where take files go (must exist) |
-| `name` | take files are `<directory>/<name>-<n>.wav`, n counting from 1 |
+| `name` | take files are `<directory>/<name>-<n>.wav`: the first n from 1 no file there has (never one written over) |
 | `encoding` | of the files: .Int16, .Int24, .Int32 or .Float32 (the zero value, .Int8, means .Float32) |
 | `latency_frames` | round trip to compensate: see the package doc |
 | `buffer_seconds` | audio held for the disk at 48 kHz; 0 = 4 s |

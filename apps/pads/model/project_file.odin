@@ -39,43 +39,29 @@ model_save :: proc(m: ^Model) -> fc.Error {
 }
 
 // Saves the project into folder `dir` instead (Save As): copies its
-// samples there, then saves; from now on it is the project's folder.
+// files there, each at the same place in the folder (an outside file into
+// Samples/Imported), then saves; from now on it is the project's folder.
 model_save_as :: proc(m: ^Model, dir: string) -> fc.Error {
 	p := &m.project
-	samples, _ := filepath.join({dir, "samples"}, context.temp_allocator)
-	if os.make_directory_all(samples) != nil && !os.is_dir(samples) do return .Device_Error
-	for &it in p.samples.items {
-		s := &it.value
-		dest, _ := filepath.join({samples, filepath.base(s.path)}, context.temp_allocator)
-		if dest != s.path {
-			data, err := os.read_entire_file(s.path, context.temp_allocator)
-			if err != nil do return .Device_Error
-			if os.write_entire_file(dest, data) != nil do return .Device_Error
-		}
-		s.path = intern(p, dest)
-	}
+	paths := copy_project_files(p, dir) or_return
+	for &it, k in p.samples.items do it.value.path = intern(p, paths[k])
 	p.dir = intern(p, dir)
 	mark_all_sources_stale(&m.engine)
 	return model_save(m)
 }
 
 // Saves a copy of the project into folder `dir` (a template, say): its
-// samples copied there; the project itself, its folder and whether it
-// has unsaved changes stay as they are.
+// files copied there as Save As copies them (one missing is left out);
+// the project itself, its folder and whether it has unsaved changes stay
+// as they are.
 model_save_copy :: proc(m: ^Model, dir: string) -> fc.Error {
 	capture_plugin_states(m)
 	p := &m.project
-	samples, _ := filepath.join({dir, "samples"}, context.temp_allocator)
-	if os.make_directory_all(samples) != nil && !os.is_dir(samples) do return .Device_Error
+	paths := copy_project_files(p, dir, skip_missing = true) or_return
 	old_paths := make([]string, len(p.samples.items), context.temp_allocator)
 	for &it, k in p.samples.items {
-		s := &it.value
-		old_paths[k] = s.path
-		dest, _ := filepath.join({samples, filepath.base(s.path)}, context.temp_allocator)
-		data, err := os.read_entire_file(s.path, context.temp_allocator)
-		if err != nil do continue // (a sample missing: left out)
-		if os.write_entire_file(dest, data) != nil do return .Device_Error
-		s.path = strings.clone(dest, context.temp_allocator)
+		old_paths[k] = it.value.path
+		it.value.path = paths[k]
 	}
 	old_dir := p.dir
 	p.dir = dir
@@ -86,28 +72,80 @@ model_save_copy :: proc(m: ^Model, dir: string) -> fc.Error {
 	return err
 }
 
-// Copies project folder `from` (a template) to a new folder `to` and
-// loads it: a new project like it (its undo history empty).
-model_new_from :: proc(m: ^Model, from, to: string) -> fc.Error {
-	samples_from, _ := filepath.join({from, "samples"}, context.temp_allocator)
-	samples_to, _ := filepath.join({to, "samples"}, context.temp_allocator)
-	if os.make_directory_all(samples_to) != nil && !os.is_dir(samples_to) do return .Device_Error
-	if h, err := os.open(samples_from); err == nil {
-		infos, _ := os.read_dir(h, -1, context.temp_allocator)
-		os.close(h)
-		for fi in infos {
-			src, _ := filepath.join({samples_from, fi.name}, context.temp_allocator)
-			dst, _ := filepath.join({samples_to, fi.name}, context.temp_allocator)
+// Copies the files project `p` plays into folder `dir`: one inside its
+// folder to the same place in `dir` (Samples/Recorded/x.wav stays that;
+// an older project's samples/x.wav too), one outside it into
+// Samples/Imported with a name no file there has. Returns each sample's
+// new path, in the samples table's order (temporary allocator). With
+// `skip_missing`, a file that can't be read keeps its path.
+@(private)
+copy_project_files :: proc(p: ^Project, dir: string, skip_missing := false) -> (paths: []string, err: fc.Error) {
+	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return nil, .Device_Error
+	paths = make([]string, len(p.samples.items), context.temp_allocator)
+	// Those inside first: their places are theirs (an outside file named
+	// like one of them takes another name, not its place).
+	for outside in ([]bool{false, true}) {
+		for &it, k in p.samples.items {
+			src := it.value.path
+			rel := stored_path(p.dir, src)
+			if filepath.is_abs(rel) != outside do continue
+			dest: string
+			if outside {
+				folder := project_folder_make(dir, .Imported)
+				if folder == "" do return nil, .Device_Error
+				d := unique_path(folder, filepath.base(src))
+				dest = strings.clone(d, context.temp_allocator)
+				delete(d)
+			} else {
+				dest = loaded_path(dir, rel)
+			}
+			paths[k] = dest
+			if dest == src do continue
 			data, rerr := os.read_entire_file(src, context.temp_allocator)
-			if rerr == nil do _ = os.write_entire_file(dst, data)
+			if rerr != nil {
+				if skip_missing {
+					paths[k] = src
+					continue
+				}
+				return nil, .Device_Error
+			}
+			if folder := filepath.dir(dest); os.make_directory_all(folder) != nil && !os.is_dir(folder) do return nil, .Device_Error
+			if os.write_entire_file(dest, data) != nil do return nil, .Device_Error
 		}
 	}
-	src, _ := filepath.join({from, PROJECT_FILE}, context.temp_allocator)
-	dst, _ := filepath.join({to, PROJECT_FILE}, context.temp_allocator)
-	data, rerr := os.read_entire_file(src, context.temp_allocator)
-	if rerr != nil do return .Device_Error
-	if os.write_entire_file(dst, data) != nil do return .Device_Error
+	return
+}
+
+// Copies project folder `from` (a template) to a new folder `to` and
+// loads it: a new project like it (its undo history empty). Everything in
+// it is copied, as it is, but its cache and backup.
+model_new_from :: proc(m: ^Model, from, to: string) -> fc.Error {
+	copy_tree(from, to, top = true) or_return
 	return model_load(m, to)
+}
+
+// Copies folder `from` into `to` (made if missing), all of it; at the top
+// of a project folder, not `cache/` and `.autosave/`.
+@(private)
+copy_tree :: proc(from, to: string, top := false) -> fc.Error {
+	if os.make_directory_all(to) != nil && !os.is_dir(to) do return .Device_Error
+	h, err := os.open(from)
+	if err != nil do return .Device_Error
+	infos, _ := os.read_dir(h, -1, context.temp_allocator)
+	os.close(h)
+	for fi in infos {
+		if top && (fi.name == CACHE_FOLDER || fi.name == BACKUP_DIR) do continue
+		src, _ := filepath.join({from, fi.name}, context.temp_allocator)
+		dst, _ := filepath.join({to, fi.name}, context.temp_allocator)
+		if fi.type == .Directory {
+			copy_tree(src, dst) or_return
+			continue
+		}
+		data, rerr := os.read_entire_file(src, context.temp_allocator)
+		if rerr != nil do return .Device_Error
+		if os.write_entire_file(dst, data) != nil do return .Device_Error
+	}
+	return .None
 }
 
 // Moves the project's folder to `dir` (a rename): its samples go with it.
@@ -225,9 +263,8 @@ project_chunks :: proc(p: ^Project) -> []session.App_Chunk {
 		@(static) project_dir: string
 		project_dir = dir
 		app.store_save(w, SAMPLES_TAG, 1, &p.samples, proc(w: ^fc.State_Writer, s: ^Sample) {
-			rel, err := filepath.rel(project_dir, s.path, context.temp_allocator)
 			fc.write_string(w, s.name)
-			fc.write_string(w, rel if err == nil else s.path)
+			fc.write_string(w, stored_path(project_dir, s.path))
 			fc.write_i64(w, s.frames)
 			fc.write_f64(w, s.rate)
 			fc.write_int(w, s.channels)
@@ -733,12 +770,7 @@ project_read :: proc(p: ^Project, l: session.Loaded) -> fc.Error {
 		app.store_load({c.tag, c.version, c.data}, &p.samples, proc(r: ^fc.State_Reader, version: u32, s: ^Sample) -> bool {
 			p := project
 			s.name = intern(p, fc.read_string(r))
-			path := fc.read_string(r)
-			if !filepath.is_abs(path) {
-				full, _ := filepath.join({p.dir, path}, context.temp_allocator)
-				path = full
-			}
-			s.path = intern(p, path)
+			s.path = intern(p, loaded_path(p.dir, fc.read_string(r)))
 			s.frames = fc.read_i64(r)
 			s.rate = fc.read_f64(r)
 			s.channels = fc.read_int(r)

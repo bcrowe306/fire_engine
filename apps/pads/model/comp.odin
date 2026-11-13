@@ -100,7 +100,7 @@ comp_path :: proc(p: ^Project, slot, pad: int, x: Audio_Part) -> string {
 	for t in x.takes[:x.take_count] {
 		if s := app.store_get(&p.samples, t); s != nil do h ~= hash.fnv64a(transmute([]u8)s.path) * 31
 	}
-	path, _ := filepath.join({p.dir, "renders", fmt.tprintf("comp %d %d %016x.wav", slot + 1, pad + 1, h)}, context.temp_allocator)
+	path, _ := filepath.join({project_folder(p.dir, .Comp), fmt.tprintf("comp %d %d %016x.wav", slot + 1, pad + 1, h)}, context.temp_allocator)
 	return path
 }
 
@@ -265,11 +265,10 @@ consolidate :: proc(m: ^Model, slot, pad: int) -> bool {
 	p := &m.project
 	a, ok := part_audio(m, slot, pad)
 	if !ok do return false
-	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
-	os.make_directory_all(dir)
 	name := fmt.tprintf("%s seq %d consolidated.wav", pad_name(&p.pads[pad]) if pad_name(&p.pads[pad]) != "" else pad_label(pad), slot + 1)
-	dest := unique_path(dir, name)
+	dest := project_new_file(p.dir, .Processed, name)
 	defer delete(dest)
+	if dest == "" do return false
 	ws := audiofile.default_writer_settings(a.rate, 2)
 	ws.encoding = .Float32
 	w, err := audiofile.writer_create(dest, ws)

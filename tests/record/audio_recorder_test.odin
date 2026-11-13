@@ -278,3 +278,32 @@ disk_thread_writes_in_the_background :: proc(t: ^testing.T) {
 	testing.expect_value(t, takes[0].frames, i64(4 * BEAT))
 	expect_input(t, takes[0], 0)
 }
+
+@(test)
+a_recorder_made_again_never_writes_over_a_take :: proc(t: ^testing.T) {
+	r := rig_make(timeline = false)
+	defer rig_destroy(r)
+	record.audio_recorder_arm(r.rec, true)
+	rig_run(r, 3_000)
+	record.audio_recorder_arm(r.rec, false)
+	rig_run(r, 512)
+	first := rig_takes(r)
+	defer takes_destroy(first[:])
+	if !testing.expect_value(t, len(first), 1) do return
+	// Made again (a project opened again, its input changed): counting from
+	// 1 again, it takes the next name no file has.
+	core.node_destroy(&r.node)
+	r.node, r.rec, _ = record.audio_recorder_create(r.disk, {channels = 2, directory = r.dir, name = "take"})
+	core.node_prepare(&r.node, {sample_rate = SR, max_block = 32_768})
+	from := r.frame
+	record.audio_recorder_arm(r.rec, true)
+	rig_run(r, 2_000)
+	record.audio_recorder_arm(r.rec, false)
+	rig_run(r, 512)
+	second := rig_takes(r)
+	defer takes_destroy(second[:])
+	if !testing.expect_value(t, len(second), 1) do return
+	testing.expect(t, first[0].path != second[0].path, "the second take has a name of its own")
+	expect_input(t, first[0], 0) // the first take is as it was
+	expect_input(t, second[0], from)
+}

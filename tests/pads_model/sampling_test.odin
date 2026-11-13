@@ -141,7 +141,7 @@ a_new_project_records_into_a_pad :: proc(t: ^testing.T) {
 	r := rig_cabled(t, "sample_fresh")
 	defer rig_destroy(r)
 	m := &r.m
-	samples, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
+	samples, _ := filepath.join({m.project.dir, pm.SAMPLES_FOLDER}, context.temp_allocator)
 	os.remove_all(samples)
 	testing.expect(t, !os.exists(samples), "no samples folder to start with")
 	rec: pm.Recording
@@ -154,6 +154,24 @@ a_new_project_records_into_a_pad :: proc(t: ^testing.T) {
 	if !testing.expect(t, s != nil, "a sample on pad 2") do return
 	testing.expect(t, os.exists(s.path), "its file written")
 	testing.expect(t, !rec.last_failed, "not a failed take")
+	testing.expect_value(t, filepath.dir(s.path), pm.project_folder(m.project.dir, .Recorded))
+	// The recorder made again (as when the input changes, or the project
+	// opens again) counts from 1 again: the next take still has a name of
+	// its own, and pad 2's sample is as it was.
+	first := strings.clone(s.path, context.temp_allocator)
+	first_frames := s.frames
+	pm.record_forget(&rec)
+	ready(r, &rec, 4)
+	testing.expect_value(t, pm.record_start(m, &rec, 4, .Hold), nil)
+	run(r, 256 * 30)
+	pm.record_stop(&rec)
+	s4 := take_on(r, &rec, 4)
+	if !testing.expect(t, s4 != nil, "a sample on pad 4") do return
+	testing.expect(t, s4.path != first, "a file of its own")
+	if rd, err := audiofile.open(first, context.temp_allocator); testing.expect_value(t, err, audiofile.Error.None) {
+		testing.expect_value(t, audiofile.info(rd).frames, first_frames) // not written over
+		audiofile.close(rd)
+	}
 	// Saved elsewhere: the next take there.
 	to, _ := filepath.join({r.dir, "moved"}, context.temp_allocator)
 	testing.expect_value(t, pm.model_save_as(m, to), nil)

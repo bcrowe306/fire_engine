@@ -84,7 +84,7 @@ warp_path :: proc(p: ^Project, sample_path: string, w: Warp, ratio: f64, transpo
 	base := strings.trim_suffix(filepath.base(sample_path), filepath.ext(sample_path))
 	name := fmt.tprintf("%s.%v.%v.%d.%d.wav", base, w.mode, w.grain, 1 if w.fill_gaps else 0, int(math.round(ratio * 100_000)))
 	if transpose != 0 do name = fmt.tprintf("%s.%v.%v.%d.%d.t%d.wav", base, w.mode, w.grain, 1 if w.fill_gaps else 0, int(math.round(ratio * 100_000)), int(math.round(transpose * 100)))
-	path, _ := filepath.join({p.dir, "warped", name}, context.temp_allocator)
+	path, _ := filepath.join({project_folder(p.dir, .Warp), name}, context.temp_allocator)
 	return path
 }
 

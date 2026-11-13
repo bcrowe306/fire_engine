@@ -1,8 +1,6 @@
 package pads_model
 
 import "core:math"
-import "core:os"
-import "core:path/filepath"
 
 import app "app:core"
 import "fire:clap"
@@ -79,8 +77,8 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 		}
 	}
 	if e.host.disk == nil do return
-	dir, _ := filepath.join({e.project.dir, "takes"}, context.temp_allocator)
-	os.make_directory_all(dir)
+	dir := project_folder_make(e.project.dir, .Spool)
+	if dir == "" do return
 	node, rec, err := record.audio_recorder_create(e.host.disk, {timeline = e.timeline, channels = channels, directory = dir, name = pad_label(i), encoding = .Float32, latency_frames = record_latency(e) if interface else 0})
 	if err != .None do return
 	id, aerr := graph.add_node(g, node, channels, 0)

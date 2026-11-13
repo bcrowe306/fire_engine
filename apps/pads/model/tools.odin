@@ -2,7 +2,6 @@ package pads_model
 
 import "core:math"
 import "core:os"
-import "core:path/filepath"
 import "core:strings"
 
 import app "app:core"
@@ -146,9 +145,9 @@ next_empty :: proc(m: ^Model, after: int) -> int {
 // caller's undo step.
 @(private)
 replace_audio :: proc(m: ^Model, index: int, a: Audio, name: string, step: string) -> fc.Error {
-	dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
-	path := unique_path(dir, strings.concatenate({name, ".wav"}, context.temp_allocator))
+	path := project_new_file(m.project.dir, .Processed, strings.concatenate({name, ".wav"}, context.temp_allocator))
 	defer delete(path)
+	if path == "" do return .Device_Error
 	s := audiofile.default_writer_settings(a.rate, len(a.channels))
 	s.encoding = .Float32
 	w, err := audiofile.writer_create(path, s)
@@ -331,10 +330,10 @@ sample_recorder :: proc(m: ^Model, rec: ^Recording, timed: bool, src: [2]int) ->
 	handle := &rec.timed if timed else &rec.handle
 	node := &rec.timed_node if timed else &rec.node
 	have := &rec.timed_inputs if timed else &rec.inputs
-	// Its takes go into the project's samples folder: made now if the
+	// Its takes go into the project's Samples/Recorded: made now if the
 	// project has none yet (a new one, nothing loaded), and the recorder
 	// made again when the project moved (Save As: the old folder may go).
-	dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
+	dir := project_folder(m.project.dir, .Recorded)
 	if handle^ != nil && have^ == src && rec.dir == dir do return handle^, .None
 	if handle^ != nil {
 		graph.remove_node(h.graph, node^) // (other inputs, or another folder: made again)
