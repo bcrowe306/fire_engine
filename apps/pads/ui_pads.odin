@@ -148,24 +148,33 @@ PAD_PALETTE := [24]u32{
 	0xd4a373, 0xa98467, 0xb5c0cf, 0x8d99ae, 0x6c757d, 0xe9ecef,
 }
 
-// Pad `index`'s colour: the swatches, then a picker. (In the pads'
-// right-click menu and the Pad tab.)
+// Pad `index`'s colour (and, when it is one of several selected, all of
+// theirs: one undo step): the swatches, then a picker. (In the pads' and
+// the mixer strips' right-click menus, and the Pad tab.)
 pad_color_menu :: proc(a: ^App, index: int) {
 	m := &a.m
 	pad := m.project.pads[index]
-	set :: proc(m: ^pm.Model, index: int, c: u32) {
-		p := m.project.pads[index]
-		if p.color == c do return
-		p.color = c
-		pm.set_pad(m, index, .Color, "Set Color", p)
+	sel := selected_pads(a)
+	targets := sel if index in sel && card(sel) > 1 else Pad_Set{index}
+	set :: proc(m: ^pm.Model, targets: Pad_Set, c: u32) {
+		app.begin(&m.history, "Set Color")
+		for i in 0 ..< pm.PADS do if i in targets {
+			p := m.project.pads[i]
+			if p.color == c do continue
+			p.color = c
+			pm.set_pad(m, i, .Color, "Set Color", p)
+		}
+		app.end(&m.history)
 	}
-	im.TextDisabled("%s", fmt.ctprintf("%s colour", pm.pad_label(index)))
+	n := card(targets)
+	if n > 1 do im.TextDisabled("%s", fmt.ctprintf("%d pads' colour", n))
+	else do im.TextDisabled("%s", fmt.ctprintf("%s colour", pm.pad_label(index)))
 	for c, k in PAD_PALETTE {
 		if k % 6 != 0 do im.SameLine(0, 4)
 		im.PushIDInt(i32(k))
 		cv := ui.rgb(c)
 		if im.ColorButton("##swatch", transmute(im.Vec4)cv, {.NoTooltip, .NoBorder}, {22, 22}) {
-			set(m, index, c)
+			set(m, targets, c)
 			app.seal(&m.history)
 		}
 		ui.name(fmt.tprintf("colour %d", k + 1))
@@ -180,7 +189,7 @@ pad_color_menu :: proc(a: ^App, index: int) {
 	im.SetNextItemWidth(6 * 26)
 	if im.ColorPicker3("##picker", &rgb, {.NoSidePreview, .NoSmallPreview, .NoAlpha, .PickerHueBar}) {
 		c := u32(clamp(rgb[0], 0, 1) * 255 + 0.5) << 16 | u32(clamp(rgb[1], 0, 1) * 255 + 0.5) << 8 | u32(clamp(rgb[2], 0, 1) * 255 + 0.5)
-		set(m, index, c)
+		set(m, targets, c)
 	}
 	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
 }

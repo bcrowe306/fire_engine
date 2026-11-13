@@ -107,3 +107,36 @@ def test_eq_switch_io_rows_and_horizontal_sends(app, fixtures):
     before = app.pad(0)["sends"][0]
     app.drag_by("A1 send A", 40, 0, window="mixer")
     assert app.pad(0)["sends"][0] > before, (before, app.pad(0)["sends"][0])
+
+
+def test_colour_several_fold_loudness_buses_at_the_right(app, fixtures):
+    mixer(app, fixtures)
+    # Two strips selected (their names, Cmd for one more): one colour for both.
+    app.click("A1 name", window="mixer")
+    app.cmd("hold cmd")
+    app.click("A2 name", window="mixer")
+    app.cmd("let cmd")
+    app.click("A2 name", window="mixer", right=True)
+    app.hover("Colour")
+    before = (app.pad(0)["color"], app.pad(1)["color"])
+    app.click("colour 10")
+    assert app.pad(0)["color"] == 0x4fc3f7 and app.pad(1)["color"] == 0x4fc3f7, (app.pad(0)["color"], app.pad(1)["color"])
+    assert app.state()["undo"] == "Set Color"
+    app.key("esc")  # (the menu stays open for another try: its colours, then the menu)
+    app.key("esc")
+    app.key("cmd+z")  # one step for both
+    assert (app.pad(0)["color"], app.pad(1)["color"]) == before
+    # The buses against main, the room left after the pads' strips.
+    bus_d = [i for i in app.items("Bus D fader", "mixer") if i["label"] == "Bus D fader"][0]["rect"]
+    main = [i for i in app.items("Main fader", "mixer") if i["label"] == "Main fader"][0]["rect"]
+    a2 = [i for i in app.items("A2 fader", "mixer") if i["label"] == "A2 fader"][0]["rect"]
+    assert main[0] - bus_d[2] < 160, (bus_d, main)  # next to main (fader to fader: a strip apart)
+    assert bus_d[0] - a2[2] > 200, (a2, bus_d)  # not next to the pads
+    # Main's loudness column folded away, and back.
+    app.click("fold loudness", window="mixer")
+    assert app.state()["mixer_view"]["meters_folded"]
+    app.wait(2)
+    assert not app.has("main integrated", window="mixer")
+    app.expect_item("show loudness", window="mixer")
+    app.click("show loudness", window="mixer")
+    app.expect_item("main integrated", window="mixer")

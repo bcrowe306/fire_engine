@@ -404,9 +404,11 @@ records.
   the fader the room) — and **narrow** or wide strips (narrow: more at
   once, the names their labels, the fader's level in the peak readout's
   tooltip); kept in the app's settings. Then a channel strip, as in Logic, for every pad with a
-  sound (all banks; it scrolls sideways), the buses right after them
-  (four to start with, up to 16: the **+** adds one; they scroll when
-  many), and main pinned on the right with its **meters column**. Right-click a bus's name to **Rename…** (or
+  sound (all banks; it scrolls sideways), then, at the right whatever
+  room the pads leave, the buses (four to start with, up to 16: the **+**
+  adds one; they scroll when many) and main, pinned on the right with its
+  **meters column** (its chevron folds it away to a thin bar, and the
+  bar opens it again). Right-click a bus's name to **Rename…** (or
   double-click it) or **Delete Bus** (what went to it goes to main; the
   buses after it move up a letter). Click strips' names with **Shift** (a
   range) or **Cmd** (one more) to select several: then moving one's
@@ -456,7 +458,9 @@ records.
     straight there, not through main (exports fold direct outs back into
     the mixdown). One whose pair isn't open shows `(not open)` in amber
     and plays in main until it is;
-  - the name on the pad's colour (click to select the pad).
+  - the name on the pad's colour (click to select the pad; right-click
+    for its commands and **Colour**: with several strips selected,
+    their colour, all at once as one undo step).
 
   **Main's meters column**: its **loudness** (EBU R128): short-term (3 s)
   large, momentary (400 ms), and integrated since the last reset (click
@@ -1323,7 +1327,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Shift-click launching alone, Continue, Option-click not launching, Record to Song writing the launches into lanes, the main fader |
-| `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag, double-click, pre-fader; with the inserts and EQ toggled off), outputs, inserts, the EQ display, the peak readout; the bar (narrow, a section off), main's meters (integrated reset, correlation, stereo) |
+| `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag across, double-click, pre-fader; with the inserts and EQ toggled off), outputs, inserts, the EQ display and switch, the I/O rows, the peak readout; the toggles (narrow, a section off), main's meters (integrated reset, correlation, stereo, folded and back); two strips coloured at once; the buses against main |
 | `test_perform_song.py` | a pad's MIDI page (play modes, its note repeat and arpeggiator), holding performance effects, the song and its switches |
 | `test_app.py` | menus, undo/redo, the command palette and theme, panels and Reset Layout, the export dialog, save/new/open and export |
 | `test_crawl.py` | a hunt for crashes: every item showing in each panel and tab clicked (left and right), and a browser file dragged onto every kind of target |

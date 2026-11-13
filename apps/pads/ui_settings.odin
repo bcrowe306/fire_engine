@@ -186,6 +186,7 @@ settings_load :: proc(a: ^App) {
 		sends   = app.ini_bool(ini_, "mixer", "sends", true),
 		io      = app.ini_bool(ini_, "mixer", "io", true),
 		narrow  = app.ini_bool(ini_, "mixer", "narrow", false),
+		meters_folded = app.ini_bool(ini_, "mixer", "meters_folded", false),
 	}
 	// Audio.
 	s.audio = {
@@ -264,6 +265,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_bool(ini, "mixer", "sends", s.mixer_view.sends)
 	app.ini_set_bool(ini, "mixer", "io", s.mixer_view.io)
 	app.ini_set_bool(ini, "mixer", "narrow", s.mixer_view.narrow)
+	app.ini_set_bool(ini, "mixer", "meters_folded", s.mixer_view.meters_folded)
 	app.ini_set(ini, "audio", "output", s.audio.output)
 	app.ini_set(ini, "audio", "input", s.audio.input)
 	app.ini_set_f64(ini, "audio", "sample_rate", s.audio.rate)
@@ -872,6 +874,7 @@ meter_scale_parse :: proc(s: string) -> Meter_Scale {
 Mixer_View :: struct {
 	inserts, eq, sends, io: bool,
 	narrow:                 bool,
+	meters_folded:          bool, // main's loudness column folded away
 }
 
 @(private)

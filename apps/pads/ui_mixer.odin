@@ -121,7 +121,8 @@ draw_mixer :: proc(user: rawptr) {
 	p := &m.project
 	n_buses := p.bus_count
 	add_w: f32 = 26 if n_buses < pm.BUSES else 0 // the + that adds a bus
-	main_w := strip_w_cur + 4 + MAIN_METERS_W // main, pinned at the right, and its meters
+	meters_w: f32 = MAIN_METERS_W if !v.meters_folded else METERS_FOLDED_W
+	main_w := strip_w_cur + 6 + meters_w // main, pinned at the right, and its meters (or their fold)
 	// The pads' strips as wide as they are (no gap after them), the buses
 	// right after; past the room, each scrolls.
 	n_strips, n_tabs := 0, 0
@@ -171,6 +172,13 @@ draw_mixer :: proc(user: rawptr) {
 	}
 	im.EndChild()
 	im.SameLine(0, 8)
+	// The buses at the right, against main (whatever room the pads leave).
+	{
+		main_left := im.GetWindowPos().x + im.GetWindowWidth() - main_w - im.GetStyle().WindowPadding.x
+		cur := im.GetCursorScreenPos()
+		want := main_left - 4 - buses_w
+		if want > cur.x do im.SetCursorScreenPos({want, cur.y})
+	}
 	// The line between the pads and the buses.
 	pos := im.GetCursorScreenPos()
 	im.DrawList_AddLine(im.GetWindowDrawList(), {pos.x - 5, pos.y + 4}, {pos.x - 5, pos.y + avail.y - 4}, ui.col(ui.theme().border), 1)
@@ -197,15 +205,36 @@ draw_mixer :: proc(user: rawptr) {
 	if im.BeginChild("##main", {main_w, avail.y}, {}, {.NoScrollbar}) {
 		bus_strip(a, pm.BUSES, main_h)
 		im.SameLine(0, 6)
-		draw_main_meters(a, main_h)
+		if v.meters_folded {
+			// Folded: a button to open it again, down the side.
+			bp := im.GetCursorScreenPos()
+			if im.InvisibleButton("##metersopen", {METERS_FOLDED_W - 2, main_h}) {
+				a.settings.mixer_view.meters_folded = false
+				settings_save(a)
+			}
+			ui.name("show loudness")
+			t := ui.theme()
+			hot := im.IsItemHovered()
+			dl := im.GetWindowDrawList()
+			im.DrawList_AddRectFilled(dl, bp, {bp.x + METERS_FOLDED_W - 2, bp.y + main_h}, ui.col(ui.mix(t.surface, t.raised, 0.8 if hot else 0.4)), t.radius)
+			ic := fmt.ctprintf("%s", ui.ICON_CHEVRON_LEFT)
+			ts := im.CalcTextSize(ic)
+			im.DrawList_AddText(dl, {bp.x + (METERS_FOLDED_W - 2 - ts.x) / 2, bp.y + main_h / 2 - ts.y / 2}, ui.col(t.text if hot else t.text_dim), ic)
+			if hot do im.SetTooltip("Show main's loudness, correlation and stereo view")
+		} else {
+			draw_main_meters(a, main_h)
+		}
 	}
 	im.EndChild()
 	draw_rename_bus(a)
 }
 
-// The width of main's meters column (loudness, correlation, stereo).
+// The width of main's meters column (loudness, correlation, stereo), and
+// of it folded away.
 @(private)
 MAIN_METERS_W :: 128
+@(private)
+METERS_FOLDED_W :: 18
 
 // The width of a group's tab.
 @(private)
@@ -1213,7 +1242,18 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		if io.KeyShift || io.KeyCtrl || io.KeySuper do select_pad(a, i, false)
 		else do a.selected, a.pad_sel, a.pad_anchor = i, {i}, i
 	}
-	item_menu(a, pad_target(i), "##stripmenu")
+	// Its menu: its commands, and its colour (all the selected strips'
+	// when it is one of them).
+	if im.BeginPopupContextItem("##stripmenu") {
+		command_items(a, pad_target(i))
+		im.Separator()
+		if im.BeginMenu(ui.ICON_PALETTE + "  Colour") {
+			pad_color_menu(a, i)
+			im.EndMenu()
+		}
+		ui.name("Colour")
+		im.EndPopup()
+	}
 	_ = t
 }
 
@@ -1378,9 +1418,18 @@ draw_main_meters :: proc(a: ^App, h: f32) {
 	dl := im.GetWindowDrawList()
 	mom, short, integ, tp := pm.main_loudness(&m.engine)
 	lufs :: proc(x: f32) -> string { return "-inf" if x <= -100 else fmt.tprintf("%.1f", x) }
+	col_x := im.GetCursorScreenPos().x
 	small(a)
+	im.AlignTextToFramePadding()
 	im.TextDisabled("Loudness")
 	im.PopFont()
+	im.SameLine()
+	im.SetCursorScreenPos({col_x + w - 16, im.GetCursorScreenPos().y})
+	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Fold away main's loudness, correlation and stereo view", size = 16) {
+		a.settings.mixer_view.meters_folded = true
+		settings_save(a)
+	}
+	ui.name("fold loudness")
 	im.PushFontFloat(a.platform.fonts.semibold, 22)
 	im.Text("%s", fmt.ctprintf("%s", lufs(short)))
 	im.PopFont()
