@@ -271,6 +271,12 @@ show_automation :: proc(a: ^App, t: pm.Auto_Target) {
 	a.seq.target = full
 	a.seq.mode = .Automation
 	a.seq.learning = false
+	a.seq.auto_pad = -1
+	// A pad's: that pad selected (its bank shown), as it is the one edited.
+	if full.track == .Pad && int(full.index) < pm.PADS {
+		a.selected = int(full.index)
+		a.bank = a.selected / pm.PADS_PER_BANK
+	}
 	ui.panel_focus(&a.ws, "sequence")
 }
 

@@ -63,3 +63,38 @@ def test_knob_moves_are_recorded_only_when_armed(app, fixtures):
     s = app.state()
     assert s["points"] >= 2, s["points"]
     assert s["undo"] == "Draw Automation", s["undo"]
+
+
+def test_every_automatable_knob_automates_from_its_menu(app, fixtures):
+    # Right-click, Automate: the Automation tab of the current sequence,
+    # on that pad (selected), on that knob's lane. The sampler's knobs
+    # (filter, its envelope, the pitch envelope, an LFO), the pad's own.
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.cmd(f"load 5 {os.path.join(fixtures, 'kick.wav')}")
+    app.cmd("select 5")
+    cases = [
+        ("filter", "Cutoff", "Cutoff"),
+        ("filter", "Env", "Filter Envelope"),
+        ("pitch", "Velocity", "Pitch Velocity"),
+        ("pitch", "Amount", "Pitch Envelope"),
+        ("lfo", "Rate", "LFO 1 Rate"),
+        ("env", "Decay", "Decay"),
+        ("env", "Sustain", "Sustain"),
+    ]
+    for page, knob, lane in cases:
+        app.cmd("select 5")
+        app.cmd(f"panel {page}")
+        app.wait(3)
+        app.click(knob, window="detail", right=True)
+        assert app.has("Automate"), f"{knob} ({page}): no Automate in its menu"
+        app.click("Automate")
+        s = app.state()
+        assert s["seq_mode"] == "Automation", (knob, s["seq_mode"])
+        assert s["auto_lane"].startswith("A6") and s["auto_lane"].endswith(lane), (knob, s["auto_lane"])
+        assert s["selected"] == 5
+    # From another pad's strip in the Mixer: that pad becomes the one edited.
+    app.panel("Mixer")
+    app.click("A1 fader", window="mixer", right=True)
+    app.click("Automate")
+    s = app.state()
+    assert s["selected"] == 0 and s["auto_lane"] == "A1 kick · Volume", (s["selected"], s["auto_lane"])

@@ -628,16 +628,40 @@ draw_pad_eq :: proc(a: ^App) {
 // what turns the knob's value into its units ("": none to automate).
 @(private)
 voice_param :: proc(key: Voice_Key, label: string) -> (name: string, scale: f32) {
-	#partial switch key {
-	case .Amp_Adsr:
+	// An envelope's stage: "A", "D", "S", "R" (sustain 0..1 here, percent there).
+	stage :: proc(prefix, label: string) -> (string, f32) {
 		switch label {
-		case "Decay":   return "Decay", 1
-		case "Sustain": return "Sustain", 100
+		case "A", "Attack":  return fmt.tprintf("%sAttack", prefix), 1
+		case "D", "Decay":   return fmt.tprintf("%sDecay", prefix), 1
+		case "S", "Sustain": return fmt.tprintf("%sSustain", prefix), 100
+		case "R", "Release": return fmt.tprintf("%sRelease", prefix), 1
 		}
-	case .Cutoff:    return "Cutoff", 1
-	case .Resonance: return "Resonance", 100
-	case .Key_Track: return "Filter Key Tracking", 100
-	case .Fine:      return "Fine Tune", 1
+		return "", 1
+	}
+	if int(key) >= int(Voice_Key.Lfo) && int(key) < int(Voice_Key.Route) {
+		lfo := (int(key) - int(Voice_Key.Lfo)) / 10 + 1
+		switch (int(key) - int(Voice_Key.Lfo)) % 10 {
+		case 2: return fmt.tprintf("LFO %d Rate", lfo), 1
+		case 3: return fmt.tprintf("LFO %d Fade In", lfo), 1
+		case 4: return fmt.tprintf("LFO %d Phase", lfo), 1
+		}
+		return "", 1
+	}
+	#partial switch key {
+	case .Amp_Adsr:    return stage("", label)
+	case .Filter:      if label == "Sustain" do return "Sustain", 100 // (the amp's sustain knob's key: its envelope's second field)
+	case .Filter_Adsr: return stage("Filter ", label)
+	case .Pitch_Adsr:  return stage("Pitch ", label)
+	case .Cutoff:      return "Cutoff", 1
+	case .Resonance:   return "Resonance", 100
+	case .Key_Track:   return "Filter Key Tracking", 100
+	case .Vel_Cutoff:  return "Filter Velocity", 100
+	case .Filter_Env:  return "Filter Envelope", 100
+	case .Pitch_Env:   return "Pitch Envelope", 1
+	case .Vel_Pitch:   return "Pitch Velocity", 1
+	case .Pitch_Track: return "Pitch Key Tracking", 100
+	case .Fine:        return "Fine Tune", 1
+	case .Glide:       return "Glide", 1
 	}
 	return "", 1
 }
