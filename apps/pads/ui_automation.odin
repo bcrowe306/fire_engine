@@ -10,6 +10,8 @@ import im "deps:imgui"
 import fc "fire:core"
 import "fire:dsp"
 import "fire:graph"
+import "fire:sampler"
+import "fire:synth"
 
 // Automation of any parameter, as the Sequence view's Automation tab shows
 // it: which lane it is showing, what each target is called, its values
@@ -286,14 +288,37 @@ install_knob_hooks :: proc(a: ^App) {
 	}
 }
 
-// What automation gives the knob being drawn now, in the knob's units
-// (its target's, over `knob_scale`), while it plays.
+// Where the knob being drawn is moved to now by something else, in the
+// knob's units (its target's, over `knob_scale`): automation playing, or
+// the instrument's own modulation while it sounds (a sampler's cutoff and
+// resonance, a synth's filters' cutoffs: envelopes, LFOs, routes).
 knob_live :: proc(a: ^App) -> (f32, bool) {
 	t := a.knob_target
 	if t.track == .None do return 0, false
-	v, ok := pm.automated_value(&a.m, t)
-	if !ok do return 0, false
-	return v / a.knob_scale if a.knob_scale != 0 else v, true
+	scale := a.knob_scale if a.knob_scale != 0 else 1
+	if v, ok := pm.automated_value(&a.m, t); ok do return v / scale, true
+	if t.track != .Pad || t.device != .Sound || int(t.index) >= pm.PADS do return 0, false
+	i := int(t.index)
+	pad := a.m.project.pads[i]
+	#partial switch pad.kind {
+	case .Sampler:
+		l, ok := pm.pad_live(&a.m.engine, i)
+		if !ok || !l.sounding do return 0, false
+		switch t.param {
+		case sampler.SAMPLER_PARAM_FILTER_CUTOFF:
+			if abs(l.cutoff - f64(pad.voice.cutoff)) > 0.5 do return f32(l.cutoff) / scale, true
+		case sampler.SAMPLER_PARAM_FILTER_RESONANCE:
+			if abs(l.resonance - f64(pad.voice.resonance)) > 0.002 do return f32(l.resonance) * 100 / scale, true
+		}
+	case .Synth:
+		l, ok := pm.synth_live(&a.m.engine, i)
+		if !ok || !l.sounding do return 0, false
+		for n in 1 ..= synth.FILTERS do if t.param == synth.filter_param(n, .Cutoff) {
+			own := pm.synth_value(&a.m, i, t.param)
+			if abs(l.cutoffs[n - 1] - own) > 0.05 do return l.cutoffs[n - 1] / scale, true
+		}
+	}
+	return 0, false
 }
 
 // The knob's own menu items: Automate (or Show Automation when the

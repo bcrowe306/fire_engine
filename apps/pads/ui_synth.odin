@@ -170,7 +170,9 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 	shown := fmt.ctprintf("%s", param_text(spec, v))
 	step: f32 = 1 if spec.curve == .Indexed else 0
 	if a.param_host.slot { // (an effect slot: no modulation)
+		knob_target(a, fx_auto_target(a.param_host.t, id)) // (Automate in its menu, its automation's ring)
 		e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, size = SYNTH_KNOB)
+		knob_target(a, {})
 		if e.changed do host_set(a, id, v, spec.name)
 		if e.ended do app.seal(&m.history)
 		return
