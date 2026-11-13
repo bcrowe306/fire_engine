@@ -43,6 +43,9 @@ Seq_State :: struct {
 	menu_target: Target, // what the open note or point menu is for
 	aud:      Audio_View, // the Audio tab's
 	row_h:    f32, // vertical zoom: the rows' height in points (0: as many as fit, ROW_MIN or more)
+	row_seen:  [256]u32, // each row's strikes as last seen (a new one flashes it)
+	row_key:   [256]int, // ... and whose they were (pad * 256 + pitch + 128 + 1; another row there now: no flash)
+	row_flash: [256]f32, // each row's flash left, seconds
 	drawn:    i32, // the frame the view was last drawn (one missed: it came back into sight, the selected pad's row brought into view)
 }
 
@@ -229,6 +232,28 @@ draw_sequence :: proc(user: rawptr) {
 		used := pm.pad_used(&m.project, r)
 		rows[k] = {name = fmt.tprintf("%s  %s", pm.pad_label(r), pm.pad_name(pad) if used else "—"), color = ui.rgb(pad.color) if used else ui.mix(t.raised, t.text, 0.18)}
 	}
+	// Played now (pads, keys, MIDI coming in): a row lights while its note
+	// is held, and flashes for a tap.
+	{
+		dt := im.GetIO().DeltaTime
+		for r, k in row_pad do if k < len(st.row_seen) {
+			held: bool
+			strikes: u32
+			if slicer || st.piano {
+				h, n := pm.key_held(&a.capture, r, row_pitch[k])
+				held, strikes = h, u32(n)
+			} else {
+				held, strikes = pm.pad_held(&a.capture, r)
+			}
+			key := r * 256 + (row_pitch[k] + 128 if slicer || st.piano else 0) + 1
+			if key != st.row_key[k] do st.row_key[k], st.row_seen[k], st.row_flash[k] = key, strikes, 0 // (another pad or key on this row now)
+			if strikes != st.row_seen[k] do st.row_flash[k] = 0.15
+			st.row_seen[k] = strikes
+			st.row_flash[k] = max(st.row_flash[k] - dt, 0)
+			rows[k].lit = 1 if held else st.row_flash[k] / 0.15
+			rows[k].lit_color = ui.rgb(m.project.pads[r].color)
+		}
+	}
 	row_of :: proc(row_pad, row_pitch: []int, piano: bool, n: pm.Seq_Note) -> int {
 		for r, k in row_pad do if r == int(n.pad) && (!piano || row_pitch[k] == int(n.pitch)) do return k
 		return -1
@@ -343,6 +368,25 @@ draw_sequence :: proc(user: rawptr) {
 			if m.project.pads[pad].kind != .Audio do continue
 			y := top.y + roll_h - f32(k - st.view.key0 + 1) * row_h
 			draw_part(a, dl, slot, pad, {top.x + names_w, y + 1}, {top.x + avail.x, y + row_h - 1}, st.view.beat0, st.view.beats, ui.rgb(m.project.pads[pad].color))
+			draw_live_audio(a, dl, pad, {top.x + names_w, y + 1}, {top.x + avail.x, y + row_h - 1}, st.view.beat0, st.view.beats)
+		}
+	}
+	// Recording: the notes held now, growing where they will go.
+	{
+		names_w := ui.roll_rows_width(rows)
+		row_h := roll_h / f32(max(st.view.keys, 1))
+		dl := im.GetWindowDrawList()
+		x_of :: proc(b, beat0, beats: f64, x0, w: f32) -> f32 { return x0 + f32((b - beat0) / beats) * w }
+		w := avail.x - names_w
+		for ln in pm.live_notes(m, &a.capture) do if ln.slot == slot {
+			k := row_of(row_pad[:], row_pitch[:], st.piano, {pad = u8(ln.pad), pitch = i8(ln.pitch)})
+			if k < st.view.key0 || k >= st.view.key0 + st.view.keys do continue
+			y := top.y + roll_h - f32(k - st.view.key0 + 1) * row_h
+			x0 := x_of(ln.start, st.view.beat0, st.view.beats, top.x + names_w, w)
+			x1 := x_of(min(ln.start + ln.length, length), st.view.beat0, st.view.beats, top.x + names_w, w)
+			c := ui.rgb(m.project.pads[ln.pad].color)
+			im.DrawList_AddRectFilled(dl, {x0 + 1, y + 1}, {max(x1, x0 + 4) - 1, y + row_h - 1}, ui.col(ui.with_alpha(c, 0.55)), 3)
+			im.DrawList_AddRect(dl, {x0 + 1, y + 1}, {max(x1, x0 + 4) - 1, y + row_h - 1}, ui.col(ui.theme().danger), 3, 1.5)
 		}
 	}
 	// The bar between the grid and the lane: drag it to give the lane more

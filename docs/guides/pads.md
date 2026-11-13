@@ -1113,6 +1113,12 @@ Elsewhere, near what they change:
   the arrow sets the grid (1/4–1/64, triplets), the **strength** (100%:
   onto the grid; 50%: half way) and **swing** (the grid's off-beats
   pushed later).
+- **What you play shows as you play it**: in the Sequence view a row's
+  name and lane light in its pad's colour while its note is held (pads,
+  keys, MIDI; a tap flashes it). Recording, a held note grows where it
+  will go (outlined in red) until you let go of it, and an armed audio
+  track's input is drawn as it comes in (its level a bar a frame, in red)
+  where the take will be, in its row and in the Audio tab.
 
 These settings are saved with the project.
 

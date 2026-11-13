@@ -546,6 +546,8 @@ roll_rows_width :: proc(rows: []Roll_Row) -> f32 {
 Roll_Row :: struct {
 	name:  string,
 	color: Color, // {} = the accent
+	lit:   f32,   // 0..1: played now (its name and lane light up in its colour)
+	lit_color: Color, // the colour it lights in ({} = `color`)
 }
 
 // The visible part of a piano roll.

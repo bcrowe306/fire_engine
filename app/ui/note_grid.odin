@@ -103,11 +103,13 @@ note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll
 		c := r.color if r.color != {} else t.accent
 		bg := t.raised if k % 2 == 0 else mix(t.raised, t.bg, 0.3)
 		if hovered do bg = mix(bg, t.text, 0.08)
+		lit := clamp(r.lit, 0, 1)
+		if lit > 0 do bg = mix(bg, r.lit_color if r.lit_color != {} else c, 0.55 * lit) // (played now: lit in its colour)
 		im.DrawList_AddRectFilled(dl, {pos.x, y}, {pos.x + names_w - 2, y + row_h}, col(bg))
 		im.DrawList_AddRectFilled(dl, {pos.x, y + 1}, {pos.x + 4, y + row_h - 1}, col(c), 2)
 		nc := strings.clone_to_cstring(r.name, context.temp_allocator)
 		fs := min(im.GetFontSize(), row_h * 0.78)
-		if fs >= 9 do im.DrawList_AddTextFontPtr(dl, im.GetFont(), fs, {pos.x + 4 + t.pad.x, y + (row_h - fs * 1.2) / 2 + 1}, col(t.text if hovered else t.text_dim), nc)
+		if fs >= 9 do im.DrawList_AddTextFontPtr(dl, im.GetFont(), fs, {pos.x + 4 + t.pad.x, y + (row_h - fs * 1.2) / 2 + 1}, col(t.text if hovered || lit > 0.3 else t.text_dim), nc)
 		im.PopID()
 	}
 
@@ -224,6 +226,11 @@ note_grid :: proc(id: cstring, notes: []Roll_Note, rows: []Roll_Row, view: ^Roll
 	for k in 0 ..< nk {
 		y := grid.y + size.y - f32(k + 1) * row_h
 		im.DrawList_AddRectFilled(dl, {grid.x, y}, {grid.x + gw, y + row_h}, col(t.raised if k % 2 == 0 else mix(t.raised, t.bg, 0.3)))
+		// Played now: its lane lit faintly in its colour.
+		if row := view.key0 + k; row >= 0 && row < len(rows) && rows[row].lit > 0 {
+			c := rows[row].lit_color if rows[row].lit_color != {} else (rows[row].color if rows[row].color != {} else t.accent)
+			im.DrawList_AddRectFilled(dl, {grid.x, y}, {grid.x + gw, y + row_h}, col(with_alpha(c, 0.16 * clamp(rows[row].lit, 0, 1))))
+		}
 	}
 	if snap > 0 && f32(snap) * beat_w >= 10 {
 		for b := math.floor(view.beat0 / snap) * snap; b <= view.beat0 + view.beats; b += snap {

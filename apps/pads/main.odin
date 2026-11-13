@@ -93,6 +93,7 @@ App :: struct {
 	leave:     Leave_State,
 	template:  Template_Ui, // the Save as Template dialog
 	cleanup:   Cleanup_Ui,  // the Clean Up Project dialog
+	live_audio: [pm.PADS][dynamic]Live_Peak, // audio tracks' input as it is recorded (see `live_audio_frame`)
 	status:    Status_State, // the status bar's lights and load  // leaving a project with changes: the prompt; a crash's backup to offer
 	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
@@ -391,6 +392,7 @@ frame :: proc(a: ^App) {
 	pm.plugins_idle(&a.m)
 	editors_frame(a)
 	pm.capture_poll(&a.m, &a.capture)
+	live_audio_frame(a)
 	// A MIDI pad pressed while the Sample control is armed records into it
 	// (and its release stops it); the note itself played already.
 	for t in a.capture.midi_presses {

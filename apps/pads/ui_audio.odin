@@ -449,6 +449,7 @@ draw_audio_view :: proc(a: ^App, length, snap: f64) {
 		im.DrawList_AddRectFilled(dl, {xof(av.range[0], bw, pos.x), lo.y}, {xof(av.range[1], bw, pos.x), hi.y}, ui.col(ui.with_alpha(t.accent, 0.18)))
 	}
 	draw_part(a, dl, slot, pad, lo, hi, 0, length, ui.rgb(p.pads[pad].color), boxes = true, sel = av.region)
+	draw_live_audio(a, dl, pad, lo, hi, 0, length) // (recording: what comes in, as it comes)
 	// Its track's own loop: the end marked, what follows (its loop again) dimmed.
 	if loop := pm.part_beats(p, slot, pad); loop < length - 1e-9 {
 		lx := xof(loop, bw, pos.x)
@@ -566,4 +567,58 @@ draw_audio_view :: proc(a: ^App, length, snap: f64) {
 dragged_since_press :: proc(px: f32) -> bool {
 	d := im.GetMouseDragDelta(.Left, 0)
 	return abs(d.x) > px || abs(d.y) > px
+}
+
+// --- what is being recorded, drawn as it comes in ---------------------------------------------
+
+// A frame's level on an armed audio track's input while recording: where
+// the sequence was then (beats into it), and its peak.
+Live_Peak :: struct {
+	beat: f64,
+	peak: f32,
+}
+
+// Each frame: while recording, each armed audio track's input level where
+// the sequence is (what the take will hold, as a strip of levels: a peak
+// a frame, from the meters already read, so it costs nothing on the
+// audio thread); a new pass starts it again; stopped, it is let go (the
+// take, folded in, shows instead).
+live_audio_frame :: proc(a: ^App) {
+	m := &a.m
+	beat, playing := pm.position(&m.engine)
+	recording := a.capture.armed && playing && beat >= 0
+	for i in 0 ..< pm.PADS {
+		l := &a.live_audio[i]
+		if !recording || m.project.pads[i].kind != .Audio || !pm.track_armed(m, i) {
+			if len(l) > 0 do clear(l)
+			continue
+		}
+		if len(l) > 0 && beat < l[len(l) - 1].beat - 1e-6 do clear(l) // (round again: a new pass)
+		append(l, Live_Peak{beat, input_peak(a, i)})
+	}
+}
+
+// Pad `pad`'s input as it is being recorded, over the lane `lo`..`hi`
+// showing beats `beat0`.. (`beats` across): its level a bar a frame, in
+// the record colour.
+draw_live_audio :: proc(a: ^App, dl: ^im.DrawList, pad: int, lo, hi: im.Vec2, beat0, beats: f64) {
+	l := a.live_audio[pad]
+	if len(l) < 2 || beats <= 0 do return
+	t := ui.theme()
+	w := hi.x - lo.x
+	mid := (lo.y + hi.y) / 2
+	half := (hi.y - lo.y) / 2 - 1
+	x_of :: proc(b, beat0, beats: f64, x0, w: f32) -> f32 { return x0 + f32((b - beat0) / beats) * w }
+	x0 := x_of(l[0].beat, beat0, beats, lo.x, w)
+	x1 := x_of(l[len(l) - 1].beat, beat0, beats, lo.x, w)
+	im.DrawList_AddRectFilled(dl, {max(x0, lo.x), lo.y}, {min(x1, hi.x), hi.y}, ui.col(ui.with_alpha(t.danger, 0.12)), 2)
+	for k in 1 ..< len(l) {
+		xa := x_of(l[k - 1].beat, beat0, beats, lo.x, w)
+		xb := x_of(l[k].beat, beat0, beats, lo.x, w)
+		if xb < lo.x || xa > hi.x do continue
+		// (dB to the bar's height: -48 dB at nothing.)
+		db := 20 * math.log10(max(l[k].peak, 1e-6))
+		h := half * clamp((db + 48) / 48, 0, 1)
+		im.DrawList_AddRectFilled(dl, {max(xa, lo.x), mid - h}, {min(max(xb, xa + 1), hi.x), mid + h}, ui.col(ui.with_alpha(t.danger, 0.85)))
+	}
 }

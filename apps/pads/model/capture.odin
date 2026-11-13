@@ -21,6 +21,29 @@ Capture :: struct {
 	// an armed Sample control starts on one), a hit each: on or off.
 	midi_presses:  [dynamic]Taken,
 	midi_offset:   f64, // seconds: notes from MIDI are recorded this much earlier (a controller's delay)
+	// What is held now, played live (pads, keys, MIDI; a MIDI effect's
+	// notes too), and how many times each was struck: for the UI to light
+	// the rows they are on. By pad, then pitch + 128.
+	down:          [PADS][256]bool,
+	strikes:       [PADS][256]u16,
+}
+
+// Whether pad `pad`'s note at `pitch` (0: the pad itself) is held now,
+// and how many times it has been struck (to flash a tap).
+key_held :: proc(c: ^Capture, pad, pitch: int) -> (held: bool, strikes: u16) {
+	if pad < 0 || pad >= PADS || pitch < -128 || pitch > 127 do return
+	return c.down[pad][pitch + 128], c.strikes[pad][pitch + 128]
+}
+
+// Whether any note of pad `pad` is held now, and how many times it has
+// been struck in all.
+pad_held :: proc(c: ^Capture, pad: int) -> (held: bool, strikes: u32) {
+	if pad < 0 || pad >= PADS do return
+	for d, k in c.down[pad] {
+		held ||= d
+		strikes += u32(c.strikes[pad][k])
+	}
+	return
 }
 
 @(private)
@@ -68,6 +91,11 @@ capture_destroy :: proc(c: ^Capture) {
 capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 	clear(&c.midi_presses)
 	for t in rt.spsc_pop(&m.engine.router.taken) {
+		if !t.no_pad && int(t.pad) < PADS {
+			k := int(t.pitch) + 128
+			c.down[t.pad][k] = t.on
+			if t.on do c.strikes[t.pad][k] += 1
+		}
 		if t.midi_key >= 0 && !t.no_pad && !t.fx do append(&c.midi_presses, t)
 		if t.midi_key >= 0 && t.on {
 			c.midi_key = int(t.midi_key)
@@ -162,4 +190,26 @@ finish_hit :: proc(m: ^Model, c: ^Capture, i: int, beat: f64, k := 0) {
 	append(&notes, Seq_Note{start = start, length = d, pad = u8(i), pitch = h.pitch, velocity = h.velocity, probability = 1})
 	s.notes = notes[:]
 	set_sequence(m, h.slot, .Record, "Record", s)
+}
+
+// A note being recorded: held now, from where it went (its sequence and
+// beat in it) for as long as it has been held.
+Live_Note :: struct {
+	pad:    int,
+	pitch:  int,
+	slot:   int,
+	start:  f64, // beats into its sequence
+	length: f64, // beats held so far
+}
+
+// The notes held now while recording (for the UI to draw them growing
+// before they are let go and become notes). Temporary allocator.
+live_notes :: proc(m: ^Model, c: ^Capture) -> []Live_Note {
+	if !c.armed do return nil
+	out := make([dynamic]Live_Note, context.temp_allocator)
+	pos, _, _ := transport.timeline_status(m.engine.host.clock, m.engine.timeline)
+	for hits, i in c.held do for h in hits {
+		append(&out, Live_Note{pad = i, pitch = int(h.pitch), slot = h.slot, start = h.start, length = max(f64(pos) - h.played, 0)})
+	}
+	return out[:]
 }
