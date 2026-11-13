@@ -615,6 +615,22 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		pm.set_pad(&a.m, i, .Input, "Set Input", p)
 		app.seal(&a.m.history)
 		return true
+	case "window": // window LANE ROW (1-based): the launcher's window there
+		if len(w) < 3 do return false
+		a.perf.win_lane, a.perf.win_row = num(w, 1) - 1, num(w, 2) - 1
+		clamp_window(a)
+		return true
+	case "lanes":
+		// lanes add / delete N / name N NAME / move SLOT LANE ROW (all 1-based)
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "add":    pm.add_lane(&a.m)
+		case "delete": pm.delete_lane(&a.m, num(w, 2) - 1)
+		case "name":   if len(w) > 3 do pm.rename_lane(&a.m, num(w, 2) - 1, strings.join(w[3:], " ", context.temp_allocator))
+		case "move":   if len(w) > 4 do pm.move_sequence(&a.m, num(w, 2) - 1, num(w, 3) - 1, num(w, 4) - 1)
+		case: return false
+		}
+		return true
 	case "repeat_all":
 		// repeat_all on|off [RATE]: the toolbar's note repeat (RATE: 1/4 1/8 1/8T 1/16 1/16T 1/32 1/32T)
 		if len(w) < 2 do return false
@@ -1087,13 +1103,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		return true
 	case "launch":
-		// launch SLOT (in its column; stopped, it starts) / launch row R [BANK] /
+		// launch SLOT (in its lane; stopped, it starts) / launch row R [BANK] (scene R of the window, or of an older project's bank) /
 		// launch stop COLUMN|all / launch record on|off (Record to Song)
 		if len(w) < 2 do return false
 		switch w[1] {
 		case "row":
 			if len(w) < 3 do return false
-			pm.launch_row(&a.m, num(w, 3) - 1 if len(w) > 3 else a.perf.seq_bank, num(w, 2) - 1)
+			pm.launch_scene(&a.m, (num(w, 3) - 1) * 4 + num(w, 2) - 1 if len(w) > 3 else a.perf.win_row + num(w, 2) - 1)
 		case "stop":
 			if len(w) > 2 && w[2] == "all" do pm.stop_all_columns(&a.m.engine)
 			else if len(w) > 2 do pm.stop_column(&a.m.engine, num(w, 2) - 1)

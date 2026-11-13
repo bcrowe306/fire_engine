@@ -1,6 +1,6 @@
 # Launcher lanes
 
-Status: planned (decisions taken 2026-11-13). Not built.
+Status: built (decisions taken 2026-11-13). Not yet: an 8 × 8 window, lane mute/solo, follow actions, scene names, controller mapping.
 
 ## What there is now
 
@@ -33,9 +33,9 @@ Status: planned (decisions taken 2026-11-13). Not built.
 
 ## The model
 
-- `Sequence.lane: u8` (0..LANES-1) and `Sequence.row: u8` (its place in
-  the lane). `Project.lanes: [MAX_LANES]Lane` (`name`, `color`) and
-  `lane_count` (default 8, a setting for new projects).
+- `Project.lanes: Lanes`: each sequence's `Seq_Place` (lane, row), the
+  lanes (`Launch_Lane`: name, colour) and their count (default 8, a
+  setting for new projects) — one value, so an edit is one undo step.
 - `launch_col(slot)` becomes the sequence's lane; `Launcher.cols` grows to
   MAX_LANES (16).
 - A lane's sequences: those with that lane, by row. Rows are compacted

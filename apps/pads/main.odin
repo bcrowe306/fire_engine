@@ -356,7 +356,7 @@ frame :: proc(a: ^App) {
 	a.seq.focused, a.song_ui.focused = false, false
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
-	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.seq_bank, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
+	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.win_row / 4, seq_lane0 = a.perf.win_lane, seq_row0 = a.perf.win_row, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
 	fold_pads_check(a)
@@ -513,7 +513,9 @@ play_keys :: proc(a: ^App) {
 	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt do return
 	if a.perf.seq_keys { // the sequence pads' Keys switch: the keys play them
 		for k, i in PAD_KEYS {
-			slot := a.perf.seq_bank * pm.PADS_PER_BANK + i
+			// (The launcher's window: the bottom row Z X C V, each a lane.)
+			slot, _, _, _ := window_cell(a, i % 4, i / 4)
+			if slot < 0 do continue
 			if im.IsKeyPressed(k, false) do seq_pad_press(a, slot, true)
 			if im.IsKeyReleased(k) do seq_pad_release(a, slot)
 		}
@@ -579,7 +581,7 @@ handle_drops :: proc(a: ^App) {
 // Puts the app as the project was left (after opening one).
 view_restore :: proc(a: ^App) {
 	v := a.m.project.view
-	a.play_mode, a.keys, a.bank, a.selected, a.perf.seq_bank, a.perf.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_bank, v.seq_keys
+	a.play_mode, a.keys, a.bank, a.selected, a.perf.win_lane, a.perf.win_row, a.perf.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_lane0, v.seq_row0, v.seq_keys
 	a.seq.mode = v.seq_mode
 }
 

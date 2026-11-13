@@ -227,6 +227,18 @@ register_commands :: proc(a: ^App) {
 	// Sequences.
 	add(c, {id = "seq.select", label = "Edit", icon = ui.ICON_LIST_MUSIC, kinds = {.Sequence}, group = 0, run = proc(a: ^App, t: Target) { pm.select_slot(&a.m, t.slot) }})
 	add(c, {id = "seq.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Sequence}, group = 0, keys = "F2", run = proc(a: ^App, t: Target) { begin_rename_sequence(a, t.slot) }})
+	add(c, {id = "seq.lane_left", label = "Move to the Lane Before", icon = ui.ICON_CHEVRON_LEFT, kinds = {.Sequence}, group = 2,
+		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot) - 1, pm.lane_rows(p, pm.seq_lane(p, t.slot) - 1)) },
+		enabled = proc(a: ^App, t: Target) -> bool { return pm.seq_lane(&a.m.project, t.slot) > 0 }})
+	add(c, {id = "seq.lane_right", label = "Move to the Lane After", icon = ui.ICON_CHEVRON_RIGHT, kinds = {.Sequence}, group = 2,
+		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot) + 1, pm.lane_rows(p, pm.seq_lane(p, t.slot) + 1)) },
+		enabled = proc(a: ^App, t: Target) -> bool { return pm.seq_lane(&a.m.project, t.slot) < a.m.project.lanes.count - 1 }})
+	add(c, {id = "seq.row_up", label = "Move Up a Row", icon = ui.ICON_CHEVRON_UP, kinds = {.Sequence}, group = 2,
+		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot), int(p.lanes.place[t.slot].row) + 1) },
+		enabled = proc(a: ^App, t: Target) -> bool { p := &a.m.project; return int(p.lanes.place[t.slot].row) < pm.lane_rows(p, pm.seq_lane(p, t.slot)) - 1 }})
+	add(c, {id = "seq.row_down", label = "Move Down a Row", icon = ui.ICON_CHEVRON_DOWN, kinds = {.Sequence}, group = 2,
+		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot), int(p.lanes.place[t.slot].row) - 1) },
+		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.lanes.place[t.slot].row > 0 }})
 	add(c, {id = "seq.duplicate", label = "Duplicate", icon = ui.ICON_COPY_PLUS, kinds = {.Sequence}, group = 1, keys = "Cmd+D", run = proc(a: ^App, t: Target) { pm.duplicate_sequence(&a.m, t.slot) }})
 	add(c, {id = "seq.copy_bars", label = "Copy Bars to…", icon = ui.ICON_COPY, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { begin_copy_bars(a, t.slot) }})
 	add(c, {id = "seq.double", label = "Double", icon = ui.ICON_MERGE, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pm.double_sequence(&a.m, t.slot) }})

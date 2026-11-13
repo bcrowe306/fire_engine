@@ -22,9 +22,9 @@ launcher_columns_play_together :: proc(t: ^testing.T) {
 	r := two_columns(t, "launch_together")
 	defer rig_destroy(r)
 	m := &r.m
-	testing.expect_value(t, pm.launch_col(0), 0)
-	testing.expect_value(t, pm.launch_col(1), 1)
-	testing.expect_value(t, pm.launch_col(4), 0) // (the row above, the same column)
+	testing.expect_value(t, pm.launch_col(&m.project, 0), 0)
+	testing.expect_value(t, pm.launch_col(&m.project, 1), 1)
+	testing.expect_value(t, pm.launch_col(&m.project, 8), 0) // (8 lanes: the row above, the same lane)
 	pm.launch_slot(m, 0) // stopped: it starts, alone
 	render_synced(r, 1200)
 	m.project.switch_at = .Now
@@ -47,20 +47,20 @@ a_launch_replaces_only_its_column :: proc(t: ^testing.T) {
 	r := two_columns(t, "launch_replace")
 	defer rig_destroy(r)
 	m := &r.m
-	pm.add_note(m, 4, {start = 0, length = 0.25, pad = 0, velocity = 1}) // sequence 5: column 1 again
-	pm.launch_row(m, 0, 0) // sequences 1 and 2 (3 and 4 are empty)
+	pm.add_note(m, 8, {start = 0, length = 0.25, pad = 0, velocity = 1}) // sequence 9: lane 1 again
+	pm.launch_scene(m, 0) // sequences 1 and 2 (the rest of the row is empty)
 	m.project.switch_at = .Bar
 	render_synced(r, 48_000) // half a bar in
-	pm.launch_slot(m, 4)
+	pm.launch_slot(m, 8)
 	next, in_beats, ok := pm.pending_switch(&m.engine)
-	testing.expectf(t, ok && next == 4 && abs(in_beats - 2) < 0.1, "queued for the bar (%v %v %v)", next, in_beats, ok)
+	testing.expectf(t, ok && next == 8 && abs(in_beats - 2) < 0.1, "queued for the bar (%v %v %v)", next, in_beats, ok)
 	_, _, queued_next, _, queued := pm.column_state(&m.engine, 0)
-	testing.expect(t, queued && queued_next == 4, "queued in its column")
+	testing.expect(t, queued && queued_next == 8, "queued in its column")
 	render_synced(r, 48_000 + 4800) // past the bar
 	s0, _, _, _, _ := pm.column_state(&m.engine, 0)
 	s1, _, _, _, _ := pm.column_state(&m.engine, 1)
-	testing.expectf(t, s0 == 4 && s1 == 1, "column 1 took over, column 2 played on (%v %v)", s0, s1)
-	testing.expect_value(t, m.project.slot, 4) // (the editor shows the one launched)
+	testing.expectf(t, s0 == 8 && s1 == 1, "column 1 took over, column 2 played on (%v %v)", s0, s1)
+	testing.expect_value(t, m.project.slot, 8) // (the editor shows the one launched)
 	// Picking a sequence to edit (not from the launcher): it plays alone.
 	pm.select_slot(m, 1)
 	render_synced(r, 48_000 * 2 + 2400)
@@ -76,7 +76,7 @@ a_row_launches_together_and_the_loop_fits_them_all :: proc(t: ^testing.T) {
 	s := m.project.sequences[1]
 	s.bars = 3
 	pm.set_sequence(m, 1, .Bars, "Bars", s)
-	pm.launch_row(m, 0, 0) // sequences 1 and 2 (3 and 4 are empty)
+	pm.launch_scene(m, 0) // sequences 1 and 2 (the rest of the row is empty)
 	s0, _, _, _, _ := pm.column_state(&m.engine, 0)
 	s1, _, _, _, _ := pm.column_state(&m.engine, 1)
 	s2, _, _, _, _ := pm.column_state(&m.engine, 2)
@@ -96,6 +96,7 @@ launches_are_recorded_into_the_song :: proc(t: ^testing.T) {
 	r := two_columns(t, "launch_record")
 	defer rig_destroy(r)
 	m := &r.m
+	m.project.lanes = pm.default_lanes(4) // (4 lanes, as an older project's: sequence 5 is lane 1's second)
 	pm.add_note(m, 4, {start = 0, length = 0.25, pad = 0, velocity = 1}) // sequence 5: column 1
 	m.project.switch_at = .Bar
 	pm.set_launch_record(m, true)
@@ -132,6 +133,7 @@ continue_carries_on_where_the_playhead_is :: proc(t: ^testing.T) {
 	r := two_columns(t, "launch_continue")
 	defer rig_destroy(r)
 	m := &r.m
+	m.project.lanes = pm.default_lanes(4) // (4 lanes, as an older project's: sequence 5 is lane 1's second)
 	s := m.project.sequences[4]
 	s.bars = 2
 	pm.set_sequence(m, 4, .Bars, "Bars", s) // sequence 5: 8 beats, column 1

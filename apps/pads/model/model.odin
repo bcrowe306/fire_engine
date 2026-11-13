@@ -267,7 +267,8 @@ View_State :: struct {
 	keys:      Keys,
 	bank:      int,
 	selected:  int,
-	seq_bank:  int,
+	seq_bank:  int, // (before v37: the sequence pads' bank; now `seq_row0 / 4`)
+	seq_lane0, seq_row0: int, // the launcher's window: its first lane and row
 	seq_keys:  bool, // the pad keys play the sequence pads
 	seq_mode:  Seq_Mode, // the Sequence view's tab: Notes or Automation
 }
@@ -291,6 +292,7 @@ Project :: struct {
 	launch_continue: bool, // a launched sequence carries on where the playhead is (its column's pass so far, modulo its length), else from its top
 	view:    View_State, // how the app was left: kept with the project, so it opens as it was
 	sequences: [SLOTS]Sequence,
+	lanes:   Lanes, // the launcher's lanes and each sequence's place in them
 	clips:   [SLOTS][PADS]Clip, // audio pads' takes, per sequence
 	parts:   app.Store(Audio_Part), // their edits (see `Audio_Part`; only those a clip names are saved)
 	freezes: [SLOTS][PADS]Clip, // frozen pads' renderings, per sequence (see `freeze_begin`)
@@ -359,6 +361,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	p.transport = default_transport()
 	for &pad in p.pads do pad = default_pad()
 	for &s in p.sequences do s = default_sequence()
+	p.lanes = default_lanes(DEFAULT_LANES)
 	p.perf_fx = default_perf_fx()
 	p.bus_count = DEFAULT_BUSES
 	p.arrangement_count = 1

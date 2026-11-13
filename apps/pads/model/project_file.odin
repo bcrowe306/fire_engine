@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 36 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions)
+PROJECT_VERSION :: 37 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -603,6 +603,18 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u8(w, pad.input.source)
 	}
 	write_parts(w, p) // v36
+	// v37: the launcher's lanes, and its window.
+	fc.write_int(w, p.lanes.count)
+	for &l in p.lanes.lanes {
+		fc.write_string(w, strings.truncate_to_byte(string(l.name[:]), 0))
+		fc.write_u32(w, l.color)
+	}
+	for x in p.lanes.place {
+		fc.write_u8(w, x.lane)
+		fc.write_u8(w, x.row)
+	}
+	fc.write_int(w, p.view.seq_lane0)
+	fc.write_int(w, p.view.seq_row0)
 }
 
 // v36: the audio parts clips name (only those): where, the takes, the
@@ -727,6 +739,7 @@ project_read :: proc(p: ^Project, l: session.Loaded) -> fc.Error {
 	c, ok := session.find_extra(l, PROJECT_TAG)
 	if !ok do return .Invalid_Data
 	if c.version > PROJECT_VERSION do return .Unsupported
+	if c.version < 37 do p.lanes = default_lanes(4) // (what an older project played: its banks' 4 columns)
 	r := fc.chunk_reader({c.tag, c.version, c.data})
 	read_project(&r, p, c.version)
 	return .Invalid_Data if r.err != .None else .None
@@ -1211,6 +1224,23 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 			pad.input.source = fc.read_u8(r)
 		}
 		if version >= 36 do read_parts(r, p)
+		if version >= 37 {
+			p.lanes.count = clamp(fc.read_int(r), 1, MAX_LANES)
+			for &l in p.lanes.lanes {
+				l.name = {}
+				copy(l.name[:len(l.name) - 1], fc.read_string(r))
+				l.color = fc.read_u32(r)
+			}
+			for &x in p.lanes.place {
+				x.lane = fc.read_u8(r)
+				x.row = fc.read_u8(r)
+			}
+			compact_rows(&p.lanes)
+			p.view.seq_lane0 = clamp(fc.read_int(r), 0, MAX_LANES - 1)
+			p.view.seq_row0 = clamp(fc.read_int(r), 0, SLOTS - 1)
+		} else {
+			p.view.seq_lane0, p.view.seq_row0 = 0, p.view.seq_bank * 4
+		}
 	} else {
 		p.bus_count = DEFAULT_BUSES
 	}

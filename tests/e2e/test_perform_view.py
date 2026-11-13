@@ -1,6 +1,6 @@
 """The Perform tab: the whole height (the pads area folded while it shows,
-and from Song to Perform it stays so), the launcher's columns playing
-together (a row launched at once, a column stopped, all stopped), Record
+and from Song to Perform it stays so), the launcher's lanes playing
+together (a scene launched at once, a lane stopped, all stopped), Record
 to Song writing what was launched into the Song's lanes, and the main
 level."""
 
@@ -34,33 +34,33 @@ def test_the_pads_area_folds(app, fixtures):
 def test_columns_rows_and_stops(app, fixtures):
     three(app, fixtures)
     app.click("launch quantize", window="perform", at=(0.9, 0.5))  # Now
-    app.click("Launch row 1: its sequences together", window="perform")
+    app.click("scene 1", window="perform")
     app.until(lambda s: s["playing"], what="playing")
-    assert app.state()["columns"] == [1, 2, 3, 0], app.state()["columns"]
-    app.click("stop column 2", window="perform")
-    assert app.state()["columns"] == [1, 0, 3, 0]
+    assert app.state()["columns"][:4] == [1, 2, 3, 0], app.state()["columns"]
+    app.click("stop lane 2", window="perform")
+    assert app.state()["columns"][:4] == [1, 0, 3, 0]
     app.click("launch 2", window="perform")  # back in its column, the others play on
-    assert app.state()["columns"] == [1, 2, 3, 0]
+    assert app.state()["columns"][:4] == [1, 2, 3, 0]
     app.screenshot("perform_columns")
     app.click("stop all", window="perform")
-    assert app.state()["columns"] == [0, 0, 0, 0]
+    assert app.state()["columns"][:4] == [0, 0, 0, 0]
 
 
 def test_shift_launches_alone_and_continue(app, fixtures):
     three(app, fixtures)
     app.click("launch quantize", window="perform", at=(0.9, 0.5))  # Now
-    app.click("Launch row 1: its sequences together", window="perform")
+    app.click("scene 1", window="perform")
     app.until(lambda s: s["playing"], what="playing")
     app.cmd("hold shift")
     app.click("launch 2", window="perform")  # alone: the others stop
     app.cmd("let shift")
-    assert app.state()["columns"] == [0, 2, 0, 0], app.state()["columns"]
+    assert app.state()["columns"][:4] == [0, 2, 0, 0], app.state()["columns"]
     app.click("launch continue", window="perform")
     assert app.state()["launch_continue"]
     app.cmd("hold alt")
     app.click("launch 3", window="perform")  # Option: playing, it isn't launched
     app.cmd("let alt")
-    assert app.state()["columns"] == [0, 2, 0, 0]
+    assert app.state()["columns"][:4] == [0, 2, 0, 0]
 
 
 def test_record_to_song(app, fixtures):

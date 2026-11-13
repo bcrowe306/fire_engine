@@ -516,7 +516,7 @@ sync_sequencer :: proc(e: ^Engine) {
 	} else {
 		// (Stopped with nothing launched: the current sequence, in its column.)
 		_, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
-		if !playing && !launcher_playing(&e.launch) do e.launch.cols[launch_col(p.slot)].slot = p.slot
+		if !playing && !launcher_playing(&e.launch) do e.launch.cols[launch_col(p, p.slot)].slot = p.slot
 		e.plan = plan_launch(p, &e.launch, at)
 	}
 	e.map_dirty = true

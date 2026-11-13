@@ -31,6 +31,7 @@ Project_Defaults :: struct {
 	sig:   Time_Sig, // {0, 0} = 4/4
 	bars:  int,      // each sequence's length; 0 = 1
 	buses: int,      // 0 = DEFAULT_BUSES
+	lanes: int,      // the launcher's; 0 = DEFAULT_LANES
 }
 
 // Puts `d` into a project just made (its tempo, time signature, sequences'
@@ -40,6 +41,7 @@ apply_defaults :: proc(p: ^Project, d: Project_Defaults) {
 	if d.sig.num > 0 && d.sig.den > 0 do p.transport.time_sig = d.sig
 	if d.bars > 0 do for &s in p.sequences do s.bars = clamp(d.bars, 1, MAX_BARS)
 	if d.buses > 0 do p.bus_count = clamp(d.buses, 1, BUSES)
+	if d.lanes > 0 do p.lanes = default_lanes(d.lanes)
 }
 
 // Which part of a pad an edit changes: consecutive edits of the same part

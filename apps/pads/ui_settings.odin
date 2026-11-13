@@ -68,6 +68,7 @@ App_Settings :: struct {
 	default_sig: [2]int,
 	default_bars: int,
 	default_buses: int,
+	default_lanes: int, // the launcher's, a new project's
 	projects_folder: string, // where Save starts for a new project ("" = Documents)
 	autosave_min: int,       // 0 = off
 	open_last: bool,         // open the last project on start
@@ -251,6 +252,7 @@ settings_load :: proc(a: ^App) {
 	s.default_sig = {clamp(app.ini_int(ini_, "project", "beats", 4), 1, 16), clamp(app.ini_int(ini_, "project", "beat_unit", 4), 1, 16)}
 	s.default_bars = clamp(app.ini_int(ini_, "project", "bars", 1), 1, pm.MAX_BARS)
 	s.default_buses = clamp(app.ini_int(ini_, "project", "buses", pm.DEFAULT_BUSES), 1, pm.BUSES)
+	s.default_lanes = clamp(app.ini_int(ini_, "project", "lanes", pm.DEFAULT_LANES), 1, pm.MAX_LANES)
 	s.projects_folder = strings.clone(g(ini_, "project", "folder", ""))
 	s.autosave_min = clamp(app.ini_int(ini_, "project", "autosave_minutes", 1), 0, 60)
 	s.open_last = app.ini_bool(ini_, "project", "open_last", false)
@@ -317,6 +319,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_int(ini, "project", "beat_unit", s.default_sig[1])
 	app.ini_set_int(ini, "project", "bars", s.default_bars)
 	app.ini_set_int(ini, "project", "buses", s.default_buses)
+	app.ini_set_int(ini, "project", "lanes", s.default_lanes)
 	app.ini_set(ini, "project", "folder", s.projects_folder)
 	app.ini_set_int(ini, "project", "autosave_minutes", s.autosave_min)
 	app.ini_set_bool(ini, "project", "open_last", s.open_last)
@@ -1310,6 +1313,12 @@ page_project :: proc(a: ^App) -> (changed: bool) {
 		s.default_buses = int(buses)
 		changed = true
 	}
+	label("Launcher lanes")
+	lanes := f64(s.default_lanes)
+	if ui.number_drag("default lanes", &lanes, 1, f64(pm.MAX_LANES), 1, 1, "%.0f", 120).changed {
+		s.default_lanes = int(lanes)
+		changed = true
+	}
 	im.Spacing()
 	label("Projects folder")
 	im.TextUnformatted(fmt.ctprintf("%s", s.projects_folder if s.projects_folder != "" else "Documents"))
@@ -1362,7 +1371,7 @@ page_project :: proc(a: ^App) -> (changed: bool) {
 // the settings.
 project_defaults_apply :: proc(a: ^App) {
 	s := &a.settings
-	a.m.defaults = {bpm = s.default_bpm, sig = {s.default_sig[0], s.default_sig[1]}, bars = s.default_bars, buses = s.default_buses}
+	a.m.defaults = {bpm = s.default_bpm, sig = {s.default_sig[0], s.default_sig[1]}, bars = s.default_bars, buses = s.default_buses, lanes = s.default_lanes}
 	a.proj.settings.rate = s.export_rate
 	a.proj.settings.encoding = .Int16 if s.export_bits == 16 else (.Float32 if s.export_bits == 32 else .Int24)
 }

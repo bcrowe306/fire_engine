@@ -338,26 +338,39 @@ records.
 - **Perform** (middle tab): the whole height (the pads area folds to
   its bar while it shows, and stays folded going to or from Song), with
   three grids side by side and the levels at the right.
-  - **The bar on top**: the sequence **bank** (A–D: 64 sequences, 16 a
-    bank) and **Keys** (the computer's pad keys play the sequence pads
-    shown instead of the pads); **Launch** or **Hold** (a sequence plays
-    only while its pad is held, its column going back to what it played
+  - **The bar on top**: the launcher's **window** (arrows: a lane, a
+    row at a time; "Lanes 1–4 · rows 1–4"), **+** (a new lane, up to 16)
+    and **Keys** (the computer's pad keys play the window's sequence pads
+    instead of the pads); **Launch** or **Hold** (a sequence plays
+    only while its pad is held, its lane going back to what it played
     when you let go); **at** End, Bar, Beat or Now (when a launch
-    happens: when its column's sequence comes round, or the next bar,
+    happens: when its lane's sequence comes round, or the next bar,
     beat, at once); **Continue** (on, a launched sequence carries on
-    where the playhead is in what played — its column's sequence, or with
-    none the leading column's: that pass so far, modulo the new one's
+    where the playhead is in what played — its lane's sequence, or with
+    none the leading lane's: that pass so far, modulo the new one's
     length — for seamless changes; off, it starts from its top);
     **Record to Song** (armed, what you launch is
-    written into the Song as clips, column k into lane k, from where
-    each starts to where it is replaced or stopped; the take goes in
-    when you stop, or disarm, as one undo step, over the clips that began
-    on those lanes in its time); and, at the right, **Hold effects**.
-  - **Sequences**: the bank's 16 as a 4 × 4 grid (1 at the bottom left),
-    **each column a lane**: one sequence per column plays at a time, the
-    columns all together (drums in one, a bass sequence in another). A
-    press launches a sequence in its column; stopped, it starts playing,
-    alone. A pad shows its sequence's notes, a bar filling across while it
+    written into the Song as clips, launcher lane k onto song lane k
+    (named after it), from where each starts to where it is replaced or
+    stopped; the take goes in when you stop, or disarm, as one undo
+    step, over the clips that began on those lanes in its time); and, at
+    the right, **Hold effects**.
+  - **Sequences**: **lanes** (8 in a new project: Settings > Projects >
+    Launcher lanes), each sequence in one, at a row of it. A lane plays
+    one sequence at a time, the lanes all together (drums in one, a bass
+    sequence in another, fills in a third). The grid is a **4 × 4 window**
+    (as a pad controller's) over the lanes: its columns are lanes, their
+    **headers** their names (click one: rename, colour, stop, a new
+    sequence at its end, delete — its sequences go to the lane before);
+    each row's arrow launches that **scene** (the row of every lane), each
+    lane's square stops it. Under it, the **overview**: every lane and its
+    sequences, the window outlined (click or drag to move it). A press
+    launches a sequence in its lane; stopped, it starts playing, alone.
+    **Option-drag** a sequence pad to another lane or row (or its menu:
+    Move to the Lane Before / After, Move Up / Down a Row); a lane's **+**,
+    after its last, makes a new sequence there (an unused one). A ring at
+    a pad's corner: it plays a pad that another lane's sequence plays too
+    (both play it). A pad shows its sequence's notes, a bar filling across while it
     plays, a countdown while queued ("in 2.2"), "stops" when its column is
     about to; empty pads are nearly invisible (a + on hover: click one to
     make a new sequence there). **Shift-click** launches a sequence
@@ -1442,6 +1455,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
+| `test_lanes.py` | launcher lanes: one renamed from its header, one added (the window following) and a sequence made at its end, sequences moved by menu and Option-drag, the overview moving the window, a lane deleted, undo |
 | `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Shift-click launching alone, Continue, Option-click not launching, Record to Song writing the launches into lanes, the main fader |
 | `test_mixer.py` | a strip per pad with a sound, faders, mute/solo, pan, sends (drag across, double-click, pre-fader; with the inserts and EQ toggled off), outputs, inserts, the EQ display and switch, the I/O rows, the peak readout; the toggles (narrow, a section off), main's meters (integrated reset, correlation, stereo, folded and back); two strips coloured at once; the buses against main |
 | `test_perform_song.py` | a pad's MIDI page (play modes, its note repeat and arpeggiator), holding performance effects, the song and its switches |

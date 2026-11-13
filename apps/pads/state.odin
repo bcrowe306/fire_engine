@@ -80,7 +80,10 @@ State :: struct {
 	muted_notes: int,
 	launch:     string, // when a sequence picked while playing takes over: Now, Beat, Bar, End
 	launch_hold: bool,  // sequence pads play while held
-	seq_bank:   int,    // the sequence pads' bank shown (0..3)
+	seq_bank:   int,    // the launcher's window's row / 4 (an older project's bank)
+	window:     [2]int, // the launcher's window: its first lane and row (1-based)
+	lanes:      []string, // the launcher's lanes' names
+	seq_lanes:  []int,    // each sequence's lane and row: lane * 100 + row (both 1-based)
 	silences:   int,    // times Stop silenced every voice
 	theme:      string, // the theme in use
 	zoom:       f32,
@@ -108,7 +111,7 @@ State :: struct {
 	perf_now:   [pm.PERF_FX]f32,  // how hard each plays while held (-1: its own)
 	perf_intensity: [pm.PERF_FX]f32, // each one's own
 	queued:     int, // the sequence about to take over (1-based; 0: none)
-	columns:    [4]int, // what each launcher column plays (1-based; 0: nothing)
+	columns:    []int, // what each launcher lane plays (1-based; 0: nothing), a lane each
 	launch_record: bool, // Record to Song is armed
 	launch_continue: bool, // launches carry on where the playhead is
 	main_volume: f32, // main's fader (dB)
@@ -390,8 +393,14 @@ state_json :: proc(a: ^App) -> string {
 		if n.muted do s.muted_notes += 1
 	}
 	s.launch = enum_name(p.switch_at)
-	s.launch_hold, s.seq_bank = p.launch_hold, a.perf.seq_bank
-	for k in 0 ..< pm.LAUNCH_COLS {
+	s.launch_hold, s.seq_bank = p.launch_hold, a.perf.win_row / 4
+	s.window = {a.perf.win_lane + 1, a.perf.win_row + 1}
+	s.lanes = make([]string, p.lanes.count, context.temp_allocator)
+	for k in 0 ..< p.lanes.count do s.lanes[k] = strings.clone(pm.launch_lane_name(p, k), context.temp_allocator)
+	s.seq_lanes = make([]int, pm.SLOTS, context.temp_allocator)
+	for x, k in p.lanes.place do s.seq_lanes[k] = (int(x.lane) + 1) * 100 + int(x.row) + 1
+	s.columns = make([]int, p.lanes.count, context.temp_allocator)
+	for k in 0 ..< p.lanes.count {
 		cs, _, _, _, _ := pm.column_state(&m.engine, k)
 		s.columns[k] = cs + 1
 	}

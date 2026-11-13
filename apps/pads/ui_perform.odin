@@ -21,7 +21,10 @@ Perf_State :: struct {
 	sent, received: u64, // MIDI counts last frame
 	in_lit, out_lit: f32, // seconds the activity lights stay on
 	menu_fx: int, // the performance effect whose menu is open
-	seq_bank: int, // the sequence pads' bank shown (0..3)
+	win_lane, win_row: int, // the launcher's window: its first lane and row (see `draw_launcher`)
+	lane_menu: int,    // the lane whose header menu is open
+	lane_naming: bool, // ... renaming it
+	lane_name: [16]u8,
 	holding: bool, // a sequence pad is held in Hold
 	held_seq: int, // which
 	held_from: int, // what its column played before it (-1: nothing; to go back to)
@@ -83,11 +86,28 @@ draw_perform_bar :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
 	st := &a.perf
-	bank := st.seq_bank
-	if ui.segmented("seq_bank", {"A", "B", "C", "D"}, &bank) do st.seq_bank = bank
-	ui.name("sequence bank")
-	if im.IsItemHovered() do im.SetTooltip("The sequence pads' bank: 16 sequences each")
-	im.SameLine(0, 6)
+	// The window over the lanes: a lane or a row at a time.
+	nav :: proc(icon: string, tip: cstring, name: string) -> bool {
+		hit := ui.icon_button(icon, tip)
+		ui.name(name)
+		im.SameLine(0, 2)
+		return hit
+	}
+	G := LAUNCH_GRID
+	if nav(ui.ICON_CHEVRON_LEFT, "The lanes before", "window left") do st.win_lane -= 1
+	if nav(ui.ICON_CHEVRON_RIGHT, "The lanes after", "window right") do st.win_lane += 1
+	if nav(ui.ICON_CHEVRON_DOWN, "The rows below", "window down") do st.win_row -= 1
+	if nav(ui.ICON_CHEVRON_UP, "The rows above", "window up") do st.win_row += 1
+	clamp_window(a)
+	im.AlignTextToFramePadding()
+	im.TextDisabled("%s", fmt.ctprintf("Lanes %d–%d · rows %d–%d", st.win_lane + 1, min(st.win_lane + G, p.lanes.count), st.win_row + 1, st.win_row + G))
+	ui.name("launcher window")
+	im.SameLine(0, 4)
+	if ui.icon_button(ui.ICON_PLUS, "Add a lane (up to 16)", disabled = p.lanes.count >= pm.MAX_LANES) {
+		if pm.add_lane(m) do st.win_lane = p.lanes.count - LAUNCH_GRID // (shown)
+	}
+	ui.name("add a lane")
+	im.SameLine(0, 10)
 	if ui.icon_button(ui.ICON_KEYBOARD, "Keys: the computer's pad keys play these sequence pads (not the pads)", on = st.seq_keys) do st.seq_keys = !st.seq_keys
 	ui.name("sequence keys")
 	im.SameLine(0, 14)
@@ -110,7 +130,7 @@ draw_perform_bar :: proc(a: ^App) {
 	if im.IsItemHovered() do im.SetTooltip("Continue: a launched sequence carries on where the playhead is in what played (that pass so far, modulo its length), for seamless changes; off, it starts from its top")
 	im.SameLine(0, 14)
 	rec := pm.launch_recording(m)
-	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record to Song: what you launch is written into the Song (column 1 into lane 1...)", on = rec, color = ui.theme().danger) do pm.set_launch_record(m, !rec)
+	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record to Song: what you launch is written into the Song (launcher lane 1 into song lane 1...)", on = rec, color = ui.theme().danger) do pm.set_launch_record(m, !rec)
 	ui.name("record to song")
 	im.SameLine(0, 2)
 	im.AlignTextToFramePadding()
@@ -129,35 +149,121 @@ draw_perform_bar :: proc(a: ^App) {
 	}
 }
 
-// The sequence launcher: the bank's 16 sequences as four columns, each a
-// lane playing one at a time (all together); Shift-click launches one
-// alone (the other columns stop then; Option-click only goes to it, to
-// edit it); the row's arrow launches the
-// row, the column's square stops it, the last one stops them all. A
-// sequence pad shows its notes, a bar filling across while it plays (a
-// queued one counts down); an empty one is nearly invisible (click it to
-// make a new sequence there).
+// Cells the launcher's window is across and up (a pad controller's 4 × 4).
+LAUNCH_GRID :: 4
+
+// Keeps the launcher's window over the lanes and rows there are (one row
+// past the longest lane: its +).
+clamp_window :: proc(a: ^App) {
+	p := &a.m.project
+	st := &a.perf
+	st.win_lane = clamp(st.win_lane, 0, max(p.lanes.count - LAUNCH_GRID, 0))
+	st.win_row = clamp(st.win_row, 0, max(pm.max_rows(p) + 1 - LAUNCH_GRID, 0))
+}
+
+// The sequence in the window's cell `col`, `row` (from the bottom left),
+// and its lane and row; slot -1: none there (`plus`: the lane's +, after
+// its last).
+window_cell :: proc(a: ^App, col, row: int) -> (slot, lane, lrow: int, plus: bool) {
+	p := &a.m.project
+	lane, lrow = a.perf.win_lane + col, a.perf.win_row + row
+	if lane >= p.lanes.count do return -1, lane, lrow, false
+	slot = pm.lane_slot(p, lane, lrow)
+	plus = slot < 0 && lrow == pm.lane_rows(p, lane)
+	return
+}
+
+// The sequence launcher: a window of 4 lanes by 4 rows over all of them
+// (moved by the bar's arrows, or the overview below), each column a lane
+// playing one sequence at a time (all together), its header its name;
+// Shift-click launches one alone (the other lanes stop then;
+// Option-click only goes to it, to edit it; Option-drag moves it to
+// another lane or row); the row's arrow launches the scene (that row of
+// every lane), the lane's square stops it. A sequence pad shows its
+// notes, a bar filling across while it plays (a queued one counts down),
+// a mark when it shares a pad with another lane's; an empty one is nearly
+// invisible (click it to make a new sequence there), a lane's + after its
+// last.
 draw_launcher :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
 	st := &a.perf
 	t := ui.theme()
+	clamp_window(a)
 	perf_title("Sequences · each column a lane")
+	G :: LAUNCH_GRID
 	tl, playing := pm.timeline_beat(&m.engine)
 	avail := im.GetContentRegionAvail()
 	gap: f32 = 6
 	arrow: f32 = 22
-	size := clamp(min((avail.x - arrow - 4 * gap) / 4, (avail.y - im.GetFrameHeight() - 5 * gap) / 4), 40, 140)
+	head := im.GetFrameHeight()
+	map_h: f32 = 64
+	size := clamp(min((avail.x - arrow - f32(G) * gap) / f32(G), (avail.y - 2 * head - map_h - f32(G + 3) * gap) / f32(G)), 40, 140)
 	origin := im.GetCursorScreenPos()
 	dl := im.GetWindowDrawList()
-	for k in 0 ..< pm.PADS_PER_BANK {
-		slot := st.seq_bank * pm.PADS_PER_BANK + k
-		row, col := 3 - k / 4, k % 4 // (as the pad grid: 1 at the bottom left)
-		pos := im.Vec2{origin.x + f32(col) * (size + gap), origin.y + f32(row) * (size + gap)}
+	pads := pm.all_seq_pads(p)
+	// The lanes' headers: each its name (its menu), and a + for a new lane.
+	open_menu := false
+	for col in 0 ..< G {
+		lane := st.win_lane + col
+		if lane >= p.lanes.count {
+			if lane == p.lanes.count && p.lanes.count < pm.MAX_LANES {
+				im.SetCursorScreenPos({origin.x + f32(col) * (size + gap), origin.y})
+				if im.Button(ui.ICON_PLUS + "  Lane", {size, 0}) do pm.add_lane(m)
+				ui.name("add lane")
+				if im.IsItemHovered() do im.SetTooltip("A new lane (up to 16)")
+			}
+			continue
+		}
+		im.SetCursorScreenPos({origin.x + f32(col) * (size + gap), origin.y})
+		im.PushIDInt(i32(9700 + lane))
+		lc := p.lanes.lanes[lane].color
+		c := ui.rgb(lc) if lc != 0 else t.text_dim
+		pos := im.GetCursorScreenPos()
+		if im.InvisibleButton("##lanehead", {size, head}, {.MouseButtonLeft, .MouseButtonRight}) {
+			st.lane_menu = lane
+			open_menu = true
+		}
+		ui.name(fmt.tprintf("lane %d", lane + 1))
+		hot := im.IsItemHovered()
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + size, pos.y + head}, ui.col(t.raised if hot else ui.mix(t.surface, t.raised, 0.5)), t.radius)
+		im.DrawList_AddRectFilled(dl, {pos.x, pos.y + head - 3}, {pos.x + size, pos.y + head}, ui.col(c), 1)
+		name := pm.launch_lane_name(p, lane)
+		im.DrawList_AddText(dl, {pos.x + 6, pos.y + (head - im.GetFontSize()) / 2 - 1}, ui.col(t.text if hot else t.text_dim), ui.fit_text(name, size - 12))
+		if hot do im.SetTooltip("%s", fmt.ctprintf("%s · %d sequence%s · click: rename, colour, delete", name, pm.lane_rows(p, lane), "" if pm.lane_rows(p, lane) == 1 else "s"))
+		im.PopID()
+	}
+	if open_menu do im.OpenPopup("##lanemenu") // (outside the headers' ids: where the menu is drawn)
+	launch_lane_menu(a)
+	grid := im.Vec2{origin.x, origin.y + head + gap}
+	for k in 0 ..< G * G {
+		col, r := k % G, k / G
+		row := G - 1 - r // (1 at the bottom left, as the pad grid)
+		pos := im.Vec2{grid.x + f32(col) * (size + gap), grid.y + f32(row) * (size + gap)}
 		im.SetCursorScreenPos(pos)
-		im.PushIDInt(i32(9000 + slot))
+		slot, lane, lrow, plus := window_cell(a, col, r)
+		im.PushIDInt(i32(9000 + k))
+		defer im.PopID()
+		if lane >= p.lanes.count do continue
+		if slot < 0 {
+			if !plus do continue
+			// The lane's +: a new sequence at its end.
+			clicked := im.InvisibleButton("##plus", {size, size})
+			ui.name(fmt.tprintf("lane %d plus", lane + 1))
+			hot := im.IsItemHovered()
+			im.DrawList_AddRect(dl, pos, {pos.x + size, pos.y + size}, ui.col(ui.with_alpha(t.text, 0.16 if hot else 0.06)), t.radius, 1)
+			ts := im.CalcTextSize("+")
+			im.DrawList_AddText(dl, {pos.x + (size - ts.x) / 2, pos.y + (size - ts.y) / 2}, ui.col(t.text_dim if hot else ui.with_alpha(t.text_dim, 0.4)), "+")
+			if hot do im.SetTooltip("%s", fmt.ctprintf("A new sequence at the end of %s", pm.launch_lane_name(p, lane)))
+			if clicked {
+				if n := pm.new_sequence_in(m, lane); n >= 0 do pm.select_slot(m, n)
+				else do ui.toast(&a.ws.toasts, .Warning, "Every sequence is in use (64)")
+			}
+			seq_drop(a, lane, lrow)
+			continue
+		}
 		used := pm.slot_used(m, slot)
-		cs, frac, next, in_beats, queued := pm.column_state(&m.engine, col)
+		cs, frac, next, in_beats, queued := pm.column_state(&m.engine, lane)
 		playing_here := playing && cs == slot
 		queued_here := queued && next == slot
 		s := p.sequences[slot]
@@ -173,8 +279,8 @@ draw_launcher :: proc(a: ^App) {
 				im.SetTooltip("%s", fmt.ctprintf("%s (empty): click to make a new sequence here", pm.sequence_name(p, slot)))
 			}
 			if clicked do pm.select_slot(m, slot)
+			seq_drop(a, lane, lrow)
 			item_menu(a, seq_target(slot), "##cellmenu")
-			im.PopID()
 			continue
 		}
 		middle := ""
@@ -192,7 +298,19 @@ draw_launcher :: proc(a: ^App) {
 			notes     = seq_minis(a, slot), // (its notes, small, behind)
 		}
 		hit := ui.pad("##seqpad", face, {size, size})
-		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s · %d bar%s%s · column %d\nClick: launch it in its column · Shift-click: launch it alone · Option-click: edit it", pm.sequence_name(p, slot), s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "", col + 1))
+		shared := pm.shared_lane(p, &pads, slot)
+		if im.IsItemHovered() {
+			also := fmt.tprintf("\nShares a pad with %s: both play it", pm.launch_lane_name(p, shared)) if shared >= 0 else ""
+			im.SetTooltip("%s", fmt.ctprintf("%s · %d bar%s%s · %s%s\nClick: launch it in its lane · Shift-click: launch it alone · Option-click: edit it · Option-drag: move it", pm.sequence_name(p, slot), s.bars, "" if s.bars == 1 else "s", fmt.tprintf(" · %.0f BPM", s.bpm) if s.bpm > 0 else "", pm.launch_lane_name(p, lane), also))
+		}
+		// Option-drag: to another lane or row.
+		if im.GetIO().KeyAlt && im.BeginDragDropSource({.SourceAllowNullID}) {
+			x := slot
+			im.SetDragDropPayload("PADS_SEQ", &x, size_of(int))
+			im.Text("%s", fmt.ctprintf("%s", pm.sequence_name(p, slot)))
+			im.EndDragDropSource()
+		}
+		seq_drop(a, lane, lrow)
 		if hit.menu do im.OpenPopup("##cellmenu")
 		item_menu(a, seq_target(slot), "##cellmenu")
 		if hit.pressed do seq_pad_press(a, slot, false)
@@ -200,39 +318,150 @@ draw_launcher :: proc(a: ^App) {
 		if hit.released do seq_pad_release(a, slot)
 		// Playing: a bar filling across as it goes round.
 		if playing_here do im.DrawList_AddRectFilled(dl, {pos.x + 6, pos.y + size - 7}, {pos.x + 6 + (size - 12) * f32(clamp(frac, 0, 1)), pos.y + size - 4}, ui.col(t.text), 2)
-		im.PopID()
+		// A pad another lane plays too: a ring at the top right.
+		if shared >= 0 do im.DrawList_AddCircle(dl, {pos.x + size - 9, pos.y + 9}, 4, ui.col(t.warn), 12, 1.5)
 	}
-	// Each row's launch arrow.
-	for row in 0 ..< 4 {
-		r := 3 - row // (the bottom row first)
-		pos := im.Vec2{origin.x + 4 * (size + gap), origin.y + f32(row) * (size + gap) + (size - arrow) / 2}
+	// Each row's scene arrow.
+	for row in 0 ..< G {
+		r := G - 1 - row // (the bottom row first)
+		pos := im.Vec2{grid.x + f32(G) * (size + gap), grid.y + f32(row) * (size + gap) + (size - arrow) / 2}
 		im.SetCursorScreenPos(pos)
 		im.PushIDInt(i32(9500 + r))
-		if ui.icon_button(ui.ICON_PLAY, fmt.ctprintf("Launch row %d: its sequences together", r + 1), size = arrow) do pm.launch_row(m, st.seq_bank, r)
+		scene := st.win_row + r
+		if ui.icon_button(ui.ICON_PLAY, fmt.ctprintf("Launch scene %d: row %d of every lane together", scene + 1, scene + 1), size = arrow) do pm.launch_scene(m, scene)
+		ui.name(fmt.tprintf("scene %d", scene + 1))
 		im.PopID()
 	}
-	// Each column's stop, and Stop All.
-	y := origin.y + 4 * (size + gap)
-	for col in 0 ..< pm.LAUNCH_COLS {
-		cs, _, next, _, queued := pm.column_state(&m.engine, col)
-		im.SetCursorScreenPos({origin.x + f32(col) * (size + gap), y})
-		im.PushIDInt(i32(9600 + col))
+	// Each lane's stop, and Stop All.
+	y := grid.y + f32(G) * (size + gap)
+	for col in 0 ..< G {
+		lane := st.win_lane + col
+		if lane >= p.lanes.count do continue
+		cs, _, next, _, queued := pm.column_state(&m.engine, lane)
+		im.SetCursorScreenPos({grid.x + f32(col) * (size + gap), y})
+		im.PushIDInt(i32(9600 + lane))
 		on := cs >= 0 && playing
 		stopping := queued && next < 0
-		if im.Button(ui.ICON_SQUARE, {size, 0}) do pm.stop_column(&m.engine, col)
-		ui.name(fmt.tprintf("stop column %d", col + 1))
-		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Stop column %d%s", col + 1, fmt.tprintf(" (%s)", pm.sequence_name(p, cs)) if on else ""))
+		if im.Button(ui.ICON_SQUARE, {size, 0}) do pm.stop_column(&m.engine, lane)
+		ui.name(fmt.tprintf("stop lane %d", lane + 1))
+		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Stop %s%s", pm.launch_lane_name(p, lane), fmt.tprintf(" (%s)", pm.sequence_name(p, cs)) if on else ""))
 		if on || stopping {
 			lo, hi := im.GetItemRectMin(), im.GetItemRectMax()
 			im.DrawList_AddRect(dl, lo, hi, ui.col(ui.with_alpha(t.warn if stopping else t.accent, 0.7)), t.radius, 1.5)
 		}
 		im.PopID()
 	}
-	im.SetCursorScreenPos({origin.x + 4 * (size + gap), y})
-	if ui.icon_button(ui.ICON_SQUARE_X, "Stop all columns", size = arrow) do pm.stop_all_columns(&m.engine)
+	im.SetCursorScreenPos({grid.x + f32(G) * (size + gap), y})
+	if ui.icon_button(ui.ICON_SQUARE_X, "Stop every lane", size = arrow) do pm.stop_all_columns(&m.engine)
 	ui.name("stop all")
-	im.SetCursorScreenPos({origin.x, y + im.GetFrameHeight() + 4})
+	// The overview: every lane, its sequences, the window outlined (click
+	// to move it there).
+	draw_lane_map(a, {grid.x, y + head + gap}, {f32(G) * (size + gap) - gap, map_h})
+	im.SetCursorScreenPos({origin.x, y + head + gap + map_h + 4})
 	im.Dummy({1, 1})
+}
+
+// A sequence Option-dragged here goes to row `row` of lane `lane`.
+@(private)
+seq_drop :: proc(a: ^App, lane, row: int) {
+	if !im.BeginDragDropTarget() do return
+	defer im.EndDragDropTarget()
+	if pl := im.AcceptDragDropPayload("PADS_SEQ"); pl != nil && pl.DataSize == size_of(int) {
+		slot := (^int)(pl.Data)^
+		pm.move_sequence(&a.m, slot, lane, row)
+	}
+}
+
+// The launcher's overview: a column a lane, a cell a sequence (its colour
+// if it has anything, bright while it plays), the window outlined; a click
+// moves the window there.
+@(private)
+draw_lane_map :: proc(a: ^App, pos, size: im.Vec2) {
+	m := &a.m
+	p := &m.project
+	st := &a.perf
+	t := ui.theme()
+	dl := im.GetWindowDrawList()
+	rows := max(pm.max_rows(p) + 1, LAUNCH_GRID)
+	cw := min(size.x / f32(p.lanes.count), 24)
+	ch := min(size.y / f32(rows), 10)
+	w, h := cw * f32(p.lanes.count), ch * f32(rows)
+	im.SetCursorScreenPos(pos)
+	if im.InvisibleButton("##lanemap", {max(w, 1), max(h, 1)}) || (im.IsItemActive() && im.IsMouseDragging(.Left)) {
+		mp := im.GetIO().MousePos
+		st.win_lane = int((mp.x - pos.x) / cw) - LAUNCH_GRID / 2
+		st.win_row = int((pos.y + h - mp.y) / ch) - LAUNCH_GRID / 2
+		clamp_window(a)
+	}
+	ui.name("lane map")
+	if im.IsItemHovered() do im.SetTooltip("Every lane: click or drag to move the window there")
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.mix(t.inset, t.text, 0.06)), 2)
+	im.DrawList_AddRect(dl, pos, {pos.x + w, pos.y + h}, ui.col(ui.with_alpha(t.text, 0.15)), 2)
+	_, playing := pm.timeline_beat(&m.engine)
+	for lane in 0 ..< p.lanes.count {
+		cs, _, _, _, _ := pm.column_state(&m.engine, lane)
+		for r in 0 ..< pm.lane_rows(p, lane) {
+			slot := pm.lane_slot(p, lane, r)
+			if slot < 0 || !pm.slot_used(m, slot) do continue
+			x := pos.x + f32(lane) * cw
+			y := pos.y + h - f32(r + 1) * ch
+			c := ui.rgb(pm.sequence_color(p, slot))
+			lit := playing && cs == slot
+			im.DrawList_AddRectFilled(dl, {x + 1, y + 1}, {x + cw - 1, y + ch - 1}, ui.col(c if lit else ui.with_alpha(c, 0.5)))
+		}
+	}
+	wx := pos.x + f32(st.win_lane) * cw
+	wy := pos.y + h - f32(st.win_row + LAUNCH_GRID) * ch
+	im.DrawList_AddRect(dl, {wx, max(wy, pos.y)}, {wx + f32(min(LAUNCH_GRID, p.lanes.count)) * cw, pos.y + h - f32(st.win_row) * ch}, ui.col(t.accent), 2, 1.5)
+}
+
+// A lane header's menu: rename, colour, stop, delete.
+@(private)
+launch_lane_menu :: proc(a: ^App) {
+	m := &a.m
+	p := &m.project
+	st := &a.perf
+	if !im.BeginPopup("##lanemenu") {
+		st.lane_naming = false
+		return
+	}
+	defer im.EndPopup()
+	lane := st.lane_menu
+	if lane < 0 || lane >= p.lanes.count {
+		im.CloseCurrentPopup()
+		return
+	}
+	im.TextDisabled("%s", fmt.ctprintf("%s", pm.launch_lane_name(p, lane)))
+	if !st.lane_naming {
+		st.lane_name = {}
+		copy(st.lane_name[:len(st.lane_name) - 1], pm.launch_lane_name(p, lane))
+		st.lane_naming = true
+	}
+	im.SetNextItemWidth(160)
+	if im.InputText("##lanename", cstring(raw_data(st.lane_name[:])), len(st.lane_name), {.EnterReturnsTrue, .AutoSelectAll}) {
+		pm.rename_lane(m, lane, string(cstring(raw_data(st.lane_name[:]))))
+		im.CloseCurrentPopup()
+	}
+	ui.name("lane name")
+	if im.IsItemDeactivatedAfterEdit() do pm.rename_lane(m, lane, string(cstring(raw_data(st.lane_name[:]))))
+	// Colours: none (its sequences') and the palette.
+	for c, i in pm.SEQ_PALETTE {
+		if i > 0 do im.SameLine(0, 4)
+		im.PushIDInt(i32(i))
+		if im.ColorButton("##lanecol", transmute(im.Vec4)ui.rgb(c), {.NoTooltip}, {18, 18}) do pm.color_lane(m, lane, c)
+		ui.name(fmt.tprintf("lane colour %d", i + 1))
+		im.PopID()
+	}
+	im.Separator()
+	if im.MenuItem(ui.ICON_SQUARE + "  Stop") do pm.stop_column(&m.engine, lane)
+	if im.MenuItem(ui.ICON_PLUS + "  New Sequence Here") {
+		if n := pm.new_sequence_in(m, lane); n >= 0 do pm.select_slot(m, n)
+	}
+	if im.MenuItem(ui.ICON_TRASH_2 + "  Delete Lane", nil, false, p.lanes.count > 1) {
+		pm.delete_lane(m, lane)
+		ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Deleted; its sequences went to %s", pm.launch_lane_name(p, max(lane - 1, 0))))
+	}
+	ui.name("delete lane")
 }
 
 // The colour a performance effect's kind gives its pad: filters violet,
@@ -429,7 +658,7 @@ seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
 	}
 	if m.project.launch_hold {
 		if !st.holding {
-			cs, _, _, _, _ := pm.column_state(&m.engine, pm.launch_col(slot))
+			cs, _, _, _, _ := pm.column_state(&m.engine, pm.launch_col(&m.project, slot))
 			st.held_from = cs if playing else -1
 		}
 		st.holding, st.held_seq = true, slot
@@ -444,7 +673,7 @@ seq_pad_release :: proc(a: ^App, slot: int) {
 	if !m.project.launch_hold || !st.holding || st.held_seq != slot do return
 	st.holding = false
 	if st.held_from >= 0 do pm.launch_slot(m, st.held_from)
-	else do pm.stop_column(&m.engine, pm.launch_col(slot))
+	else do pm.stop_column(&m.engine, pm.launch_col(&m.project, slot))
 }
 
 // How the pads play: each its sound, a keyboard of the selected one, or

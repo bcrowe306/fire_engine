@@ -62,13 +62,15 @@ def test_sequence_pads_launch_and_hold(app, fixtures):
     app.cmd("up")
     app.wait(3)
     assert app.state()["columns"][:2] == [0, 2]  # its column back to what it had: nothing
-    # The banks: B shows sequences 17 to 32.
-    app.click("sequence bank", window="perform", at=(0.375, 0.5))
-    assert app.state()["seq_bank"] == 1
-    app.expect_item("launch 17", window="perform")
+    # The window over the lanes: lanes 5-8 show sequences 5 to 8 at the bottom.
+    for _ in range(4):
+        app.click("window right", window="perform")
+    assert app.state()["window"] == [5, 1], app.state()["window"]
+    app.expect_item("launch 5", window="perform")
     app.screenshot("sequence_pads")
-    # Keys on: the pad keys play the sequence pads (bank A: z is 1, x is 2).
-    app.click("sequence bank", window="perform", at=(0.125, 0.5))
+    # Keys on: the pad keys play the window's cells (lanes 1-4: z is 1, x is 2).
+    for _ in range(4):
+        app.click("window left", window="perform")
     app.click("launch mode", window="perform", at=(0.25, 0.5))  # Launch again
     app.click("sequence keys", window="perform")
     app.key("z")

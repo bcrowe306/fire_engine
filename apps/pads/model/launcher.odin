@@ -4,17 +4,17 @@ import "core:math"
 
 import "fire:transport"
 
-// The launcher (pattern mode): the sequence pads' four columns are lanes,
-// each playing one sequence at a time, all of them together. A launch
-// replaces its column's sequence at the launch quantize (the others play
-// on); a stop ends the column there.
+// The launcher (pattern mode): lanes (see `Lanes`), each playing one
+// sequence at a time, all of them together. A launch replaces its lane's
+// sequence at the launch quantize (the others play on); a stop ends the
+// lane there. (A lane is a "column" here: the grid's.)
 
-// Columns the launcher has (the sequence pads' columns: a bank is 4 × 4).
-LAUNCH_COLS :: 4
+// Columns the launcher has: one a lane.
+LAUNCH_COLS :: MAX_LANES
 
-// The column sequence `slot` launches in (its pad's column in its bank).
-launch_col :: proc "contextless" (slot: int) -> int {
-	return slot % LAUNCH_COLS
+// The column (lane) sequence `slot` launches in.
+launch_col :: proc "contextless" (p: ^Project, slot: int) -> int {
+	return seq_lane(p, slot)
 }
 
 // A launcher column: what it plays (-1: nothing) and since when (timeline
@@ -72,7 +72,7 @@ queue_slot :: proc(e: ^Engine, slot: int, solo := true) {
 	if slot < 0 || slot >= SLOTS do return
 	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
 	beat := f64(pos)
-	col := launch_col(slot)
+	col := launch_col(p, slot)
 	l := &e.launch
 	if !playing || p.song_mode {
 		p.slot = slot
@@ -126,16 +126,17 @@ stop_all_columns :: proc(e: ^Engine) {
 	for k in 0 ..< LAUNCH_COLS do stop_column(e, k)
 }
 
-// Launches row `row` (0: the bottom) of bank `bank`: each of its
-// sequences that has anything, in its column, together.
-launch_row :: proc(m: ^Model, bank, row: int) {
+// Launches scene `row` (row k of every lane: 0 the bottom): each lane's
+// sequence there that has anything, in its lane, together.
+launch_scene :: proc(m: ^Model, row: int) {
 	e := &m.engine
+	p := &m.project
 	_, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
 	last := -1
-	for col in 0 ..< LAUNCH_COLS {
-		slot := bank * 16 + row * LAUNCH_COLS + col
-		if slot >= SLOTS || !slot_used(m, slot) do continue
-		queue_slot(e, slot, solo = !playing && last < 0) // (stopped: the row alone)
+	for lane in 0 ..< p.lanes.count {
+		slot := lane_slot(p, lane, row)
+		if slot < 0 || !slot_used(m, slot) do continue
+		queue_slot(e, slot, solo = !playing && last < 0) // (stopped: the scene alone)
 		last = slot
 	}
 	if last >= 0 && !playing do play(e)
@@ -183,9 +184,9 @@ launch_since :: proc(p: ^Project, cols: [LAUNCH_COLS]Launch_Col, k: int) -> f64 
 launch_play :: proc(e: ^Engine) {
 	l := &e.launch
 	for &c in l.cols do c.queued = false
-	if !launcher_playing(l) || l.cols[launch_col(e.project.slot)].slot < 0 {
+	if !launcher_playing(l) || l.cols[launch_col(e.project, e.project.slot)].slot < 0 {
 		for &c in l.cols do c.slot = -1
-		l.cols[launch_col(e.project.slot)].slot = e.project.slot
+		l.cols[launch_col(e.project, e.project.slot)].slot = e.project.slot
 	}
 	for &c in l.cols do c.since = 0
 }
@@ -407,6 +408,10 @@ launch_record_poll :: proc(m: ^Model) {
 		s.clips[s.count] = clip_fit(c)
 		s.count += 1
 		s.lane_count = max(s.lane_count, int(c.lane) + 1)
+	}
+	// The song's lanes named after the launcher's (when they have no name).
+	for k in 0 ..< min(MAX_LANES, SONG_LANES) do if used[k] && s.lanes[k].name[0] == 0 {
+		copy(s.lanes[k].name[:len(s.lanes[k].name) - 1], launch_lane_name(p, k))
 	}
 	set_song(m, "Record to Song", s)
 }
