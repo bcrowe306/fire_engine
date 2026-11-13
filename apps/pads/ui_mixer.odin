@@ -86,7 +86,8 @@ part :: proc(name: string) {
 }
 
 // Sizes of a channel strip, in points.
-STRIP_W :: 86
+STRIP_W :: 86 // the bottom area's strip (and the least a strip is not narrow)
+@(private) STRIP_WIDE_W :: 112 // the Mixer's wide strips
 @(private) STRIP_NARROW_W :: 56 // a narrow strip (the Mixer's bar switches)
 @(private) STRIP_GAP :: 4
 
@@ -98,6 +99,23 @@ STRIP_W :: 86
 @(private) ROW_H :: 18 // a slot, a send, the output
 @(private) EQ_H :: 40
 @(private) PAN_H :: 30
+@(private) PAN_H_BIG :: 46 // the bottom area folded: room for a bigger pan knob
+@(private) IO_H :: 24 // the Mixer's audio and MIDI in and out dropdowns
+@(private) MS_H_WIDE :: 24 // Mute, Solo and Arm on a wide strip
+@(private) SEND_KNOB_H :: 44 // a send as a knob (the bottom area folded)
+
+// The strips are the Mixer's (not the bottom area's one), and the bottom
+// area is folded (the room goes to bigger knobs, sends as knobs).
+@(private) strip_in_mixer: bool
+@(private) bus_added: int // frames until the buses scroll to the one just added (0: none)
+@(private) strip_big_knobs: bool
+@(private) strip_roomy: bool // the Mixer tall enough for the bigger rows (else they are a row's size)
+
+// Heights that depend on where the strips are: the I/O rows, Mute and
+// Solo, the pan knob.
+@(private) io_h :: proc() -> f32 { return IO_H if strip_in_mixer && strip_roomy else ROW_H }
+@(private) ms_h :: proc() -> f32 { return MS_H_WIDE if strip_in_mixer && strip_roomy && !narrow() else ROW_H }
+@(private) pan_h :: proc() -> f32 { return PAN_H_BIG if strip_big_knobs else PAN_H }
 @(private) SLOT_ROWS :: 6 // pads: 2 inserts and SEND_ROWS sends; buses: 5 slots and a gap
 @(private) SEND_ROWS :: 4 // sends shown at once (more buses: they scroll)
 @(private) FADER_LO :: -60 // the bottom of the fader (off)
@@ -117,18 +135,25 @@ draw_mixer :: proc(user: rawptr) {
 	im.SameLine(0, 6)
 	v := a.settings.mixer_view
 	strip_view = v
-	strip_w_cur = STRIP_NARROW_W if v.narrow else STRIP_W
+	strip_w_cur = STRIP_NARROW_W if v.narrow else STRIP_WIDE_W
+	strip_in_mixer, strip_roomy = true, true
+	strip_big_knobs = a.ws.bottom_folded
 	defer {
 		strip_w_cur = STRIP_W
 		strip_view = {inserts = true, eq = true, sends = true, io = true}
+		strip_in_mixer, strip_big_knobs, strip_roomy = false, false, false
 	}
 	avail := im.GetContentRegionAvail()
-	// A short mixer (a small window): the EQ curves, then the I/O rows,
-	// give way, so every strip shows whole down to its name (the fader
-	// keeps 50 points and a row of inserts or sends stays).
+	// A short mixer (a small window, the bottom area open): the bigger
+	// rows (I/O, Mute and Solo) go back to a row's size, then the EQ
+	// curves, then the I/O rows, give way, so every strip shows whole down
+	// to its name (the fader keeps 50 points and a row of inserts or sends
+	// stays; with sends and EQ shown, 3 rows).
 	{
 		room_h := avail.y - im.GetStyle().ScrollbarSize - 8
 		need :: proc() -> f32 { return strip_fixed_h() + ROW_H + 2 + 4 + 50 }
+		roomy_need := strip_fixed_h() + 3 * (ROW_H + 2) + 4 + 70
+		if roomy_need > room_h do strip_roomy = false
 		if strip_view.eq && need() > room_h do strip_view.eq = false
 		if strip_view.io && need() > room_h do strip_view.io = false
 	}
@@ -146,8 +171,8 @@ draw_mixer :: proc(user: rawptr) {
 		if !p.buses[b - 1].folded do n_strips += len(pm.group_members(p, b))
 	}
 	pads_need := max(f32(n_strips) * (strip_w_cur + STRIP_GAP) + f32(n_tabs) * (GROUP_TAB_W + STRIP_GAP), 240 if n_strips == 0 else 0) + 2 * im.GetStyle().WindowPadding.x
-	buses_need := f32(n_buses) * (strip_w_cur + STRIP_GAP) + add_w + 2 * im.GetStyle().WindowPadding.x
-	room := max(avail.x - main_w - 24, 2 * strip_w_cur)
+	buses_need := f32(n_buses) * (strip_w_cur + STRIP_GAP) + 2 * im.GetStyle().WindowPadding.x
+	room := max(avail.x - main_w - add_w - 24, 2 * strip_w_cur)
 	pads_w := pads_need
 	buses_w := buses_need
 	if pads_w + buses_w > room {
@@ -190,7 +215,7 @@ draw_mixer :: proc(user: rawptr) {
 	{
 		main_left := im.GetWindowPos().x + im.GetWindowWidth() - main_w - im.GetStyle().WindowPadding.x
 		cur := im.GetCursorScreenPos()
-		want := main_left - 4 - buses_w
+		want := main_left - 4 - add_w - buses_w
 		if want > cur.x do im.SetCursorScreenPos({want, cur.y})
 	}
 	// The line between the pads and the buses.
@@ -202,13 +227,23 @@ draw_mixer :: proc(user: rawptr) {
 			if b > 0 do im.SameLine()
 			bus_strip(a, b, h)
 		}
-		if n_buses < pm.BUSES {
-			im.SameLine()
-			if ui.icon_button(ui.ICON_PLUS, "Add a bus", size = 22) do pm.add_bus(m)
-			ui.name("add bus")
+		// A bus just added: scrolled into sight (its room known a frame later).
+		if bus_added > 0 {
+			bus_added -= 1
+			if bus_added == 0 do im.SetScrollX(im.GetScrollMaxX())
 		}
 	}
 	im.EndChild()
+	// The + that adds a bus, after them (outside their scrolling: always
+	// in sight).
+	if n_buses < pm.BUSES {
+		im.SameLine(0, 2)
+		if ui.icon_button(ui.ICON_PLUS, "Add a bus", size = 22) {
+			pm.add_bus(m)
+			bus_added = 2
+		}
+		ui.name("add bus")
+	}
 	// Main, at the right edge.
 	im.SameLine(0, 4)
 	main_x := im.GetWindowPos().x + im.GetWindowWidth() - main_w - im.GetStyle().WindowPadding.x
@@ -536,17 +571,19 @@ eq_thumb :: proc(eq: ^[3]f32, color: ui.Color, on := true, width: f32 = 0) -> bo
 // One row of a strip: a dark well with `label` (an effect, a send, the
 // output). Returns the row's corners and whether it was clicked.
 @(private)
-row :: proc(a: ^App, id: cstring, label: string, color: ui.Color, highlight := false) -> (lo, hi: im.Vec2, clicked: bool) {
+row :: proc(a: ^App, id: cstring, label: string, color: ui.Color, highlight := false, h: f32 = ROW_H) -> (lo, hi: im.Vec2, clicked: bool) {
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	lo = im.GetCursorScreenPos()
-	hi = {lo.x + inner_w(), lo.y + ROW_H}
-	clicked = im.InvisibleButton(id, {inner_w(), ROW_H})
+	hi = {lo.x + inner_w(), lo.y + h}
+	clicked = im.InvisibleButton(id, {inner_w(), h})
 	part(string(id)[2:]) // "##send B" → "A1 send B", "##slot 1" → "A1 slot 1"
 	hovered := im.IsItemHovered()
 	bg := t.accent if highlight else (t.hover if hovered else well(t))
 	im.DrawList_AddRectFilled(dl, lo, hi, ui.col(bg), 3)
-	small(a)
+	// A taller row (the Mixer's I/O) in the label size on a wide strip.
+	if h > ROW_H && !narrow() do im.PushFontFloat(a.platform.fonts.regular, 14)
+	else do small(a)
 	text_in(dl, lo, hi, label, t.accent_text if highlight else color)
 	im.PopFont()
 	// The gap below it without an item: callers read the row's own state
@@ -616,10 +653,23 @@ send_row :: proc(a: ^App, pad, bus: int) {
 	if on && !narrow() do text_in(dl, {hi.x - 34, lo.y}, hi, fmt.tprintf("%.0f", db), t.text_dim)
 	im.PopFont()
 	// Input: on the row's button (the last item before the knob drawing).
-	// With several strips selected, each one's send moves by as much.
+	send_input(a, pad, bus, max(hi.x - lo.x, 40) * 1.5, horizontal = true) // (a bar: dragged across)
+}
+
+// A send's editing, on the last item (its row or its knob): dragged
+// (across a row, up and down a knob; Shift finer), the wheel,
+// double-click to turn it on at 0 dB or off, right-click for pre- or
+// post-fader, its tooltip. With several strips selected, each one's send
+// moves by as much.
+@(private)
+send_input :: proc(a: ^App, pad, bus: int, range: f32, horizontal: bool) {
+	m := &a.m
+	s := m.project.pads[pad].sends[bus - 1]
+	on := s.level > 0
+	db := pm.send_db(s)
 	v := db
-	e := ui_drag(&v, pm.SEND_MIN_DB, 6, 0, max(hi.x - lo.x, 40) * 1.5, horizontal = true) // (a bar: dragged across)
-	if im.IsItemHovered() || im.IsItemActive() do im.SetMouseCursor(.ResizeEW)
+	e := ui_drag(&v, pm.SEND_MIN_DB, 6, 0, range, horizontal = horizontal)
+	if horizontal && (im.IsItemHovered() || im.IsItemActive()) do im.SetMouseCursor(.ResizeEW)
 	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 		v = pm.SEND_MIN_DB if on else 0
 		e.changed, e.ended = true, true
@@ -647,6 +697,57 @@ send_row :: proc(a: ^App, pad, bus: int) {
 	if im.IsItemHovered({.DelayShort}) && !im.IsItemActive() {
 		im.SetTooltip("%s", fmt.ctprintf("Send to %s: %s, %s-fader", pm.bus_name(&m.project, bus), "off" if !on else fmt.tprintf("%+.1f dB", db), "pre" if s.pre else "post"))
 	}
+}
+
+// Pad `pad`'s sends as knobs, a few to a row (the bottom area folded: the
+// room the bar would leave goes to them): each a ring of its level (0 dB
+// at the top, orange when pre-fader) over its bus's letter or name.
+@(private)
+send_knobs :: proc(a: ^App, pad: int) {
+	m := &a.m
+	t := ui.theme()
+	n := m.project.bus_count
+	per := send_knobs_a_row()
+	cell_w := inner_w() / f32(per)
+	letters := "ABCDEFGHIJKLMNOP"
+	dl := im.GetWindowDrawList()
+	x0 := im.GetCursorScreenPos().x
+	for b in 1 ..= n {
+		col := (b - 1) % per
+		if col > 0 do im.SameLine(0, 0)
+		else do im.SetCursorScreenPos({x0, im.GetCursorScreenPos().y})
+		s := m.project.pads[pad].sends[b - 1]
+		on := s.level > 0
+		letter := letters[b - 1:][:1]
+		pos := im.GetCursorScreenPos()
+		im.InvisibleButton(fmt.ctprintf("##send %s", letter), {cell_w, SEND_KNOB_H})
+		part(fmt.tprintf("send %s", letter))
+		hovered := im.IsItemHovered() || im.IsItemActive()
+		// The ring.
+		r := min(cell_w / 2 - 4, 13)
+		c := im.Vec2{pos.x + cell_w / 2, pos.y + r + 3}
+		a0, sweep := f32(math.PI) * 0.75, f32(math.PI) * 1.5
+		db := pm.send_db(s)
+		frac := clamp((db - pm.SEND_MIN_DB) / (6 - pm.SEND_MIN_DB), 0, 1)
+		im.DrawList_AddCircleFilled(dl, c, r - 3, ui.col(t.hover if hovered else t.raised), 24)
+		im.DrawList_PathArcTo(dl, c, r, a0, a0 + sweep, 24)
+		im.DrawList_PathStroke(dl, ui.col(well(t)), 3)
+		if on {
+			im.DrawList_PathArcTo(dl, c, r, a0, a0 + sweep * frac, 24)
+			im.DrawList_PathStroke(dl, ui.col(t.warn if s.pre else t.accent), 3)
+			at := a0 + sweep * frac
+			im.DrawList_AddLine(dl, c, {c.x + math.cos(at) * (r - 2), c.y + math.sin(at) * (r - 2)}, ui.col(t.text), 1.5)
+		}
+		// Its bus under it: the letter, or its name when it has one and fits.
+		label := pm.bus_name(&m.project, b)
+		if label == fmt.tprintf("Bus %s", letter) do label = letter
+		small(a)
+		if im.CalcTextSize(fmt.ctprintf("%s", label)).x > cell_w - 2 do label = letter
+		text_in(dl, {pos.x, c.y + r}, {pos.x + cell_w, pos.y + SEND_KNOB_H}, label, t.text if on else t.text_dim)
+		im.PopFont()
+		send_input(a, pad, b, 120, horizontal = false)
+	}
+	if n > 0 do im.Dummy({0, 0})
 }
 
 // Dragging the last item changes `value` (as ui's knobs do; the press
@@ -686,7 +787,7 @@ output_row :: proc(a: ^App, pad: int) {
 	m := &a.m
 	t := ui.theme()
 	cur := int(m.project.pads[pad].bus)
-	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, route_name(a, cur)), t.warn if route_missing(a, cur) else t.text)
+	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, route_name(a, cur)), t.warn if route_missing(a, cur) else t.text, h = io_h())
 	if clicked do im.OpenPopup("##outmenu")
 	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Output: %s (click to route it)", route_name(a, cur, true)))
 	if im.BeginPopup("##outmenu") {
@@ -740,7 +841,7 @@ audio_in_row :: proc(a: ^App, pad: int) {
 	m := &a.m
 	t := ui.theme()
 	text := audio_in_text(a, pad)
-	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim)
+	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim, h = io_h())
 	dl := im.GetWindowDrawList()
 	in_ := m.project.pads[pad].input
 	lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
@@ -761,7 +862,7 @@ audio_in_row :: proc(a: ^App, pad: int) {
 midi_in_row :: proc(a: ^App, pad: int) {
 	t := ui.theme()
 	text := midi_in_text(a, pad)
-	lo, hi, clicked := row(a, "##midi in", fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, text), t.text_dim)
+	lo, hi, clicked := row(a, "##midi in", fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, text), t.text_dim, h = io_h())
 	midi_light(im.GetWindowDrawList(), {hi.x - 10, lo.y + (hi.y - lo.y - 7) / 2}, 7, a.io.in_lit[pad], a.io.out_lit[pad])
 	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("MIDI in: %s (click to choose)", text))
 	if clicked do im.OpenPopup("##midiinmenu")
@@ -780,7 +881,7 @@ midi_out_row :: proc(a: ^App, pad: int) {
 	out := m.project.pads[pad].midi_out
 	port := "Default" if out.port == "" else port_name(a, out.port, false)
 	text := fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, fmt.tprintf("%s · %d", port, out.channel + 1) if out.on else "No MIDI out")
-	_, _, clicked := row(a, "##midi out", text, t.text if out.on else t.text_dim)
+	_, _, clicked := row(a, "##midi out", text, t.text if out.on else t.text_dim, h = io_h())
 	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("MIDI out: %s (its hits also go out as a note; click to choose)", fmt.tprintf("%s, channel %d", port, out.channel + 1) if out.on else "off"))
 	if clicked do im.OpenPopup("##midioutmenu")
 	if im.BeginPopup("##midioutmenu") {
@@ -824,11 +925,11 @@ bus_output_row :: proc(a: ^App, b: int) {
 	m := &a.m
 	t := ui.theme()
 	if b >= pm.BUSES {
-		row(a, "##output", "Output", t.text_dim)
+		row(a, "##output", "Output", t.text_dim, h = io_h())
 		return
 	}
 	cur := int(m.project.buses[b].dest)
-	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, route_name(a, cur)), t.warn if route_missing(a, cur) else t.text)
+	_, _, clicked := row(a, "##output", fmt.tprintf("%s %s", ui.ICON_ARROW_RIGHT, route_name(a, cur)), t.warn if route_missing(a, cur) else t.text, h = io_h())
 	if clicked do im.OpenPopup("##busout")
 	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Output: %s (click to route it)", route_name(a, cur, true)))
 	if im.BeginPopup("##busout") {
@@ -849,7 +950,8 @@ pan_knob :: proc(a: ^App, pan: ^f32) -> ui.Edit {
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
 	w := inner_w()
-	im.InvisibleButton("##pan", {w, PAN_H})
+	ph := pan_h()
+	im.InvisibleButton("##pan", {w, ph})
 	part("pan")
 	e := ui_drag(pan, -1, 1, 0, 120)
 	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
@@ -858,25 +960,26 @@ pan_knob :: proc(a: ^App, pan: ^f32) -> ui.Edit {
 	}
 	automation_menu(a, "##panauto")
 	ui.knob_report(e, pan^)
-	r: f32 = 10
+	r: f32 = 16 if strip_big_knobs else 10
 	c := im.Vec2{pos.x + w / 2, pos.y + r + 1}
 	a0 := f32(math.PI) * 0.75
 	sweep := f32(math.PI) * 1.5
 	top := a0 + sweep / 2
 	im.DrawList_AddCircleFilled(dl, c, r - 3, ui.col(t.raised), 24)
 	im.DrawList_PathArcTo(dl, c, r, a0, a0 + sweep, 24)
-	im.DrawList_PathStroke(dl, ui.col(well(t)), 3)
+	stroke: f32 = 4 if strip_big_knobs else 3
+	im.DrawList_PathStroke(dl, ui.col(well(t)), stroke)
 	at := top + pan^ * sweep / 2
 	if abs(pan^) > 0.005 {
 		im.DrawList_PathArcTo(dl, c, r, min(top, at), max(top, at), 16)
-		im.DrawList_PathStroke(dl, ui.col(t.accent), 3)
+		im.DrawList_PathStroke(dl, ui.col(t.accent), stroke)
 	}
 	im.DrawList_AddLine(dl, c, {c.x + math.cos(at) * (r - 2), c.y + math.sin(at) * (r - 2)}, ui.col(t.text), 1.5)
 	text := "C"
 	if pan^ < -0.005 do text = fmt.tprintf("L%.0f", -pan^ * 100)
 	if pan^ > 0.005 do text = fmt.tprintf("R%.0f", pan^ * 100)
 	small(a)
-	text_in(dl, {pos.x, c.y + r - 1}, {pos.x + w, pos.y + PAN_H + 2}, text, t.text_dim)
+	text_in(dl, {pos.x, c.y + r - 1}, {pos.x + w, pos.y + ph + 2}, text, t.text_dim)
 	im.PopFont()
 	return e
 }
@@ -1052,7 +1155,8 @@ mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: boo
 		if !first do im.SameLine(0, 4)
 		first = false
 		pos := im.GetCursorScreenPos()
-		pressed := im.InvisibleButton(names[which], {w, ROW_H})
+		bh := ms_h()
+		pressed := im.InvisibleButton(names[which], {w, bh})
 		part(probes[which])
 		if pressed {
 			on^ = !on^
@@ -1060,9 +1164,9 @@ mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: boo
 		}
 		hovered := im.IsItemHovered()
 		bg := colors[which] if on^ else (t.hover if hovered else well(t))
-		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + ROW_H}, ui.col(bg), 3)
-		im.PushFontFloat(a.platform.fonts.semibold, 12)
-		text_in(dl, pos, {pos.x + w, pos.y + ROW_H}, letters[which], t.bg if on^ else t.text_dim)
+		im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + bh}, ui.col(bg), 3)
+		im.PushFontFloat(a.platform.fonts.semibold, 14 if bh > ROW_H else 12)
+		text_in(dl, pos, {pos.x + w, pos.y + bh}, letters[which], t.bg if on^ else t.text_dim)
 		im.PopFont()
 		if hovered do im.SetTooltip("%s", tips[which])
 	}
@@ -1089,12 +1193,9 @@ name_plate :: proc(name: string, color: ui.Color) -> bool {
 // The height a strip's fader gets: what is left of `h` after the rest (a
 // compact strip has no EQ display, inserts or sends).
 @(private)
-fader_h :: proc(h: f32, compact := false, rows := -1) -> f32 {
+fader_h :: proc(h: f32, compact := false, block: f32 = 0) -> f32 {
 	fixed := strip_fixed_h(compact)
-	if !compact {
-		r := rows if rows >= 0 else 0
-		if r > 0 do fixed += f32(r) * (ROW_H + 2) + 4
-	}
+	if !compact && block > 0 do fixed += block + 4
 	return max(h - fixed, 40)
 }
 
@@ -1102,27 +1203,39 @@ fader_h :: proc(h: f32, compact := false, rows := -1) -> f32 {
 // rows.
 @(private)
 strip_fixed_h :: proc(compact := false) -> f32 {
-	fixed: f32 = 2 * STRIP_PAD + 4 + PAN_H + 4 + 21 + 4 + ROW_H + 4 + 21
+	fixed: f32 = 2 * STRIP_PAD + 4 + pan_h() + 4 + 21 + 4 + ms_h() + 4 + 21
 	if compact do fixed += 2 * (ROW_H + 2) + 4
-	else if strip_view.io do fixed += 4 * (ROW_H + 2) + 8 // (two in above the pan, two out at the foot)
+	else if strip_view.io do fixed += 4 * (io_h() + 2) + 8 // (two in above the pan, two out at the foot)
 	if !compact && strip_view.eq do fixed += EQ_H + 4
 	return fixed
 }
 
-// The rows of inserts and sends (on a bus: slots) every strip shows: as
-// many as they have (the most of any), or as fit, leaving the fader at
-// least 70 points (the rest scroll; one row at the least).
+// The height of the block of inserts and sends (on a bus: slots) every
+// strip shows: all they have (the most of any strip), or what fits,
+// leaving the fader at least 70 points (the rest scroll; a row at the
+// least). Sends are rows, or (the bottom area folded) knobs, a few a row.
 @(private)
-block_rows :: proc(a: ^App, h: f32) -> int {
-	want := 0
+block_h :: proc(a: ^App, h: f32) -> f32 {
 	p := &a.m.project
 	cue := 1 if cue_on(a) else 0
-	if strip_view.inserts do want = pm.BUS_SLOTS
-	pad_rows := (pm.PAD_INSERTS if strip_view.inserts else 0) + (p.bus_count + cue if strip_view.sends else 0)
-	want = max(want, pad_rows)
-	fit := int((h - strip_fixed_h() - 70 - 4) / (ROW_H + 2))
-	return clamp(want, 0, max(fit, 1 if want > 0 else 0))
+	want: f32 = f32(pm.BUS_SLOTS) * (ROW_H + 2) if strip_view.inserts else 0
+	pad_want: f32 = f32(pm.PAD_INSERTS) * (ROW_H + 2) if strip_view.inserts else 0
+	if strip_view.sends {
+		if strip_big_knobs {
+			pad_want += f32((p.bus_count + send_knobs_a_row() - 1) / send_knobs_a_row()) * SEND_KNOB_H + f32(cue) * (ROW_H + 2)
+		} else {
+			pad_want += f32(p.bus_count + cue) * (ROW_H + 2)
+		}
+	}
+	want = max(want, pad_want)
+	if want <= 0 do return 0
+	fit := h - strip_fixed_h() - 70 - 4
+	return clamp(want, 0, max(fit, ROW_H + 2))
 }
+
+// Sends as knobs: how many to a row.
+@(private)
+send_knobs_a_row :: proc() -> int { return 2 if narrow() else 3 }
 
 // --- strips --------------------------------------------------------------------------------
 
@@ -1163,14 +1276,15 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		}
 		// Its inserts and a send to each bus in use: as many rows as the
 		// room has (the same for every strip); more scroll.
-		if rows := block_rows(a, h); rows > 0 {
+		if bh := block_h(a, h); bh > 0 {
 			im.PushStyleVar(.ScrollbarSize, 4)
-			if im.BeginChild("##block", {inner_w() + 6, f32(rows) * (ROW_H + 2)}, {}, {}) {
+			if im.BeginChild("##block", {inner_w() + 6, bh}, {}, {}) {
 				if strip_view.inserts do for s, k in pad.inserts {
 					failed := pm.slot_failed(&m.engine, i, -1, k)
 					slot_row(a, {.Pad, i, k}, s, failed)
 				}
-				if strip_view.sends do for b in 1 ..= m.project.bus_count do send_row(a, i, b)
+				if strip_view.sends && strip_big_knobs do send_knobs(a, i)
+				else if strip_view.sends do for b in 1 ..= m.project.bus_count do send_row(a, i, b)
 				if strip_view.sends && cue_on(a) do cue_row(a, i, -1)
 				im.Dummy({0, 0}) // (the rows end on a cursor move)
 			}
@@ -1210,7 +1324,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	vol := pad.volume
 	readouts(a, vol, &a.mixer.pads[i])
 	knob_target(a, fixed_target(.Pad, i, .Volume))
-	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h, compact, -1 if compact else block_rows(a, h)), strip_reduction(a, .Pad, i, pm.PAD_INSERTS))
+	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h, compact, 0 if compact else block_h(a, h)), strip_reduction(a, .Pad, i, pm.PAD_INSERTS))
 	knob_target(a, {})
 	multi_edit(a, card(targets), fe.changed, false)
 	if fe.changed do for j in 0 ..< pm.PADS do if j in targets {
@@ -1290,9 +1404,9 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 		gap()
 	}
 	// Its slots (and its cue send): as many rows as the pads' strips have.
-	if rows := block_rows(a, h); rows > 0 {
+	if bh := block_h(a, h); bh > 0 {
 		im.PushStyleVar(.ScrollbarSize, 4)
-		if im.BeginChild("##block", {inner_w() + 6, f32(rows) * (ROW_H + 2)}, {}, {}) {
+		if im.BeginChild("##block", {inner_w() + 6, bh}, {}, {}) {
 			if strip_view.inserts do for s, k in bus.slots do slot_row(a, {.Bus, b, k}, s, pm.slot_failed(&m.engine, -1, b, k))
 			if strip_view.sends && cue_on(a) && !is_main do cue_row(a, -1, b)
 			im.Dummy({0, 0})
@@ -1302,7 +1416,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 		gap()
 	}
 	if strip_view.io { // (in line with the tracks' inputs)
-		im.Dummy({inner_w(), 2 * (ROW_H + 2)})
+		im.Dummy({inner_w(), 2 * (io_h() + 2)})
 		gap()
 	}
 	pan := bus.pan
@@ -1319,7 +1433,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	vol := bus.volume
 	readouts(a, vol, &a.mixer.buses[b])
 	knob_target(a, fixed_target(.Main if is_main else .Bus, 0 if is_main else b, .Volume))
-	fe := fader_meter(a, &vol, &a.mixer.buses[b], fader_h(h, false, block_rows(a, h)), strip_reduction(a, .Bus, b, pm.BUS_SLOTS))
+	fe := fader_meter(a, &vol, &a.mixer.buses[b], fader_h(h, false, block_h(a, h)), strip_reduction(a, .Bus, b, pm.BUS_SLOTS))
 	knob_target(a, {})
 	if fe.changed {
 		nb := bus
@@ -1337,7 +1451,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	}
 	gap()
 	if strip_view.io {
-		im.Dummy({inner_w(), ROW_H + 2}) // (in line with the tracks' MIDI outs)
+		im.Dummy({inner_w(), io_h() + 2}) // (in line with the tracks' MIDI outs)
 		bus_output_row(a, b) // where it goes, right above its name
 		gap()
 	}

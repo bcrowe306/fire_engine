@@ -405,7 +405,12 @@ records.
   (each lit when shown, grey when not, named on hover; hidden ones give
   the fader the room) — and **narrow** or wide strips (narrow: more at
   once, the names their labels, the fader's level in the peak readout's
-  tooltip); kept in the app's settings. Then a channel strip, as in Logic, for every pad with a
+  tooltip; wide: 112 points, the I/O dropdowns and Mute, Solo and Arm
+  taller while the Mixer has the height, else a row's size); kept in the
+  app's settings. With the pads area folded (Cmd+J) the strips get the
+  room: a bigger pan knob, and the sends as **knobs**, three to a row on
+  a wide strip (two narrow), each ring its level over its bus's letter or
+  name (orange when pre-fader), dragged up and down, with the rows' double-click and menu. Then a channel strip, as in Logic, for every pad with a
   sound (all banks; it scrolls sideways), then, at the right whatever
   room the pads leave, the buses (four to start with, up to 16: the **+**
   adds one; they scroll when many) and main, pinned on the right with its

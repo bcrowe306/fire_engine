@@ -94,6 +94,8 @@ def test_renaming_the_project(app, tmp_path):
 def test_buses_routing_and_several_strips(app, fixtures):
     loaded(app, fixtures)
     app.panel("Mixer")
+    app.cmd("mixer narrow")  # (every bus in sight in the test's window: wide ones scroll)
+    app.wait(2)
     app.click("add bus", window="mixer")
     assert len(app.state()["buses"]) == 6  # A..E and main
     app.click("Bus E name", window="mixer", right=True)

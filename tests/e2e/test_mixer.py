@@ -140,3 +140,21 @@ def test_colour_several_fold_loudness_buses_at_the_right(app, fixtures):
     app.expect_item("show loudness", window="mixer")
     app.click("show loudness", window="mixer")
     app.expect_item("main integrated", window="mixer")
+
+
+def test_folded_pads_area_sends_as_knobs(app, fixtures):
+    mixer(app, fixtures)
+    app.key("cmd+j")  # the pads area folded: the strips get the room
+    app.until(lambda s: s["folded"], what="the pads area folded")
+    app.wait(3)
+    app.drag_by("A1 send B", 0, -150, window="mixer")  # a knob: up, more
+    assert app.pad(0)["sends"][1] > -10, app.pad(0)["sends"]
+    app.click("A1 send C", window="mixer", double=True)  # on at 0 dB, as a row
+    assert abs(app.pad(0)["sends"][2]) < 0.01
+    app.drag_by("A1 pan", 0, -40, window="mixer")  # the bigger pan knob: up, right
+    assert app.pad(0)["pan"] > 0
+    app.screenshot("mixer_send_knobs")
+    app.key("cmd+j")
+    app.until(lambda s: not s["folded"], what="unfolded")
+    # (Unfolded, the sends are bars again, scrolled under the inserts here:
+    # the other tests drag them across.)

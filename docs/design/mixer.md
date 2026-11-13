@@ -27,6 +27,13 @@ Status: built (all four steps). Limits for later: the cue has no meter; a K scal
    time and the fall rate. Defaults: dBFS, instant attack, a fall of
    about 24 dB a second, a 2 s hold; marks at 0, -6, -12, -24, -48.
 
+## Changed after (asked, 2026-11-13)
+
+- Wide strips wider (112 points, from 86); the I/O dropdowns and Mute,
+  Solo and Arm taller (24 points) while the Mixer has the height.
+- The pads area folded: a bigger pan knob, the sends as knobs (three a
+  row on a wide strip); unfolded, the send bars as before.
+
 ## The engine
 
 - `fire:dsp` gets a **loudness meter** (K-weighting, 400 ms momentary
