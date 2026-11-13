@@ -111,7 +111,7 @@ env_step :: proc "contextless" (e: ^Env_State, p: ^Env_Params, dt: f32) -> f32 {
 env_value :: proc "contextless" (e: ^Env_State, p: ^Env_Params) {
 	switch e.stage {
 	case .Done, .Delay: e.value = 0 if e.stage == .Done else e.start
-	case .Attack:       e.value = e.start + (1 - e.start) * power_scale(e.pos, -p.attack_power)
+	case .Attack:       e.value = e.start + (1 - e.start) * power_scale(ease_top(e.pos, clamp(0.001 / max(p.attack, 1e-9), 0, 0.5)), -p.attack_power) // (into its top over its last millisecond, or half of it)
 	case .Hold:         e.value = 1
 	case .Decay:        e.value = 1 - (1 - clamp(p.sustain, 0, 1)) * power_scale(e.pos, p.decay_power)
 	case .Release:      e.value = e.start * (1 - power_scale(e.pos, p.release_power))
@@ -120,10 +120,11 @@ env_value :: proc "contextless" (e: ^Env_State, p: ^Env_Params) {
 	e.value = clamp(e.value, 0, 1)
 }
 
-// [rt] Renders it a sample at a time into `out` (for an amp envelope),
-// its corners rounded over half a millisecond (where a stage turns into
-// the next, a straight attack's top: a sharp corner there is a click's
-// worth of highs, which a compressor lifting quiet bands made a pop).
+// [rt] Renders it a sample at a time into `out` (for an amp envelope):
+// its attack starting on its frame and easing into its top, the other
+// stages' corners rounded over half a millisecond (a sharp corner is a
+// click's worth of highs, which a compressor lifting quiet bands made a
+// pop).
 env_render :: proc "contextless" (e: ^Env_State, p: ^Env_Params, out: []f32, sample_rate: f64) {
 	dt := f32(1 / sample_rate)
 	for &v in out do v = env_rounded(e, env_step(e, p, dt), dt)
@@ -133,8 +134,28 @@ env_render :: proc "contextless" (e: ^Env_State, p: ^Env_Params, out: []f32, sam
 // `env_render` rounds an amp envelope's (a modulation envelope's too, a
 // control step at a time: no corner to tick a filter or a pitch).
 env_rounded :: proc "contextless" (e: ^Env_State, value, dt: f32) -> f32 {
+	// The attack as it is (it starts on its frame and eases into its top
+	// itself); every other stage rounded.
+	if e.stage == .Attack || e.stage == .Delay {
+		e.shaped = value
+		return value
+	}
 	e.shaped += (value - e.shaped) * (1 - math.exp(-dt / ENV_ROUND_SECONDS))
 	return e.shaped
+}
+
+// [rt] `p` (0..1) of the way through a stage, eased over its last `w`
+// into the end (its slope 0 there), scaled so it still ends at 1: an
+// attack that meets its top without a corner.
+@(private)
+ease_top :: proc "contextless" (p, w: f32) -> f32 {
+	if w <= 0 do return p
+	y := p
+	if p > 1 - w {
+		q := p - (1 - w)
+		y = (1 - w) + q - q * q / (2 * w)
+	}
+	return y / (1 - w / 2)
 }
 
 // How long an amp envelope's corners are rounded over (a time constant).

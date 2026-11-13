@@ -1841,10 +1841,11 @@ env_step :: proc "contextless"(e: ^Env_State, p: ^Env_Params, dt: f32) -> f32
 env_render :: proc "contextless"(e: ^Env_State, p: ^Env_Params, out: []f32, sample_rate: f64)
 ```
 
-**Realtime-safe** (callable on the audio thread). Renders it a sample at a time into `out` (for an amp envelope),
-its corners rounded over half a millisecond (where a stage turns into
-the next, a straight attack's top: a sharp corner there is a click's
-worth of highs, which a compressor lifting quiet bands made a pop).
+**Realtime-safe** (callable on the audio thread). Renders it a sample at a time into `out` (for an amp envelope):
+its attack starting on its frame and easing into its top, the other
+stages' corners rounded over half a millisecond (a sharp corner is a
+click's worth of highs, which a compressor lifting quiet bands made a
+pop).
 
 ### env_rounded
 
