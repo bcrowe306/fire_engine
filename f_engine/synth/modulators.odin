@@ -34,6 +34,7 @@ Env_State :: struct {
 	pos:   f32, // 0..1 through the stage
 	value: f32,
 	start: f32, // the level the stage began from (attack, release, kill)
+	shaped: f32, // an amp envelope's value as rendered: smoothed a little (`env_render`)
 }
 
 // [rt] A note starts it: from where it is (so a retrigger doesn't click),
@@ -119,11 +120,21 @@ env_value :: proc "contextless" (e: ^Env_State, p: ^Env_Params) {
 	e.value = clamp(e.value, 0, 1)
 }
 
-// [rt] Renders it a sample at a time into `out` (for an amp envelope).
+// [rt] Renders it a sample at a time into `out` (for an amp envelope),
+// its corners rounded over half a millisecond (where a stage turns into
+// the next, a straight attack's top: a sharp corner there is a click's
+// worth of highs, which a compressor lifting quiet bands made a pop).
 env_render :: proc "contextless" (e: ^Env_State, p: ^Env_Params, out: []f32, sample_rate: f64) {
 	dt := f32(1 / sample_rate)
-	for &v in out do v = env_step(e, p, dt)
+	k := 1 - math.exp(-dt / ENV_ROUND_SECONDS)
+	for &v in out {
+		e.shaped += (env_step(e, p, dt) - e.shaped) * k
+		v = e.shaped
+	}
 }
+
+// How long an amp envelope's corners are rounded over (a time constant).
+ENV_ROUND_SECONDS :: 0.0005
 
 // [rt] Whether it has finished (released to nothing).
 env_done :: #force_inline proc "contextless" (e: ^Env_State) -> bool {

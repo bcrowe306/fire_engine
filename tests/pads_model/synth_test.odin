@@ -326,3 +326,31 @@ a_sampler_pad_glides_in_legato :: proc(t: ^testing.T) {
 	testing.expectf(t, plo > 0.05 && phi > 0.05, "poly: both (%v, %v)", plo, phi)
 	rig_destroy(pr)
 }
+
+// A note starts without a pop: Sub Bass (a sine through the three-band
+// compressor, which lifts quiet bands) once popped where its attack's
+// straight ramp turned (its highs' band, empty, lifted 40 dB and more).
+// The worst kink in its first 50 ms (a click is a spike in the second
+// difference) stays small beside its level.
+@(test)
+the_sub_bass_starts_without_a_pop :: proc(t: ^testing.T) {
+	r := rig_make(t, "synth_pop")
+	defer rig_destroy(r)
+	m := &r.m
+	k := -1
+	for p, i in pm.BUILTIN_PRESETS do if p.name == "Sub Bass" do k = i
+	if !testing.expect(t, k >= 0, "the preset") do return
+	pm.make_synth(m, 0)
+	pm.preset_apply_builtin(m, 0, k)
+	render(r, 4800)
+	pm.hit(&m.engine, 0, true, 1, 0, keyboard = true)
+	out := render(r, 4800)
+	pm.hit(&m.engine, 0, false, 0, 0, keyboard = true)
+	x := out[0][:]
+	peak: f32 = 0
+	for v in x do peak = max(peak, abs(v))
+	worst: f32 = 0
+	for i in 2 ..< 2400 do worst = max(worst, abs(x[i] - 2 * x[i - 1] + x[i - 2]))
+	testing.expectf(t, peak > 0.1, "it sounds (%v)", peak)
+	testing.expectf(t, worst < 0.04 * peak, "no pop: the worst kink %v is %.1f%% of its level", worst, 100 * worst / peak)
+}

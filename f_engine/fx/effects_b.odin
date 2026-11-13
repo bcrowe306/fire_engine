@@ -134,6 +134,10 @@ COMPRESSOR_DEFAULTS :: Compressor_Params {
 	attack = 0.5, release = 0.5, mix = 1,
 }
 
+// The level (mean squared: -60 dB) below which a band is lifted no more
+// (upward compression raises what is quiet, not what is silent).
+@(private) LIFT_FLOOR :: 1e-6
+
 // Each band's base attack and release (ms).
 @(private) BAND_ATTACK_MS :: [3]f32{2.8, 1.4, 0.7}
 @(private) BAND_RELEASE_MS :: [3]f32{40, 28, 15}
@@ -247,7 +251,10 @@ compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, 
 				attack = s2 > c.lower[k][ch]
 				c.lower[k][ch] = (s2 + c.lower[k][ch] * (bk.att_s if attack else bk.rel_s)) * (bk.att_k if attack else bk.rel_k)
 				c.lower[k][ch] = min(c.lower[k][ch], bk.lo_t)
-				lo_mult := math.pow(bk.lo_t / max(c.lower[k][ch], 1e-12), bk.lo_r)
+				// (Nothing is lifted from below the floor: a band with
+				// nothing in it, a sub bass's highs say, isn't raised 40 dB
+				// and more, which made a pop of a note's first tiny edge.)
+				lo_mult := math.pow(bk.lo_t / max(c.lower[k][ch], LIFT_FLOOR), bk.lo_r)
 				if keyed do lo_mult = 1 // (keyed, it only presses down: a quiet key lifts nothing)
 				g := clamp(up_mult * lo_mult, 0, 32) * (c.gain[k] + (gains[k] - c.gain[k]) * u)
 				y := s * g

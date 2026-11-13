@@ -44,6 +44,14 @@ ENV_KILL_SECONDS :: 0.05
 
 Seconds a killed envelope (a stolen voice) takes to fall to nothing.
 
+### ENV_ROUND_SECONDS
+
+```odin
+ENV_ROUND_SECONDS :: 0.0005
+```
+
+How long an amp envelope's corners are rounded over (a time constant).
+
 ### LFO_MAX_POINTS
 
 ```odin
@@ -567,6 +575,7 @@ Env_State :: struct {
 	pos: f32,
 	value: f32,
 	start: f32,
+	shaped: f32,
 }
 ```
 
@@ -578,6 +587,7 @@ An envelope of one voice. Zero is done (silent).
 | `pos` | 0..1 through the stage |
 | `value` |  |
 | `start` | the level the stage began from (attack, release, kill) |
+| `shaped` | an amp envelope's value as rendered: smoothed a little (`env_render`) |
 
 ### Lfo_Shape
 
@@ -1831,7 +1841,10 @@ env_step :: proc "contextless"(e: ^Env_State, p: ^Env_Params, dt: f32) -> f32
 env_render :: proc "contextless"(e: ^Env_State, p: ^Env_Params, out: []f32, sample_rate: f64)
 ```
 
-**Realtime-safe** (callable on the audio thread). Renders it a sample at a time into `out` (for an amp envelope).
+**Realtime-safe** (callable on the audio thread). Renders it a sample at a time into `out` (for an amp envelope),
+its corners rounded over half a millisecond (where a stage turns into
+the next, a straight attack's top: a sharp corner there is a click's
+worth of highs, which a compressor lifting quiet bands made a pop).
 
 ### env_done
 
