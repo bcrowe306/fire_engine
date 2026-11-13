@@ -340,7 +340,7 @@ sync :: proc(e: ^Engine) {
 			} else if audio {
 				voice = dsp.pan_create() // what the players and the monitor sum into (panned: a sampler's zone pans)
 			} else if is_synth {
-				node, handle := synth.synth_create()
+				node, handle := synth.synth_create(timeline = e.timeline) // (its Sync LFOs follow the sequencer)
 				n.synth, n.handle, voice = handle, nil, node
 			} else {
 				node, handle := sampler.sampler_create({voices = clamp(pad.voice.voices, 1, 32), quality = .Sinc_Low})

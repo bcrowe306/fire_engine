@@ -108,8 +108,9 @@ Synth :: struct {
 	scratch:     [10][]f32,
 	chain:       fx.Chain,
 	fx_mod:      [PARAM_SLOTS - FX_BASE]f32, // the effect parameters' modulation now
-	song_seconds: f64,
+	song_seconds: f64, // where the song is (its timeline's position while it plays, else the clock's grid), in seconds at `bpm`
 	bpm:         f64,
+	timeline:    core.Timeline_Id, // the timeline Sync LFOs follow (zero: the leader's)
 	live:        Synth_Live,
 	// The output's last `SCOPE_FRAMES` (its two sides summed), for a UI's
 	// oscilloscope and spectrum; `scope_at` is where the next goes.
@@ -134,9 +135,12 @@ synth_vtable := core.Node_VTable {
 
 // Control thread. Makes a synth node (stereo out) with every parameter at
 // its default and no patch (silent until `synth_set_patch`).
-synth_create :: proc(allocator := context.allocator) -> (node: core.Node, s: ^Synth) {
+// Its Sync LFOs follow `timeline` while it plays (zero: the transport's
+// leader; neither playing: the clock's grid).
+synth_create :: proc(allocator := context.allocator, timeline := core.Timeline_Id{}) -> (node: core.Node, s: ^Synth) {
 	s = new(Synth, allocator)
 	s.allocator = allocator
+	s.timeline = timeline
 	s.rng = 0x2545f491
 	s.bpm = 120
 	for p in PARAMS do s.values[p.id] = p.default
@@ -253,9 +257,20 @@ adopt_patch :: proc "contextless" (s: ^Synth) {
 synth_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	s := (^Synth)(self)
 	adopt_patch(s)
-	if ctx.transport != nil {
-		s.bpm = ctx.transport.tempo_bpm if ctx.transport.tempo_bpm > 0 else 120
-		s.song_seconds = f64(ctx.transport.grid) * 60 / s.bpm
+	if t := ctx.transport; t != nil {
+		s.bpm = t.tempo_bpm if t.tempo_bpm > 0 else 120
+		// Sync LFOs keep to the song: its timeline's position while it plays
+		// (from the top again after a stop and play, and through a loop),
+		// else the clock's grid, which always runs.
+		beat := f64(t.grid)
+		tl := core.transport_timeline(t, s.timeline)
+		if tl == nil do tl = core.transport_timeline(t, t.leader)
+		if tl != nil && tl.playing do beat = f64(core.timeline_position_at(t, tl, 0))
+		s.song_seconds = beat * 60 / s.bpm
+		for &v in s.voices do if v.on do for i in 0 ..< LFOS {
+			p := lfo_params(s, &v, i + 1)
+			if p.mode == .Sync do lfo_sync(&v.lfos[i], lfo_hz(&p, s.bpm, v.pitch), s.song_seconds)
+		}
 	}
 	pos := 0
 	for e in ctx.events_in {

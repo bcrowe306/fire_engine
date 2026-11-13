@@ -271,6 +271,13 @@ lfo_note_on :: proc "contextless" (l: ^Lfo_State, p: ^Lfo_Params, hz: f32, song_
 	l.waited, l.fade, l.smooth, l.held = 0, 0, {}, true
 }
 
+// [rt] A Sync LFO put where the song is (`song_seconds` into it at `hz`),
+// each block: it follows the song's position (a stop and play, a loop).
+lfo_sync :: proc "contextless" (l: ^Lfo_State, hz: f32, song_seconds: f64) {
+	x := song_seconds * f64(hz)
+	l.offset = x - math.floor(x)
+}
+
 // [rt] The note is let go (the sustain and hold modes move on).
 lfo_note_off :: proc "contextless" (l: ^Lfo_State) {
 	l.held = false

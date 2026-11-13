@@ -1592,6 +1592,7 @@ Synth :: struct {
 	fx_mod: [288]f32,
 	song_seconds: f64,
 	bpm: f64,
+	timeline: core.Timeline_Id,
 	live: Synth_Live,
 	scope: [2048]f32,
 	scope_at: int,
@@ -1625,8 +1626,9 @@ The node's state.
 | `scratch` |  |
 | `chain` |  |
 | `fx_mod` | the effect parameters' modulation now |
-| `song_seconds` |  |
+| `song_seconds` | where the song is (its timeline's position while it plays, else the clock's grid), in seconds at `bpm` |
 | `bpm` |  |
+| `timeline` | the timeline Sync LFOs follow (zero: the leader's) |
 | `live` |  |
 | `scope` | The output's last `SCOPE_FRAMES` (its two sides summed), for a UI's oscilloscope and spectrum; `scope_at` is where the next goes. |
 | `scope_at` |  |
@@ -1880,6 +1882,15 @@ lfo_note_on :: proc "contextless"(l: ^Lfo_State, p: ^Lfo_Params, hz: f32, song_s
 **Realtime-safe** (callable on the audio thread). A note starts it. In Sync mode it starts where the song is
 (`song_seconds` into it at `hz`).
 
+### lfo_sync
+
+```odin
+lfo_sync :: proc "contextless"(l: ^Lfo_State, hz: f32, song_seconds: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). A Sync LFO put where the song is (`song_seconds` into it at `hz`),
+each block: it follows the song's position (a stop and play, a loop).
+
 ### lfo_note_off
 
 ```odin
@@ -2126,11 +2137,13 @@ the rest zero).
 ### synth_create
 
 ```odin
-synth_create :: proc(allocator: mem.Allocator = context.allocator) -> (node: core.Node, s: ^Synth)
+synth_create :: proc(allocator: mem.Allocator = context.allocator, timeline: core.Timeline_Id = core.Timeline_Id{}) -> (node: core.Node, s: ^Synth)
 ```
 
 Control thread. Makes a synth node (stereo out) with every parameter at
 its default and no patch (silent until `synth_set_patch`).
+Its Sync LFOs follow `timeline` while it plays (zero: the transport's
+leader; neither playing: the clock's grid).
 
 ### synth_set_patch
 
