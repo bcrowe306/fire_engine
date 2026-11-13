@@ -398,7 +398,13 @@ records.
   (bright while it is on); one or the other, saved with the pad, acting
   on its live notes (not the sequencer's). Recording, what they play is
   what goes into the sequence: each repeat, each arpeggiated note, where
-  it fell and as long as it sounded (not the key you held). And its **MIDI**: activity
+  it fell and as long as it sounded (not the key you held), never moved
+  by input quantize (they are on their own grid already; only the first,
+  played at the press, goes onto that grid when input quantize is on, so
+  1/32 repeats aren't pulled onto 1/16s and merged). **Note Repeat** in
+  the toolbar (MPC-style) turns note repeat on for every pad you hold, at
+  its dropdown's rate and gate (kept with the settings); a pad's own
+  works while it is off. While it is on, **Quantize** uses its rate. And its **MIDI**: activity
   lights, the key that plays it and **Learn** (the next note you play
   plays it), and **MIDI out** (its hits also go out as a note on a
   channel, from its own output port). Projects from before each pad had
@@ -1427,6 +1433,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
 | `test_audio_edit.py` | the Audio tab by mouse: a take, a click (cursor and region), Split, a Shift-dragged range deleted and undone, a region moved, its fade handle, Copy and Paste, Normalize, Reverse, Consolidate, the region's gain typed, a take picked |
+| `test_repeat_toolbar.py` | the toolbar's Note Repeat: on and off, its rate from its dropdown, Quantize's grid with it |
 | `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |

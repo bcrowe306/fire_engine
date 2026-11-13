@@ -615,6 +615,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		pm.set_pad(&a.m, i, .Input, "Set Input", p)
 		app.seal(&a.m.history)
 		return true
+	case "repeat_all":
+		// repeat_all on|off [RATE]: the toolbar's note repeat (RATE: 1/4 1/8 1/8T 1/16 1/16T 1/32 1/32T)
+		if len(w) < 2 do return false
+		a.m.engine.repeat_all = w[1] == "on"
+		if len(w) > 2 do for r, k in RATE_NAMES do if string(r) == w[2] do a.settings.repeat_rate = k
+		a.m.engine.repeat_all_settings = {rate = a.settings.repeat_rate, gate = a.settings.repeat_gate}
+		return true
 	case "arm":
 		// arm PAD on|off
 		i := num(w, 1)

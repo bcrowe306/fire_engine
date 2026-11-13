@@ -94,6 +94,16 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 			_, slot, rel, ok := plan_locate(m.engine.plan, t.beat, editing_slot(m))
 			if !ok do continue
 			start := input_quantize(m.project.transport.quantize, rel)
+			// A MIDI effect's notes: on its own grid (note repeat's rate,
+			// the arpeggiator's), never moved; the first, played at the
+			// press, onto that grid when input quantize is on (not a
+			// coarser one, where repeats would merge).
+			if t.fx do if step := fx_step(&m.engine, i); step > 0 {
+				q := m.project.transport.quantize
+				on_grid := abs(rel - quantize_beat(rel, step)) < 1e-4
+				start = rel
+				if !on_grid && q.on && q.strength > 0 do start = rel + (quantize_beat(rel, step) - rel) * f64(clamp(q.strength, 0, 1))
+			}
 			length := seq_beats(&m.project, m.project.sequences[slot])
 			if start >= length do start -= length
 			append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot, t.fx})

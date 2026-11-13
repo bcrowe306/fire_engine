@@ -10,6 +10,7 @@ import "fire:clap"
 import "fire:clip"
 import "fire:dsp"
 import "fire:graph"
+import pf "fire:perform"
 import "fire:record"
 import "fire:rt"
 import "fire:sampler"
@@ -80,6 +81,10 @@ Engine :: struct {
 	export_once: bool,        // while exporting: what plays plays once
 	mix_dirty: bool, // a bus or performance effect changed
 	built_fx:  [PADS]Perform, // what the router's MIDI effects have, each pad
+	// Note repeat for every pad (the toolbar's, MPC-style): while on,
+	// whatever pad is held repeats at its rate and gate (see `pad_fx`).
+	repeat_all: bool,
+	repeat_all_settings: pf.Repeat_Settings,
 	fx_sent:   [PADS]bool,
 	preview:   Preview, // the browser's preview (straight to the output)
 	armed:     [PADS]bool, // audio pads armed to record
@@ -105,6 +110,32 @@ Engine :: struct {
 	auto_dests: [dynamic]Auto_Dest, // automation of any parameter: a player for each node targeted
 	cc_id:      graph.Node_Id,      // the sequence's MIDI CC lanes: a player into the router
 	cc_player:  ^clip.Automation_Player,
+}
+
+// The MIDI effects pad `i` plays with: its own, with note repeat on at the
+// toolbar's rate and gate while that is (`repeat_all`).
+pad_fx :: proc(e: ^Engine, i: int) -> Perform {
+	fx := e.project.pads[i].midi_fx
+	if e.repeat_all {
+		fx.repeat_on = true
+		fx.repeat = e.repeat_all_settings
+	}
+	return fx
+}
+
+// The step (beats) of the MIDI effect pad `i` plays with: its
+// arpeggiator's, or its note repeat's; 0 with neither.
+fx_step :: proc(e: ^Engine, i: int) -> f64 {
+	fx := pad_fx(e, i)
+	if fx.arp_on do return f64(pf.rate_beats(fx.arp.rate))
+	if fx.repeat_on do return f64(pf.rate_beats(fx.repeat.rate))
+	return 0
+}
+
+// The grid of the toolbar's note repeat while it is on (what Quantize
+// uses then), else `g`.
+quantize_grid :: proc(e: ^Engine, g: Grid) -> Grid {
+	return Grid(e.repeat_all_settings.rate) if e.repeat_all else g
 }
 
 // Sets a parameter when it changed (or always, when `fresh`).
@@ -469,9 +500,9 @@ sync_sequencer :: proc(e: ^Engine) {
 		e.sig = tr.time_sig
 	}
 	e.router.midi_map = p.midi_map
-	for &pad, i in p.pads do if !e.fx_sent[i] || e.built_fx[i] != pad.midi_fx {
-		if !rt.spsc_push(&e.router.settings, Pad_Fx_Set{i, pad.midi_fx}) do break
-		e.built_fx[i], e.fx_sent[i] = pad.midi_fx, true
+	for _, i in p.pads do if fx := pad_fx(e, i); !e.fx_sent[i] || e.built_fx[i] != fx {
+		if !rt.spsc_push(&e.router.settings, Pad_Fx_Set{i, fx}) do break
+		e.built_fx[i], e.fx_sent[i] = fx, true
 	}
 	sequencer_tick(e)
 	defer sync_audio(e)

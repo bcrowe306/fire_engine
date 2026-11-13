@@ -9,6 +9,7 @@ import "core:strings"
 import app "app:core"
 import "app:ui"
 import pm "model"
+import pf "fire:perform"
 import im "deps:imgui"
 import "fire:backend"
 import padslink "padslink:."
@@ -59,6 +60,8 @@ App_Settings :: struct {
 	sample_method:       pm.Sampling,
 	sample_threshold_db: f32,
 	sample_bars:         int,
+	repeat_rate:         pf.Rate, // the toolbar's note repeat
+	repeat_gate:         f32,
 	preroll:   Preroll,
 	// New projects.
 	default_bpm: f64,
@@ -238,6 +241,8 @@ settings_load :: proc(a: ^App) {
 	if v, has := app.ini_get(ini_, "sampling", "method"); has do for mth in pm.Sampling do if enum_name(mth) == v do s.sample_method = mth
 	s.sample_threshold_db = f32(clamp(app.ini_f64(ini_, "sampling", "threshold_db", -40), -80, 0))
 	s.sample_bars = clamp(app.ini_int(ini_, "sampling", "bars", 1), 1, 16)
+	s.repeat_rate = pf.Rate(clamp(app.ini_int(ini_, "note_repeat", "rate", int(pf.Rate.Sixteenth)), 0, int(max(pf.Rate))))
+	s.repeat_gate = f32(clamp(app.ini_int(ini_, "note_repeat", "gate_percent", 50), 5, 100)) / 100
 	s.arm_selected = app.ini_bool(ini_, "recording", "arm_selected", true)
 	s.preroll = Preroll(clamp(app.ini_int(ini_, "recording", "preroll", int(Preroll.Sixteenth)), 0, int(max(Preroll))))
 	if _, has := app.ini_get(ini_, "recording", "preroll"); !has do migrate_settings_txt(a)
@@ -303,6 +308,8 @@ settings_save :: proc(a: ^App) {
 	app.ini_set(ini, "sampling", "method", enum_name(s.sample_method))
 	app.ini_set_f64(ini, "sampling", "threshold_db", f64(s.sample_threshold_db))
 	app.ini_set_int(ini, "sampling", "bars", s.sample_bars)
+	app.ini_set_int(ini, "note_repeat", "rate", int(s.repeat_rate))
+	app.ini_set_int(ini, "note_repeat", "gate_percent", int(s.repeat_gate * 100 + 0.5))
 	app.ini_set_bool(ini, "recording", "arm_selected", s.arm_selected)
 	app.ini_set_int(ini, "recording", "preroll", int(s.preroll))
 	app.ini_set_f64(ini, "project", "tempo", s.default_bpm)
@@ -620,6 +627,7 @@ draw_settings :: proc(a: ^App) {
 	a.capture.midi_offset = f64(s.midi_offset_ms) / 1000
 	a.m.engine.record_offset = s.record_offset
 	a.m.passes_to_tracks = s.passes_to_tracks
+	a.m.engine.repeat_all_settings = {rate = s.repeat_rate, gate = s.repeat_gate}
 	if s.keep.active && a.transport.clock >= s.keep.until do audio_revert(a)
 	if !s.open {
 		if s.keep.active do draw_keep(a)

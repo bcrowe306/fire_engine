@@ -69,6 +69,7 @@ State :: struct {
 	arrangement: int, // 1-based
 	snap:       bool, // the sequence editor snaps to its grid
 	curved:     int, // automation points of the current sequence bending the line after them
+	repeat_all: bool,   // the toolbar's note repeat is on
 	seq_mode:   string, // the Sequence view's tab: "Notes", "Automation" or "Audio"
 	audio:      State_Audio_View, // the Audio tab's selection
 	chances:    []f32,  // each note's chance (0..1) in the current sequence
@@ -377,6 +378,7 @@ state_json :: proc(a: ^App) -> string {
 	s.notes, s.points, s.bars = len(seq.notes), len(seq.points), seq.bars
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
 	s.seq_mode = enum_name(a.seq.mode)
+	s.repeat_all = a.m.engine.repeat_all
 	s.audio = {region = a.seq.aud.region, range = a.seq.aud.range, cursor = a.seq.aud.cursor, has_clip = a.seq.aud.has_clip}
 	s.chances = make([]f32, len(seq.notes), context.temp_allocator)
 	s.ccs = len(seq.ccs)

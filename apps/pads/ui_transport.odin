@@ -171,6 +171,8 @@ draw_toolbar :: proc(user: rawptr) {
 	im.SameLine(0, 2)
 	draw_sample_control(a, big)
 	im.SameLine(0, 2)
+	draw_repeat_control(a, big)
+	im.SameLine(0, 2)
 	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
 		n := tr
 		n.loop = !n.loop
@@ -441,6 +443,37 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 		}
 		im.EndPopup()
 	}
+}
+
+// Note Repeat, MPC-style: on, whatever pad you hold repeats at its rate
+// and gate (a pad's own repeat works while it is off). Its arrow: the rate
+// and the gate. While it is on, input quantize and Quantize use its rate.
+@(private = "file")
+draw_repeat_control :: proc(a: ^App, h: f32) {
+	t := ui.theme()
+	s := &a.settings
+	e := &a.m.engine
+	tip: cstring = "Note Repeat: on (held pads repeat at its rate; recorded on that grid)" if e.repeat_all else "Note Repeat: off (hold a pad to repeat it when on)"
+	if tool_toggle(ui.ICON_REPEAT_1, "Repeat", tip, e.repeat_all, t.accent, h) do e.repeat_all = !e.repeat_all
+	im.SameLine(0, 0)
+	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Note repeat settings") do im.OpenPopup("##repeatmenu")
+	if im.BeginPopup("##repeatmenu") {
+		im.TextDisabled("Note repeat for every pad held")
+		on := e.repeat_all
+		if ui.toggle("On##repeaton", &on) do e.repeat_all = on
+		ui.name("repeat on")
+		im.SetNextItemWidth(90)
+		if rate_combo("##repeatrate", &s.repeat_rate) do settings_save(a)
+		ui.name("repeat rate")
+		im.SameLine(0, 8)
+		g := f64(s.repeat_gate * 100)
+		ge := ui.number_drag("repeat gate", &g, 5, 100, 5, 1, "Gate %.0f%%", 120)
+		if ge.changed do s.repeat_gate = f32(g / 100)
+		if ge.ended do settings_save(a)
+		im.TextDisabled("Recorded as played, on its grid; input quantize\nand Quantize use its rate while it is on.")
+		im.EndPopup()
+	}
+	e.repeat_all_settings = {rate = s.repeat_rate, gate = s.repeat_gate}
 }
 
 // A toolbar button that turns something on and off, an icon and a label:

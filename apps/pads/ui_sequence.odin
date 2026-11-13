@@ -574,9 +574,9 @@ draw_grid_controls :: proc(a: ^App, quantize: bool) {
 	if !quantize do return
 	q: cstring = ui.ICON_MAGNET + "##Quantize" if seq_bar_narrow else ui.ICON_MAGNET + "  Quantize"
 	ui.flow(ui.button_width(q), 8 if seq_bar_narrow else -1)
-	if im.Button(q) do pm.quantize_sequence(m, m.project.slot, st.grid)
+	if im.Button(q) do pm.quantize_sequence(m, m.project.slot, pm.quantize_grid(&m.engine, st.grid))
 	ui.name("Quantize")
-	if im.IsItemHovered() do im.SetTooltip("Move the sequence's notes to the grid")
+	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Move the sequence's notes to %s", fmt.tprintf("note repeat's %s (it is on)", pm.GRID_NAMES[pm.quantize_grid(&m.engine, st.grid)]) if m.engine.repeat_all else "the grid"))
 	// Input quantize: notes recorded from now on, moved as they come in.
 	ui.flow(im.GetFrameHeight() * 2 + im.CalcTextSize("1/16T").x)
 	draw_input_quantize(a)

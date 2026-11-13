@@ -458,3 +458,45 @@ the_arpeggiators_notes_are_recorded :: proc(t: ^testing.T) {
 		testing.expectf(t, n.pitch == pitches[i], "note %d up the chord (%v)", i, notes)
 	}
 }
+
+@(test)
+the_toolbars_repeat_records_on_its_own_grid :: proc(t: ^testing.T) {
+	// The toolbar's note repeat at 1/32 for every pad (pad 0 has none of its
+	// own), input quantize on at 1/16: the press, 1000 frames after a 1/32
+	// step, goes onto that step (not the 1/16's), and every repeat is kept
+	// where it played, none pulled onto the 1/16s (where they'd merge).
+	r := blips(t, "perf_repeat_all")
+	defer rig_destroy(r)
+	m := &r.m
+	m.project.transport.quantize = {on = true, grid = .Sixteenth, strength = 1}
+	m.engine.repeat_all = true
+	m.engine.repeat_all_settings = {rate = .Thirty_Second, gate = 0.5}
+	pm.sync(&m.engine)
+	render(r, 256)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	STEP :: 3000 // a 1/32 at 120 BPM
+	render(r, 9 * STEP + 1000) // (9 × 1/32: between two 1/16s)
+	pm.hit(&m.engine, 0, true, 0.8)
+	render(r, 4 * STEP)
+	pm.hit(&m.engine, 0, false)
+	render(r, STEP)
+	pm.capture_poll(m, &c)
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	notes := m.project.sequences[0].notes
+	b :: proc(steps: int) -> f64 { return f64(steps) * 0.125 }
+	want := []f64{b(9), b(10), b(11), b(12), b(13)}
+	testing.expectf(t, len(notes) == len(want), "every repeat (%v)", notes)
+	for w in want {
+		found := false
+		for n in notes do if abs(n.start - w) < 1e-3 do found = true
+		testing.expectf(t, found, "a note at beat %v (%v)", w, notes)
+	}
+	// Quantize uses the repeat's grid while it is on.
+	testing.expect_value(t, pm.quantize_grid(&m.engine, .Sixteenth), pm.Grid.Thirty_Second)
+	m.engine.repeat_all = false
+	testing.expect_value(t, pm.quantize_grid(&m.engine, .Sixteenth), pm.Grid.Sixteenth)
+}
