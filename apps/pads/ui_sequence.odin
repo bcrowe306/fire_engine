@@ -42,6 +42,7 @@ Seq_State :: struct {
 	paste_at: f64,  // where a paste from the menu goes (-1: the selection's bar)
 	menu_target: Target, // what the open note or point menu is for
 	aud:      Audio_View, // the Audio tab's
+	row_h:    f32, // vertical zoom: the rows' height in points (0: as many as fit, ROW_MIN or more)
 }
 
 // The row menu's Track Loop: pad `pad`'s own loop in sequence `slot`
@@ -123,6 +124,13 @@ draw_editor_tools :: proc(a: ^App) {
 		st.fold = !st.fold
 		st.view.key0 = -1
 	}
+	// Vertical zoom: the rows' height, dragged (or Cmd/Ctrl+wheel over the
+	// rows); double-click: as many as fit.
+	im.SameLine(0, 6)
+	rh := f64(st.row_h)
+	ze := ui.number_drag("row height", &rh, 0, 120, 2, 1, "Row %.0f pt" if st.row_h > 0 else "Rows: fit", 76 if seq_bar_narrow else 90)
+	if ze.changed do st.row_h = f32(rh) if rh >= ROW_MIN else 0
+	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("The rows' height: drag (or %s+wheel over the rows) to see more or fewer; at its least, as many as fit", "Cmd" if ODIN_OS == .Darwin else "Ctrl"))
 	// The tool keys, while the editor has the keyboard.
 	if st.focused && !im.GetIO().WantTextInput {
 		if im.IsKeyPressed(.V, false) do st.tool = .Select
@@ -249,13 +257,29 @@ draw_sequence :: proc(user: rawptr) {
 	SPLIT :: 8
 	lane_h := clamp(st.lane_hs[li], 32, max(avail.y * 0.6, 40))
 	roll_h := max(avail.y - lane_h - SPLIT - im.GetStyle().ItemSpacing.y - 4, 4 * ROW_MIN)
-	// As many rows as fit at ROW_MIN or taller; the wheel scrolls the rest.
+	// As many rows as fit at ROW_MIN or taller (or, zoomed, at `row_h`);
+	// the wheel scrolls the rest, Cmd/Ctrl+wheel zooms.
 	n_rows := max(len(rows), 1)
-	keys := clamp(int(roll_h / ROW_MIN), min(4, n_rows), min(n_rows, 24 if st.piano else pm.PADS_PER_BANK))
-	if st.view.keys != keys || st.view.key0 < 0 {
+	fit := clamp(int(roll_h / ROW_MIN), min(4, n_rows), min(n_rows, 24 if st.piano else pm.PADS_PER_BANK))
+	{
+		io := im.GetIO()
+		mp := io.MousePos
+		here := im.GetCursorScreenPos()
+		cmd := io.KeyCtrl // (Cmd on a Mac: ImGui's Mac behaviour)
+		if cmd && io.MouseWheel != 0 && mp.x >= here.x && mp.x < here.x + avail.x && mp.y >= here.y && mp.y < here.y + roll_h {
+			cur := st.row_h if st.row_h > 0 else roll_h / f32(fit)
+			st.row_h = clamp(cur * (1 + 0.12 * io.MouseWheel), ROW_MIN, max(roll_h, ROW_MIN))
+			io.MouseWheel = 0 // (zoomed, not scrolled)
+		}
+	}
+	keys := fit if st.row_h <= 0 else clamp(int(roll_h / st.row_h + 0.5), 1, n_rows)
+	if st.view.key0 < 0 {
 		st.view.keys = keys
 		st.view.key0 = 0
 		if st.piano && !st.fold && !slicer do st.view.key0 = 48 - keys / 2 // the pad's own pitch in the middle
+	} else if st.view.keys != keys {
+		// (Zoomed: the bottom row stays where it was.)
+		st.view.keys = keys
 	}
 	st.view.key0 = clamp(st.view.key0, 0, max(n_rows - keys, 0))
 	roll_h = f32(keys) * (roll_h / f32(keys))

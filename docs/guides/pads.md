@@ -300,7 +300,9 @@ records.
   way; double-click a row's name to open it), where it plays
   chromatically. **Fold** shows only the rows that have notes (drums: the
   pads used, from every bank; piano roll: the pitches used). The wheel
-  scrolls the rows when they don't all fit. Notes of one pad (and pitch) never overlap: a note cuts short the
+  scrolls the rows when they don't all fit; **Cmd+wheel** (Ctrl) over
+  them, or the **Rows** control beside Fold (dragged), makes them taller
+  or shorter — fewer or more at once (at its least: as many as fit). Notes of one pad (and pitch) never overlap: a note cuts short the
   one before it, replaces one that starts with it, and takes over one it
   covers (a note it reaches into keeps the part after it), however it got
   there (drawn, moved, pasted, recorded, imported). Under the rows, a
@@ -770,7 +772,7 @@ fades) and kept by what went into it.
   select a range of beats. Moves and trims snap to the grid (Snap, the
   grid's menu; Cmd held: freely).
 - The tools act on the range, else the selected region, else the whole
-  part: **Split** (S: at the cursor, or the range's ends), **Cut** (Cmd+X),
+  part: **Split** (Cmd+T: at the cursor, or the range's ends), **Cut** (Cmd+X),
   **Copy** (Cmd+C), **Paste** (Cmd+V, at the cursor, on any audio track),
   **Delete** (the range goes silent; a region goes and what is under it
   plays again), **Crop**; on the region, **Normalize** (its loudest at
@@ -1457,6 +1459,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_audio_edit.py` | the Audio tab by mouse: a take, a click (cursor and region), Split, a Shift-dragged range deleted and undone, a region moved, its fade handle, Copy and Paste, Normalize, Reverse, Consolidate, the region's gain typed, a take picked |
 | `test_repeat_toolbar.py` | the toolbar's Note Repeat: on and off, its rate from its dropdown, Quantize's grid with it |
 | `test_track_loop.py` | per-track loops: a row's menu giving the kick 3 beats, off, undo; an audio track's loop typed in the Audio tab |
+| `test_vertical_zoom.py` | the Sequence view's vertical zoom: Cmd+wheel over the rows, the Rows control dragged, back to fit |
 | `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |

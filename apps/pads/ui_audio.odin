@@ -185,7 +185,7 @@ draw_audio_tools :: proc(a: ^App) {
 	bar :: proc(first: bool) {
 		if !first do im.SameLine(0, 2)
 	}
-	if ui.icon_button(ui.ICON_SPLIT, "Split (S): at the cursor, or the range's ends", disabled = !has) do audio_split(a)
+	if ui.icon_button(ui.ICON_SPLIT, "Split (Cmd+T): at the cursor, or the range's ends", disabled = !has) do audio_split(a)
 	ui.name("audio split")
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_SCISSORS, "Cut (Cmd+X): the range, or the region", disabled = !has) do audio_cut(a, true)
@@ -520,8 +520,8 @@ draw_audio_view :: proc(a: ^App, length, snap: f64) {
 	}
 	// Keys, while the view has the keyboard.
 	if a.seq.focused && !io.WantTextInput {
-		cmd := io.KeySuper if ODIN_OS == .Darwin else io.KeyCtrl
-		if im.IsKeyPressed(.S, false) && !cmd do audio_split(a)
+		cmd := io.KeyCtrl // (Cmd on a Mac: ImGui's Mac behaviour)
+		if cmd && im.IsKeyPressed(.T, false) do audio_split(a) // (not S: a pad key)
 		if cmd && im.IsKeyPressed(.X, false) do audio_cut(a, true)
 		if cmd && im.IsKeyPressed(.C, false) do audio_copy(a)
 		if cmd && im.IsKeyPressed(.V, false) do audio_paste(a)

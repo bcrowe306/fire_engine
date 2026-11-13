@@ -1,6 +1,6 @@
 # Audio recording, resampling and audio editing
 
-Status: steps 1–6 (recording timing, drivers, sampler recording, resampling and bounces, audio clips, per-track loops) built; the rest planned (decisions taken 2026-11-13).
+Status: built, all seven steps (decisions taken 2026-11-13). The "missing" list below is still open.
 
 ## What there is now (surveyed)
 
@@ -187,7 +187,9 @@ Status: steps 1–6 (recording timing, drivers, sampler recording, resampling an
    each pass on its exact frame (`comp_mix`'s `loop`), its takes a loop
    each. The row menu's Track Loop, ghosts on the row, the Audio tab's
    Loop.
-7. **Vertical zoom** in the Sequence view.
+7. **Vertical zoom** in the Sequence view (built): the rows' height
+   (`Seq_State.row_h`; 0: as many as fit), Cmd/Ctrl+wheel over the rows
+   and the Rows control; the scroll kept while zooming.
 
 Each step: model tests, e2e tests, a drive script with screenshots, the
 guides, then cloud tests (the timing step on every machine).

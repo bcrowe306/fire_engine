@@ -86,3 +86,15 @@ def test_a_region_s_gain_and_the_takes_menu(app, fixtures):
     app.click("audio takes")
     app.click("Take 1 · loop · from beat 1.00")
     assert app.state()["undo"] == "Use Take"
+
+
+def test_the_keys(app, fixtures):
+    take(app, fixtures)
+    app.click("audio editor", at=(0.25, 0.6))  # the region; the cursor at beat 1
+    app.key("cmd+c")
+    assert audio(app)["has_clip"]
+    app.click("audio editor", at=(0.5, 0.6))
+    app.key("cmd+t")  # split at the cursor
+    assert app.state()["undo"] == "Split"
+    app.key("cmd+v")
+    assert app.state()["undo"] == "Paste"
