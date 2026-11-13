@@ -70,6 +70,10 @@ State :: struct {
 	snap:       bool, // the sequence editor snaps to its grid
 	curved:     int, // automation points of the current sequence bending the line after them
 	repeat_all: bool,   // the toolbar's note repeat is on
+	mic_access: string, // macOS's microphone permission: Unknown, Not_Asked, Denied, Granted
+	latency:    [3]int, // the device's input, output and round-trip latency (frames)
+	record_latency: int, // what a take is moved earlier by
+	input_peaks: [4]f32, // the first input channels' meters now (linear)
 	seq_rows:   int,    // the rows the Sequence view shows at once (its vertical zoom)
 	row_h:      f32,    // ... its rows' height when zoomed (0: as many as fit)
 	seq_mode:   string, // the Sequence view's tab: "Notes", "Automation" or "Audio"
@@ -386,6 +390,10 @@ state_json :: proc(a: ^App) -> string {
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
 	s.seq_mode = enum_name(a.seq.mode)
 	s.repeat_all = a.m.engine.repeat_all
+	s.mic_access = enum_name(mic_access())
+	li, lo, lr := app.host_latency(&a.host)
+	s.latency, s.record_latency = {li, lo, lr}, pm.record_latency(&a.m.engine)
+	for k in 0 ..< 4 do s.input_peaks[k] = input_view(a, k).peak
 	s.seq_rows, s.row_h = a.seq.view.keys, a.seq.row_h
 	s.audio = {region = a.seq.aud.region, range = a.seq.aud.range, cursor = a.seq.aud.cursor, has_clip = a.seq.aud.has_clip}
 	s.chances = make([]f32, len(seq.notes), context.temp_allocator)

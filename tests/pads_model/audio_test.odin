@@ -405,8 +405,9 @@ each_pass_onto_a_track_of_its_own :: proc(t: ^testing.T) {
 @(test)
 inputs_follow_the_interface :: proc(t: ^testing.T) {
 	// The interface has inputs 1 and 2. A track on input 6 (gone) takes
-	// 1/2 (it is stereo: the first pair); a mono one on input 8, input 1;
-	// one on 1/2 stays. One undo step.
+	// the next pair there is, round to 1/2; a mono one on input 8, input 1;
+	// one on 1/2 stays; a sampler pad's input (what sampling into it
+	// records) too. One undo step.
 	r := rig_cabled(t, "inputs_follow")
 	defer rig_destroy(r)
 	m := &r.m
@@ -419,12 +420,14 @@ inputs_follow_the_interface :: proc(t: ^testing.T) {
 	set(m, 0, {channel = 5, stereo = true})
 	set(m, 1, {channel = 7})
 	set(m, 2, {channel = 0, stereo = true})
+	set(m, 3, {channel = 3}) // (a sampler pad)
 	app.seal(&m.history)
-	testing.expect_value(t, pm.inputs_follow(m), 2)
+	testing.expect_value(t, pm.inputs_follow(m), 3)
+	testing.expect_value(t, m.project.pads[3].input, pm.Audio_Input{channel = 0})
 	testing.expect_value(t, m.project.pads[0].input, pm.Audio_Input{channel = 0, stereo = true})
 	testing.expect_value(t, m.project.pads[1].input, pm.Audio_Input{channel = 0})
 	testing.expect_value(t, m.project.pads[2].input, pm.Audio_Input{channel = 0, stereo = true})
-	testing.expect_value(t, app.undo_name(&m.history), "Audio Inputs")
+	testing.expect_value(t, app.undo_name(&m.history), "Input") // (not an edit: the device decided it)
 	testing.expect_value(t, pm.inputs_follow(m), 0) // (nothing more to do)
 }
 
@@ -438,4 +441,76 @@ a_new_projects_recording_defaults :: proc(t: ^testing.T) {
 	testing.expect_value(t, pm.model_new(m, r.dir), fc.Error.None)
 	testing.expect_value(t, m.project.transport.count_in, 1)
 	testing.expect(t, m.project.transport.metro_rec_only, "the click only while recording")
+}
+
+@(test)
+a_missing_input_takes_the_next_one :: proc(t: ^testing.T) {
+	// Inputs 1, 2, 4, 5, 6 open (0-based 0, 1, 3, 4, 5).
+	Mask :: bit_set[0 ..< 64; u64]
+	mask := Mask{0, 1, 3, 4, 5}
+	testing.expect_value(t, pm.next_input(mask, 2, false), 3) // 3 gone: 4
+	testing.expect_value(t, pm.next_input(mask, 6, false), 0) // past the last: round to 1
+	testing.expect_value(t, pm.next_input(mask, 2, true), 4)  // 3/4 gone: 5/6
+	testing.expect_value(t, pm.next_input(mask, 6, true), 0)  // round to 1/2
+	testing.expect_value(t, pm.next_input(Mask{3}, 0, true), -1) // no pair at all
+}
+
+@(test)
+any_pad_monitors_its_input :: proc(t: ^testing.T) {
+	// An empty pad (sampling into it records its input): Off, silent; Auto,
+	// heard only while a sample is recorded into it; In, always.
+	r := rig_make(t, "monitor_any", inputs = 2)
+	defer rig_destroy(r)
+	m := &r.m
+	set :: proc(m: ^pm.Model, mo: pm.Monitor) {
+		p := m.project.pads[5]
+		p.monitor = mo
+		pm.set_pad(m, 5, .Monitor, "Monitor", p)
+	}
+	loud :: proc(r: ^Rig) -> f64 {
+		render_in(r, sine_in(440, 2400))
+		out := render_in(r, sine_in(440, 4800))
+		return kit.peak(out[0])
+	}
+	testing.expect_value(t, m.project.pads[5].monitor, pm.Monitor.Off) // (a new pad's: no feedback)
+	testing.expectf(t, loud(r) < 1e-4, "Off: silent (%v)", loud(r))
+	set(m, .Auto)
+	testing.expectf(t, loud(r) < 1e-4, "Auto, not sampling: silent (%v)", loud(r))
+	m.engine.sampling = 5
+	testing.expectf(t, loud(r) > 0.1, "Auto, sampling into it: heard (%v)", loud(r))
+	m.engine.sampling = -1
+	set(m, .In)
+	testing.expectf(t, loud(r) > 0.1, "In: heard (%v)", loud(r))
+	set(m, .Off)
+	testing.expectf(t, loud(r) < 1e-4, "Off: silent (%v)", loud(r))
+}
+
+@(test)
+no_input_records_nothing_and_stays :: proc(t: ^testing.T) {
+	r := rig_make(t, "no_input", inputs = 2)
+	defer rig_destroy(r)
+	m := &r.m
+	pm.set_pad_kind(m, 0, .Audio)
+	p := m.project.pads[0]
+	p.input = {from = .None}
+	pm.set_pad(m, 0, .Input, "Set Input", p)
+	pm.arm_track(m, 0, true)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	render_in(r, sine_in(440, 48_000))
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	render(r, 512)
+	for _ in 0 ..< 20 do pm.capture_poll(m, &c)
+	testing.expect_value(t, m.project.clips[0][0].sample, app.Id(0))
+	testing.expect_value(t, pm.inputs_follow(m), 0) // (none isn't missing)
+	testing.expect_value(t, m.project.pads[0].input.from, pm.Input_From.None)
+	// Saved and opened: still none.
+	testing.expect_value(t, pm.model_save(m), fc.Error.None)
+	r2 := rig_make(t, "no_input_load")
+	defer rig_destroy(r2)
+	testing.expect_value(t, pm.model_load(&r2.m, m.project.dir), fc.Error.None)
+	testing.expect_value(t, r2.m.project.pads[0].input.from, pm.Input_From.None)
 }

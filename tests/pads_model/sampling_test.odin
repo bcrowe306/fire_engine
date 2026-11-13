@@ -1,6 +1,9 @@
 package test_pads_model
 
 import "core:math"
+import "core:os"
+import "core:path/filepath"
+import "core:strings"
 import "core:testing"
 
 import app "app:core"
@@ -128,4 +131,38 @@ bars_record_whole_bars_from_the_next :: proc(t: ^testing.T) {
 		break
 	}
 	testing.expectf(t, first == 24_006, "the hit on beat 2 of the bar (%d)", first)
+}
+
+@(test)
+a_new_project_records_into_a_pad :: proc(t: ^testing.T) {
+	// A project with nothing loaded has no samples folder yet: the take
+	// still lands (its file made), on the pad, with what came in. After Save
+	// As, the next one goes into the new project's folder.
+	r := rig_cabled(t, "sample_fresh")
+	defer rig_destroy(r)
+	m := &r.m
+	samples, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
+	os.remove_all(samples)
+	testing.expect(t, !os.exists(samples), "no samples folder to start with")
+	rec: pm.Recording
+	defer pm.record_forget(&rec)
+	ready(r, &rec, 2)
+	testing.expect_value(t, pm.record_start(m, &rec, 2, .Hold), nil)
+	run(r, 256 * 20)
+	pm.record_stop(&rec)
+	s := take_on(r, &rec, 2)
+	if !testing.expect(t, s != nil, "a sample on pad 2") do return
+	testing.expect(t, os.exists(s.path), "its file written")
+	testing.expect(t, !rec.last_failed, "not a failed take")
+	// Saved elsewhere: the next take there.
+	to, _ := filepath.join({r.dir, "moved"}, context.temp_allocator)
+	testing.expect_value(t, pm.model_save_as(m, to), nil)
+	ready(r, &rec, 3)
+	testing.expect_value(t, pm.record_start(m, &rec, 3, .Hold), nil)
+	run(r, 256 * 20)
+	pm.record_stop(&rec)
+	s3 := take_on(r, &rec, 3)
+	if !testing.expect(t, s3 != nil, "a sample on pad 3") do return
+	testing.expectf(t, strings.has_prefix(s3.path, m.project.dir), "in the project's folder now (%s, %s)", s3.path, m.project.dir)
+	testing.expect(t, os.exists(s3.path), "its file written")
 }

@@ -88,6 +88,8 @@ Engine :: struct {
 	fx_sent:   [PADS]bool,
 	preview:   Preview, // the browser's preview (straight to the output)
 	armed:     [PADS]bool, // audio pads armed to record
+	sampling:  int, // the pad a sample is being recorded into (-1: none; the app sets it): heard on Auto
+	sample_mons: [PADS]Sample_Mon, // any other pad's input, monitored (see `sync_sample_monitors`)
 	audio_dirty: bool,     // a clip changed: give the players theirs again
 	tempo_at, tempo_next: f64, // a tempo change sent ahead: where (timeline beat), and what
 	perf_live: [PERF_FX]f32, // a held performance effect's intensity (where it is pressed; -1: its own)
@@ -181,6 +183,7 @@ Pad_Nodes :: struct {
 // marks every pad to be built.
 engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error {
 	e.watch_pad = -1
+	e.sampling = -1
 	e.host, e.project = host, project
 	e.sources = make(map[app.Id]^stream.Source)
 	e.warp_sources = make(map[string]^stream.Source)
@@ -235,6 +238,7 @@ build_fixed :: proc(e: ^Engine) -> fc.Error {
 	build_preview(e) or_return
 	e.bpm, e.metro_on = 0, true // the node starts on: sync sets what the project wants
 	e.fx_sent = {}
+	e.sample_mons = {} // (the graph is new)
 	e.seq_dirty = true
 	mark_all(e)
 	graph.commit(g) or_return

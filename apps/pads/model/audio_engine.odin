@@ -50,7 +50,7 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 		for c in 0 ..< 2 do graph.connect(g, id, c, n.voice, c)
 	}
 	n.holds = {}
-	if pad.frozen do return // (no input: it plays its renderings)
+	if pad.frozen || pad.input.from == .None do return // (no input: it plays its renderings, or records nothing)
 	interface := pad.input.from == .Interface
 	channels := 2
 	src: [2]int
@@ -100,7 +100,7 @@ tap_source :: proc(e: ^Engine, i: int) -> graph.Node_Id {
 	in_ := e.project.pads[i].input
 	k := int(in_.source)
 	switch in_.from {
-	case .Interface:
+	case .Interface, .None:
 	case .Pad:  if k != i && k < PADS && mx.strips[k].built do return mx.strips[k].out
 	case .Bus:  if k < BUSES && k < e.project.bus_count do return mx.buses[k].meter_id
 	case .Main: return mx.buses[BUSES].meter_id
@@ -116,7 +116,7 @@ tap_source :: proc(e: ^Engine, i: int) -> graph.Node_Id {
 sync_taps :: proc(e: ^Engine) -> (changed: bool) {
 	g := e.host.graph
 	for &n, i in e.nodes {
-		if !n.live || !n.audio || n.in_id == {} || e.project.pads[i].input.from == .Interface do continue
+		if !n.live || !n.audio || n.in_id == {} || e.project.pads[i].input.from == .Interface || e.project.pads[i].input.from == .None do continue
 		want := tap_source(e, i)
 		if want == n.tap_src do continue
 		if n.tap_src != {} do for c in 0 ..< 2 do graph.disconnect(g, n.tap_src, c, n.in_id, c)

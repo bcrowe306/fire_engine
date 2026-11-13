@@ -16,9 +16,9 @@ def audio_pad(app, index=1):
 def test_a_pad_becomes_an_audio_track(app):
     audio_pad(app)
     assert app.state()["undo"] == "Audio Track"
-    assert app.pad(1)["monitor"] == "Auto"  # its input heard while armed
-    app.click("Off", window="detail")
-    assert app.pad(1)["monitor"] == "Off"
+    assert app.pad(1)["monitor"] == "Off"  # (a new pad's: no feedback from a microphone near the speakers)
+    app.click("Auto", window="detail")
+    assert app.pad(1)["monitor"] == "Auto"
     app.click("##audioin", window="detail")
     app.click("In 2")
     assert app.pad(1)["input"] == "In 2"

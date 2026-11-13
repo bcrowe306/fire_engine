@@ -385,8 +385,29 @@ frame :: proc(a: ^App) {
 	}
 	pm.launch_record_poll(&a.m)
 	if a.host.opened do pm.record_prepare(&a.m, &a.rec, a.selected) // (ready before a press: no take loses its start)
-	if n := pm.inputs_follow(&a.m); n > 0 do ui.toast(&a.ws.toasts, .Info, fmt.tprintf("%d audio track%s moved to the interface's first input (%s wasn't there)", n, "" if n == 1 else "s", "its" if n == 1 else "theirs"))
+	pm.inputs_follow(&a.m) // (pads on a channel the interface hasn't: the next one it has)
+	a.m.engine.sampling = a.rec.pad if a.rec.active else -1 // (a pad's input heard while sampling into it, on Auto)
 	if pm.record_poll(&a.m, &a.rec) do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Recorded onto %s", pm.pad_label(a.rec.pad)))
+	if a.rec.last_done {
+		// What came in, when it isn't what was wanted: silence (the input,
+		// or the system's microphone permission), or Threshold's level never reached.
+		a.rec.last_done = false
+		pad := a.rec.pad
+		from := audio_in_text(a, pad) if pad >= 0 && pad < pm.PADS else "its input"
+		switch {
+		case a.rec.last_failed:
+			ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Couldn't record onto %s: its file couldn't be written (the project's folder, or the disk)", pm.pad_label(pad)))
+		case a.rec.last_peak_db < -90:
+			why := ""
+			#partial switch mic_access() {
+			case .Denied: why = " — macOS isn't letting Pads use the microphone: allow it in System Settings > Privacy & Security > Microphone"
+			case .Not_Asked, .Unknown: why = " — if a sound was there, macOS may be keeping the microphone from Pads: started from another app (a terminal, an editor), it's that app's permission. Allow that app in System Settings > Privacy & Security > Microphone, or start Pads as Pads.app"
+			}
+			ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("The sample on %s is silent: nothing came in on %s%s", pm.pad_label(pad), from, why))
+		case a.rec.last_dropped:
+			ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("Nothing kept: %s never reached %.0f dB (its loudest: %.0f dB). Lower the threshold in the Sample menu", from, a.settings.sample_threshold_db, a.rec.last_peak_db))
+		}
+	}
 	dt := im.GetIO().DeltaTime
 	for &l in a.lit do l = max(l - dt, 0)
 	for i in 0 ..< pm.PADS {
@@ -622,7 +643,7 @@ sample_press :: proc(a: ^App, index: int, alt: bool) -> bool {
 	}
 	s := &a.settings
 	if pm.record_start(&a.m, &a.rec, index, method, s.sample_threshold_db, s.sample_bars) != .None {
-		ui.toast(&a.ws.toasts, .Warning, "No audio input to record from")
+		ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("%s's input is set to No input: pick one on its strip", pm.pad_label(index)) if a.m.project.pads[index].input.from == .None else "No audio input to record from")
 		return true
 	}
 	a.selected = index

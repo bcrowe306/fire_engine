@@ -17,7 +17,7 @@ def test_monitor_from_the_strips(app):
     app.click("pad A2", window="detail")
     app.click("Global", window="detail")
     app.click("Audio", window="detail")
-    assert app.pad(1)["monitor"] == "Auto"
+    assert app.pad(1)["monitor"] == "Off"  # (a new pad's)
     app.click("A2 monitor", window="detail")
     app.click("monitor In")
     assert app.pad(1)["monitor"] == "In"
@@ -72,3 +72,26 @@ def test_cmd_click_latches_too(app):
     app.drag_by("pad A4", 0, 0, window="detail", steps=40)
     app.until(lambda s: any(p["index"] == 3 for p in s["pads"]), what="a sample on A4")
     assert app.state()["sample_armed"], "latched: on for the next one"
+
+
+def test_every_pad_has_its_input_and_monitor(app, fixtures):
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.click("pad A1", window="detail")  # a sampler
+    app.click("A1 monitor", window="detail")
+    app.click("monitor In")
+    assert app.pad(0)["monitor"] == "In"
+    app.click("A1 audio in", window="detail")
+    app.click("In 2")
+    assert app.pad(0)["input"] == "In 2", app.pad(0)["input"]
+    app.panel("Mixer")
+    app.expect_item("A1 monitor", window="mixer")
+    app.expect_item("A1 audio in", window="mixer")
+
+
+def test_no_input(app, fixtures):
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.click("pad A1", window="detail")
+    app.click("A1 audio in", window="detail")
+    app.click("No input")
+    assert app.pad(0)["input"] == "No input", app.pad(0)["input"]
+    assert app.state()["undo"] == "Set Input"

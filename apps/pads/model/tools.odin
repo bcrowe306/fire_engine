@@ -1,6 +1,7 @@
 package pads_model
 
 import "core:math"
+import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
@@ -290,12 +291,19 @@ Recording :: struct {
 	timed_node: graph.Node_Id,
 	timed:   ^record.Audio_Recorder, // on the sequencer's timeline, punched: Bars
 	timed_inputs: [2]int,
+	dir:     string, // the folder they write their takes into (the project's samples, as it was when they were made)
 	pad:     int,
 	method:  Sampling,
 	threshold_db: f32, // Threshold: the level the sample starts at
 	from, to: f64, // Bars: the timeline range recorded
 	active:  bool,
 	waiting: bool, // stopped; the take is being finished
+	// The last take, as it came: how loud it was at its loudest (dB; -inf
+	// silent), and whether Threshold kept nothing (it never passed the level).
+	last_peak_db: f32,
+	last_dropped: bool,
+	last_failed:  bool, // its file couldn't be written (nothing put on the pad)
+	last_done:    bool, // a take came since the app last looked (it clears it)
 }
 
 // A Threshold sample starts this long before the input passes the level
@@ -323,12 +331,16 @@ sample_recorder :: proc(m: ^Model, rec: ^Recording, timed: bool, src: [2]int) ->
 	handle := &rec.timed if timed else &rec.handle
 	node := &rec.timed_node if timed else &rec.node
 	have := &rec.timed_inputs if timed else &rec.inputs
-	if handle^ != nil && have^ == src do return handle^, .None
+	// Its takes go into the project's samples folder: made now if the
+	// project has none yet (a new one, nothing loaded), and the recorder
+	// made again when the project moved (Save As: the old folder may go).
+	dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
+	if handle^ != nil && have^ == src && rec.dir == dir do return handle^, .None
 	if handle^ != nil {
-		graph.remove_node(h.graph, node^) // (other inputs: made again)
+		graph.remove_node(h.graph, node^) // (other inputs, or another folder: made again)
 		handle^ = nil
 	}
-	dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
+	if os.make_directory_all(dir) != nil && !os.is_dir(dir) do return nil, .Device_Error
 	settings := record.Audio_Recorder_Settings{channels = 2, directory = dir, name = "Recording", encoding = .Float32, latency_frames = record_latency(&m.engine)}
 	if timed do settings.timeline = m.engine.timeline
 	n, r, err := record.audio_recorder_create(h.disk, settings)
@@ -338,6 +350,8 @@ sample_recorder :: proc(m: ^Model, rec: ^Recording, timed: bool, src: [2]int) ->
 	for c in 0 ..< 2 do graph.connect(h.graph, graph.INPUT, src[c], id, c)
 	graph.commit(h.graph)
 	node^, handle^, have^ = id, r, src
+	delete(rec.dir)
+	rec.dir = strings.clone(dir)
 	return r, .None
 }
 
@@ -345,6 +359,7 @@ sample_recorder :: proc(m: ^Model, rec: ^Recording, timed: bool, src: [2]int) ->
 // another device's rate or channels). A take in progress is lost; the next
 // `record_prepare` makes them again on the new graph.
 record_forget :: proc(rec: ^Recording) {
+	delete(rec.dir)
 	rec^ = {}
 }
 
@@ -354,6 +369,7 @@ record_forget :: proc(rec: ^Recording) {
 // of the take's start. Nothing while recording or without inputs.
 record_prepare :: proc(m: ^Model, rec: ^Recording, index: int) {
 	if rec.active || m.engine.host.settings.inputs <= 0 || m.engine.host.graph == nil do return
+	if index >= 0 && index < PADS && m.project.pads[index].input.from == .None do return // (it records nothing)
 	src, _ := sample_inputs(m, index)
 	sample_recorder(m, rec, false, src)
 	sample_recorder(m, rec, true, src)
@@ -364,7 +380,7 @@ record_prepare :: proc(m: ^Model, rec: ^Recording, index: int) {
 // `bars` bars from the next bar's start, playback started if stopped).
 record_start :: proc(m: ^Model, rec: ^Recording, index: int, method := Sampling.Hold, threshold_db: f32 = -40, bars := 1) -> fc.Error {
 	h := m.engine.host
-	if h.settings.inputs <= 0 do return .Unsupported
+	if h.settings.inputs <= 0 || m.project.pads[index].input.from == .None do return .Unsupported // (its input: none)
 	if rec.active do record_stop(rec)
 	src, _ := sample_inputs(m, index)
 	timed := method == .Bars
@@ -415,10 +431,18 @@ record_poll :: proc(m: ^Model, rec: ^Recording) -> bool {
 		}
 		rec.waiting = false
 		if take.frames <= 0 do continue
+		rec.last_done, rec.last_dropped = true, false
+		// Its file couldn't be written: nothing to put on the pad.
+		rec.last_failed = take.error != .None || !os.exists(take.path)
+		if rec.last_failed do continue
+		rec.last_peak_db = take_peak_db(take.path)
 		start: i64 = 0
 		if r == rec.handle && rec.method == .Threshold {
 			at := first_above(take.path, rec.threshold_db)
-			if at < 0 do continue // (never loud enough: nothing kept)
+			if at < 0 {
+				rec.last_dropped = true // (never loud enough: nothing kept)
+				continue
+			}
 			start = max(at - i64(SAMPLE_PREROLL_S * take.sample_rate), 0)
 		}
 		app.begin(&m.history, "Record")
@@ -434,6 +458,25 @@ record_poll :: proc(m: ^Model, rec: ^Recording) -> bool {
 		return true
 	}
 	return false
+}
+
+// The loudest frame of the WAV at `path`, in dB (-200: silent, or it won't open).
+@(private)
+take_peak_db :: proc(path: string) -> f32 {
+	rd, err := audiofile.open(path, context.temp_allocator)
+	if err != .None do return -200
+	defer audiofile.close(rd)
+	info := audiofile.info(rd)
+	BLOCK :: 4096
+	chans := make([][]f32, info.channels, context.temp_allocator)
+	for &c in chans do c = make([]f32, BLOCK, context.temp_allocator)
+	peak: f32
+	for {
+		n, rerr := audiofile.read(rd, chans, BLOCK)
+		if n <= 0 || rerr != .None do break
+		for c in chans do for v in c[:n] do peak = max(peak, abs(v))
+	}
+	return 20 * f32(math.log10(f64(max(peak, 1e-10))))
 }
 
 // The first frame of the WAV at `path` where any channel passes `db`

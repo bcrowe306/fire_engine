@@ -733,11 +733,17 @@ plays is a **take** per sequence:
 
 - In the Global tab pick its **input** (inputs 1 + 2, or input 1 or 2 alone,
   on both sides), **Arm** it (or click **R** on its strip; its pad reads
-  *armed*), and choose its **monitoring**: **Auto** (the default: its
+  *armed*), and choose its **monitoring** (**Off** for a new pad, so a
+  microphone near the speakers doesn't feed back): **Auto** (its
   input heard through its strip and effects while it is armed), **In**
   (always) or **Off** (you hear it on the interface; it still records).
-  Use headphones. Its strip has it too, under its input (a menu, as
-  Live's): in the Mixer and in the bottom area, wherever you record from.
+  Use headphones. Every pad's strip has its audio input and monitoring
+  (a menu, as Live's), whatever its device — sampling into a pad records
+  its input — in the Mixer and in the bottom area, wherever you record
+  from: for an audio track as above; for any other pad, Auto hears its
+  input while you sample into it (straight to its bus), In always, Off
+  never. **No input** (at the top of the menu): it records and monitors
+  nothing, and stays so when the interface changes.
 - Press **Record** (Cmd+R). After the count-in, if one is set, the input
   is recorded while the sequence plays; when you stop, each loop pass is
   a **take** of the track's part in that sequence, placed where it was
@@ -1167,9 +1173,9 @@ it.
   so; the device lists follow what is plugged in); a channel it no longer has is left out (kept, with
   **Forget them**); main on a pair that isn't open plays on the first
   open one; the settings and the project keep everything for when the
-  hardware is back. An audio track whose input isn't on the interface
-  (another one is, or the project came from elsewhere) takes its first
-  input (pair), one undo step. Changes wait for **Apply**,
+  hardware is back. A pad whose input isn't on the interface (another
+  one is, or the project came from elsewhere) takes the next input (pair)
+  there is, round to the first (not an edit: the device decides it). Changes wait for **Apply**,
   which opens the device with them; keep them within 10 s or they go
   back (no getting stuck without sound). Below, the engine now: the rate
   and buffer it runs at, the latency in, out and round trip, its block,

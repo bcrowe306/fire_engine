@@ -805,43 +805,14 @@ output_row :: proc(a: ^App, pad: int) {
 	}
 }
 
-// What comes into track `pad`: its MIDI input (with its activity light) or
-// its audio input (with its level); click to choose.
-@(private)
-input_row :: proc(a: ^App, pad: int) {
-	m := &a.m
-	t := ui.theme()
-	audio := m.project.pads[pad].kind == .Audio
-	text := audio_in_text(a, pad) if audio else midi_in_text(a, pad)
-	lo, hi, clicked := row(a, "##input", fmt.tprintf("%s %s", ui.ICON_ARROW_LEFT, text), t.text_dim)
-	dl := im.GetWindowDrawList()
-	if audio {
-		// Its level along the bottom of the row.
-		in_ := m.project.pads[pad].input
-		lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
-		if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
-		db := 20 * math.log10(max(lvl, 1e-6))
-		f := clamp((db + 60) / 60, 0, 1)
-		if f > 0 do im.DrawList_AddRectFilled(dl, {lo.x + 2, hi.y - 3}, {lo.x + 2 + (hi.x - lo.x - 4) * f, hi.y - 1}, ui.col(t.ok if db < -12 else (t.warn if db < -1 else t.danger)), 1)
-	} else {
-		midi_light(dl, {hi.x - 10, lo.y + (hi.y - lo.y - 7) / 2}, 7, a.io.in_lit[pad], a.io.out_lit[pad])
-	}
-	if clicked do im.OpenPopup("##inmenu")
-	if im.BeginPopup("##inmenu") {
-		if audio do audio_in_items(a, pad)
-		else do midi_in_items(a, pad)
-		im.EndPopup()
-	}
-}
-
 // Track `pad`'s audio input (a channel or pair of the interface, with its
 // level along the row); click to choose.
 @(private)
-audio_in_row :: proc(a: ^App, pad: int) {
+audio_in_row :: proc(a: ^App, pad: int, h: f32 = -1) {
 	m := &a.m
 	t := ui.theme()
 	text := audio_in_text(a, pad)
-	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim, h = io_h())
+	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim, h = io_h() if h < 0 else h)
 	dl := im.GetWindowDrawList()
 	in_ := m.project.pads[pad].input
 	lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
@@ -857,25 +828,20 @@ audio_in_row :: proc(a: ^App, pad: int) {
 	}
 }
 
-// An audio track's monitoring (Auto: its input heard while armed; In:
-// always; Off: never, it still records), a menu as Live's; a blank row
-// for any other track (the strips' faders stay in line).
+// A pad's monitoring, a menu as Live's: Auto (an audio track: its input
+// heard while armed; any other pad: while a sample is recorded into it),
+// In (always), Off (never; it still records).
 @(private)
 monitor_row :: proc(a: ^App, pad: int, h: f32) {
 	m := &a.m
 	t := ui.theme()
 	p := m.project.pads[pad]
-	if p.kind != .Audio {
-		im.Dummy({inner_w(), h})
-		im.SetCursorPosY(im.GetCursorPosY() + 2) // (as a row's gap)
-		return
-	}
-	internal := p.input.from != .Interface
+	internal := p.input.from != .Interface // (resampling, or no input: nothing to monitor)
 	NAMES := [pm.Monitor]string{.Auto = "Auto", .In = "In", .Off = "Off"}
 	text := "—" if internal else (NAMES[p.monitor] if narrow() || h <= ROW_H else fmt.tprintf("Monitor: %s", NAMES[p.monitor]))
 	_, _, clicked := row(a, "##monitor", fmt.tprintf("%s %s", ui.ICON_HEADPHONES, text), t.text_dim if !internal else ui.with_alpha(t.text_dim, 0.5), highlight = !internal && p.monitor == .In, h = h)
 	if im.IsItemHovered() && !clicked {
-		tip := "Resampling: its source is heard already, so it isn't monitored" if internal else "Monitoring: Auto (its input heard while it is armed), In (always), Off (never; it still records). Use headphones."
+		tip := "No input: nothing to monitor" if p.input.from == .None else "Resampling: its source is heard already, so it isn't monitored" if internal else ("Monitoring: Auto (its input heard while it is armed), In (always), Off (never; it still records). Use headphones." if p.kind == .Audio else "Monitoring its input: Auto (while you sample into it), In (always), Off (never; it still records). Use headphones.")
 		im.SetTooltip("%s", fmt.ctprintf("%s", tip))
 	}
 	if clicked && !internal do im.OpenPopup("##monitormenu")
@@ -895,10 +861,10 @@ monitor_row :: proc(a: ^App, pad: int, h: f32) {
 
 // Track `pad`'s MIDI input (with its activity light); click to choose.
 @(private)
-midi_in_row :: proc(a: ^App, pad: int) {
+midi_in_row :: proc(a: ^App, pad: int, h: f32 = -1) {
 	t := ui.theme()
 	text := midi_in_text(a, pad)
-	lo, hi, clicked := row(a, "##midi in", fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, text), t.text_dim, h = io_h())
+	lo, hi, clicked := row(a, "##midi in", fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, text), t.text_dim, h = io_h() if h < 0 else h)
 	midi_light(im.GetWindowDrawList(), {hi.x - 10, lo.y + (hi.y - lo.y - 7) / 2}, 7, a.io.in_lit[pad], a.io.out_lit[pad])
 	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("MIDI in: %s (click to choose)", text))
 	if clicked do im.OpenPopup("##midiinmenu")
@@ -1240,7 +1206,7 @@ fader_h :: proc(h: f32, compact := false, block: f32 = 0) -> f32 {
 @(private)
 strip_fixed_h :: proc(compact := false) -> f32 {
 	fixed: f32 = 2 * STRIP_PAD + 4 + pan_h() + 4 + 21 + 4 + ms_h() + 4 + 21
-	if compact do fixed += 3 * (ROW_H + 2) + 4 // (in, its monitoring, out)
+	if compact do fixed += 4 * (ROW_H + 2) + 4 // (audio in, its monitoring, MIDI in, out)
 	else if strip_view.io do fixed += 5 * (io_h() + 2) + 8 // (two in and the monitoring above the pan, two out at the foot)
 	if !compact && strip_view.eq do fixed += EQ_H + 4
 	return fixed
@@ -1393,9 +1359,12 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	}
 	gap()
 	if compact {
-		input_row(a, i) // what comes in: MIDI (and its light), or audio (and its level)
-		monitor_row(a, i, ROW_H) // an audio track's monitoring
-		output_row(a, i) // where it goes, right above its name
+		// What comes in (every pad: sampling into one records its audio
+		// input) and its monitoring, its MIDI, and where it goes.
+		audio_in_row(a, i, ROW_H)
+		monitor_row(a, i, ROW_H)
+		midi_in_row(a, i, ROW_H)
+		output_row(a, i) // right above its name
 		gap()
 	} else if strip_view.io {
 		midi_out_row(a, i) // where its MIDI goes

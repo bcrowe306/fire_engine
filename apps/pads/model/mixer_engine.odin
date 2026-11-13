@@ -2,6 +2,7 @@ package pads_model
 
 import "core:math"
 
+import app "app:core"
 import fc "fire:core"
 import "fire:fx"
 import "fire:synth"
@@ -494,6 +495,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 	}
 	if sync_keys(e) do structural = true
 	if sync_taps(e) do structural = true
+	if sync_sample_monitors(e) do structural = true
 	if sync_freeze_tap(e) do structural = true
 	if sync_outputs(e) do structural = true
 	e.mix_dirty = false
@@ -737,4 +739,50 @@ main_loudness_reset :: proc(e: ^Engine) {
 main_stereo :: proc(e: ^Engine, points: [][2]f32) -> (correlation: f32, n: int) {
 	if e.mixer.stereo == nil do return 0, 0
 	return dsp.stereo_correlation(e.mixer.stereo), dsp.stereo_points(e.mixer.stereo, points)
+}
+
+// A pad's input heard while it isn't an audio track (those monitor
+// through their strip): a gain from its interface channels straight into
+// its bus, while its monitoring says (In: always; Auto: while a sample is
+// recorded into it; Off: never).
+Sample_Mon :: struct {
+	id:   graph.Node_Id,
+	src:  [2]int,
+	dest: graph.Node_Id,
+}
+
+// [control] Each pad's sample monitor made or taken away as its
+// monitoring, input and bus say. True if the graph changed.
+@(private)
+sync_sample_monitors :: proc(e: ^Engine) -> (changed: bool) {
+	g := e.host.graph
+	p := e.project
+	for &sm, i in e.sample_mons {
+		pad := p.pads[i]
+		want := pad.kind != .Audio && pad.input.from == .Interface && (pad.monitor == .In || (pad.monitor == .Auto && e.sampling == i))
+		src: [2]int
+		if want {
+			first := int(pad.input.channel)
+			phys := [2]int{first, first + 1} if pad.input.stereo else [2]int{first, first}
+			src = {app.host_input_channel(e.host, phys[0]), app.host_input_channel(e.host, phys[1])}
+			if src[0] < 0 || src[1] < 0 do want = false
+		}
+		dest := dest_input(e, int(pad.bus)) if want else {}
+		if sm.id != {} && (!want || sm.src != src || sm.dest != dest) {
+			graph.remove_node(g, sm.id)
+			sm = {}
+			changed = true
+		}
+		if want && sm.id == {} {
+			id, err := graph.add_node(g, dsp.gain_create(), 2, 2)
+			if err != .None do continue
+			for c in 0 ..< 2 {
+				graph.connect(g, graph.INPUT, src[c], id, c)
+				graph.connect(g, id, c, dest, c)
+			}
+			sm = {id = id, src = src, dest = dest}
+			changed = true
+		}
+	}
+	return
 }

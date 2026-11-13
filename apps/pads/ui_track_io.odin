@@ -113,6 +113,7 @@ audio_in_text :: proc(a: ^App, i: int) -> string {
 		return fmt.tprintf("From %s", pm.pad_label(k)) if name == "" else fmt.tprintf("From %s · %s", pm.pad_label(k), name)
 	case .Bus:  return fmt.tprintf("From %s", pm.bus_name(&a.m.project, int(in_.source) + 1))
 	case .Main: return "Main mix"
+	case .None: return "No input"
 	}
 	c := int(in_.channel)
 	f := interface_find(&a.settings.audio, a.settings.audio.input)
@@ -170,6 +171,9 @@ audio_in_items :: proc(a: ^App, i: int) {
 	}
 	open := a.host.open_inputs
 	here := pad.input.from == .Interface
+	// None: it records (and monitors) nothing.
+	if im.MenuItem("No input", nil, pad.input.from == .None) do set(m, i, {channel = pad.input.channel, stereo = pad.input.stereo, from = .None})
+	im.Separator()
 	if open == {} {
 		im.TextDisabled("No inputs open (Settings > Audio)")
 	} else {
@@ -183,7 +187,9 @@ audio_in_items :: proc(a: ^App, i: int) {
 			im.MenuItem(fmt.ctprintf("%s###icmissing", audio_in_text(a, i)), nil, true, false)
 		}
 	}
-	// Resampling: what plays inside, lined up after its effects' latency.
+	// Resampling (an audio track's): what plays inside, lined up after its
+	// effects' latency.
+	if pad.kind != .Audio do return
 	im.Separator()
 	keep := pm.Audio_Input{channel = pad.input.channel, stereo = pad.input.stereo} // (the channels come back with the interface)
 	if im.BeginMenu("From a track") {
@@ -230,6 +236,7 @@ input_meter :: proc(a: ^App, i: int, w, h: f32) {
 	case .Main:
 		v := a.mixer.buses[pm.BUSES]
 		lvl = max(v[0].peak, v[1].peak)
+	case .None:
 	}
 	level_bar(lvl, w, h)
 }

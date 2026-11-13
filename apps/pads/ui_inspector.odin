@@ -239,7 +239,7 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 		}
 		if im.IsItemHovered() do im.SetTooltip("Monitoring, its input through its strip and effects: Auto while it is armed, In always, Off never (you hear it on the interface). Use headphones.")
 	} else {
-		im.TextDisabled("Resampling: not monitored")
+		im.TextDisabled("%s", cstring("No input: nothing to monitor") if pad.input.from == .None else cstring("Resampling: not monitored"))
 		if im.IsItemHovered() do im.SetTooltip("It records what plays inside (lined up after its source's effects). You hear the source itself, so its input isn't played through it again.")
 	}
 	if a.host.graph.settings.input_channels == 0 do im.TextColored(transmute(im.Vec4)ui.theme().warn, "No audio input: the device was opened without one")

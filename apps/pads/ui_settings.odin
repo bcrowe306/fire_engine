@@ -1003,6 +1003,11 @@ page_audio :: proc(a: ^App) -> (changed: bool) {
 	in_dev := find_device(s, st.input, false)
 	if st.output != "" && out_dev == nil do warn(fmt.tprintf("%s is not connected: the system's output plays until it is back.", device_name(s, st.output, true)))
 	if st.input != "" && in_dev == nil do warn(fmt.tprintf("%s is not connected: the system's input is used until it is back.", device_name(s, st.input, false)))
+	// macOS: no microphone permission, and every input is silence.
+	#partial switch mic_access() {
+	case .Denied:    warn("Pads isn't allowed to use the microphone, so every input records silence: allow it in System Settings > Privacy & Security > Microphone (for Pads, or the terminal that started it), then start Pads again.")
+	case .Not_Asked: hint("macOS hasn't been asked whether Pads may use the microphone. Pads.app asks the first time an input opens; started from another app (a terminal, an editor), it's that app's permission, and if that app can't ask, every take is silent: allow it in System Settings > Privacy & Security > Microphone, or start Pads.app.")
+	}
 	// (Separate input and output devices on macOS: the engine joins them
 	// itself, in a private aggregate device the user never sees.)
 	// What the output device offers.

@@ -108,6 +108,7 @@ Input_From :: enum u8 {
 	Pad,       // another track's output (after its fader)
 	Bus,       // a bus's output
 	Main,      // main's output (everything heard, but the click)
+	None,      // nothing: it records and monitors nothing (and doesn't follow the interface)
 }
 
 // Where a track's MIDI comes from.
@@ -230,7 +231,7 @@ Pad :: struct {
 	sends:      [BUSES]Send, // to the buses, besides its output
 	kind:       Pad_Kind,
 	input:      Audio_Input, // an audio pad's
-	monitor:    Monitor,     // an audio track's input through its strip: while armed (Auto), always (In), never (Off)
+	monitor:    Monitor,     // its input heard: an audio track's while armed, any other's while sampled into (Auto), always (In), never (Off: a new pad's, so a microphone near the speakers doesn't feed back)
 	voice:      Voice,       // a sampler pad's voice (envelopes, filter, pitch, LFOs)
 	warp:       Warp,        // following the tempo (see `Warp`)
 	slicer:     Slicer,      // a slicer's slices and settings (kept when it is a sampler again)
@@ -348,7 +349,7 @@ default_transport :: proc() -> Transport {
 
 // The default pad: one-shot, full volume, centred.
 default_pad :: proc() -> Pad {
-	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}, slicer = default_slicer(), midi_fx = DEFAULT_MIDI_FX}
+	return {mode = .One_Shot, attack = 0.001, release = 0.05, color = 0x58a6ff, voice = default_voice(), input = {channel = 0, stereo = true}, monitor = .Off, slicer = default_slicer(), midi_fx = DEFAULT_MIDI_FX}
 }
 
 // A pad's MIDI effects to start with: both off, at 1/16, half a step long.

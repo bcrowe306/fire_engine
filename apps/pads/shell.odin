@@ -601,12 +601,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if p.midi_in.mode == .Port do a.m.engine.router.in_port[i] = i16(num(w, 2)) // (no ports here: the index as given)
 		return true
 	case "input":
-		// input PAD main | pad K | bus B (1..) | in CH [stereo] (1..): an audio track's input
+		// input PAD main | pad K | bus B (1..) | in CH [stereo] (1..) | none: a pad's input
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 3 do return false
 		p := a.m.project.pads[i]
 		switch w[2] {
 		case "main": p.input = {from = .Main}
+		case "none": p.input = {from = .None}
 		case "pad":  p.input = {from = .Pad, source = u8(num(w, 3))}
 		case "bus":  p.input = {from = .Bus, source = u8(max(num(w, 3) - 1, 0))}
 		case "in":   p.input = {channel = u8(max(num(w, 3) - 1, 0)), stereo = len(w) > 4 && w[4] == "stereo"}

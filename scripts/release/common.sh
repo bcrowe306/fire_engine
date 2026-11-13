@@ -12,11 +12,15 @@ case "$(uname -m)" in arm64|aarch64) ARCH=arm64 ;; *) ARCH=x86_64 ;; esac
 # Builds Pads, optimized (with debug info: crash reports name lines), to $1.
 build_pads() {
 	local LINKC="off"
+	# macOS: the oldest system the app runs on, as its Info.plist says (Odin's
+	# default is the SDK's, newer than many Macs run: the app then won't open).
+	local MINOS=""
+	[ "$(uname)" = "Darwin" ] && MINOS="-minimum-os-version:13.0"
 	for f in "$ROOT"/third_party/link/lib/*abl_link*; do [ -e "$f" ] && LINKC="on"; done
 	odin build "$ROOT/apps/pads" -collection:fire="$ROOT/f_engine" -collection:app="$ROOT/app" \
 		-collection:deps="$ROOT/vendor" -collection:padslink="$ROOT/apps/pads/link/$LINKC" \
 		-define:PADS_COMMIT="\"$COMMIT\"" -define:PADS_DATE="\"$DATE\"" \
-		${EXTRA_BUILD:-} -o:speed -debug -vet -strict-style -out:"$1"
+		${EXTRA_BUILD:-} $MINOS -o:speed -debug -vet -strict-style -out:"$1"
 	echo "built $1 (Link: $LINKC)"
 }
 

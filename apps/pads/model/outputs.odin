@@ -195,37 +195,43 @@ input_open :: proc(e: ^Engine, index: int) -> bool {
 	return !in_.stereo || app.host_input_channel(e.host, first + 1) >= 0
 }
 
-// Audio tracks whose input isn't open on the interface (it changed, or the
-// project came from another) take the first one that is: the first pair
-// for a stereo input (or, with none, the first channel), the first channel
-// for a mono one. One undo step ("Audio Inputs"); nothing while the device
-// isn't open or has no input. Returns how many changed. Cheap: call it
-// each frame.
+// Pads whose input isn't open on the interface (it changed, or the
+// project came from another, or a new project's stereo default on a mono
+// microphone) take the next one that is, round to the first: the next pair
+// for a stereo input (or, with none, the next channel), the next channel
+// for a mono one. Every pad has an input (what sampling into it, or an
+// audio track, records). Not an edit (no undo step, the project not marked
+// changed: the device decides it, and the next save keeps it); nothing
+// while the device isn't open or has no input. Returns how many changed.
+// Cheap: call it each frame.
 inputs_follow :: proc(m: ^Model) -> (changed: int) {
 	e := &m.engine
 	h := e.host
 	if !h.opened || h.open_inputs == {} do return
-	first, pair := -1, -1
-	for c in 0 ..< 64 do if c in h.open_inputs {
-		if first < 0 do first = c
-		if pair < 0 && c % 2 == 0 && c + 1 in h.open_inputs do pair = c
-	}
-	if first < 0 do return
-	for pad, i in m.project.pads {
-		if pad.kind != .Audio || pad.input.from != .Interface || input_open(e, i) do continue
-		p := pad
-		if p.input.stereo && pair >= 0 do p.input.channel = u8(pair)
-		else do p.input = {channel = u8(first), stereo = false}
-		if changed == 0 {
-			app.seal(&m.history)
-			app.begin(&m.history, "Audio Inputs")
+	mask := h.open_inputs
+	for &pad, i in m.project.pads {
+		if pad.input.from != .Interface || input_open(e, i) do continue
+		c := int(pad.input.channel)
+		if pair := next_input(mask, c, true); pad.input.stereo && pair >= 0 {
+			pad.input.channel = u8(pair)
+		} else if ch := next_input(mask, c, false); ch >= 0 {
+			pad.input = {channel = u8(ch), stereo = false}
+		} else {
+			continue
 		}
-		set_pad(m, i, .Input, "Audio Inputs", p)
+		mark(e, i) // (built again on its new input)
 		changed += 1
 	}
-	if changed > 0 {
-		app.end(&m.history)
-		app.seal(&m.history)
-	}
 	return
+}
+
+// The first channel (pair, with `stereo`: an even one and the next) in
+// `mask` at or after `from`, round to the first; -1 when there is none.
+next_input :: proc(mask: $M, from: int, stereo: bool) -> int {
+	for k in 0 ..< 64 {
+		c := (from + k) % 64
+		if !stereo && c in mask do return c
+		if stereo && c % 2 == 0 && c + 1 < 64 && c in mask && c + 1 in mask do return c
+	}
+	return -1
 }
