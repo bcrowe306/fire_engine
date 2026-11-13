@@ -92,6 +92,7 @@ App :: struct {
 	presets:   Preset_Ui,    // the synth's Save Preset dialog
 	leave:     Leave_State,
 	template:  Template_Ui, // the Save as Template dialog
+	cleanup:   Cleanup_Ui,  // the Clean Up Project dialog
 	status:    Status_State, // the status bar's lights and load  // leaving a project with changes: the prompt; a crash's backup to offer
 	param_host: Param_Host,  // where the synth's controls point (a synth pad, or an effect slot)
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
@@ -183,12 +184,21 @@ main :: proc() {
 		ui.log_open(&a.ws.toasts, lp)
 	}
 	defer settings_destroy(&a.settings)
+	// A run with its own preferences (a test) keeps out of the user's Trash.
+	if a.prefs != "" {
+		trash, _ := filepath.join({a.prefs, "Trash"}, context.temp_allocator)
+		app.trash_redirect(trash)
+	}
 	recent_load(a)
 	if project == "" && a.settings.open_last && len(a.proj.recent) > 0 do project = a.proj.recent[0]
-	untitled := project == "" // a new project in the temporary folder, until it is saved somewhere
+	untitled := project == "" // a new project in the unsaved folder, until it is saved somewhere
 	if project == "" {
-		dir, _ := os.make_directory_temp("", "Untitled.pads", context.allocator)
-		project = dir
+		// (A script without --prefs: the system's temporary folder, not the
+		// user's unsaved projects.)
+		if drive != "" && a.prefs == "" {
+			dir, _ := os.make_directory_temp("", "Untitled.pads", context.allocator)
+			project = dir
+		} else do project = unsaved_new(a)
 	}
 	p := &a.platform
 	layout := ""
@@ -217,6 +227,9 @@ main :: proc() {
 		os.exit(1)
 	}
 	outputs_apply(a)
+	// (After the model is gone, its files let go: an unsaved project left
+	// without saving.)
+	defer if a.proj.discard != "" && is_unsaved(a, a.proj.discard) do os.remove_all(a.proj.discard)
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
@@ -367,6 +380,7 @@ frame :: proc(a: ^App) {
 	draw_preset_save(a)
 	draw_leave(a)
 	draw_template_save(a)
+	draw_cleanup(a)
 	draw_about(a)
 	draw_export(a)
 	draw_settings(a)

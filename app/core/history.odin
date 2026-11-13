@@ -192,6 +192,14 @@ history_clear :: proc(h: ^History) {
 	changed(h)
 }
 
+// Forgets the steps undone (nothing can be redone), keeping those that
+// can be undone.
+history_clear_redo :: proc(h: ^History) {
+	for &s in h.redo do step_free(h, &s)
+	clear(&h.redo)
+	changed(h)
+}
+
 @(private)
 merge_into :: proc(h: ^History, s: ^Step, cmd: Command, any := false) -> bool {
 	if len(s.commands) == 0 do return false

@@ -19,7 +19,7 @@ task app:pads OPT=none   # a debug build in .build/app/pads
 
 | Option | |
 |---|---|
-| `--project DIR` | a project folder: opens the project in it, or starts one there (default: a new one in the temporary folder) |
+| `--project DIR` | a project folder: opens the project in it, or starts one there (default: a new one in the unsaved-projects folder; with `--drive` and no `--prefs`, the system's temporary folder) |
 | `--fake` | the simulated audio driver: no sound card needed |
 | `--drive FILE` | run from a [drive script](#scripts-and-tests) |
 | `--out DIR` | where a script's screenshots go (default `.build/app/shots`) |
@@ -1258,6 +1258,18 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
   `<name>.pads`, its files copied there, each at the same place in the
   folder; a file from outside the folder goes into `Samples/Imported`), **Rename Project…** (its
   folder renamed beside where it is).
+- **A new project** lives in Pads' unsaved-projects folder until it is
+  saved (`Music/Pads/Unsaved/Untitled.pads`; Settings > Project > Unsaved
+  projects changes it): its recordings and autosaves survive Pads
+  stopping, and Pads offers them back when it starts. Saving moves the
+  folder where you choose (recordings and all); leaving it without saving
+  removes it.
+- **Clean Up Project…** (File) lists what the project doesn't use, with
+  sizes, and moves what you tick to the Trash (the Recycle Bin, the
+  freedesktop Trash), from where it can be put back: files in `Samples/`
+  no sample of the project is (ticked), samples only undo would bring back
+  (replaced or deleted ones: ticking them forgets the undo history), and
+  the cache. The project is saved after.
 - Everything a project holds is saved with it: every pad's and track's
   settings, devices, inserts and sends, the buses and performance
   effects, the sequences and the song, the synths' patches and their own

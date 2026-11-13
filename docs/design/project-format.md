@@ -1,6 +1,6 @@
 # Project folders and files
 
-Status: steps 1–4 built (decisions taken 2026-11-13); steps 4–7 planned.
+Status: built, all seven steps (decisions taken 2026-11-13).
 "Today" below is the survey from before.
 
 ## Today (surveyed)
@@ -124,8 +124,8 @@ alone. Deleting `cache/` by hand is always safe: it renders again.
 
 Lists, with sizes: files in `Samples/` the project doesn't use, files
 only the undo history uses (kept unless the user ticks them, which clears
-that history), old cache folders. Moves the chosen ones to the Trash
-(macOS `NSFileManager trashItemAtURL`, Windows `IFileOperation` with undo,
+that history), and the cache. Moves the chosen ones to the Trash
+(macOS `NSFileManager trashItemAtURL`, Windows `SHFileOperationW` with `FOF_ALLOWUNDO`,
 Linux the freedesktop Trash in `~/.local/share/Trash`).
 
 ## Steps
@@ -139,9 +139,26 @@ Linux the freedesktop Trash in `~/.local/share/Trash`).
    unique names for outside files (tests/pads_model project_paths).
 4. **`cache/`** for warps and comps, trimming, not copied. Built
    (tests/pads_model cache_test).
-5. **Unsaved folder:** the setting, saving moves it, left-overs offered.
-6. **Clean Up Project** with the Trash on all three platforms.
-7. **Docs:** this file to "built", pads.md's project section, reference.
+5. **Unsaved folder.** Built (apps/pads/unsaved.odin): `Untitled.pads`,
+   `Untitled 2.pads`... in `unsaved_root` (the setting; `Music/Pads/Unsaved`;
+   under `--prefs` for tests; the system's temporary folder for a script
+   without `--prefs`). Saving moves the folder (copies across disks);
+   New, Open, a template or Quit without saving removes it (Quit: once the
+   engine has let go of its files). A crash leaves it, and the recovery
+   offer brings it back as still unsaved; Discard removes it
+   (tests/e2e/test_unsaved.py).
+6. **Clean Up Project.** Built: `pm.unused_files` / `pm.clean_up`
+   (apps/pads/model/cleanup.odin), `app.move_to_trash` (app/core/trash*.odin:
+   NSFileManager, SHFileOperationW with FOF_ALLOWUNDO, the freedesktop
+   Trash; `trash_redirect` for tests and `--prefs` runs). Files not in the
+   samples table are ticked; samples nothing plays now (pads, synths,
+   wavetables, clips, parts, freezes, the Audio tab's clipboard) are
+   offered unticked and forget undo; the cache is offered. The project is
+   saved after; redo is forgotten either way (an undone import). Where
+   names' case doesn't count, `Samples/` and `samples/` are one folder,
+   listed once (tests/pads_model cleanup_test, tests/app_core trash tests,
+   tests/e2e/test_cleanup.py).
+7. **Docs.** Built: this file, pads.md's Projects section.
 
 Each step: model tests (in temp folders), an e2e where there is UI, both
 opt levels, the cloud machines for steps 1, 3, 5 and 6 (paths and Trash

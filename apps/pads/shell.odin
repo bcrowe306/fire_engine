@@ -201,6 +201,7 @@ draw_menu :: proc(user: rawptr) {
 			copy(a.template.name[:63], project_name(a))
 		}
 		ui.menu_action(&a.actions, "rename_project")
+		if im.MenuItem("Clean Up Project…") do cleanup_open(a)
 		im.Separator()
 		ui.menu_action(&a.actions, "import")
 		ui.menu_action(&a.actions, "import_midi")
@@ -927,8 +928,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return rename_project(a, strings.join(w[1:], " ", context.temp_allocator))
 	case "save_as":
 		if len(w) < 2 do return false
-		if pm.model_save_as(&a.m, strings.join(w[1:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not save as")
-		a.proj.untitled = false
+		if !save_into(a, strings.join(w[1:], " ", context.temp_allocator)) do return drive_fail(a, "could not save as")
+		session_mark(a)
 		return true
 	case "open":
 		if len(w) < 2 do return false

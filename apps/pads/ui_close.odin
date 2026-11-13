@@ -47,22 +47,31 @@ leave_go :: proc(a: ^App) {
 	st := &a.leave
 	action := st.action
 	st.action, st.asking, st.saving_as = .None, false, false
+	// An unsaved project left without saving: its folder goes (when the
+	// next one is open; quitting, once Pads has let go of its files).
+	left := strings.clone(a.m.project.dir, context.temp_allocator) if a.proj.untitled else ""
 	switch action {
 	case .None:
 	case .Quit:
 		pm.model_discard_backup(a.m.project.dir)
+		if left != "" {
+			delete(a.proj.discard)
+			a.proj.discard = strings.clone(left)
+		}
 		a.platform.running = false
 	case .New:
 		pm.model_discard_backup(a.m.project.dir)
 		new_project(a)
+		unsaved_discard(a, left)
 	case .New_From:
 		pm.model_discard_backup(a.m.project.dir)
 		new_from_template(a, st.path)
+		unsaved_discard(a, left)
 	case .Open_Dialog:
 		project_dialog(a, .Open)
 	case .Open:
 		pm.model_discard_backup(a.m.project.dir)
-		open_project(a, st.path)
+		if open_project(a, st.path) do unsaved_discard(a, left)
 	}
 }
 
@@ -117,7 +126,11 @@ draw_leave :: proc(a: ^App) {
 			im.TextDisabled("They were autosaved, but not saved into the project.")
 			im.Spacing()
 			if im.Button("Recover", {110, 0}) {
+				fresh := strings.clone(a.m.project.dir, context.temp_allocator) if a.proj.untitled else "" // (the new one Pads started with)
 				if pm.model_load_backup(&a.m, st.recover) == .None {
+					a.proj.untitled = is_unsaved(a, a.m.project.dir) // (an unsaved one: Save asks for a place)
+					unsaved_discard(a, fresh)
+					session_mark(a)
 					view_restore(a)
 					ui.toast(&a.ws.toasts, .Success, "Recovered: save to keep the changes")
 				}
@@ -129,6 +142,7 @@ draw_leave :: proc(a: ^App) {
 			im.SameLine()
 			if im.Button("Discard", {110, 0}) {
 				pm.model_discard_backup(st.recover)
+				unsaved_discard(a, st.recover) // (an unsaved one: nothing of it to keep)
 				delete(st.recover)
 				st.recover = ""
 				im.CloseCurrentPopup()
@@ -203,7 +217,8 @@ template_list :: proc(a: ^App) -> (names, dirs: []string) {
 
 // A new, untitled project made from the template in folder `dir`.
 new_from_template :: proc(a: ^App, dir: string) {
-	to, _ := os.make_directory_temp("", "Untitled.pads", context.temp_allocator)
+	to := unsaved_new(a)
+	defer delete(to)
 	if pm.model_new_from(&a.m, dir, to) != .None {
 		ui.toast(&a.ws.toasts, .Error, "Could not start from that template")
 		return

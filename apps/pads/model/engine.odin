@@ -792,7 +792,10 @@ mark_all_sources_stale :: proc(e: ^Engine) {
 	warp_clear(e)
 	comp_clear(e)
 	e.audio_dirty = true
-	for &n in e.nodes do n.built.sample = 0 // their zones again
+	for &n in e.nodes {
+		n.built.sample = 0 // their zones again
+		if n.rec != nil do n.built.input.channel = 255 // audio tracks' recorders again (they write into the project's folder)
+	}
 	mark_all(e)
 }
 

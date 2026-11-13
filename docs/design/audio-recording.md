@@ -98,7 +98,7 @@ Status: built, all seven steps (decisions taken 2026-11-13). The "missing" list 
   pre-roll (the transport has both for notes).
 - **Crossfades at clip edges and loop points** (a few ms, automatic), and
   edits snapped to zero crossings optionally, so no clicks.
-- **Takes' files:** where they go, unused ones cleaned up (a "Remove
+- **Takes' files** (built: docs/design/project-format.md, Clean Up Project): where they go, unused ones cleaned up (a "Remove
   unused recordings" command), disk space warned about before it runs out.
 - **Recording format:** 24-bit or 32-bit float (Settings > Recording),
   at the device rate; a file at another rate is converted on import.

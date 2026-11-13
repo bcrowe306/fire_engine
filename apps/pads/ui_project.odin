@@ -28,7 +28,8 @@ Project_State :: struct {
 	progress:   f64,
 	export_open: bool, // the Export dialog shows
 	settings:   pm.Export_Settings,
-	untitled:   bool, // a new project, in the temporary folder: Save asks for a name and a place
+	untitled:   bool, // a new project, in the unsaved folder (`unsaved_root`): Save asks for a name and a place
+	discard:    string, // an unsaved project left without saving, removed when Pads quits (owned)
 	rename_open: bool, // the Rename Project dialog shows
 	rename_buf: [64]u8,
 	save_name:  string, // the name the Save dialog suggests for a new project (owned; "" = Untitled)
@@ -126,17 +127,18 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 	a.seq.selected = -1
 	view_restore(a) // (as it was left)
 	a.proj.last_save = time.tick_now()
-	a.proj.untitled = false
+	a.proj.untitled = is_unsaved(a, a.m.project.dir) // (one left in the unsaved folder, opened: still to be given a place)
 	recent_add(a, dir)
 	session_mark(a)
 	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Opened %s", filepath.base(dir)))
 	return true
 }
 
-// A new, empty project (in the temporary folder until saved somewhere).
+// A new, empty project (in the unsaved folder until saved somewhere).
 // (`leave` asks to save what was open first.)
 new_project :: proc(a: ^App) {
-	dir, _ := os.make_directory_temp("", "Untitled.pads", context.temp_allocator)
+	dir := unsaved_new(a)
+	defer delete(dir)
 	if pm.model_new(&a.m, dir) != .None do ui.toast(&a.ws.toasts, .Error, "Could not start a new project")
 	a.m.engine.metronome = true // (its click on: while recording, as a new project's is)
 	a.proj.untitled = true
@@ -383,14 +385,34 @@ save_project_as :: proc(a: ^App, path: string) -> bool {
 		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("%s is already there", filepath.base(dir)))
 		return false
 	}
-	if pm.model_save_as(&a.m, dir) != .None {
+	if !save_into(a, dir) do return false
+	a.proj.last_save = time.tick_now()
+	recent_add(a, a.m.project.dir)
+	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved as %s", project_name(a)))
+	return true
+}
+
+// Saves the project into folder `dir`, which becomes the project's.
+save_into :: proc(a: ^App, dir: string) -> bool {
+	// An unsaved project's folder moves there (its recordings with it);
+	// one on another disk, or a saved project, is copied.
+	moved := false
+	if a.proj.untitled && is_unsaved(a, a.m.project.dir) {
+		old := strings.clone(a.m.project.dir, context.temp_allocator)
+		moved = pm.model_move(&a.m, dir) == .None
+		if !moved {
+			if pm.model_save_as(&a.m, dir) != .None {
+				ui.toast(&a.ws.toasts, .Error, "Could not save there")
+				return false
+			}
+			pm.model_discard_backup(old)
+			unsaved_discard(a, old)
+		}
+	} else if pm.model_save_as(&a.m, dir) != .None {
 		ui.toast(&a.ws.toasts, .Error, "Could not save there")
 		return false
 	}
 	a.proj.untitled = false
-	a.proj.last_save = time.tick_now()
-	recent_add(a, a.m.project.dir)
-	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved as %s", project_name(a)))
 	return true
 }
 
