@@ -221,8 +221,14 @@ audio_in_items :: proc(a: ^App, i: int) {
 // A horizontal input meter, `w` wide: the level of track `i`'s input
 // (its louder side), green to red.
 input_meter :: proc(a: ^App, i: int, w, h: f32) {
+	level_bar(input_peak(a, i), w, h)
+}
+
+// The peak on pad `i`'s audio input now, as its source has it (an
+// interface channel or pair; a pad's, a bus's or main's output; none:
+// silence).
+input_peak :: proc(a: ^App, i: int) -> (lvl: f32) {
 	in_ := a.m.project.pads[i].input
-	lvl: f32
 	switch in_.from {
 	case .Interface:
 		// (Physical channels: their graph channels, through the host.)
@@ -238,7 +244,7 @@ input_meter :: proc(a: ^App, i: int, w, h: f32) {
 		lvl = max(v[0].peak, v[1].peak)
 	case .None:
 	}
-	level_bar(lvl, w, h)
+	return
 }
 
 // A level as a bar `w` by `h` at the cursor (-60..0 dB), and its item.

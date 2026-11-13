@@ -833,14 +833,11 @@ output_row :: proc(a: ^App, pad: int) {
 // level along the row); click to choose.
 @(private)
 audio_in_row :: proc(a: ^App, pad: int, h: f32 = -1) {
-	m := &a.m
 	t := ui.theme()
 	text := audio_in_text(a, pad)
 	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim, h = io_h() if h < 0 else h)
 	dl := im.GetWindowDrawList()
-	in_ := m.project.pads[pad].input
-	lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
-	if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
+	lvl := input_peak(a, pad) // (its source's: none, silence)
 	db := 20 * math.log10(max(lvl, 1e-6))
 	f := clamp((db + 60) / 60, 0, 1)
 	if f > 0 do im.DrawList_AddRectFilled(dl, {lo.x + 2, hi.y - 3}, {lo.x + 2 + (hi.x - lo.x - 4) * f, hi.y - 1}, ui.col(t.ok if db < -12 else (t.warn if db < -1 else t.danger)), 1)
