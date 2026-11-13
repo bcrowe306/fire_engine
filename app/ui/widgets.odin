@@ -147,8 +147,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	// Its menu: back to the default, or a value typed.
 	@(static) typed: f32
 	if im.BeginPopupContextItem("##knobmenu") {
-		text_push(.Body)
-		defer text_pop()
+		text_push(.Body) // (popped before EndPopup: a font pushed in a window ends with it)
 		if im.MenuItem("Reset to Default") {
 			value^ = default
 			e.changed, e.ended = true, true
@@ -163,6 +162,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		}
 		name("Type a Value")
 		if knob_hooks.menu != nil do knob_hooks.menu(knob_hooks.user)
+		text_pop()
 		im.EndPopup()
 	}
 	knob_report(e, value^)
