@@ -31,54 +31,73 @@ Device_Item :: struct {
 
 // The Library's device sections: Instruments, Effects and Plug-ins, each
 // device shown only if its name has `find` in it (lower case; "" all).
+// A device in the panel: drag it onto a pad, or double-click it for the
+// selected pad.
+@(private)
+device_leaf :: proc(a: ^App, it: Device_Item) {
+	im.TreeNodeEx(fmt.ctprintf("%s  %s###dv%s", it.icon, it.label, it.code), {.Leaf, .NoTreePushOnOpen, .SpanAvailWidth})
+	ui.name(fmt.tprintf("device %s", it.label))
+	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s — drag onto a pad, or double-click for the selected pad", it.tip))
+	if im.BeginDragDropSource() {
+		im.SetDragDropPayload(PADS_DEVICE_PAYLOAD, raw_data(it.code), uint(len(it.code)))
+		im.Text("%s", fmt.ctprintf("%s  %s", it.icon, it.label))
+		im.EndDragDropSource()
+	}
+	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) do put_device(a, a.selected, it.code)
+}
+
 draw_device_sections :: proc(a: ^App, find: string) {
-	group :: proc(a: ^App, title: string, items: []Device_Item, find: string) {
+	group :: proc(a: ^App, title: string, items: []Device_Item, find: string, open := true, under := "") {
 		shown := 0
 		for it in items do if find == "" || strings.contains(strings.to_lower(it.label, context.temp_allocator), find) do shown += 1
 		if shown == 0 do return
-		flags: im.TreeNodeFlags = {.SpanAvailWidth, .DefaultOpen}
+		flags: im.TreeNodeFlags = {.SpanAvailWidth, .DefaultOpen} if open else {.SpanAvailWidth}
 		if find != "" do im.SetNextItemOpen(true)
-		if !im.TreeNodeEx(fmt.ctprintf("%s###dg%s", title, title), flags) do return
-		ui.name(fmt.tprintf("devices %s", title))
+		is_open := im.TreeNodeEx(fmt.ctprintf("%s###dg%s%s", title, under, title), flags) // (`under`: a branch's own, as the synth's Basic is not the instruments')
+		ui.name(fmt.tprintf("devices %s %s", under, title) if under != "" else fmt.tprintf("devices %s", title)) // (named folded too)
+		if !is_open do return
 		for it in items {
 			if find != "" && !strings.contains(strings.to_lower(it.label, context.temp_allocator), find) do continue
-			im.TreeNodeEx(fmt.ctprintf("%s  %s###dv%s", it.icon, it.label, it.code), {.Leaf, .NoTreePushOnOpen, .SpanAvailWidth})
-			ui.name(fmt.tprintf("device %s", it.label))
-			if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s — drag onto a pad, or double-click for the selected pad", it.tip))
-			if im.BeginDragDropSource() {
-				im.SetDragDropPayload(PADS_DEVICE_PAYLOAD, raw_data(it.code), uint(len(it.code)))
-				im.Text("%s", fmt.ctprintf("%s  %s", it.icon, it.label))
-				im.EndDragDropSource()
-			}
-			if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) do put_device(a, a.selected, it.code)
+			device_leaf(a, it)
 		}
 		im.TreePop()
 	}
 	if library_section("Instruments") {
 		group(a, "Basic", {
-			{"Synth", ui.ICON_AUDIO_WAVEFORM, "inst synth", "A wavetable synth"},
 			{"Sampler", ui.ICON_LAYOUT_GRID, "inst sampler", "Plays the pad's sample"},
 			{"Slicer", ui.ICON_SCISSORS, "inst slicer", "The pad's sample in slices, one a key"},
 			{"Audio track", ui.ICON_MIC, "inst audio", "Records and plays audio"},
 		}, find)
-		// The synth's presets, by kind.
-		last := ""
-		items := make([dynamic]Device_Item, context.temp_allocator)
-		flush :: proc(a: ^App, kind: string, items: ^[dynamic]Device_Item, find: string) {
-			if len(items) > 0 do group(a, fmt.tprintf("Synth: %s", kind), items[:], find)
-			clear(items)
-		}
+		// The synth: one branch, a plain synth first, then its presets by
+		// kind (each folded; a search opens what it finds), yours last.
+		plain := []Device_Item{{"Synth", ui.ICON_AUDIO_WAVEFORM, "inst synth", "A wavetable synth (a plain patch)"}}
+		kinds := make([dynamic]string, context.temp_allocator)
+		by_kind := make([dynamic][dynamic]Device_Item, context.temp_allocator)
 		for p, k in pm.BUILTIN_PRESETS {
-			if p.category != last {
-				flush(a, last, &items, find)
-				last = p.category
+			if len(kinds) == 0 || kinds[len(kinds) - 1] != p.category {
+				append(&kinds, p.category)
+				append(&by_kind, make([dynamic]Device_Item, context.temp_allocator))
 			}
-			append(&items, Device_Item{p.name, ui.ICON_LIBRARY, fmt.tprintf("preset %d", k), "A synth preset"})
+			append(&by_kind[len(by_kind) - 1], Device_Item{p.name, ui.ICON_LIBRARY, fmt.tprintf("preset %d", k), fmt.tprintf("A synth preset (%s)", p.category)})
 		}
-		flush(a, last, &items, find)
 		mine := make([dynamic]Device_Item, context.temp_allocator)
 		for n in pm.preset_list(preset_folder(a)) do append(&mine, Device_Item{n, ui.ICON_LIBRARY, fmt.tprintf("mine %s", n), "One of your synth presets"})
-		if len(mine) > 0 do group(a, "Synth: yours", mine[:], find)
+		matches :: proc(items: []Device_Item, find: string) -> bool {
+			for it in items do if find == "" || strings.contains(strings.to_lower(it.label, context.temp_allocator), find) do return true
+			return false
+		}
+		any := matches(plain, find) || matches(mine[:], find)
+		for k in by_kind do any = any || matches(k[:], find)
+		if any {
+			if find != "" do im.SetNextItemOpen(true)
+			if im.TreeNodeEx("Synth###dgSynth", {.SpanAvailWidth, .DefaultOpen}) {
+				ui.name("devices Synth")
+				for it in plain do if matches({it}, find) do device_leaf(a, it)
+				for kind, k in kinds do group(a, kind, by_kind[k][:], find, open = false, under = "Synth")
+				if len(mine) > 0 do group(a, "Yours", mine[:], find, open = false, under = "Synth")
+				im.TreePop()
+			}
+		}
 		// Instrument plug-ins.
 		insts := make([dynamic]Device_Item, context.temp_allocator)
 		for e, k in plugin_instruments(a) do append(&insts, Device_Item{e.name, ui.ICON_PLUG, fmt.tprintf("clapi %d", k), fmt.tprintf("%s %s (CLAP instrument)", e.vendor, e.version)})
