@@ -193,3 +193,35 @@ an_empty_slicer :: proc(t: ^testing.T) {
 	pm.load_slicer(m, 5, four_parts(r, "four.wav"))
 	testing.expect_value(t, m.project.pads[5].slicer.count, 4)
 }
+
+// Warped (its own tempo half the project's: twice as fast, its pitch
+// kept), a slicer plays each slice from the rendering where it falls; its
+// playhead is in the sample's frames (over the waveform and its slices);
+// its fades are as long as set, not stretched with it.
+@(test)
+a_warped_slicer_plays_its_slices_in_time :: proc(t: ^testing.T) {
+	r := rig_make(t, "slicer_warp")
+	defer rig_destroy(r)
+	m := &r.m
+	testing.expect_value(t, pm.load_slicer(m, 0, four_parts(r, "four.wav")), fc.Error.None)
+	render(r, 256)
+	pm.set_warp(m, 0, {on = true, mode = .Tones, bpm = 60})
+	testing.expect(t, warp_ready(r, 0), "rendered")
+	start := m.project.pads[0].slicer.slices[2].start
+	out := play_slice(r, 0, 2, 4800)
+	head, playing := pm.pad_playhead(&m.engine, 0)
+	testing.expect(t, playing, "playing")
+	// 4800 frames out at twice the speed: 9600 of the sample's (a block either way).
+	testing.expectf(t, abs(head - (start + 9600)) <= 2 * 256 * 2, "the playhead over the sample (%d, want %d)", head, start + 9600)
+	hz := hz_of(out[0][1000:4800])
+	testing.expectf(t, abs(hz - 900) < 40, "slice 3 plays its own part, its pitch kept (%v Hz)", hz)
+	pm.hit(&r.m.engine, 0, false, 0, 2, keyboard = true)
+	// Fades: 10 ms is 480 frames, warped or not.
+	pad := m.project.pads[0]
+	pad.slicer.fade_in_ms, pad.slicer.fade_out_ms = 10, 10
+	pad.end = 96_000
+	zones := pm.slicer_zones(pad, nil, 0.5)
+	testing.expect_value(t, zones[0].fade_in, i64(480))
+	testing.expect_value(t, zones[0].fade_out, i64(480))
+	testing.expect_value(t, zones[2].start, i64(math.round(f64(start) * 0.5)))
+}

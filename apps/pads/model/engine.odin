@@ -683,7 +683,11 @@ silence_all :: proc(e: ^Engine) {
 pad_playhead :: proc(e: ^Engine, index: int) -> (frame: i64, playing: bool) {
 	n := &e.nodes[index]
 	if !n.live || n.handle == nil do return -1, false
-	return sampler.sampler_playhead(n.handle)
+	frame, playing = sampler.sampler_playhead(n.handle)
+	// (A warped pad plays its rendering: back to its sample's frames, as
+	// its waveform and slices are drawn.)
+	if frame > 0 && n.warp_scale > 0 && n.warp_scale != 1 do frame = i64(math.round(f64(frame) / n.warp_scale))
+	return
 }
 
 // Where the playhead is on the timeline (negative while counting in), and
@@ -1017,8 +1021,9 @@ slicer_zones :: proc(pad: Pad, src: ^stream.Source, scale := 1.0) -> []sampler.S
 		append(&zones, sampler.Sample_Zone{
 			source = src, root_key = key, key_lo = key, key_hi = key, exact_keys = true,
 			start = at(a, scale), end = at(b, scale), one_shot = !sl.gate,
-			fade_in = min(at(ms(sl.fade_in_ms, rate), scale), length / 2),
-			fade_out = min(at(ms(sl.fade_out_ms, rate), scale), length / 2),
+			// (Fades are times: as long warped or not.)
+			fade_in = min(ms(sl.fade_in_ms, rate), length / 2),
+			fade_out = min(ms(sl.fade_out_ms, rate), length / 2),
 			gain_db = f64(s.gain_db), tune_cents = f64(s.pitch) * 100, pan = f64(s.pan), reverse = s.reverse,
 		})
 	}
