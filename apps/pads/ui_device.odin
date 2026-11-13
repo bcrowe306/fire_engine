@@ -605,6 +605,17 @@ draw_global :: proc(a: ^App) {
 draw_pad_eq :: proc(a: ^App) {
 	pad := a.m.project.pads[a.selected]
 	section(a, fmt.ctprintf("%s EQ", pm.pad_label(a.selected)), false)
+	on := pad.eq_on
+	if ui.toggle("EQ on", &on) {
+		p := pad
+		p.eq_on = on
+		pm.set_pad(&a.m, a.selected, .Eq_Low, "EQ On" if on else "EQ Off", p)
+		app.seal(&a.m.history)
+	}
+	ui.name("eq on")
+	if im.IsItemHovered() do im.SetTooltip("Off (to start with), the pad plays flat whatever its bands are")
+	if !on do im.BeginDisabled()
+	defer if !on do im.EndDisabled()
 	knob_f32(a, "Low", &pad.eq[0], -15, 15, 0, "%+.1f dB", .Eq_Low, "Set EQ Low")
 	im.SameLine(0, 14)
 	knob_f32(a, "Mid", &pad.eq[1], -15, 15, 0, "%+.1f dB", .Eq_Mid, "Set EQ Mid")

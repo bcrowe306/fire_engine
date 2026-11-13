@@ -175,6 +175,8 @@ State_Pad :: struct {
 	sends:   []f32, // dB (-60: off), to each bus in use
 	choke:   int,    // its choke group (0: none)
 	warp:    string, // its warp's mode, or "" when off
+	eq_on:   bool,   // its EQ is in
+	midi_out: bool,  // its MIDI out is on
 	repeat:  bool,   // its note repeat is on
 	arp:     bool,   // its arpeggiator is on
 	warp_bpm: f64,   // its sample's tempo (warp)
@@ -418,6 +420,7 @@ state_json :: proc(a: ^App) -> string {
 		sp.choke = int(pad.choke)
 		if pad.warp.on do sp.warp = enum_name(pad.warp.mode)
 		sp.repeat, sp.arp = pad.midi_fx.repeat_on, pad.midi_fx.arp_on
+		sp.eq_on, sp.midi_out = pad.eq_on, pad.midi_out.on
 		sp.warp_bpm, sp.warp_ready = pad.warp.bpm, pad.warp.on && !pm.warp_rendering(&m.engine, i)
 		sp.sends = make([]f32, p.bus_count, context.temp_allocator)
 		for x, k in pad.sends[:p.bus_count] do sp.sends[k] = pm.send_db(x)

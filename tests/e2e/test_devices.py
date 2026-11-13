@@ -22,7 +22,7 @@ def test_chains_in_the_bottom_panel(app, fixtures):
     assert s["detail_tab"] == "Effect" and s["track"] == "pad 1"
     app.click("A1 slot 2", window="mixer")
     app.click("add Reverb", window="detail")
-    assert app.pad(0)["inserts"] == ["Delay", "Reverb"]
+    assert app.pad(0)["inserts"] == ["Delay", "Reverb", "Empty", "Empty"]  # (four slots)
     app.screenshot("pad_chain")
     # A bus's chain, from its slot in the mixer.
     app.click("Bus A slot 1", window="mixer")

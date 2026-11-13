@@ -41,7 +41,7 @@ def test_sends_pre_and_post(app, fixtures):
     app.click("Inserts: each strip's effects (click one to edit it below, drag to reorder)", window="mixer")
     app.click("EQ: each strip's EQ curve (click it to edit below)", window="mixer")
     assert not app.state()["mixer_view"]["inserts"]
-    app.drag_by("A1 send B", 0, -150, window="mixer")
+    app.drag_by("A1 send B", 150, 0, window="mixer")  # across (a bar): right, more
     assert app.pad(0)["sends"][1] > -10
     app.click("A1 send B", window="mixer", right=True)
     app.click("Pre-fader")
@@ -85,3 +85,25 @@ def test_the_bar_and_main_meters(app, fixtures):
     app.expect_item("main stereo", window="mixer")
     app.click("main integrated", window="mixer")  # starts again
     app.screenshot("mixer_narrow")
+
+
+def test_eq_switch_io_rows_and_horizontal_sends(app, fixtures):
+    mixer(app, fixtures)
+    # The EQ: off to start with; its switch on the strip turns it on.
+    assert not app.pad(0)["eq_on"]
+    app.click("A1 eq switch", window="mixer")
+    assert app.pad(0)["eq_on"]
+    app.key("cmd+z")
+    assert not app.pad(0)["eq_on"]
+    # In and out: audio and MIDI in above the pan, MIDI and audio out below.
+    for part in ("audio in", "midi in", "midi out", "output"):
+        app.expect_item(f"A1 {part}", window="mixer")
+    app.click("A1 midi out", window="mixer")
+    app.click("Default output (Settings)")
+    assert app.pad(0)["midi_out"], app.pad(0)
+    # A send: dragged across (right: more).
+    app.click("Inserts: each strip's effects (click one to edit it below, drag to reorder)", window="mixer")
+    app.click("EQ: each strip's EQ curve (click it to edit below)", window="mixer")
+    before = app.pad(0)["sends"][0]
+    app.drag_by("A1 send A", 40, 0, window="mixer")
+    assert app.pad(0)["sends"][0] > before, (before, app.pad(0)["sends"][0])

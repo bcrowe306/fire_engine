@@ -91,7 +91,7 @@ STRIP_W :: 86
 @(private) strip_view := Mixer_View{inserts = true, eq = true, sends = true, io = true}
 @(private) STRIP_PAD :: 5 // inside the strip, each side
 @(private) ROW_H :: 18 // a slot, a send, the output
-@(private) EQ_H :: 28
+@(private) EQ_H :: 40
 @(private) PAN_H :: 30
 @(private) SLOT_ROWS :: 6 // pads: 2 inserts and SEND_ROWS sends; buses: 5 slots and a gap
 @(private) SEND_ROWS :: 4 // sends shown at once (more buses: they scroll)
@@ -105,7 +105,11 @@ STRIP_W :: 86
 draw_mixer :: proc(user: rawptr) {
 	a := (^App)(user)
 	m := &a.m
-	draw_mixer_bar(a)
+	// The toggles: a column of icons at the left, in the middle of its height.
+	full := im.GetContentRegionAvail()
+	if im.BeginChild("##mixertoggles", {TOGGLES_W, full.y}, {}, {.NoScrollbar}) do draw_mixer_toggles(a)
+	im.EndChild()
+	im.SameLine(0, 6)
 	v := a.settings.mixer_view
 	strip_view = v
 	strip_w_cur = STRIP_NARROW_W if v.narrow else STRIP_W
@@ -207,36 +211,46 @@ MAIN_METERS_W :: 128
 @(private)
 GROUP_TAB_W :: 26
 
-// The Mixer's bar: the strips' sections, each a toggle (lit when shown,
-// grey when not), and narrow or wide.
+// The width of the Mixer's column of toggles.
 @(private)
-draw_mixer_bar :: proc(a: ^App) {
+TOGGLES_W :: 30
+
+// The Mixer's toggles, icons down its left side (in the middle of its
+// height): the strips' sections (lit when shown, grey when not; each says
+// what it is on hover), and narrow or wide strips.
+@(private)
+draw_mixer_toggles :: proc(a: ^App) {
 	v := &a.settings.mixer_view
 	changed := false
-	toggle :: proc(on: ^bool, icon: string, label: cstring, tip: cstring) -> bool {
+	n: f32 = 5
+	b := im.GetFrameHeight()
+	gap: f32 = 6
+	h := im.GetContentRegionAvail().y
+	im.SetCursorPosY(im.GetCursorPosY() + max((h - n * b - (n - 1) * gap) / 2, 0))
+	toggle :: proc(on: ^bool, icon: string, tip: cstring) -> bool {
+		x := im.GetCursorPosX()
 		if ui.icon_button(icon, tip, on = on^) {
 			on^ = !on^
 			return true
 		}
-		im.SameLine(0, 2)
-		im.AlignTextToFramePadding()
-		t := ui.theme()
-		im.TextColored(transmute(im.Vec4)(t.accent if on^ else t.text_dim), "%s", label)
-		im.SameLine(0, 12)
+		im.SetCursorPosX(x)
 		return false
 	}
-	if toggle(&v.inserts, ui.ICON_WAND_SPARKLES, "Inserts", "Inserts: each strip's effects (click one to edit it below, drag to reorder)") do changed = true
-	if toggle(&v.eq, ui.ICON_CHART_SPLINE, "EQ", "EQ: each strip's EQ curve (click it to edit below)") do changed = true
-	if toggle(&v.sends, ui.ICON_ARROW_UP_RIGHT, "Sends", "Sends: each strip's level to each bus in use") do changed = true
-	if toggle(&v.io, ui.ICON_ARROW_LEFT_RIGHT, "I/O", "I/O: what comes into each strip and where it goes") do changed = true
-	w := 1 if v.narrow else 0
-	if ui.segmented("strip width", {"Wide", "Narrow"}, &w) {
-		v.narrow = w == 1
+	step :: proc(gap: f32) { im.Dummy({1, gap}) }
+	if toggle(&v.inserts, ui.ICON_WAND_SPARKLES, "Inserts: each strip's effects (click one to edit it below, drag to reorder)") do changed = true
+	step(gap)
+	if toggle(&v.eq, ui.ICON_CHART_SPLINE, "EQ: each strip's EQ curve (click it to edit below)") do changed = true
+	step(gap)
+	if toggle(&v.sends, ui.ICON_ARROW_UP_RIGHT, "Sends: each strip's level to each bus in use") do changed = true
+	step(gap)
+	if toggle(&v.io, ui.ICON_ARROW_LEFT_RIGHT, "I/O: each strip's audio and MIDI in and out") do changed = true
+	step(gap)
+	if ui.icon_button(ui.ICON_FOLD_HORIZONTAL if !v.narrow else ui.ICON_UNFOLD_HORIZONTAL, "Narrow strips (more at once)" if !v.narrow else "Wide strips", on = v.narrow) {
+		v.narrow = !v.narrow
 		changed = true
 	}
 	ui.name("strip width")
 	if changed do settings_save(a)
-	im.Spacing()
 }
 
 // Whether pad `i` goes to a group.
@@ -418,16 +432,31 @@ gap :: proc(h: f32 = 4) {
 // The pad EQ's curve, as a thumbnail (Logic's EQ display); nil `eq` draws
 // a flat, dim one. True when clicked.
 @(private)
-eq_thumb :: proc(eq: ^[3]f32, color: ui.Color) -> bool {
+eq_thumb :: proc(eq: ^[3]f32, color: ui.Color, on := true, width: f32 = 0) -> bool {
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
-	w := inner_w()
+	w := width if width > 0 else inner_w()
 	clicked := im.InvisibleButton("##eq", {w, EQ_H})
 	part("eq")
 	hovered := im.IsItemHovered()
 	im.DrawList_AddRectFilled(dl, pos, {pos.x + w, pos.y + EQ_H}, ui.col(well(t)), t.radius - 2)
 	mid := pos.y + EQ_H / 2
+	if eq == nil { // (a bus: no EQ, only its place in line)
+		im.DrawList_AddLine(dl, {pos.x + 2, mid}, {pos.x + w - 2, mid}, ui.col(t.border), 1)
+		return false
+	}
+	// A faint grid for context: 100 Hz, 1 kHz and 10 kHz across (20 Hz to
+	// 20 kHz, log), ±6 and ±12 dB up and down (±15 the height).
+	grid := ui.col(ui.with_alpha(t.text, 0.07))
+	for hz in ([3]f32{100, 1000, 10_000}) {
+		x := pos.x + 2 + (w - 4) * math.log10(hz / 20) / 3
+		im.DrawList_AddLine(dl, {x, pos.y + 2}, {x, pos.y + EQ_H - 2}, grid, 1)
+	}
+	for db in ([4]f32{-12, -6, 6, 12}) {
+		y := mid - db / 15 * (EQ_H / 2 - 3)
+		im.DrawList_AddLine(dl, {pos.x + 2, y}, {pos.x + w - 2, y}, grid, 1)
+	}
 	im.DrawList_AddLine(dl, {pos.x + 2, mid}, {pos.x + w - 2, mid}, ui.col(t.border), 1)
 	if eq == nil do return false
 	// Low shelf at 100 Hz, a bell near 900 Hz, high shelf at 8 kHz, on a
@@ -442,7 +471,8 @@ eq_thumb :: proc(eq: ^[3]f32, color: ui.Color) -> bool {
 		return eq[0] * low + eq[1] * bell + eq[2] * high
 	}
 	flat := eq[0] == 0 && eq[1] == 0 && eq[2] == 0
-	c := t.text_dim if flat else color
+	c := t.text_dim if flat || !on else color
+	if !on do c = ui.with_alpha(c, 0.45)
 	if hovered do c = ui.lighten(c, 0.2)
 	N :: 40
 	pts: [N + 1]im.Vec2
@@ -456,7 +486,7 @@ eq_thumb :: proc(eq: ^[3]f32, color: ui.Color) -> bool {
 		im.DrawList_AddQuadFilled(dl, a, b, {b.x, mid}, {a.x, mid}, ui.col(ui.with_alpha(c, 0.18)))
 	}
 	im.DrawList_AddPolyline(dl, &pts[0], N + 1, ui.col(c), 1.5)
-	if hovered do im.SetTooltip("EQ: low %+.1f, mid %+.1f, high %+.1f dB", eq[0], eq[1], eq[2])
+	if hovered do im.SetTooltip("%s", fmt.ctprintf("EQ %s: low %+.1f, mid %+.1f, high %+.1f dB · click to edit it", "on" if on else "off", eq[0], eq[1], eq[2]))
 	return clicked
 }
 
@@ -517,8 +547,8 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 	if s.kind != .None && im.IsItemHovered({.DelayShort}) do im.SetTooltip("%s", fmt.ctprintf("%s%s", pm.slot_name(s), "" if s.on else " (off)"))
 }
 
-// Pad `pad`'s send to bus `bus` (1..BUSES): the bus's name and a small
-// knob. Drag up and down for its level (Shift: finer), double-click to
+// Pad `pad`'s send to bus `bus` (1..BUSES): the bus's name over a bar of
+// its level. Drag it across for its level (Shift: finer), double-click to
 // turn it on at 0 dB or off, right-click for pre- or post-fader.
 @(private)
 send_row :: proc(a: ^App, pad, bus: int) {
@@ -545,7 +575,8 @@ send_row :: proc(a: ^App, pad, bus: int) {
 	// Input: on the row's button (the last item before the knob drawing).
 	// With several strips selected, each one's send moves by as much.
 	v := db
-	e := ui_drag(&v, pm.SEND_MIN_DB, 6, 0, 140)
+	e := ui_drag(&v, pm.SEND_MIN_DB, 6, 0, max(hi.x - lo.x, 40) * 1.5, horizontal = true) // (a bar: dragged across)
+	if im.IsItemHovered() || im.IsItemActive() do im.SetMouseCursor(.ResizeEW)
 	if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
 		v = pm.SEND_MIN_DB if on else 0
 		e.changed, e.ended = true, true
@@ -578,12 +609,12 @@ send_row :: proc(a: ^App, pad, bus: int) {
 // Dragging the last item changes `value` (as ui's knobs do; the press
 // itself doesn't move it), and double-click is left to the caller.
 @(private)
-ui_drag :: proc(value: ^f32, lo, hi, default, range_px: f32) -> (e: ui.Edit) {
+ui_drag :: proc(value: ^f32, lo, hi, default, range_px: f32, horizontal := false) -> (e: ui.Edit) {
 	io := im.GetIO()
 	if im.IsItemActivated() do e.started = true
 	if im.IsItemActive() && !e.started {
 		e.active = true
-		d := -io.MouseDelta.y
+		d := io.MouseDelta.x if horizontal else -io.MouseDelta.y
 		if d != 0 {
 			speed := (hi - lo) / range_px
 			if io.KeyShift do speed *= 0.1
@@ -655,6 +686,90 @@ input_row :: proc(a: ^App, pad: int) {
 	if im.BeginPopup("##inmenu") {
 		if audio do audio_in_items(a, pad)
 		else do midi_in_items(a, pad)
+		im.EndPopup()
+	}
+}
+
+// Track `pad`'s audio input (a channel or pair of the interface, with its
+// level along the row); click to choose.
+@(private)
+audio_in_row :: proc(a: ^App, pad: int) {
+	m := &a.m
+	t := ui.theme()
+	text := audio_in_text(a, pad)
+	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim)
+	dl := im.GetWindowDrawList()
+	in_ := m.project.pads[pad].input
+	lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
+	if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
+	db := 20 * math.log10(max(lvl, 1e-6))
+	f := clamp((db + 60) / 60, 0, 1)
+	if f > 0 do im.DrawList_AddRectFilled(dl, {lo.x + 2, hi.y - 3}, {lo.x + 2 + (hi.x - lo.x - 4) * f, hi.y - 1}, ui.col(t.ok if db < -12 else (t.warn if db < -1 else t.danger)), 1)
+	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("Audio in: %s (what it records; click to choose)", text))
+	if clicked do im.OpenPopup("##audioinmenu")
+	if im.BeginPopup("##audioinmenu") {
+		audio_in_items(a, pad)
+		im.EndPopup()
+	}
+}
+
+// Track `pad`'s MIDI input (with its activity light); click to choose.
+@(private)
+midi_in_row :: proc(a: ^App, pad: int) {
+	t := ui.theme()
+	text := midi_in_text(a, pad)
+	lo, hi, clicked := row(a, "##midi in", fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, text), t.text_dim)
+	midi_light(im.GetWindowDrawList(), {hi.x - 10, lo.y + (hi.y - lo.y - 7) / 2}, 7, a.io.in_lit[pad], a.io.out_lit[pad])
+	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("MIDI in: %s (click to choose)", text))
+	if clicked do im.OpenPopup("##midiinmenu")
+	if im.BeginPopup("##midiinmenu") {
+		midi_in_items(a, pad)
+		im.EndPopup()
+	}
+}
+
+// Track `pad`'s MIDI out: off, or a port and channel its hits go out on;
+// click to choose.
+@(private)
+midi_out_row :: proc(a: ^App, pad: int) {
+	m := &a.m
+	t := ui.theme()
+	out := m.project.pads[pad].midi_out
+	port := "Default" if out.port == "" else port_name(a, out.port, false)
+	text := fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, fmt.tprintf("%s · %d", port, out.channel + 1) if out.on else "No MIDI out")
+	_, _, clicked := row(a, "##midi out", text, t.text if out.on else t.text_dim)
+	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("MIDI out: %s (its hits also go out as a note; click to choose)", fmt.tprintf("%s, channel %d", port, out.channel + 1) if out.on else "off"))
+	if clicked do im.OpenPopup("##midioutmenu")
+	if im.BeginPopup("##midioutmenu") {
+		set :: proc(m: ^pm.Model, i: int, o: pm.Midi_Out) {
+			p := m.project.pads[i]
+			p.midi_out = o
+			pm.set_pad(m, i, .Midi_Out, "MIDI Out", p)
+			app.seal(&m.history)
+		}
+		if im.Selectable("Off", !out.on) {
+			o := out
+			o.on = false
+			set(m, pad, o)
+		}
+		turn_on :: proc(o: pm.Midi_Out, pad: int, port: string) -> pm.Midi_Out {
+			x := o
+			x.on, x.port = true, port
+			if x.key == 0 do x.key = u8(pm.pad_key(pad))
+			return x
+		}
+		if im.Selectable("Default output (Settings)", out.on && out.port == "") do set(m, pad, turn_on(out, pad, ""))
+		for p in app.host_midi_ports(&a.host, context.temp_allocator) do if p.direction == .Output {
+			if im.Selectable(fmt.ctprintf("%s###mo%s", p.name, p.id), out.on && p.id == out.port) do set(m, pad, turn_on(out, pad, pm.intern(&m.project, p.id)))
+		}
+		if out.on && im.BeginMenu("Channel") {
+			for ch in 0 ..< 16 do if im.MenuItem(fmt.ctprintf("%d", ch + 1), nil, int(out.channel) == ch) {
+				o := out
+				o.channel = u8(ch)
+				set(m, pad, o)
+			}
+			im.EndMenu()
+		}
 		im.EndPopup()
 	}
 }
@@ -945,7 +1060,8 @@ fader_h :: proc(h: f32, compact := false, rows := -1) -> f32 {
 @(private)
 strip_fixed_h :: proc(compact := false) -> f32 {
 	fixed: f32 = 2 * STRIP_PAD + 4 + PAN_H + 4 + 21 + 4 + ROW_H + 4 + 21
-	if compact || strip_view.io do fixed += 2 * (ROW_H + 2) + 4
+	if compact do fixed += 2 * (ROW_H + 2) + 4
+	else if strip_view.io do fixed += 4 * (ROW_H + 2) + 8 // (two in above the pan, two out at the foot)
 	if !compact && strip_view.eq do fixed += EQ_H + 4
 	return fixed
 }
@@ -985,7 +1101,18 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	if !compact {
 		eq := pad.eq
 		if strip_view.eq {
-			if eq_thumb(&eq, color) {
+			// Its EQ's switch at the left (off to start with), its curve beside.
+			bw: f32 = 16
+			row_pos := im.GetCursorScreenPos()
+			if ui.icon_button(ui.ICON_POWER, fmt.ctprintf("%s's EQ: %s (click to turn it %s)", pm.pad_label(i), "on" if pad.eq_on else "off", "off" if pad.eq_on else "on"), on = pad.eq_on, size = bw) {
+				np := pad
+				np.eq_on = !pad.eq_on
+				pm.set_pad(m, i, .Eq_Low, "EQ On" if np.eq_on else "EQ Off", np)
+				app.seal(&m.history)
+			}
+			part("eq switch")
+			im.SetCursorScreenPos({row_pos.x + bw + 2, row_pos.y})
+			if eq_thumb(&eq, color, pad.eq_on, inner_w() - bw - 2) {
 				a.selected = i
 				show_eq(a)
 			}
@@ -1013,6 +1140,12 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 			}
 			gap()
 		}
+	}
+	// What comes in: its audio input and its MIDI input, above its pan.
+	if strip_view.io && !compact {
+		audio_in_row(a, i)
+		midi_in_row(a, i)
+		gap()
 	}
 	// With several strips selected (Shift- or Cmd-click their names), an
 	// edit of one changes them all: level and pan by as much, mute and
@@ -1065,9 +1198,13 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 		}
 	}
 	gap()
-	if strip_view.io || compact {
+	if compact {
 		input_row(a, i) // what comes in: MIDI (and its light), or audio (and its level)
 		output_row(a, i) // where it goes, right above its name
+		gap()
+	} else if strip_view.io {
+		midi_out_row(a, i) // where its MIDI goes
+		output_row(a, i) // where its sound goes, right above its name
 		gap()
 	}
 	plate := pm.pad_label(i) if narrow() else fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&m.project.pads[i]))
@@ -1110,6 +1247,10 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 		im.PopStyleVar()
 		gap()
 	}
+	if strip_view.io { // (in line with the tracks' inputs)
+		im.Dummy({inner_w(), 2 * (ROW_H + 2)})
+		gap()
+	}
 	pan := bus.pan
 	knob_target(a, fixed_target(.Main if is_main else .Bus, 0 if is_main else b, .Pan))
 	pe := pan_knob(a, &pan)
@@ -1142,7 +1283,7 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	}
 	gap()
 	if strip_view.io {
-		im.Dummy({inner_w(), ROW_H + 2}) // (in line with the tracks' input rows)
+		im.Dummy({inner_w(), ROW_H + 2}) // (in line with the tracks' MIDI outs)
 		bus_output_row(a, b) // where it goes, right above its name
 		gap()
 	}

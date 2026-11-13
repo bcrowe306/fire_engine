@@ -12,7 +12,7 @@ import "fire:synth"
 import "fire:dsp"
 
 // Insert slots on each pad.
-PAD_INSERTS :: 2
+PAD_INSERTS :: 4
 // Effect slots on each bus and on main.
 BUS_SLOTS :: 5
 // Buses a project can have (A to P; `Project.bus_count` of them are in

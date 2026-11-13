@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 32 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue
+PROJECT_VERSION :: 33 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -595,6 +595,13 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_bool(w, fx.arp.latch)
 	}
 	fc.write_bool(w, p.launch_continue) // v32
+	for pad in p.pads do fc.write_bool(w, pad.eq_on) // v33
+}
+
+// How many inserts a pad has in a file of `version` (two before v33).
+@(private)
+inserts_in :: proc(version: u32) -> int {
+	return PAD_INSERTS if version >= 33 else 2
 }
 
 // --- reading -------------------------------------------------------------------------------
@@ -686,6 +693,8 @@ read_project :: proc(r: ^fc.State_Reader, p: ^Project, version: u32) {
 	// Before v31 note repeat and the arpeggiator were the project's, for
 	// every pad: each pad has them now.
 	if version < 31 do for &pad in p.pads do pad.midi_fx = p.perform
+	// Before v33 a pad's EQ was always in: on where it isn't flat.
+	if version < 33 do for &pad in p.pads do pad.eq_on = pad.eq != {}
 	p.song = p.arrangements[p.arrangement].song
 }
 
@@ -760,7 +769,7 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 		pad.midi_out.on = fc.read_bool(r)
 		pad.midi_out.channel = fc.read_u8(r) & 15
 		pad.midi_out.key = fc.read_u8(r) & 127
-		for &s in pad.inserts do s = read_slot(r, p)
+		for &s in pad.inserts[:inserts_in(version)] do s = read_slot(r, p)
 		pad.mute = fc.read_bool(r)
 		pad.solo = fc.read_bool(r)
 		if version >= 2 do for &s in pad.sends[:BUSES if version >= 12 else 4] {
@@ -961,7 +970,7 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 			}
 		}
 		if version >= 23 {
-			for &pad in p.pads do for &sl in pad.inserts do sl.state = intern(p, fc.read_string(r))
+			for &pad in p.pads do for &sl in pad.inserts[:inserts_in(version)] do sl.state = intern(p, fc.read_string(r))
 			for &b in p.buses do for &sl in b.slots do sl.state = intern(p, fc.read_string(r))
 			for &sl in p.main.slots do sl.state = intern(p, fc.read_string(r))
 			for &sl in p.perf_fx do sl.state = intern(p, fc.read_string(r))
@@ -1008,7 +1017,7 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 				sl.key_hpf = clamp(fc.read_f32(r), 0, 2000)
 				sl.listen = fc.read_bool(r)
 			}
-			for &pad in p.pads do for &sl in pad.inserts do key(r, &sl)
+			for &pad in p.pads do for &sl in pad.inserts[:inserts_in(version)] do key(r, &sl)
 			for &b in p.buses do for &sl in b.slots do key(r, &sl)
 			for &sl in p.main.slots do key(r, &sl)
 			for &b in p.buses {
@@ -1106,6 +1115,7 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 			fx.arp.latch = fc.read_bool(r)
 		}
 		if version >= 32 do p.launch_continue = fc.read_bool(r)
+		if version >= 33 do for &pad in p.pads do pad.eq_on = fc.read_bool(r)
 	} else {
 		p.bus_count = DEFAULT_BUSES
 	}

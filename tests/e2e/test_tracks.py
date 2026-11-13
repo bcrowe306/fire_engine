@@ -42,7 +42,7 @@ def test_arming_follows_the_selection(app, fixtures):
 def test_a_tracks_midi_input(app, fixtures):
     loaded(app, fixtures)
     app.panel("Mixer")
-    app.click("A2 input", window="mixer")
+    app.click("A2 midi in", window="mixer")  # (its MIDI in, above its pan)
     app.click("No MIDI")
     assert app.pad(1)["midi_in"] == "No MIDI"
     assert app.state()["undo"] == "MIDI In"

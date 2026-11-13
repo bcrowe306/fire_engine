@@ -203,6 +203,7 @@ Pad :: struct {
 	pan:        f32, // -1..1
 	choke:      u8,  // 0 = none, 1..CHOKE_GROUPS
 	eq:         [3]f32, // low, mid, high: dB
+	eq_on:      bool,   // its EQ is in (off: flat, whatever its bands are)
 	bus:        u8,  // 0 = main (buses come with the mixer)
 	// Slices (from chopping), as frame positions; the pad plays slice 0,
 	// keys play the others (the chopper).

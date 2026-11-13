@@ -398,12 +398,12 @@ records.
   channel, from its own output port). Projects from before each pad had
   its own give every pad the project's old note repeat and arpeggiator
   settings.
-- **Mixer** (middle tab): along its top, a bar of toggles for what the
-  strips show — **Inserts**, **EQ**, **Sends**, **I/O** (each lit when
-  shown, grey when not; hidden ones give the fader the room) — and
-  **Wide** or **Narrow** strips (narrow: more at once, the names their
-  labels, the fader's level in the peak readout's tooltip); kept in the
-  app's settings. Then a channel strip, as in Logic, for every pad with a
+- **Mixer** (middle tab): down its left side, in the middle, a column of
+  icons for what the strips show — **Inserts**, **EQ**, **Sends**, **I/O**
+  (each lit when shown, grey when not, named on hover; hidden ones give
+  the fader the room) — and **narrow** or wide strips (narrow: more at
+  once, the names their labels, the fader's level in the peak readout's
+  tooltip); kept in the app's settings. Then a channel strip, as in Logic, for every pad with a
   sound (all banks; it scrolls sideways), the buses right after them
   (four to start with, up to 16: the **+** adds one; they scroll when
   many), and main pinned on the right with its **meters column**. Right-click a bus's name to **Rename…** (or
@@ -419,18 +419,25 @@ records.
   the tab to fold its pads away or back, right-click it to rename or
   **Ungroup** (the pads go where the group went, the bus goes). The
   group's own strip is its bus's, with the other buses. From the top:
-  - the pad's **EQ** curve (click it for the Effects tab, where the EQ is);
+  - the pad's **EQ**: its switch (off on a new pad: it plays flat whatever
+    its bands are; projects from before keep theirs on where it isn't
+    flat) and its curve over a faint grid (100 Hz, 1 kHz, 10 kHz across;
+    ±6 and ±12 dB); click the curve for the EQ tab below (its **EQ on**
+    there too);
   - a block of rows, as many as the room has (the same on every strip;
-    more scroll): its two **inserts** (a bus and main have five slots) —
+    more scroll): its four **inserts** (a bus and main have five slots) —
     drag one onto another slot of the same strip to swap them (one undo
     step) — and its **sends**, one per bus, each a bar of its level:
-    drag a send up and down for its level (Shift for fine), double-click
+    drag a send across for its level (right: more; Shift for fine), double-click
     to turn it on at 0 dB or off, right-click for **Pre-fader** (it then
     ignores the fader, and shows `pre`, its bar in yellow). A muted pad
     sends nothing;
   - its **cue** send, while a cue output is set (Settings > Audio): how
     much of it goes to the headphones mix on top of main (a send's knob:
     double-click, right-click for pre-fader);
+  - its **audio in** (a channel or pair of the interface, its level
+    along the row: what it records) and its **MIDI in** (all MIDI, a
+    port and channel, or none; its light), each a dropdown;
   - **pan** (drag; double-click centres);
   - two readouts: the fader's level, and the loudest peak since you last
     clicked it (red above 0 dB);
@@ -441,8 +448,9 @@ records.
     and +4). A strip with a compressor, gate or limiter shows its **gain
     reduction** beside the meter, down from the top (0–24 dB);
   - **M**ute and **S**olo;
-  - its **output**, right above its name: Main or a bus (click to
-    choose). A bus's output is Main or another bus (one that would bring
+  - its **MIDI out** (off, the default output or a port, and its
+    channel: its hits also go out as a note) and its **output**, right
+    above its name: Main or a bus (click to choose). A bus's output is Main or another bus (one that would bring
     it back round to itself can't be picked). Either can also go to a
     **direct out**: an open output pair of the interface (by its name),
     straight there, not through main (exports fold direct outs back into

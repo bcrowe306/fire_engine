@@ -340,7 +340,7 @@ sync :: proc(e: ^Engine) {
 		if n.synth != nil {
 			fresh := n.built.kind != .Synth || e.resend
 			set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
-			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
+			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), pad_eq(n.built)[b], pad_eq(pad)[b], fresh)
 			sync_synth(e, i, n, &pad, fresh)
 			n.built = pad
 			continue
@@ -348,7 +348,7 @@ sync :: proc(e: ^Engine) {
 		if n.inst.has {
 			fresh := n.built.kind != .Plugin || e.resend
 			set(g, n.fader, dsp.GAIN_PARAM_DB, n.built.volume, pad.volume, fresh)
-			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
+			for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), pad_eq(n.built)[b], pad_eq(pad)[b], fresh)
 			apply_instrument(g, &n.inst, pad.instrument, fresh)
 			n.built = pad
 			continue
@@ -359,7 +359,7 @@ sync :: proc(e: ^Engine) {
 			if fresh || n.built.volume != pad.volume do graph.set_param(g, n.fader, dsp.GAIN_PARAM_DB, f64(pad.volume))
 			pan := 0 if pad.frozen else pad.pan // (a rendering has its pan)
 			if fresh || n.built.pan != pad.pan || n.built.frozen != pad.frozen do graph.set_param(g, n.voice, dsp.PAN_PARAM_POSITION, f64(pan))
-			for b in 0 ..< 3 do if fresh || n.built.eq[b] != pad.eq[b] do graph.set_param(g, n.eq, dsp.eq_band_param(b, .Gain_Db), f64(pad.eq[b]))
+			for b in 0 ..< 3 do if fresh || pad_eq(n.built)[b] != pad_eq(pad)[b] do graph.set_param(g, n.eq, dsp.eq_band_param(b, .Gain_Db), f64(pad_eq(pad)[b]))
 			n.built = pad
 			continue
 		}
@@ -379,7 +379,7 @@ sync :: proc(e: ^Engine) {
 		// The voice: its envelopes, filter, pitch, LFOs and routes.
 		was, now := voice_params(n.built), voice_params(pad)
 		for v, k in now do if fresh || v != was[k] do graph.set_param(g, n.voice, fc.Param_Id(k + 1), v)
-		for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), n.built.eq[b], pad.eq[b], fresh)
+		for b in 0 ..< 3 do set(g, n.eq, dsp.eq_band_param(b, .Gain_Db), pad_eq(n.built)[b], pad_eq(pad)[b], fresh)
 		n.built = pad
 	}
 	if sync_mixer(e) do structural = true
@@ -958,4 +958,9 @@ slicer_zones :: proc(pad: Pad, src: ^stream.Source, scale := 1.0) -> []sampler.S
 		})
 	}
 	return zones[:]
+}
+
+// The EQ pad `p` plays with: its bands while its EQ is on, flat while off.
+pad_eq :: proc "contextless" (p: Pad) -> [3]f32 {
+	return p.eq if p.eq_on else {}
 }

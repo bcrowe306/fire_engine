@@ -408,3 +408,30 @@ main_measures_its_loudness_and_stereo :: proc(t: ^testing.T) {
 	_, _, integ, _ = pm.main_loudness(&m.engine)
 	testing.expect_value(t, integ, f32(-144))
 }
+
+@(test)
+a_pads_eq_is_off_until_turned_on :: proc(t: ^testing.T) {
+	r := rig_make(t, "eq_on")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "low.wav", 80, 1.5))
+	testing.expect(t, !m.project.pads[0].eq_on, "off on a new pad")
+	p := m.project.pads[0]
+	p.eq[0] = 12 // the low shelf up 12 dB, but off
+	pm.set_pad(m, 0, .Eq_Low, "EQ", p)
+	level :: proc(r: ^Rig) -> f64 {
+		pm.sync(&r.m.engine)
+		render(r, 2400)
+		pm.hit(&r.m.engine, 0, true)
+		out := render(r, 24_000)
+		pm.hit(&r.m.engine, 0, false)
+		render(r, 24_000)
+		return kit.rms(out[0][4800:])
+	}
+	flat := level(r)
+	p = m.project.pads[0]
+	p.eq_on = true
+	pm.set_pad(m, 0, .Eq_Low, "EQ", p)
+	up := level(r)
+	testing.expectf(t, up > flat * 2, "on: the low shelf lifts it (%v → %v)", flat, up)
+}
