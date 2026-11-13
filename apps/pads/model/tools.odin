@@ -283,7 +283,7 @@ record_start :: proc(m: ^Model, rec: ^Recording, index: int) -> fc.Error {
 	if h.settings.inputs <= 0 do return .Unsupported
 	if rec.handle == nil {
 		dir, _ := filepath.join({m.project.dir, "samples"}, context.temp_allocator)
-		node, r, err := record.audio_recorder_create(h.disk, {channels = min(h.settings.inputs, 2), directory = dir, name = "Recording", encoding = .Float32})
+		node, r, err := record.audio_recorder_create(h.disk, {channels = min(h.settings.inputs, 2), directory = dir, name = "Recording", encoding = .Float32, latency_frames = record_latency(&m.engine)})
 		if err != .None do return err
 		id := graph.add_node(h.graph, node, min(h.settings.inputs, 2), 0) or_return
 		for c in 0 ..< min(h.settings.inputs, 2) do graph.connect(h.graph, graph.INPUT, c, id, c)
@@ -292,6 +292,7 @@ record_start :: proc(m: ^Model, rec: ^Recording, index: int) -> fc.Error {
 	}
 	rec.pad = index
 	rec.active = true
+	record.audio_recorder_set_latency(rec.handle, record_latency(&m.engine)) // (as the device is now)
 	return record.audio_recorder_arm(rec.handle, true)
 }
 

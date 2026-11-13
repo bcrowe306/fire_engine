@@ -49,6 +49,7 @@ App_Settings :: struct {
 	sync:      Sync_Mode, // what the tempo and start follow
 	link_start_stop: bool,
 	midi_offset_ms: f32, // MIDI notes recorded this much earlier (a controller's latency)
+	record_offset:  int, // frames added to the device's round trip when recording audio (a loopback's correction; may be < 0)
 	// Recording.
 	arm_selected: bool, // the selected track is armed
 	count_in_click: bool,
@@ -221,6 +222,7 @@ settings_load :: proc(a: ^App) {
 	}
 	s.link_start_stop = app.ini_bool(ini_, "midi", "link_start_stop", true)
 	s.midi_offset_ms = f32(app.ini_f64(ini_, "midi", "input_offset_ms", 0))
+	s.record_offset = clamp(app.ini_int(ini_, "recording", "offset_frames", 0), -RECORD_OFFSET_MAX, RECORD_OFFSET_MAX)
 	// Recording (settings.txt's, the first time).
 	s.count_in_click = app.ini_bool(ini_, "recording", "count_in_click", true)
 	s.arm_selected = app.ini_bool(ini_, "recording", "arm_selected", true)
@@ -281,6 +283,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set(ini, "midi", "sync", sync_names[s.sync])
 	app.ini_set_bool(ini, "midi", "link_start_stop", s.link_start_stop)
 	app.ini_set_f64(ini, "midi", "input_offset_ms", f64(s.midi_offset_ms))
+	app.ini_set_int(ini, "recording", "offset_frames", s.record_offset)
 	app.ini_set_bool(ini, "recording", "count_in_click", s.count_in_click)
 	app.ini_set_bool(ini, "recording", "arm_selected", s.arm_selected)
 	app.ini_set_int(ini, "recording", "preroll", int(s.preroll))
@@ -588,6 +591,7 @@ draw_settings :: proc(a: ^App) {
 	a.m.engine.count_in_click = s.count_in_click
 	a.capture.preroll = preroll_beats(s.preroll)
 	a.capture.midi_offset = f64(s.midi_offset_ms) / 1000
+	a.m.engine.record_offset = s.record_offset
 	if s.keep.active && a.transport.clock >= s.keep.until do audio_revert(a)
 	if !s.open {
 		if s.keep.active do draw_keep(a)
@@ -1167,8 +1171,33 @@ page_recording :: proc(a: ^App) -> (changed: bool) {
 		im.EndCombo()
 	}
 	hint("A hit this much before a sequence's first beat (at the end of the loop, or of the count-in) is recorded on it.")
+	// Audio takes are moved earlier by the round trip the device reports,
+	// and by this: what a loopback measured it misreports.
+	im.SeparatorText("Timing")
+	label("Device latency")
+	ins, outs, round_trip := app.host_latency(&a.host)
+	rate := a.host.format.sample_rate if a.host.format.sample_rate > 0 else 48_000
+	ms :: proc(frames: int, rate: f64) -> f64 { return f64(frames) * 1000 / rate }
+	if a.host.opened {
+		im.TextUnformatted(fmt.ctprintf("in %d, out %d, round trip %d frames (%.1f ms)", ins, outs, round_trip, ms(round_trip, rate)))
+	} else {
+		im.TextDisabled("The device isn't open")
+	}
+	ui.name("device latency")
+	label("Recording offset")
+	off := f64(s.record_offset)
+	if e := ui.number_drag("recording offset", &off, -RECORD_OFFSET_MAX, RECORD_OFFSET_MAX, 1, 1, fmt.ctprintf("%%+.0f frames (%+.2f ms)", ms(int(off), rate)), 220); e.changed || e.ended {
+		s.record_offset = int(off)
+		if e.ended do changed = true
+	}
+	hint("Audio takes are moved earlier by the device's round trip and by this (positive: earlier still), so they line up with what you heard. Measure it once with a loopback cable if your interface's takes land late or early.")
+	im.TextDisabled("%s", fmt.ctprintf("Takes move %d frames in all; hits you play, %d (the output latency).", max(round_trip + s.record_offset, 0), max(outs, 0)))
+	ui.name("recording total")
 	return
 }
+
+// The most a recording offset corrects, in frames (either way).
+@(private) RECORD_OFFSET_MAX :: 10_000
 
 @(private)
 page_project :: proc(a: ^App) -> (changed: bool) {

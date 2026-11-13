@@ -1063,7 +1063,14 @@ it.
 - **Recording**: **Arm the selected track** (on by default), whether the
   count-in clicks with the metronome off (on by default), and how early a
   hit before a sequence's downbeat still goes on it (off, a 1/32, a 1/16,
-  an 1/8).
+  an 1/8). **Timing**: the device's latencies (in, out, the round trip),
+  and the **recording offset** (frames, either way). Every audio take (an
+  audio track's, a sample recorded onto a pad) is moved earlier by the
+  round trip plus the offset, so it lines up with what you heard when you
+  played it; every hit you play (pads, MIDI) is recorded earlier by the
+  output latency, for the same reason (a MIDI effect's notes, made on the
+  engine's grid, are not moved). Measure the offset once with a loopback
+  cable if your interface's takes land late or early.
 - **Projects**: what a new project starts with (tempo, time signature,
   sequence length, buses), the folder Save starts in, autosave (off, or
   every 1–10 minutes), opening the last project on start, and the export

@@ -71,6 +71,12 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 		i := int(t.pad)
 		t := t
 		if t.midi_key >= 0 && c.midi_offset != 0 do t.beat -= c.midi_offset * m.engine.bpm / 60 // (MIDI: the controller's delay)
+		// Played to what was heard, which came out the device's output
+		// latency after the engine made it: that much earlier. (Not a MIDI
+		// effect's notes: they are the engine's, on its grid.)
+		if !t.fx {
+			if ol, rate := output_latency(&m.engine), m.engine.host.format.sample_rate; ol > 0 && rate > 0 do t.beat -= f64(ol) / rate * m.engine.bpm / 60
+		}
 		if t.on {
 			// Just before a sequence's downbeat (its part's start, each pass;
 			// the top after a count-in): on the downbeat, so a hit a little

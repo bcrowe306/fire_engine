@@ -56,6 +56,9 @@ Engine :: struct {
 	metro_click: dsp.Click_Sound, // its sound and accent, as sent
 	metro_accent, metro_click_sent: bool,
 	recording: bool, // the capture is armed (the metronome may click only then)
+	// Frames added to the device's round trip when recording audio (a
+	// loopback's measurement of what the driver misreports; may be < 0).
+	record_offset: int,
 	outputs:   Outputs, // where main, the cue and the click play (the app's settings)
 	io_dirty:  bool,    // the outputs or the interface's channels changed: wire them again
 	tone_id:   graph.Node_Id, // a test tone playing (see test_tone)

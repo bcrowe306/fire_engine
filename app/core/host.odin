@@ -30,6 +30,12 @@ Host_Settings :: struct {
 	input_channels:  backend.Channel_Mask,
 	output_channels: backend.Channel_Mask,
 	fake_devices:  []fake.Device_Spec, // the simulated driver's devices (nil: one 2-in/2-out)
+	// The simulated driver's reported input and output latency (frames),
+	// and a loopback: its outputs back on its inputs this many frames later
+	// (0: none; at least a callback). As an interface with a cable from an
+	// output to an input, for timing tests.
+	fake_latency:  [2]int,
+	fake_loopback: int,
 	max_block:     int,    // largest block the graph processes; 0 = 1024
 	fake:          bool,   // the simulated driver (tests, headless runs)
 	ram_bytes:     int,    // audio files up to this decoded size are held in memory (samplers need it); 0 = the streamer's default
@@ -116,6 +122,8 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 	if settings.fake {
 		cfg := fake.default_config()
 		cfg.devices = settings.fake_devices
+		cfg.input_latency_frames, cfg.output_latency_frames = settings.fake_latency[0], settings.fake_latency[1]
+		if settings.fake_loopback > 0 do cfg.loopback_latency = settings.fake_loopback
 		h.fake = fake.create(cfg)
 		h.driver = fake.driver(h.fake)
 	} else {

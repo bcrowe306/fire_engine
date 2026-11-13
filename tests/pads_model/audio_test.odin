@@ -1,12 +1,16 @@
 package test_pads_model
 
 import "core:math"
+import "core:os"
+import "core:path/filepath"
 import "core:testing"
 import "core:time"
 
 import app "app:core"
+import "fire:audiofile"
 import fc "fire:core"
 import pm "../../apps/pads/model"
+import "fire:record"
 import kit "fire:testkit"
 
 // A sine at `hz` into both inputs, `frames` long.
@@ -183,4 +187,171 @@ audio_runs_hand_over_at_switches_and_song_clips :: proc(t: ^testing.T) {
 	testing.expect(t, cur.slot == 1, "the top lane's")
 	cur, _ = pm.audio_runs(song, 7)
 	testing.expect(t, cur.slot == 0, "the top lane's before it")
+}
+
+@(test)
+an_audio_take_lines_up_with_what_was_heard :: proc(t: ^testing.T) {
+	// A loopback, as a cable from an output to an input: what pad 0 plays
+	// comes back on the inputs 300 frames later (the round trip). Pad 1,
+	// an audio track, records it; with the round trip compensated (here the
+	// recording offset: offline, the device reports none), its take has the
+	// hit on the very frame it was played (where the sequencer put it).
+	r := rig_make(t, "audio_loopback", inputs = 2)
+	defer rig_destroy(r)
+	m := &r.m
+	LOOP :: 300
+	pm.load_onto_pad(m, 0, tone(r, "hit.wav", 440, 0.05, decay = true))
+	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 0, velocity = 1})
+	pm.add_note(m, 0, {start = 2.5, length = 0.25, pad = 0, velocity = 1})
+	pm.set_pad_kind(m, 1, .Audio)
+	pm.arm_track(m, 1, true)
+	m.engine.record_offset = LOOP
+	render(r, 512)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	bar := int(2 * SR)
+	// Each block's inputs: the outputs LOOP frames before.
+	heard := make([]f32, bar + LOOP, context.temp_allocator)
+	BLOCK :: 256
+	for at := 0; at < bar; at += BLOCK {
+		n := min(BLOCK, bar - at)
+		x := make([]f32, n, context.temp_allocator)
+		for i in 0 ..< n do if at + i - LOOP >= 0 do x[i] = heard[at + i - LOOP]
+		out := render_in(r, {x, x})
+		copy(heard[at:][:n], out[0][:n])
+	}
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	render(r, 512)
+	cl := poll_clip(r, &c, 0, 1)
+	s := app.store_get(&m.project.samples, cl.sample)
+	if !testing.expect(t, s != nil, "a take on pad 1") do return
+	rd, err := audiofile.open(s.path, context.temp_allocator)
+	if !testing.expect_value(t, err, audiofile.Error.None) do return
+	defer audiofile.close(rd)
+	take := make([]f32, int(s.frames), context.temp_allocator)
+	other := make([]f32, int(s.frames), context.temp_allocator)
+	audiofile.read(rd, {take, other}, len(take))
+	first :: proc(x: []f32, from: int) -> int {
+		for v, i in x[from:] do if abs(v) > 0.02 do return from + i
+		return -1
+	}
+	// The hits in what was played (the output), and in the take.
+	for from in ([]int{0, int(2 * SR / 2)}) {
+		played, taken := first(heard[:bar], from), first(take, from)
+		testing.expectf(t, played > 0 && played == taken, "the hit after %d: played at %d, in the take at %d", from, played, taken)
+	}
+}
+
+// A rig whose simulated interface runs as a device (callbacks,
+// timestamps), reporting 200 frames in and 312 out, with a cable from its
+// outputs back to its inputs 512 frames later (their sum: a real loop).
+@(private)
+rig_cabled :: proc(t: ^testing.T, name: string) -> ^Rig {
+	r := new(Rig)
+	app.bus_init(&r.bus)
+	app.host_init(&r.host, {fake = true, sample_rate = SR, buffer_frames = 256, max_block = 256, inputs = 2, fake_latency = {200, 312}, fake_loopback = 512}, &r.bus)
+	testing.expect_value(t, app.host_open(&r.host), fc.Error.None)
+	r.dir, _ = filepath.join({kit.artifacts_root(), "pads_model", name})
+	os.remove_all(r.dir)
+	for k := 0; k < 100 && !os.is_dir(r.dir); k += 1 do os.make_directory_all(r.dir)
+	testing.expect_value(t, pm.model_init(&r.m, &r.host, r.dir), fc.Error.None)
+	return r
+}
+
+// Runs a cabled rig's device for `frames` (whole callbacks), syncing and
+// writing takes as the app does each frame.
+@(private)
+run :: proc(r: ^Rig, frames: int) {
+	for done := 0; done < frames; done += 256 {
+		pm.sync(&r.m.engine)
+		app.host_fake_run(&r.host, 1)
+		record.disk_writer_service(r.host.disk)
+	}
+}
+
+@(test)
+the_drivers_round_trip_is_compensated :: proc(t: ^testing.T) {
+	// The simulated interface reports 200 frames in and 312 out, and a
+	// cable takes its outputs back to its inputs 512 frames later (their
+	// sum: what a real loop does). Run as a device (callbacks, timestamps),
+	// with no recording offset: the take still has pad 0's hits on the
+	// frames they were played.
+	r := rig_cabled(t, "audio_round_trip")
+	defer rig_destroy(r)
+	m := &r.m
+	pm.load_onto_pad(m, 0, tone(r, "hit.wav", 440, 0.05, decay = true))
+	pm.add_note(m, 0, {start = 1, length = 0.25, pad = 0, velocity = 1})
+	pm.add_note(m, 0, {start = 2.5, length = 0.25, pad = 0, velocity = 1})
+	pm.set_pad_kind(m, 1, .Audio)
+	pm.arm_track(m, 1, true)
+	run(r, 4096)
+	_, _, round_trip := app.host_latency(&r.host)
+	testing.expect_value(t, round_trip, 512)
+	testing.expect_value(t, pm.record_latency(&m.engine), 512)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	run(r, int(2 * SR))
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	run(r, 2048)
+	cl: pm.Clip
+	for _ in 0 ..< 200 {
+		pm.capture_poll(&r.m, &c)
+		if x := r.m.project.clips[0][1]; x.sample != 0 {
+			cl = x
+			break
+		}
+		run(r, 256)
+	}
+	s := app.store_get(&m.project.samples, cl.sample)
+	if !testing.expect(t, s != nil, "a take on pad 1") do return
+	rd, err := audiofile.open(s.path, context.temp_allocator)
+	if !testing.expect_value(t, err, audiofile.Error.None) do return
+	defer audiofile.close(rd)
+	take := make([]f32, int(s.frames), context.temp_allocator)
+	other := make([]f32, int(s.frames), context.temp_allocator)
+	audiofile.read(rd, {take, other}, len(take))
+	first :: proc(x: []f32, from: int) -> int {
+		for v, i in x[from:] do if abs(v) > 0.02 do return from + i
+		return -1
+	}
+	// Where the sequencer played them (the offline test's frames: the hit
+	// crosses the threshold 6 frames in).
+	for want in ([]int{24_006, 60_006}) {
+		got := first(take, want - 12_000)
+		testing.expectf(t, got == want, "a hit at frame %d of the take (%d)", want, got)
+	}
+}
+
+@(test)
+hits_are_recorded_where_they_were_heard :: proc(t: ^testing.T) {
+	// Played along with what came out 312 frames after the engine made it:
+	// a hit is recorded 312 frames earlier than it reached the engine.
+	r := rig_cabled(t, "hits_heard")
+	defer rig_destroy(r)
+	m := &r.m
+	m.project.transport.quantize.on = false
+	pm.load_onto_pad(m, 0, tone(r, "hit.wav", 440, 0.05, decay = true))
+	run(r, 2048)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	run(r, 48 * 256) // 12288 frames: the hit reaches the engine at the next callback
+	pm.hit(&m.engine, 0, true, 0.9)
+	run(r, 256 * 8)
+	pm.hit(&m.engine, 0, false)
+	run(r, 256 * 4)
+	pm.capture_poll(m, &c)
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	notes := m.project.sequences[0].notes
+	if !testing.expect_value(t, len(notes), 1) do return
+	want := f64(48 * 256 - 312) / 24_000
+	testing.expectf(t, abs(notes[0].start - want) < 1e-6, "at %v beats (%v)", want, notes[0].start)
 }

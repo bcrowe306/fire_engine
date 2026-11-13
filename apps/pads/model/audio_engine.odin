@@ -64,7 +64,7 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 	if e.host.disk == nil do return
 	dir, _ := filepath.join({e.project.dir, "takes"}, context.temp_allocator)
 	os.make_directory_all(dir)
-	node, rec, err := record.audio_recorder_create(e.host.disk, {timeline = e.timeline, channels = channels, directory = dir, name = pad_label(i), encoding = .Float32})
+	node, rec, err := record.audio_recorder_create(e.host.disk, {timeline = e.timeline, channels = channels, directory = dir, name = pad_label(i), encoding = .Float32, latency_frames = record_latency(e)})
 	if err != .None do return
 	id, aerr := graph.add_node(g, node, channels, 0)
 	if aerr != .None do return
@@ -72,6 +72,22 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 	for c in 0 ..< channels do graph.connect(g, graph.INPUT, src[c], id, c)
 	// Nothing while counting in: takes start at the top.
 	record.audio_recorder_set_punch(rec, 0, 1e12)
+}
+
+// The frames an audio take is moved earlier by: the device's round trip
+// (what you heard came out that late, and what you played reached the
+// engine that late again) and the recording offset. 0 rendering offline.
+record_latency :: proc(e: ^Engine) -> int {
+	_, _, round_trip := app.host_latency(e.host)
+	return max(round_trip + e.record_offset, 0)
+}
+
+// The frames between the engine making a sound and it being heard (the
+// device's output latency): live hits are recorded that much earlier, as
+// they were played to what was heard.
+output_latency :: proc(e: ^Engine) -> int {
+	_, out, _ := app.host_latency(e.host)
+	return max(out, 0)
 }
 
 // Takes everything a pad has out of the graph.
@@ -107,6 +123,9 @@ sync_audio :: proc(e: ^Engine) {
 		pad := &p.pads[i]
 		rec := e.recording && e.armed[i] && !p.song_mode
 		if n.rec != nil && rec != n.rec_on {
+			// The latency as it is now (the device may have changed since
+			// the recorder was made), before the take starts.
+			if rec do record.audio_recorder_set_latency(n.rec, record_latency(e))
 			if record.audio_recorder_arm(n.rec, rec) == .None do n.rec_on = rec
 		}
 		mon := e.armed[i] && pad.monitor

@@ -121,3 +121,13 @@ def test_settings_naming_a_device_that_is_gone_still_start():
         assert "no-such-device" in text  # (kept: it is used again when it is back)
     finally:
         app.close()
+
+
+def test_the_recording_offset_is_kept(app):
+    app.key("cmd+,")
+    app.click("Recording")
+    app.expect_item("device latency")
+    app.drag_by("recording offset", 40, 0)  # right: more
+    assert "offset_frames = " in ini(app)
+    line = [x for x in ini(app).splitlines() if x.startswith("offset_frames")][0]
+    assert int(line.split("=")[1]) > 0, line
