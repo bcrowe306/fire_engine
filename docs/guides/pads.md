@@ -1109,7 +1109,8 @@ how many):
 Elsewhere, near what they change:
 - **Play modes** (at the right of the pads area's header): the pads as
   pads, as a keyboard of the selected pad, or as it at 16 velocities — as
-  on a pad's MIDI page.
+  on a pad's MIDI page. In those two, arrows above the bank tabs step the
+  selected pad through the tracks (the pads with a sound, round again).
 - **Input quantize** (the magnet in the Sequence view, beside its
   **Quantize**): on, recorded notes move toward the grid shown beside it;
   the arrow sets the grid (1/4–1/64, triplets), the **strength** (100%:

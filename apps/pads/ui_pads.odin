@@ -20,6 +20,22 @@ draw_pads :: proc(user: rawptr) {
 	p := &a.m.project
 	f := a.platform.fonts
 
+	// Keyboard and Velocity play the selected pad: arrows step through the
+	// tracks (the pads with a sound), its name between them, above the
+	// bank tabs.
+	if a.play_mode != .Pads {
+		if ui.icon_button(ui.ICON_CHEVRON_LEFT, "The track before (the pad these keys play)") do step_track(a, -1)
+		ui.name("track before")
+		im.SameLine(0, 2)
+		name := pm.pad_name(&p.pads[a.selected])
+		im.AlignTextToFramePadding()
+		im.TextUnformatted(fmt.ctprintf("%s %s", pm.pad_label(a.selected), name if name != "" else "—"))
+		ui.name("keys track")
+		im.SameLine(0, 2)
+		if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "The next track (the pad these keys play)") do step_track(a, 1)
+		ui.name("track after")
+		// (A row of its own: the bank tabs keep the width.)
+	}
 	bank := a.bank
 	if ui.segmented("banks", {"A", "B", "C", "D", "E", "F", "G", "H"}, &bank) do a.bank = bank
 	if im.IsItemHovered() && a.play_mode == .Keyboard do im.SetTooltip("In Keyboard mode each bank plays the next 16 notes of the scale")
@@ -339,4 +355,25 @@ set_choke :: proc(a: ^App, sel: Pad_Set, g: int) {
 		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
 	}
 	app.seal(&m.history)
+}
+
+// Selects the track `d` steps on from the selected one (the pads with a
+// sound, round from the last to the first; none: every pad), for
+// Keyboard and Velocity to play: what was held let go, its sound shown.
+// Keyboard's banks stay on their notes; back to Pads, its bank.
+step_track :: proc(a: ^App, d: int) {
+	p := &a.m.project
+	any := false
+	for _, i in p.pads do if pm.pad_used(p, i) do any = true
+	to := a.selected
+	for _ in 0 ..< pm.PADS {
+		to = (to + d + pm.PADS) % pm.PADS
+		if !any || pm.pad_used(p, to) do break
+	}
+	if to == a.selected do return
+	for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
+	a.selected, a.pad_sel, a.pad_anchor = to, {}, to
+	a.pads_bank = to / pm.PADS_PER_BANK
+	if a.play_mode != .Keyboard do a.bank = a.pads_bank
+	show_pad_chain(a, to)
 }
