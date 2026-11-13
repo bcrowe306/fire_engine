@@ -225,6 +225,43 @@ start_resample :: proc(a: ^App) {
 	st.exporting, st.progress = true, 0
 }
 
+// Bounces pads `pads` (what they play in the current sequence, after
+// their faders) onto the next empty pad.
+start_bounce_pads :: proc(a: ^App, pads: Pad_Set) {
+	st := &a.proj
+	if st.exporting do return
+	pm.export_destroy(&st.export)
+	if !pm.bounce_pads(&a.m, &st.export, pads) {
+		ui.toast(&a.ws.toasts, .Warning, "Nothing to bounce, or no empty pad")
+		return
+	}
+	st.exporting, st.progress = true, 0
+}
+
+// Bounces bus `b` (0-based) onto the next empty pad.
+start_bounce_bus :: proc(a: ^App, b: int) {
+	st := &a.proj
+	if st.exporting do return
+	pm.export_destroy(&st.export)
+	if !pm.bounce_bus(&a.m, &st.export, b) {
+		ui.toast(&a.ws.toasts, .Warning, "Nothing on that bus to bounce, or no empty pad")
+		return
+	}
+	st.exporting, st.progress = true, 0
+}
+
+// Bounces pad `i` in place: an audio track of its sound, the pad muted.
+start_bounce_in_place :: proc(a: ^App, i: int) {
+	st := &a.proj
+	if st.exporting do return
+	pm.export_destroy(&st.export)
+	if !pm.bounce_in_place_begin(&a.m, &st.export, i) {
+		ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("%s can't be bounced in place (no notes, an audio track, or no empty pad)", pm.pad_label(i)))
+		return
+	}
+	st.exporting, st.progress = true, 0
+}
+
 // Freezes pad `i` (its renderings made a slice a frame, as an export).
 start_freeze :: proc(a: ^App, i: int) {
 	st := &a.proj
@@ -246,6 +283,8 @@ project_frame :: proc(a: ^App) {
 			files := pm.export_finish(&a.m, &st.export)
 			st.exporting = false
 			if st.export.failed do ui.toast(&a.ws.toasts, .Error, "The export failed")
+			else if st.export.made >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s bounced in place onto %s", pm.pad_label(st.export.in_place), pm.pad_label(st.export.made)))
+			else if st.export.to_pad >= 0 && st.export.bounce != "" do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Bounced onto %s", pm.pad_label(st.export.to_pad)))
 			else if st.export.to_pad >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Resampled onto %s", pm.pad_label(st.export.to_pad)))
 			else if st.export.freeze >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s frozen", pm.pad_label(st.export.freeze)))
 			else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d file%s", len(files), "" if len(files) == 1 else "s"))

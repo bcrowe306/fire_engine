@@ -105,6 +105,15 @@ port_name :: proc(a: ^App, id: string, input: bool) -> string {
 // alias, or the interface's name), "(not open)" when it isn't.
 audio_in_text :: proc(a: ^App, i: int) -> string {
 	in_ := a.m.project.pads[i].input
+	switch in_.from {
+	case .Interface:
+	case .Pad:
+		k := int(in_.source)
+		name := pm.pad_name(&a.m.project.pads[k]) if k < pm.PADS else ""
+		return fmt.tprintf("From %s", pm.pad_label(k)) if name == "" else fmt.tprintf("From %s · %s", pm.pad_label(k), name)
+	case .Bus:  return fmt.tprintf("From %s", pm.bus_name(&a.m.project, int(in_.source) + 1))
+	case .Main: return "Main mix"
+	}
 	c := int(in_.channel)
 	f := interface_find(&a.settings.audio, a.settings.audio.input)
 	dev := find_device(&a.settings, a.settings.audio.input, false)
@@ -147,10 +156,12 @@ midi_in_items :: proc(a: ^App, i: int) {
 
 // The menu of track `i`'s audio inputs: the interface's open channels
 // (physical, by name), each pair whose both halves are open, and the one
-// it has when that isn't open now.
+// it has when that isn't open now; then, to resample, another track, a
+// bus or main.
 audio_in_items :: proc(a: ^App, i: int) {
 	m := &a.m
-	pad := m.project.pads[i]
+	p := &m.project
+	pad := p.pads[i]
 	set :: proc(m: ^pm.Model, i: int, in_: pm.Audio_Input) {
 		p := m.project.pads[i]
 		p.input = in_
@@ -158,28 +169,68 @@ audio_in_items :: proc(a: ^App, i: int) {
 		app.seal(&m.history)
 	}
 	open := a.host.open_inputs
+	here := pad.input.from == .Interface
 	if open == {} {
 		im.TextDisabled("No inputs open (Settings > Audio)")
-		return
-	}
-	f := interface_find(&a.settings.audio, a.settings.audio.input)
-	dev := find_device(&a.settings, a.settings.audio.input, false)
-	for c in mask_pairs(open) do if im.MenuItem(fmt.ctprintf("%s (stereo)###ip%d", pair_label(f, dev, false, c), c), nil, pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c), stereo = true})
-	im.Separator()
-	for c in open do if im.MenuItem(fmt.ctprintf("%s###ic%d", channel_label(f, dev, false, c), c), nil, !pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c)})
-	if !pm.input_open(&m.engine, i) {
+	} else {
+		f := interface_find(&a.settings.audio, a.settings.audio.input)
+		dev := find_device(&a.settings, a.settings.audio.input, false)
+		for c in mask_pairs(open) do if im.MenuItem(fmt.ctprintf("%s (stereo)###ip%d", pair_label(f, dev, false, c), c), nil, here && pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c), stereo = true})
 		im.Separator()
-		im.MenuItem(fmt.ctprintf("%s###icmissing", audio_in_text(a, i)), nil, true, false)
+		for c in open do if im.MenuItem(fmt.ctprintf("%s###ic%d", channel_label(f, dev, false, c), c), nil, here && !pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c)})
+		if here && !pm.input_open(&m.engine, i) {
+			im.Separator()
+			im.MenuItem(fmt.ctprintf("%s###icmissing", audio_in_text(a, i)), nil, true, false)
+		}
 	}
+	// Resampling: what plays inside, lined up after its effects' latency.
+	im.Separator()
+	keep := pm.Audio_Input{channel = pad.input.channel, stereo = pad.input.stereo} // (the channels come back with the interface)
+	if im.BeginMenu("From a track") {
+		any := false
+		for k in 0 ..< pm.PADS do if k != i && pm.pad_used(p, k) {
+			any = true
+			name := pm.pad_name(&p.pads[k])
+			label := fmt.ctprintf("%s###it%d", pm.pad_label(k) if name == "" else fmt.tprintf("%s · %s", pm.pad_label(k), name), k)
+			in_ := keep
+			in_.from, in_.source = .Pad, u8(k)
+			if im.MenuItem(label, nil, pad.input.from == .Pad && int(pad.input.source) == k) do set(m, i, in_)
+		}
+		if !any do im.TextDisabled("No other tracks")
+		im.EndMenu()
+	}
+	if im.BeginMenu("From a bus") {
+		for b in 0 ..< p.bus_count {
+			in_ := keep
+			in_.from, in_.source = .Bus, u8(b)
+			if im.MenuItem(fmt.ctprintf("%s###ib%d", pm.bus_name(p, b + 1), b), nil, pad.input.from == .Bus && int(pad.input.source) == b) do set(m, i, in_)
+		}
+		im.EndMenu()
+	}
+	main := keep
+	main.from = .Main
+	if im.MenuItem("Main (resample)", nil, pad.input.from == .Main) do set(m, i, main)
 }
 
 // A horizontal input meter, `w` wide: the level of track `i`'s input
 // (its louder side), green to red.
 input_meter :: proc(a: ^App, i: int, w, h: f32) {
 	in_ := a.m.project.pads[i].input
-	// (Physical channels: their graph channels, through the host.)
-	lvl := input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
-	if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
+	lvl: f32
+	switch in_.from {
+	case .Interface:
+		// (Physical channels: their graph channels, through the host.)
+		lvl = input_view(a, app.host_input_channel(&a.host, int(in_.channel))).peak
+		if in_.stereo do lvl = max(lvl, input_view(a, app.host_input_channel(&a.host, int(in_.channel) + 1)).peak)
+	case .Pad:
+		// (The strips' meters, as read this frame.)
+		if v := a.mixer.pads[min(int(in_.source), pm.PADS - 1)]; true do lvl = max(v[0].peak, v[1].peak)
+	case .Bus:
+		if v := a.mixer.buses[min(int(in_.source), pm.BUSES - 1)]; true do lvl = max(v[0].peak, v[1].peak)
+	case .Main:
+		v := a.mixer.buses[pm.BUSES]
+		lvl = max(v[0].peak, v[1].peak)
+	}
 	level_bar(lvl, w, h)
 }
 
@@ -208,7 +259,7 @@ track_io_section :: proc(a: ^App, i: int) {
 	if im.IsItemHovered() do im.SetTooltip("Armed, it records what comes in (and plays it): Cmd-click arms more than one")
 	if pad.kind == .Audio {
 		im.SameLine(0, 14)
-		im.SetNextItemWidth(110)
+		im.SetNextItemWidth(150)
 		if ui.combo("##audioin", fmt.ctprintf("%s", audio_in_text(a, i))) {
 			audio_in_items(a, i)
 			im.EndCombo()

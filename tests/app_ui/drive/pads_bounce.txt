@@ -1,0 +1,21 @@
+# Resampling and bouncing: an audio track taking main, recording the kick
+# through a limiter (lined up after its look-ahead); the kick bounced to a
+# pad, then in place onto an audio track (the kick muted).
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+note 0 0 0.25 1
+note 0 2 0.25 1
+insert 0 0 limiter
+command pad.audio pad 1
+input 1 main
+expect undo Set Input
+select 1
+panel global
+screenshot bounce_input_main
+command pad.bounce pad 0
+wait 30
+expect undo Bounce to Pad
+command pad.bounce_in_place pad 0
+wait 30
+expect undo Bounce in Place
+screenshot bounce_in_place

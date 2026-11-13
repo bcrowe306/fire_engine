@@ -370,6 +370,17 @@ latency :: proc(g: ^Graph) -> int
 Frames by which OUTPUT lags INPUT after latency compensation, as of the
 last `commit`.
 
+### input_latency
+
+```odin
+input_latency :: proc(g: ^Graph, id: Node_Id) -> int
+```
+
+Frames by which node `id`'s input lags INPUT after latency compensation
+(the latency of everything upstream of it), as of the last `commit`: what
+a recorder fed from inside the graph is moved earlier by. 0 for unknown
+IDs and INPUT; OUTPUT's is `latency`.
+
 ### time
 
 ```odin

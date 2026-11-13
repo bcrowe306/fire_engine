@@ -144,6 +144,7 @@ Slot :: struct {
 	index:        u32,
 	removed:      bool, // waiting for the plans that still use it to retire
 	plan_refs:    int,  // live plans containing this slot
+	arrival:      int,  // control thread: frames its input lags INPUT, as of the last commit
 	node:         core.Node,
 	in_channels:  int,
 	out_channels: int,
@@ -385,6 +386,16 @@ get_node :: proc(g: ^Graph, id: Node_Id) -> ^core.Node {
 // last `commit`.
 latency :: proc(g: ^Graph) -> int {
 	return g.latency
+}
+
+// Frames by which node `id`'s input lags INPUT after latency compensation
+// (the latency of everything upstream of it), as of the last `commit`: what
+// a recorder fed from inside the graph is moved earlier by. 0 for unknown
+// IDs and INPUT; OUTPUT's is `latency`.
+input_latency :: proc(g: ^Graph, id: Node_Id) -> int {
+	s, err := lookup(g, id)
+	if err != .None do return 0
+	return s.arrival
 }
 
 // The graph's clock: frames processed since the first `process` call. Read on

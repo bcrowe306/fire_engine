@@ -31,7 +31,11 @@ Audio_Run :: struct {
 MONITOR_OFF_DB :: -96
 
 // An audio pad's nodes besides the voice, EQ and fader: the players into
-// the voice, the input into the monitor (into the voice) and the recorder.
+// the voice, its input (a gain the monitor and the recorder read), the
+// monitor into the voice and the recorder. The input is the interface's
+// channels, or (resampling) another strip's output, wired by `sync_taps`
+// once the mixer has it; that kind is never monitored (its source is
+// heard already, and the monitor would feed main back into itself).
 @(private)
 build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 	g := e.host.graph
@@ -45,33 +49,94 @@ build_audio :: proc(e: ^Engine, i: int, n: ^Pad_Nodes, pad: Pad) {
 	}
 	n.holds = {}
 	if pad.frozen do return // (no input: it plays its renderings)
-	// The input: a pair of the interface's channels, or one on both sides
-	// (physical channels, through the host: not open, no input).
-	first := int(pad.input.channel)
-	phys := [2]int{first, first + 1} if pad.input.stereo else [2]int{first, first}
-	src := [2]int{app.host_input_channel(e.host, phys[0]), app.host_input_channel(e.host, phys[1])}
-	channels := 2 if pad.input.stereo else 1
-	if src[0] < 0 || src[1] < 0 do return // that channel isn't open (see input_open)
-	if mid, err := graph.add_node(g, dsp.gain_create(), 2, 2); err == .None {
-		n.monitor_id = mid
-		for c in 0 ..< 2 {
-			graph.connect(g, graph.INPUT, src[c], mid, c)
-			graph.connect(g, mid, c, n.voice, c)
+	interface := pad.input.from == .Interface
+	channels := 2
+	src: [2]int
+	if interface {
+		// A pair of the interface's channels, or one on both sides
+		// (physical channels, through the host: not open, no input).
+		first := int(pad.input.channel)
+		phys := [2]int{first, first + 1} if pad.input.stereo else [2]int{first, first}
+		src = {app.host_input_channel(e.host, phys[0]), app.host_input_channel(e.host, phys[1])}
+		if !pad.input.stereo do channels = 1
+		if src[0] < 0 || src[1] < 0 do return // that channel isn't open (see input_open)
+	}
+	in_id, ierr := graph.add_node(g, dsp.gain_create(), 2, 2)
+	if ierr != .None do return
+	n.in_id, n.tap_src = in_id, {}
+	if interface {
+		for c in 0 ..< 2 do graph.connect(g, graph.INPUT, src[c], in_id, c)
+		if mid, err := graph.add_node(g, dsp.gain_create(), 2, 2); err == .None {
+			n.monitor_id = mid
+			for c in 0 ..< 2 {
+				graph.connect(g, in_id, c, mid, c)
+				graph.connect(g, mid, c, n.voice, c)
+			}
+			graph.set_param(g, mid, dsp.GAIN_PARAM_DB, MONITOR_OFF_DB)
+			n.monitor_on = false
 		}
-		graph.set_param(g, mid, dsp.GAIN_PARAM_DB, MONITOR_OFF_DB)
-		n.monitor_on = false
 	}
 	if e.host.disk == nil do return
 	dir, _ := filepath.join({e.project.dir, "takes"}, context.temp_allocator)
 	os.make_directory_all(dir)
-	node, rec, err := record.audio_recorder_create(e.host.disk, {timeline = e.timeline, channels = channels, directory = dir, name = pad_label(i), encoding = .Float32, latency_frames = record_latency(e)})
+	node, rec, err := record.audio_recorder_create(e.host.disk, {timeline = e.timeline, channels = channels, directory = dir, name = pad_label(i), encoding = .Float32, latency_frames = record_latency(e) if interface else 0})
 	if err != .None do return
 	id, aerr := graph.add_node(g, node, channels, 0)
 	if aerr != .None do return
 	n.rec, n.rec_id, n.rec_on = rec, id, false
-	for c in 0 ..< channels do graph.connect(g, graph.INPUT, src[c], id, c)
+	for c in 0 ..< channels do graph.connect(g, in_id, c, id, c)
 	// Nothing while counting in: takes start at the top.
 	record.audio_recorder_set_punch(rec, 0, 1e12)
+}
+
+// [control] The strip output audio pad `i`'s input takes (resampling): a
+// track's after its fader, a bus's, main's; none for the interface, a
+// source that isn't there, or the pad itself.
+@(private)
+tap_source :: proc(e: ^Engine, i: int) -> graph.Node_Id {
+	mx := &e.mixer
+	in_ := e.project.pads[i].input
+	k := int(in_.source)
+	switch in_.from {
+	case .Interface:
+	case .Pad:  if k != i && k < PADS && mx.strips[k].built do return mx.strips[k].out
+	case .Bus:  if k < BUSES && k < e.project.bus_count do return mx.buses[k].meter_id
+	case .Main: return mx.buses[BUSES].meter_id
+	}
+	return {}
+}
+
+// [control] Each audio pad that resamples wired from its source (made
+// again when the source's strip is: a new node), or from nothing when that
+// would close a loop (two tracks taking each other through a send). True
+// if wires changed.
+@(private)
+sync_taps :: proc(e: ^Engine) -> (changed: bool) {
+	g := e.host.graph
+	for &n, i in e.nodes {
+		if !n.live || !n.audio || n.in_id == {} || e.project.pads[i].input.from == .Interface do continue
+		want := tap_source(e, i)
+		if want == n.tap_src do continue
+		if n.tap_src != {} do for c in 0 ..< 2 do graph.disconnect(g, n.tap_src, c, n.in_id, c)
+		n.tap_src = {}
+		changed = true
+		if want == {} do continue
+		ok := true
+		for c in 0 ..< 2 do ok &&= graph.connect(g, want, c, n.in_id, c) == .None
+		if ok do n.tap_src = want
+		else do for c in 0 ..< 2 do graph.disconnect(g, want, c, n.in_id, c)
+	}
+	return
+}
+
+// The frames audio pad `i`'s takes are moved earlier by: from the
+// interface, the round trip and the recording offset; from inside the mix,
+// the latency of the effects up to where it taps (as of the graph's last
+// commit).
+take_latency :: proc(e: ^Engine, i: int) -> int {
+	n := &e.nodes[i]
+	if e.project.pads[i].input.from == .Interface do return record_latency(e)
+	return graph.input_latency(e.host.graph, n.rec_id)
 }
 
 // The frames an audio take is moved earlier by: the device's round trip
@@ -125,7 +190,7 @@ sync_audio :: proc(e: ^Engine) {
 		if n.rec != nil && rec != n.rec_on {
 			// The latency as it is now (the device may have changed since
 			// the recorder was made), before the take starts.
-			if rec do record.audio_recorder_set_latency(n.rec, record_latency(e))
+			if rec do record.audio_recorder_set_latency(n.rec, take_latency(e, i))
 			if record.audio_recorder_arm(n.rec, rec) == .None do n.rec_on = rec
 		}
 		mon := pad.monitor == .In || (pad.monitor == .Auto && e.armed[i])

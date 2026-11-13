@@ -175,6 +175,11 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "pad.flatten", label = "Flatten to Audio", icon = ui.ICON_SNOWFLAKE, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { pm.flatten(&a.m, t.index) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].frozen }})
+	add(c, {id = "pad.bounce", label = "Bounce to Pad", icon = ui.ICON_COMBINE, kinds = {.Pad}, group = 2,
+		run = proc(a: ^App, t: Target) { start_bounce_pads(a, selected_pads(a) if t.index in selected_pads(a) else {t.index}) }, enabled = pad_has})
+	add(c, {id = "pad.bounce_in_place", label = "Bounce in Place", icon = ui.ICON_AUDIO_LINES, kinds = {.Pad}, group = 2,
+		run = proc(a: ^App, t: Target) { start_bounce_in_place(a, t.index) },
+		enabled = proc(a: ^App, t: Target) -> bool { return pm.can_bounce_in_place(&a.m.project, t.index) }})
 	add(c, {id = "pad.group", label = "Group Selected Pads", icon = ui.ICON_GROUP, kinds = {.Pad}, group = 2, keys = "Cmd+G",
 		run = proc(a: ^App, t: Target) { group_selected(a, t.index) }, enabled = pad_has})
 	add(c, {id = "bus.ungroup", label = "Ungroup", icon = ui.ICON_GROUP, kinds = {.Bus}, group = 1,
@@ -284,6 +289,8 @@ register_commands :: proc(a: ^App) {
 		checked = proc(a: ^App, t: Target) -> bool { return pm.bus_of(&a.m, t.index).solo }})
 	add(c, {id = "bus.reset", label = "Reset Level and Pan", icon = ui.ICON_ROTATE_CCW, kinds = {.Bus}, group = 1,
 		run = proc(a: ^App, t: Target) { b := pm.bus_of(&a.m, t.index)^; b.volume, b.pan = 0, 0; pm.set_bus(&a.m, t.index, 0, "Reset Bus", b); app.seal(&a.m.history) }})
+	add(c, {id = "bus.bounce", label = "Bounce to Pad", icon = ui.ICON_COMBINE, kinds = {.Bus}, group = 1,
+		run = proc(a: ^App, t: Target) { if t.index == pm.BUSES do start_resample(a); else do start_bounce_bus(a, t.index) }})
 	add(c, {id = "bus.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Bus}, group = 2,
 		run = proc(a: ^App, t: Target) { begin_rename_bus(a, t.index + 1) },
 		enabled = proc(a: ^App, t: Target) -> bool { return t.index != pm.BUSES }})

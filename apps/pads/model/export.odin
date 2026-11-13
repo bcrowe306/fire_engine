@@ -4,11 +4,13 @@ import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:time"
 
 import app "app:core"
 import "fire:audiofile"
 import fc "fire:core"
 import "fire:dsp"
+import "fire:stream"
 import "fire:transport"
 
 // What an export renders.
@@ -51,8 +53,10 @@ Export_Pass :: struct {
 
 // What a pass lets through the mixer.
 Export_Solo :: struct {
-	kind:  enum u8 {All, Pad, Bus, Freeze},
+	kind:  enum u8 {All, Pad, Bus, Freeze, Pads},
 	index: int, // the pad (Pad, Freeze: its sound before its fader), or the bus (0 = what goes straight to main)
+	pads:  bit_set[0 ..< PADS; u128], // .Pads: these
+	dry:   bool, // main's input, not its output (a bounce: main's effects and fader aren't in it)
 }
 
 // An export under way: render a slice each frame with `export_step`
@@ -75,16 +79,20 @@ Export :: struct {
 	written:  int, // frames of this pass written (at the export rate)
 	to_pad:   int, // resample to pad: where the result goes (-1: not that)
 	freeze:   int, // a freeze: the pad (-1: not that)
+	in_place: int, // a bounce in place: the pad bounced (-1: not that; see `bounce_in_place_begin`)
+	made:     int, // and, finished, the audio track it made (-1: none)
+	bounce:   string, // a bounce to a pad: its undo step's name
+	label:    string, // and the new pad's name
 	slot_was: int, // the sequence that was current (a freeze picks each in turn)
 }
 
 // Starts exporting to `path` (a .wav; for stems, a folder). Closes the
 // device for the time it takes; `export_step` renders and writes,
 // `export_finish` reopens the device. False if there is nothing to export.
-export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: string) -> bool {
+export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: string, solo := Export_Solo{}) -> bool {
 	p := &m.project
 	e := &m.engine
-	x^ = {settings = settings, to_pad = -1, freeze = -1, slot_was = p.slot}
+	x^ = {settings = settings, to_pad = -1, freeze = -1, in_place = -1, made = -1, slot_was = p.slot}
 	if x.settings.rate <= 0 do x.settings.rate = e.host.graph.settings.sample_rate
 	beats := song_beats(p) if settings.source == .Song else seq_beats(p, p.sequences[p.slot])
 	if beats <= 0 do return false
@@ -100,20 +108,20 @@ export_begin :: proc(m: ^Model, x: ^Export, settings: Export_Settings, path: str
 	}
 	switch settings.stems {
 	case .None:
-		append(&x.passes, Export_Pass{strings.clone(path), {}, -1, 0})
+		append(&x.passes, Export_Pass{strings.clone(path), solo, -1, 0})
 	case .Pads:
 		os.make_directory_all(path)
 		for _, i in p.pads do if pad_used(p, i) {
 			name := strings.concatenate({pad_label(i), " ", pad_name(&p.pads[i])}, context.temp_allocator)
-			stem(x, path, name, {.Pad, i})
+			stem(x, path, name, {kind = .Pad, index = i})
 		}
 	case .Buses:
 		os.make_directory_all(path)
-		stem(x, path, "Main", {.Bus, 0})
+		stem(x, path, "Main", {kind = .Bus, index = 0})
 		for b in 1 ..= p.bus_count {
 			used := false
 			for pad, i in p.pads do if int(pad.bus) == b && pad_used(p, i) do used = true
-			if used do stem(x, path, bus_name(p, b), {.Bus, b})
+			if used do stem(x, path, bus_name(p, b), {kind = .Bus, index = b})
 		}
 	}
 	if len(x.passes) == 0 do return false
@@ -187,8 +195,23 @@ start_pass :: proc(m: ^Model, x: ^Export) {
 	sync(e)
 	settle := [2][]f32{x.buf[0][:1], x.buf[1][:1]}
 	app.host_render(e.host, settle[:], 1) // the stop and the mixer take effect
+	// Offline nothing waits for the disk: samples loaded, and audio
+	// tracks' takes buffered from the top, before it plays (2 s at most).
+	for k := 0; k < 1000 && !export_ready(e); k += 1 {
+		time.sleep(2 * time.Millisecond)
+		sync(e)
+		app.host_render(e.host, settle[:], 1)
+	}
 	play(e)
 	e.project.song_mode = prev
+}
+
+// Whether what an export plays is ready to: every sample loaded, every
+// audio track's take buffered.
+@(private)
+export_ready :: proc(e: ^Engine) -> bool {
+	for _, src in e.sources do if stream.source_state(src) == .Loading do return false
+	return audio_ready(e)
 }
 
 // Renders and writes up to `budget` engine frames. Returns how far the
@@ -267,15 +290,21 @@ export_finish :: proc(m: ^Model, x: ^Export) -> []string {
 	e.mix_dirty = true
 	sync(e)
 	if x.freeze >= 0 && !x.failed do freeze_finish(m, x)
+	if x.in_place >= 0 && !x.failed do bounce_in_place_finish(m, x)
 	if x.to_pad >= 0 && !x.failed && len(x.files) > 0 {
 		path := x.files[0]
 		r, err := audiofile.open(path)
 		if err == .None {
 			info := audiofile.info(r)
 			audiofile.close(r)
-			app.begin(&m.history, "Resample to Pad")
+			app.begin(&m.history, x.bounce if x.bounce != "" else "Resample to Pad")
 			id := add_sample(m, path, info)
 			assign_sample(m, x.to_pad, id)
+			if x.bounce != "" {
+				pd := m.project.pads[x.to_pad]
+				set_pad_name(&pd, x.label)
+				set_pad(m, x.to_pad, .Name, x.bounce, pd)
+			}
 			app.end(&m.history)
 			sync(e)
 		}
@@ -295,6 +324,8 @@ export_destroy :: proc(x: ^Export) {
 	delete(x.passes)
 	for f in x.files do delete(f)
 	delete(x.files)
+	delete(x.bounce)
+	delete(x.label)
 	x^ = {}
 }
 

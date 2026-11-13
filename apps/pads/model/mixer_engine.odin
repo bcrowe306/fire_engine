@@ -397,6 +397,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		db: f32 = 0
 		if pad.mute || (mx.any_solo && !pad.solo) do db = -96
 		if e.export_solo.kind == .Pad && i != e.export_solo.index do db = -96
+		if e.export_solo.kind == .Pads && i not_in e.export_solo.pads do db = -96
 		if db != st.gain_db {
 			graph.set_param(g, st.gain, dsp.GAIN_PARAM_DB, f64(db))
 			st.gain_db = db
@@ -492,6 +493,7 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 		bn.sent = true
 	}
 	if sync_keys(e) do structural = true
+	if sync_taps(e) do structural = true
 	if sync_freeze_tap(e) do structural = true
 	if sync_outputs(e) do structural = true
 	e.mix_dirty = false
@@ -499,7 +501,8 @@ sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
 }
 
 // [control] While a freeze renders pad `export_solo.index`, the output is
-// that pad's sound before its fader (after its last insert), not main's.
+// that pad's sound before its fader (after its last insert), not main's;
+// while a bounce renders, main's input (before its effects and fader).
 // True if wires changed.
 @(private)
 sync_freeze_tap :: proc(e: ^Engine) -> bool {
@@ -514,6 +517,8 @@ sync_freeze_tap :: proc(e: ^Engine) -> bool {
 			want = e.nodes[i].eq
 			for f in mx.strips[i].inserts do if f.has do want = f.key_filter if f.key.listen && f.key_filter != {} else f.id
 		}
+	} else if e.export_solo.dry {
+		want = mx.buses[BUSES].input
 	}
 	if want == mx.freeze_tap do return false
 	if mx.freeze_tap != {} {

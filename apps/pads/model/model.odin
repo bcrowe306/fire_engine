@@ -92,10 +92,22 @@ default_slicer :: proc() -> Slicer {
 	return {base = 60, fade_in_ms = 0.5, fade_out_ms = 3, sensitivity = 0.5, grain = .Sixteenth, parts = 16}
 }
 
-// The inputs an audio pad records.
+// What an audio pad records: the interface's channels, or (resampling)
+// another track, a bus or main, as they sound after their faders, lined
+// up after their effects' latency.
 Audio_Input :: struct {
-	channel: u8,   // its first input channel (0: input 1)
-	stereo:  bool, // it and the next (1/2, 3/4...); else it alone, on both sides
+	channel: u8,   // .Interface: its first input channel (0: input 1)
+	stereo:  bool, // .Interface: it and the next (1/2, 3/4...); else it alone, on both sides
+	from:    Input_From,
+	source:  u8,   // .Pad: the pad; .Bus: the bus (0 = bus 1)
+}
+
+// Where an audio pad's input comes from.
+Input_From :: enum u8 {
+	Interface, // the device's input channels
+	Pad,       // another track's output (after its fader)
+	Bus,       // a bus's output
+	Main,      // main's output (everything heard, but the click)
 }
 
 // Where a track's MIDI comes from.

@@ -722,6 +722,31 @@ plays is a **take** per sequence:
 Audio is recorded in pattern mode (not while the song plays). A project
 from before audio pads opens with every pad a sampler.
 
+### Resampling and bouncing
+
+- **Resampling.** An audio track's input menu also has **From a track**
+  (another pad's output, after its fader), **From a bus** and **Main
+  (resample)** (everything heard but the click; shown as *Main mix*). Arm
+  it and record as from the interface: the take is lined up after the
+  latency of the effects before the tap (a look-ahead limiter, a plug-in),
+  so its hits land on the frames the sequencer played them. Such a track
+  isn't monitored (you hear its source already, and it would feed main
+  back into itself); its meter shows the source.
+- **Bounce to Pad** (a pad's right-click menu; with several selected,
+  theirs together; a bus strip's menu) renders the current sequence once,
+  offline, with only those pads or that bus heard (after their faders and
+  sends, before main's effects and fader), into a new sample on the next
+  empty pad, named *Bounce A1*, *Bounce 2 pads*, *Bounce Bus A*. Main's
+  menu resamples the whole mix (File > Resample Sequence to Pad).
+- **Bounce in Place** (a pad's menu) renders the pad's sound (its device
+  through its EQ and inserts, before its fader) in each sequence it plays
+  in, as Freeze does, onto the next empty pad as an audio track with
+  those takes, the pad's fader, bus, sends and cue, named *… (bounced)*;
+  the pad is muted. One undo step.
+
+Exports, freezes and bounces wait for samples and audio takes to be
+loaded before they render (offline, nothing else waits for the disk).
+
 ## Slicers
 
 A pad's **device** is what plays its notes: a **sampler** (the whole
@@ -1365,6 +1390,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_layout.py` | the default window at the Comfortable size (the other tests run at Compact, `--control-size compact`, the size their positions were written for): the pads area folded to a bar and unfolded by a pad and by its button, one search finding a file and a device, Cmd+L, the control size in Settings |
 | `test_audio_channels.py` | an interface's channels in Settings > Audio (the test interface, --fake-interface): channels on, one named, the cue pair, Apply and Keep, what opens, a track's inputs by name, the interface gone at the next start |
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
+| `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
 | `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a time signature change on its lane, a tempo point on the tempo lane, undo |

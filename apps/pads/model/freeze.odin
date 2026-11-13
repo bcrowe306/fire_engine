@@ -38,22 +38,22 @@ can_freeze :: proc(p: ^Project, pad: int) -> bool {
 // sequence it plays in (once each, at the sequence's tempo), into the
 // project's samples. Step it with `export_step`; `export_finish` puts the
 // renderings in and freezes it (one undo step). False if it can't be.
-freeze_begin :: proc(m: ^Model, x: ^Export, pad: int) -> bool {
+freeze_begin :: proc(m: ^Model, x: ^Export, pad: int, prefix := "Freeze") -> bool {
 	p := &m.project
 	e := &m.engine
 	if !can_freeze(p, pad) do return false
 	capture_plugin_states(m) // (they come back as they are when unfrozen)
 	rate := e.host.graph.settings.sample_rate
-	x^ = {settings = {source = .Sequence, encoding = .Float32, rate = rate}, to_pad = -1, freeze = pad, slot_was = p.slot}
+	x^ = {settings = {source = .Sequence, encoding = .Float32, rate = rate}, to_pad = -1, freeze = pad, in_place = -1, made = -1, slot_was = p.slot}
 	x.passes = make([dynamic]Export_Pass)
 	x.files = make([dynamic]string)
 	dir, _ := filepath.join({p.dir, "samples"}, context.temp_allocator)
 	os.make_directory_all(dir)
 	for slot in freeze_slots(p, pad) {
-		name := strings.concatenate({"Freeze ", pad_label(pad), " - ", sequence_name(p, slot), ".wav"}, context.temp_allocator)
+		name := strings.concatenate({prefix, " ", pad_label(pad), " - ", sequence_name(p, slot), ".wav"}, context.temp_allocator)
 		path := unique_path(dir, name)
 		secs := seq_beats(p, p.sequences[slot]) * 60 / sequence_tempo(p, slot)
-		append(&x.passes, Export_Pass{path, {.Freeze, pad}, slot, max(int(secs * rate + 0.5), 1)})
+		append(&x.passes, Export_Pass{path, {kind = .Freeze, index = pad}, slot, max(int(secs * rate + 0.5), 1)})
 	}
 	x.frames = x.passes[0].frames
 	export_open(m, x)

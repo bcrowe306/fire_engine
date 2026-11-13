@@ -96,6 +96,7 @@ plan_compile :: proc(g: ^Graph) -> (p: ^Plan, err: core.Error) {
 		for c in g.conns do if c.dst == n do arrival[n] = max(arrival[n], arrival[c.src] + own[c.src])
 	}
 	g.latency = arrival[OUTPUT.index]
+	for s, i in g.slots do if alive[i] do s.arrival = arrival[i]
 
 	p.slot_node = make([]i32, n_slots, a)
 	slice.fill(p.slot_node, -1)

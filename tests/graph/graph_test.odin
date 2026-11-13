@@ -297,6 +297,35 @@ latency_compensation_aligns_paths :: proc(t: ^testing.T) {
 	}
 }
 
+// A node's input latency is everything upstream of it, the longest path
+// when paths join: what a recorder tapping the mix is moved earlier by.
+@(test)
+input_latency_is_whats_upstream :: proc(t: ^testing.T) {
+	g := new_graph(t, 1)
+	defer graph.destroy(g)
+	a, _ := graph.add_node(g, delay(10), 1, 1)
+	b, _ := graph.add_node(g, delay(25), 1, 1)
+	sink, _ := graph.add_node(g, scale(1), 1, 1) // a recorder: no outputs used
+	join, _ := graph.add_node(g, scale(1), 1, 1)
+	expect_ok(t, graph.connect(g, graph.INPUT, 0, a, 0))
+	expect_ok(t, graph.connect(g, a, 0, b, 0))
+	expect_ok(t, graph.connect(g, a, 0, sink, 0))
+	expect_ok(t, graph.connect(g, b, 0, join, 0))
+	expect_ok(t, graph.connect(g, graph.INPUT, 0, join, 0))
+	expect_ok(t, graph.connect(g, join, 0, graph.OUTPUT, 0))
+	expect_ok(t, graph.commit(g))
+	testing.expect_value(t, graph.input_latency(g, a), 0)
+	testing.expect_value(t, graph.input_latency(g, b), 10)
+	testing.expect_value(t, graph.input_latency(g, sink), 10)
+	testing.expect_value(t, graph.input_latency(g, join), 35)
+	testing.expect_value(t, graph.latency(g), 35)
+	// Changed with the graph, at its commit.
+	expect_ok(t, graph.disconnect(g, a, 0, sink, 0))
+	expect_ok(t, graph.connect(g, b, 0, sink, 0))
+	expect_ok(t, graph.commit(g))
+	testing.expect_value(t, graph.input_latency(g, sink), 35)
+}
+
 // Events joining a delayed audio path are delayed to match.
 @(test)
 events_are_latency_compensated :: proc(t: ^testing.T) {

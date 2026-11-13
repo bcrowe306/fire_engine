@@ -134,6 +134,8 @@ Pad_Nodes :: struct {
 	players:    [2]^clip.Audio_Player,
 	player_ids: [2]graph.Node_Id,
 	holds:      [2]Audio_Run, // what each player was given
+	in_id:      graph.Node_Id, // its input: the interface's channels, or a tap of the mix
+	tap_src:    graph.Node_Id, // resampling: the strip output wired into `in_id`
 	monitor_id: graph.Node_Id,
 	rec_id:     graph.Node_Id,
 	rec:        ^record.Audio_Recorder,

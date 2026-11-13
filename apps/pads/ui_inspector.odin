@@ -229,14 +229,19 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 	section(a, "Input", !wide)
 	track_io_section(a, i) // armed, its input channels and their level
 	im.SameLine(0, 16)
-	mon := int(pad.monitor)
-	if ui.segmented("monitor", {"Auto", "In", "Off"}, &mon) {
-		p := pad
-		p.monitor = pm.Monitor(mon)
-		pm.set_pad(m, i, .Monitor, "Monitor", p)
-		app.seal(&m.history)
+	if pad.input.from == .Interface {
+		mon := int(pad.monitor)
+		if ui.segmented("monitor", {"Auto", "In", "Off"}, &mon) {
+			p := pad
+			p.monitor = pm.Monitor(mon)
+			pm.set_pad(m, i, .Monitor, "Monitor", p)
+			app.seal(&m.history)
+		}
+		if im.IsItemHovered() do im.SetTooltip("Monitoring, its input through its strip and effects: Auto while it is armed, In always, Off never (you hear it on the interface). Use headphones.")
+	} else {
+		im.TextDisabled("Resampling: not monitored")
+		if im.IsItemHovered() do im.SetTooltip("It records what plays inside (lined up after its source's effects). You hear the source itself, so its input isn't played through it again.")
 	}
-	if im.IsItemHovered() do im.SetTooltip("Monitoring, its input through its strip and effects: Auto while it is armed, In always, Off never (you hear it on the interface). Use headphones.")
 	if a.host.graph.settings.input_channels == 0 do im.TextColored(transmute(im.Vec4)ui.theme().warn, "No audio input: the device was opened without one")
 
 	if wide do im.TableNextColumn()

@@ -184,10 +184,12 @@ sync_send :: proc(e: ^Engine, sn: ^Send_Node, s: Send, pre, post, dest: graph.No
 	return
 }
 
-// Whether audio pad `index`'s input channels are open on the interface.
+// Whether audio pad `index`'s input channels are open on the interface
+// (always, for an input from inside the mix).
 input_open :: proc(e: ^Engine, index: int) -> bool {
 	if index < 0 || index >= PADS do return false
 	in_ := e.project.pads[index].input
+	if in_.from != .Interface do return true
 	first := int(in_.channel)
 	if app.host_input_channel(e.host, first) < 0 do return false
 	return !in_.stereo || app.host_input_channel(e.host, first + 1) >= 0

@@ -1,6 +1,6 @@
 # Audio recording, resampling and audio editing
 
-Status: steps 1–3 (recording timing, drivers, sampler recording) built; the rest planned (decisions taken 2026-11-13).
+Status: steps 1–4 (recording timing, drivers, sampler recording, resampling and bounces) built; the rest planned (decisions taken 2026-11-13).
 
 ## What there is now (surveyed)
 
@@ -155,8 +155,16 @@ Status: steps 1–3 (recording timing, drivers, sampler recording) built; the re
    pad, MIDI presses too; the recorder made ready for the selected pad
    ahead (one made at the press would lose the round trip of history);
    monitoring per audio track Auto / In / Off (project file v34).
-4. **Resampling and bounces**: track inputs from pads, buses, main; offline
-   bounce to a pad; bounce in place.
+4. **Resampling and bounces** (built): an audio track's input from a
+   track (after its fader), a bus or main (`Audio_Input.from`, project
+   file v35), wired by `sync_taps` into the track's input node, the take
+   moved earlier by `graph.input_latency` of its recorder (what the
+   effects upstream delay it by; no round trip, no offset); never
+   monitored (it would close a loop through main). Bounce to Pad
+   (`bounce_pads`, `bounce_bus`: an export of the current sequence with
+   only those heard, taken at main's input); Bounce in Place
+   (`bounce_in_place_begin`: freeze's renderings onto a new audio track,
+   the pad muted). Exports wait for samples and takes to load.
 5. **Audio clips in the Sequence view**: the clip model (non-destructive),
    the Audio tab and the condensed rows, the tools, takes, takes to
    tracks, Consolidate.

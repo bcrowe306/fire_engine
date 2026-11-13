@@ -232,7 +232,7 @@ sends_reach_buses_before_or_after_the_fader :: proc(t: ^testing.T) {
 	testing.expectf(t, abs(pre / direct - 1.5) < 0.04, "pre-fader (%v)", pre / direct)
 	testing.expect_value(t, m.project.pads[0].sends[0].pre, true)
 	// A stem of bus A hears only the send.
-	m.engine.export_solo = {.Bus, 1}
+	m.engine.export_solo = {kind = .Bus, index = 1}
 	stem := settle(r)
 	testing.expectf(t, abs(stem / direct - 1) < 0.03, "bus A's stem: the send (%v)", stem / direct)
 	m.engine.export_solo = {}

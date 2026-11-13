@@ -265,8 +265,8 @@ select_pad :: proc(a: ^App, index: int, menu: bool) {
 	show_pad_chain(a, a.selected)
 }
 
-// The menu for several pads at once: clear, mute, solo, their choke group
-// and colour. One undo step each.
+// The menu for several pads at once: clear, mute, solo, their choke group,
+// colour, and a bounce of them together. One undo step each.
 @(private)
 pads_menu_items :: proc(a: ^App) {
 	sel := selected_pads(a)
@@ -282,6 +282,8 @@ pads_menu_items :: proc(a: ^App) {
 	if im.MenuItem(ui.ICON_HEADPHONES + "  Unsolo" if all_solo else ui.ICON_HEADPHONES + "  Solo") do set_pads_flag(a, sel, .Solo, !all_solo)
 	ui.name("Solo Pads")
 	choke_menu(a, sel)
+	if im.MenuItem(ui.ICON_COMBINE + "  Bounce to Pad") do start_bounce_pads(a, sel)
+	ui.name("Bounce to Pad")
 	if im.MenuItem(ui.ICON_ERASER + "  Clear Pads", "Delete") do clear_pads(a, sel)
 	ui.name("Clear Pads")
 }
