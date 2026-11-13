@@ -255,7 +255,6 @@ draw_favorite_tabs :: proc(a: ^App) {
 		changed = true
 	}
 	if changed do pm.favorites_save(b, favorites_path(a))
-	v.scroll_to = false
 	im.Spacing()
 }
 
@@ -317,8 +316,9 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 	// The keyboard moved the selection: bring its row into view (the
 	// clipper only draws what shows).
 	if v.scroll_to {
+		start := im.GetCursorPosY() // (the rows begin below the sections and the folder bar: in the list's scroll space)
 		for r, i in rows do if r.path == b.selected {
-			y := f32(i) * BROWSER_ROW
+			y := start + f32(i) * BROWSER_ROW
 			top, h := im.GetScrollY(), im.GetWindowHeight()
 			if y < top do im.SetScrollY(y)
 			else if y + BROWSER_ROW > top + h do im.SetScrollY(y + BROWSER_ROW - h)

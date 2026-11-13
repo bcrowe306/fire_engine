@@ -123,3 +123,35 @@ def test_loading_onto_the_selected_or_the_next_empty_pad(app, library, fixtures)
     assert app.pad(0)["name"].startswith("Kick 808"), app.pad(0)["name"]  # replaced on A1, the selected pad (a second copy: "Kick 808 2")
     app.key("cmd+z")
     assert app.pad(0)["name"] == "kick"
+
+
+def test_the_arrow_keys_keep_the_selection_in_view(app, fixtures, tmp_path):
+    # A folder longer than the list: arrowed down to its last file, then
+    # back up to its first, the selected row stays on screen (between the
+    # Folders section's header and the preview below the list).
+    import shutil
+    for k in range(60):
+        shutil.copy(os.path.join(fixtures, "kick.wav"), tmp_path / f"take {k:02}.wav")
+    app.browse(str(tmp_path))
+    app.click("take 00.wav")
+
+    def rect(label):
+        found = [i["rect"] for i in app.items(label) if i["label"] == label]
+        return found[0] if found else None
+
+    def in_view(name):
+        r, bottom = rect(name), rect("load to the selected pad")
+        assert r is not None, f"{name} not drawn"
+        return r[3] <= bottom[1] + 1, (r, bottom)
+
+    for _ in range(59):
+        app.key("down")
+    app.wait(2)
+    assert app.state()["browser"]["selected"].endswith("take 59.wav")
+    ok, why = in_view("take 59.wav")
+    assert ok, why
+    for _ in range(59):
+        app.key("up")
+    app.wait(2)
+    r = rect("take 00.wav")
+    assert r is not None, "take 00.wav scrolled back into view"
