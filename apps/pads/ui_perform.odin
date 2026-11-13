@@ -25,9 +25,10 @@ Perf_State :: struct {
 	lane_menu: int,    // the lane whose header menu is open
 	lane_naming: bool, // ... renaming it
 	lane_name: [16]u8,
-	holding: bool, // a sequence pad is held in Hold
-	held_seq: int, // which
-	held_from: int, // what its column played before it (-1: nothing; to go back to)
+	holds:     [dynamic]Seq_Hold, // the sequence pads held in Hold (and let go, until their launch has come)
+	hold_from: [pm.MAX_LANES]int, // what each lane played before its first held pad (-1: nothing; to go back to)
+	hold_order: u64, // counts presses (the latest held pad of a lane is the one it plays)
+	key_slot:  [16]int, // the sequence each pad key pressed (+1; 0: none), for its release wherever the window is
 	seq_keys: bool, // the pad keys play the sequence pads shown (the Keys switch)
 	shown_frame: i32, // the frame it last showed (it folds the pads area)
 	folded_it:   bool,
@@ -643,10 +644,21 @@ intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
 	im.DrawList_AddLine(dl, {lo.x + 6, oy}, {lo.x + 18, oy}, ui.col(ui.with_alpha(t.text, 0.6)), 2)
 }
 
+// A sequence pad held in Hold: its lane, when it was pressed, and
+// whether it has been let go (it goes once its launch has come: a press
+// shorter than the launch quantize still plays).
+Seq_Hold :: struct {
+	slot:     int,
+	col:      int,
+	order:    u64,
+	released: bool,
+}
+
 // A sequence pad pressed (or its key): launched in its column (a
 // Shift-click launches it alone: see `draw_launcher`), or (Hold) played while held,
-// remembering what its column played to come back to. Option-click only
-// goes to a sequence (to edit it), stopped.
+// remembering what its column played to come back to (several held: the
+// latest plays, and letting go of it goes back to the one before).
+// Option-click only goes to a sequence (to edit it), stopped.
 seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
 	m := &a.m
 	st := &a.perf
@@ -657,23 +669,63 @@ seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
 		return
 	}
 	if m.project.launch_hold {
-		if !st.holding {
-			cs, _, _, _, _ := pm.column_state(&m.engine, pm.launch_col(&m.project, slot))
-			st.held_from = cs if playing else -1
+		col := pm.launch_col(&m.project, slot)
+		first := true
+		for h in st.holds do if h.col == col do first = false
+		if first && col >= 0 && col < pm.MAX_LANES {
+			cs, _, next, _, queued := pm.column_state(&m.engine, col)
+			st.hold_from[col] = (next if queued else cs) if playing else -1
 		}
-		st.holding, st.held_seq = true, slot
+		for h, k in st.holds do if h.slot == slot { // (pressed again before it went: held again)
+			ordered_remove(&st.holds, k)
+			break
+		}
+		st.hold_order += 1
+		append(&st.holds, Seq_Hold{slot = slot, col = col, order = st.hold_order})
 	}
 	pm.launch_slot(m, slot)
 }
 
-// A sequence pad let go: in Hold, its column goes back to what it played.
+// A sequence pad let go: in Hold, it goes when its launch has come (see
+// `hold_frame`).
 seq_pad_release :: proc(a: ^App, slot: int) {
+	for &h in a.perf.holds do if h.slot == slot do h.released = true
+}
+
+// Each frame, in Hold: a held pad let go goes once its lane plays it (or
+// at once, stopped); its lane then plays the latest pad still held there,
+// or, none, what it played before the first (or stops).
+hold_frame :: proc(a: ^App) {
 	st := &a.perf
 	m := &a.m
-	if !m.project.launch_hold || !st.holding || st.held_seq != slot do return
-	st.holding = false
-	if st.held_from >= 0 do pm.launch_slot(m, st.held_from)
-	else do pm.stop_column(&m.engine, pm.launch_col(&m.project, slot))
+	if len(st.holds) == 0 do return
+	_, playing := pm.position(&m.engine)
+	for k := 0; k < len(st.holds); {
+		h := st.holds[k]
+		if !h.released {
+			k += 1
+			continue
+		}
+		if playing && h.col >= 0 {
+			cs, _, next, _, queued := pm.column_state(&m.engine, h.col)
+			if queued && next == h.slot && cs != h.slot { // (its launch hasn't come yet: it plays first)
+				k += 1
+				continue
+			}
+		}
+		ordered_remove(&st.holds, k)
+		if h.col < 0 || h.col >= pm.MAX_LANES do continue
+		latest := -1
+		at: u64
+		for o in st.holds do if o.col == h.col && o.order > at do latest, at = o.slot, o.order
+		if latest >= 0 {
+			if latest != h.slot do pm.launch_slot(m, latest) // (back to the one held before it)
+		} else if st.hold_from[h.col] >= 0 && st.hold_from[h.col] != h.slot {
+			pm.launch_slot(m, st.hold_from[h.col])
+		} else if st.hold_from[h.col] < 0 {
+			pm.stop_column(&m.engine, h.col)
+		}
+	}
 }
 
 // How the pads play: each its sound, a keyboard of the selected one, or

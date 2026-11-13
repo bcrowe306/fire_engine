@@ -364,7 +364,9 @@ records.
     and **Keys** (the computer's pad keys play the window's sequence pads
     instead of the pads); **Launch** or **Hold** (a sequence plays
     only while its pad is held, its lane going back to what it played
-    when you let go); **at** End, Bar, Beat or Now (when a launch
+    when you let go; a tap shorter than the launch's wait still plays
+    until the next; several of a lane held, the latest plays and letting
+    it go goes back to the one before); **at** End, Bar, Beat or Now (when a launch
     happens: when its lane's sequence comes round, or the next bar,
     beat, at once); **Continue** (on, a launched sequence carries on
     where the playhead is in what played — its lane's sequence, or with

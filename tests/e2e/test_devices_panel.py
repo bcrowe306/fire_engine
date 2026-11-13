@@ -91,3 +91,50 @@ def test_the_synths_presets_are_folded_under_it(app):
     app.screenshot("devices_folded")
     app.click("devices Synth Bass")
     app.expect_item("device Wobble Bass")
+
+
+def test_hold_plays_however_it_is_pressed(app, fixtures):
+    # Hold with launch at the next bar: a tap shorter than the wait still
+    # plays (its lane goes back once it has); two pads of one lane held,
+    # the latest plays and letting go goes back to the other; a pad key
+    # let go with Cmd down still lets it go.
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    for slot in (1, 2, 3):
+        app.cmd(f"slot {slot}")
+        app.cmd("note 0 0 1 1")
+    app.cmd("slot 1")
+    app.cmd("tempo 240")  # (a bar a second: quicker waits)
+    app.panel("Perform")
+    app.click("launch 1", window="perform")
+    app.until(lambda s: s["playing"] and s["columns"][0] == 1, what="sequence 1 playing")
+    app.cmd("switch bar")
+    app.click("launch mode", window="perform", at=(0.75, 0.5))  # Hold
+    # Sequences 2 and 3 into lane 1 with sequence 1 (one lane: one at a time).
+    app.cmd("lanes move 2 1 2")
+    app.cmd("lanes move 3 1 3")
+    # A tap: pressed and let go at once, long before the next bar.
+    app.cmd('hover_item "launch 2" in perform')
+    app.cmd("down")
+    app.wait(1)
+    app.cmd("up")
+    app.until(lambda s: s["columns"][0] == 2, frames=240, what="the tapped sequence playing at the bar")
+    app.until(lambda s: s["columns"][0] == 1, frames=240, what="back to sequence 1 the bar after")
+    # Two held with the keys (lane 1's row 2 is A, row 3 is Q), at once:
+    # the latest plays; letting it go goes back to the other, then to 1.
+    app.cmd("switch now")
+    app.click("sequence keys", window="perform")
+    app.cmd("hold a")
+    app.wait(3)
+    assert app.state()["columns"][0] == 2
+    app.cmd("hold q")
+    app.wait(3)
+    assert app.state()["columns"][0] == 3
+    app.cmd("let q")
+    app.wait(3)
+    assert app.state()["columns"][0] == 2, app.state()["columns"]
+    # Let go with Cmd held: still let go.
+    app.cmd("hold cmd")
+    app.cmd("let a")
+    app.wait(3)
+    app.cmd("let cmd")
+    assert app.state()["columns"][0] == 1, app.state()["columns"]

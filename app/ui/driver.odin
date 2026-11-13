@@ -24,7 +24,7 @@ import sdl "deps:sdl3"
 //	scroll DX DY          turn the wheel (positive DY scrolls up)
 //	key CHORD             press and release a key: a, enter, space, ctrl+z, cmd+shift+s...
 //	text STRING           type text into the focused field
-//	hold MOD / let MOD    press / release a modifier and keep it (shift, ctrl, alt, cmd): a Shift-drag
+//	hold KEY / let KEY    press / release a key and keep it: a modifier (shift, ctrl, alt, cmd: a Shift-drag), a letter or a digit
 //	drop X Y PATH         drop a file on the window at X, Y (as from the desktop)
 //	screenshot NAME       save this frame as NAME.png in the output directory
 //	quit                  stop the app
@@ -298,7 +298,14 @@ driver_run :: proc(d: ^Driver, p: ^Platform, w: []string, line: string) -> bool 
 			} else {
 				key, mod = sdl.K_LCTRL, {.LCTRL}
 			}
-		case: return fail(d, line)
+		case:
+			// A letter or a digit (a pad key held, say).
+			if len(w[1]) != 1 do return fail(d, line)
+			c := w[1][0]
+			switch c {
+			case 'a' ..= 'z', '0' ..= '9': key = sdl.Keycode(c)
+			case: return fail(d, line)
+			}
 		}
 		down := w[0] == "hold"
 		e: sdl.Event

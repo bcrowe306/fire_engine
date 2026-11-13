@@ -364,6 +364,7 @@ frame :: proc(a: ^App) {
 	update_meters(a)
 	if a.settings.recording == "" do ui.handle_shortcuts(&a.actions) // (not while a new shortcut is pressed)
 	if a.settings.recording == "" do play_keys(a)
+	hold_frame(a) // (Hold: the sequence pads let go, once their launch has come)
 	if a.settings.recording == "" do pad_arrows(a)
 	plugins_scan_step(a)
 	track_io_frame(a)
@@ -550,14 +551,22 @@ PAD_KEYS := [16]im.Key{.Z, .X, .C, .V, .A, .S, .D, .F, .Q, .W, .E, .R, ._1, ._2,
 
 play_keys :: proc(a: ^App) {
 	io := im.GetIO()
+	// A sequence a key pressed: let go with it, whatever is held with it
+	// and wherever the window is now (else Hold kept it playing).
+	for k, i in PAD_KEYS do if a.perf.key_slot[i] > 0 && im.IsKeyReleased(k) {
+		seq_pad_release(a, a.perf.key_slot[i] - 1)
+		a.perf.key_slot[i] = 0
+	}
 	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt do return
 	if a.perf.seq_keys { // the sequence pads' Keys switch: the keys play them
 		for k, i in PAD_KEYS {
 			// (The launcher's window: the bottom row Z X C V, each a lane.)
 			slot, _, _, _ := window_cell(a, i % 4, i / 4)
 			if slot < 0 do continue
-			if im.IsKeyPressed(k, false) do seq_pad_press(a, slot, true)
-			if im.IsKeyReleased(k) do seq_pad_release(a, slot)
+			if im.IsKeyPressed(k, false) {
+				seq_pad_press(a, slot, true)
+				a.perf.key_slot[i] = slot + 1
+			}
 		}
 		return
 	}
