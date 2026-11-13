@@ -147,6 +147,12 @@ frames_per_beat_of :: proc(p: ^Project, slot, pad: int, take: app.Id) -> f64 {
 	return rate * 60 / bpm
 }
 
+// The beats pad `pad`'s part in `slot` goes round in: its track's loop,
+// or the sequence.
+part_beats :: proc(p: ^Project, slot, pad: int) -> f64 {
+	return track_beats(p, p.sequences[slot], pad)
+}
+
 // Where region `r` ends: beats into the sequence.
 region_end :: proc(p: ^Project, slot, pad: int, x: ^Audio_Part, r: Region) -> f64 {
 	return r.at + f64(r.end - r.start) / frames_per_beat_of(p, slot, pad, x.takes[r.take])
@@ -168,7 +174,7 @@ part_add_take :: proc(p: ^Project, slot, pad: int, x: ^Audio_Part, id: app.Id, a
 	k := x.take_count
 	x.takes[k], x.take_at[k] = id, at
 	x.take_count += 1
-	length := seq_beats(p, p.sequences[slot])
+	length := part_beats(p, slot, pad)
 	fpb := frames_per_beat_of(p, slot, pad, id)
 	// Up to the sequence's end (a longer file: the rest isn't heard; trim
 	// it in, or move it, to hear another part).
@@ -303,7 +309,7 @@ move_region :: proc(m: ^Model, slot, pad, i: int, at: f64, from: ^Audio_Part = n
 	x := from^ if from != nil else part_of(p, slot, pad)
 	if i < 0 || i >= x.count do return
 	r := x.regions[i]
-	length := seq_beats(p, p.sequences[slot])
+	length := part_beats(p, slot, pad)
 	span := region_end(p, slot, pad, &x, r) - r.at
 	r.at = clamp(at, 0, max(length - span, 0))
 	remove_region(&x, i)
@@ -432,7 +438,7 @@ paste_at :: proc(m: ^Model, slot, pad: int, cb: Audio_Clipboard, at: f64) -> boo
 	app.seal(&m.history) // (a step of its own, not part of a drag before)
 	p := &m.project
 	x := part_of(p, slot, pad)
-	length := seq_beats(p, p.sequences[slot])
+	length := part_beats(p, slot, pad)
 	any := false
 	for i in 0 ..< cb.count {
 		r := cb.regions[i]
@@ -500,7 +506,7 @@ add_take_file :: proc(m: ^Model, slot, pad: int, path: string, at := 0.0) -> fc.
 		c.bpm = sequence_tempo(p, slot)
 		set_clip(m, slot, pad, "Add Take", c)
 	}
-	if !part_add_take(p, slot, pad, &x, id, clamp(at, 0, seq_beats(p, p.sequences[slot]))) do return .Out_Of_Memory
+	if !part_add_take(p, slot, pad, &x, id, clamp(at, 0, part_beats(p, slot, pad))) do return .Out_Of_Memory
 	put_part(m, slot, pad, "Add Take", x)
 	return .None
 }

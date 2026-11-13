@@ -1,6 +1,6 @@
 # Audio recording, resampling and audio editing
 
-Status: steps 1–5 (recording timing, drivers, sampler recording, resampling and bounces, audio clips) built; the rest planned (decisions taken 2026-11-13).
+Status: steps 1–6 (recording timing, drivers, sampler recording, resampling and bounces, audio clips, per-track loops) built; the rest planned (decisions taken 2026-11-13).
 
 ## What there is now (surveyed)
 
@@ -179,7 +179,14 @@ Status: steps 1–5 (recording timing, drivers, sampler recording, resampling an
    view of the part; passes onto tracks of their own (a recording
    setting). Not yet: crossfades drawn between overlapping regions,
    zoom in the Audio tab.
-6. **Per-track loops** (notes and audio, recording into them).
+6. **Per-track loops** (built): `Sequence.loops` (a track's beats, project
+   file v38); `played_notes` repeats a looped track's notes round its
+   loop to the sequence's end (each pass from the top) wherever a
+   sequence is played or exported, so the engine needs nothing new;
+   recording lands inside the loop; an audio part's mix goes round it,
+   each pass on its exact frame (`comp_mix`'s `loop`), its takes a loop
+   each. The row menu's Track Loop, ghosts on the row, the Audio tab's
+   Loop.
 7. **Vertical zoom** in the Sequence view.
 
 Each step: model tests, e2e tests, a drive script with screenshots, the

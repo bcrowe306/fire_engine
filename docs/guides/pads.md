@@ -286,7 +286,16 @@ records.
   Click a row's name to select its pad (its strip and devices follow) and
   every note in its row, and to hear it (the **headphones** turn that
   off); right-click it for the pad's commands (**Rename…**, colour, mute,
-  solo, its piano roll...). **Drums | Piano roll** switches to one pad's
+  solo, its piano roll...), and at its top **Track Loop**: the track goes
+  round on its own inside the sequence, any length (1, 3, 5 beats, or
+  dragged a 1/16 at a time) — 3 beats in a 4/4 bar drifts against the
+  rest (polymeter), starting again at each of the sequence's passes. Its
+  row shows the loop's end (and each time round), dims the rest and
+  draws what plays there as ghosts; notes past the loop aren't heard.
+  Recording into it, each pass lands inside the loop. An audio track
+  loops the same way, exact to the sample (its Audio tab's **Loop**
+  too); its takes are recorded a loop each. Saved, exported, frozen and
+  played in the song as heard. **Drums | Piano roll** switches to one pad's
   notes on a keyboard (its own pitch is the marked C3, four octaves each
   way; double-click a row's name to open it), where it plays
   chromatically. **Fold** shows only the rows that have notes (drums: the
@@ -1447,6 +1456,7 @@ task app:e2e -- -k browser -x          # some tests; stop at the first failure
 | `test_freeze.py` | Freeze from a pad's menu (rendered, played instead), Unfreeze from its page, undo, Flatten to Audio |
 | `test_audio_edit.py` | the Audio tab by mouse: a take, a click (cursor and region), Split, a Shift-dragged range deleted and undone, a region moved, its fade handle, Copy and Paste, Normalize, Reverse, Consolidate, the region's gain typed, a take picked |
 | `test_repeat_toolbar.py` | the toolbar's Note Repeat: on and off, its rate from its dropdown, Quantize's grid with it |
+| `test_track_loop.py` | per-track loops: a row's menu giving the kick 3 beats, off, undo; an audio track's loop typed in the Audio tab |
 | `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |

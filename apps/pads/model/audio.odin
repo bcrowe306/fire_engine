@@ -92,7 +92,7 @@ fold_take :: proc(m: ^Model, armed: int, t: record.Take) -> fc.Error {
 	p := &m.project
 	_, slot, rel, ok := plan_locate(m.engine.plan, f64(t.start), editing_slot(m))
 	if !ok do return .Invalid_Argument
-	length := seq_beats(p, p.sequences[slot])
+	length := part_beats(p, slot, armed) // (a looped track: its loop, each pass a take)
 	first := part_of(p, slot, armed)
 	bpm := p.clips[slot][armed].bpm if first.take_count > 0 && p.clips[slot][armed].bpm > 0 else sequence_tempo(p, slot)
 	fpb := t.sample_rate * 60 / bpm

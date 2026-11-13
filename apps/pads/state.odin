@@ -204,6 +204,7 @@ State_Pad :: struct {
 	midi_in: string, // what MIDI plays it: "All MIDI", "No MIDI", a port's name
 	midi_in_notes: u32, // MIDI notes that have played it
 	take:    i64, // an audio pad's take in the current sequence: its frames (0: none; with a part, the sequence's)
+	loop:    f64, // its own loop in the current sequence, beats (0: none)
 	regions: int, // its part's regions in the current sequence
 	takes:   int, // ... and takes
 	attack, release: f32,
@@ -489,6 +490,7 @@ state_json :: proc(a: ^App) -> string {
 		sp.color = pad.color
 		if l, live := pm.pad_live(&m.engine, i); live do sp.cutoff_now = l.cutoff
 		if c := app.store_get(&p.samples, pm.current_clip(m, i).sample); c != nil do sp.take = c.frames
+		if x := pm.track_beats(p, p.sequences[p.slot], i); x < pm.seq_beats(p, p.sequences[p.slot]) - 1e-9 do sp.loop = x
 		if pm.current_clip(m, i).part != 0 {
 			x := pm.part_of(p, p.slot, i)
 			sp.regions, sp.takes = x.count, x.take_count

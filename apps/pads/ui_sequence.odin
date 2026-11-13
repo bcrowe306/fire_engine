@@ -44,6 +44,40 @@ Seq_State :: struct {
 	aud:      Audio_View, // the Audio tab's
 }
 
+// The row menu's Track Loop: pad `pad`'s own loop in sequence `slot`
+// (polymeter): off, a few lengths, or dragged (a 1/16 at a time).
+@(private)
+track_loop_items :: proc(a: ^App, slot, pad: int, length: f64) {
+	m := &a.m
+	if pad < 0 || pad >= pm.PADS do return
+	cur := pm.track_beats(&m.project, m.project.sequences[slot], pad)
+	looped := cur < length - 1e-9
+	im.TextDisabled("%s", fmt.ctprintf("Track loop: %s", fmt.tprintf("%g beats", cur) if looped else "off (the sequence)"))
+	presets := [?]f64{1, 2, 3, 5, 6, 7, 0.5, 1.5}
+	if im.BeginMenu("Track Loop") {
+		if im.MenuItem("No Track Loop", nil, !looped) {
+			app.seal(&m.history)
+			pm.set_track_loop(m, slot, pad, 0)
+			app.seal(&m.history)
+		}
+		for b in presets do if b < length - 1e-9 {
+			if im.MenuItem(fmt.ctprintf("%g beat%s", b, "" if b == 1 else "s"), nil, looped && abs(cur - b) < 1e-6) {
+				app.seal(&m.history)
+				pm.set_track_loop(m, slot, pad, b)
+				app.seal(&m.history)
+			}
+		}
+		im.Separator()
+		x := cur if looped else length
+		e := ui.number_drag("track loop beats", &x, 0.25, length, 0.25, 1.0 / 16, "%.4g beats", 140)
+		if e.changed do pm.set_track_loop(m, slot, pad, x)
+		if e.ended do app.seal(&m.history)
+		im.EndMenu()
+	}
+	if im.IsItemHovered() do im.SetTooltip("This track goes round on its own, inside the sequence: 3 beats in a 4/4 bar drifts against the rest (starting again each pass)")
+	im.Separator()
+}
+
 // `b` down to the grid of `snap` beats (0: as it is).
 @(private)
 snap_down :: proc(b, snap: f64) -> f64 {
@@ -234,6 +268,34 @@ draw_sequence :: proc(user: rawptr) {
 	}
 	top := im.GetCursorScreenPos()
 	e := ui.note_grid("seq", notes[:], rows, &st.view, snap, {avail.x, roll_h}, st.tool, beat if playing else -1, pm.bar_beats(&m.project), drop_type = "PADS_FILE")
+	// Tracks with their own loop: its end marked, the rest dimmed, and
+	// what it plays there (its loop again) as ghosts.
+	if !st.piano {
+		names_w := ui.roll_rows_width(rows)
+		row_h := roll_h / f32(max(st.view.keys, 1))
+		gx := top.x + names_w
+		bw := f64(avail.x - names_w) / max(st.view.beats, 1e-6)
+		dl := im.GetWindowDrawList()
+		played := pm.played_notes(&m.project, s)
+		for k in st.view.key0 ..< min(st.view.key0 + st.view.keys, len(row_pad)) {
+			pad := row_pad[k]
+			tlen := pm.track_beats(&m.project, s, pad)
+			if tlen >= length - 1e-9 do continue
+			y := top.y + roll_h - f32(k - st.view.key0 + 1) * row_h
+			lx := gx + f32((tlen - st.view.beat0) * bw)
+			im.DrawList_AddRectFilled(dl, {lx, y}, {top.x + avail.x, y + row_h}, ui.col(ui.with_alpha(t.bg, 0.45)))
+			c := ui.rgb(m.project.pads[pad].color)
+			for n in played do if int(n.pad) == pad && n.start >= tlen - 1e-9 {
+				x0 := gx + f32((n.start - st.view.beat0) * bw)
+				x1 := max(x0 + f32(n.length * bw), x0 + 4)
+				im.DrawList_AddRect(dl, {x0, y + 3}, {x1, y + row_h - 3}, ui.col(ui.with_alpha(c, 0.55)), 2, 1)
+			}
+			for b := tlen; b < length - 1e-9; b += tlen {
+				x := gx + f32((b - st.view.beat0) * bw)
+				im.DrawList_AddLine(dl, {x, y}, {x, y + row_h}, ui.col(ui.with_alpha(t.warn, 0.9 if b == tlen else 0.35)), 2 if b == tlen else 1)
+			}
+		}
+	}
 	// Audio tracks' rows: their part, a condensed waveform (the Audio tab
 	// edits it).
 	if !st.piano {
@@ -749,6 +811,7 @@ editor_edits :: proc(a: ^App, e: ui.Grid_Edit, notes: []ui.Roll_Note, which: []i
 		im.OpenPopup("##rowmenu")
 	}
 	if im.BeginPopup("##rowmenu") {
+		track_loop_items(a, slot, st.menu_target.index, length) // (first: this sequence's, the rest the pad's)
 		command_items(a, st.menu_target)
 		im.EndPopup()
 	}

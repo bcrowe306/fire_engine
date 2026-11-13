@@ -615,6 +615,12 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		pm.set_pad(&a.m, i, .Input, "Set Input", p)
 		app.seal(&a.m.history)
 		return true
+	case "track_loop": // track_loop PAD BEATS: the pad's own loop in the current sequence (0: none)
+		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
+			pm.set_track_loop(&a.m, a.m.project.slot, i, f64(numf(w, 2)))
+			app.seal(&a.m.history)
+			return true
+		}
 	case "window": // window LANE ROW (1-based): the launcher's window there
 		if len(w) < 3 do return false
 		a.perf.win_lane, a.perf.win_row = num(w, 1) - 1, num(w, 2) - 1

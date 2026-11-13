@@ -91,12 +91,21 @@ draw_part :: proc(a: ^App, dl: ^im.DrawList, slot, pad: int, lo, hi: im.Vec2, be
 	half := (hi.y - lo.y) / 2 * 0.92
 	im.DrawList_PushClipRect(dl, lo, hi, true)
 	defer im.DrawList_PopClipRect(dl)
-	for r, i in x.regions[:x.count] {
-		end := pm.region_end(p, slot, pad, &x, r)
-		rx0 := lo.x + f32((r.at - beat0) * bw)
+	// A track with its own loop: its loop again each time round (faded),
+	// the first pass the one to edit.
+	loop := pm.part_beats(p, slot, pad)
+	whole := pm.seq_beats(p, p.sequences[slot])
+	passes := 1 if loop >= whole - 1e-9 else int(math.ceil(whole / loop - 1e-9))
+	for pass in 0 ..< passes do for r, i in x.regions[:x.count] {
+		if pass > 0 && r.at >= loop - 1e-9 do continue
+		off := f64(pass) * loop
+		end := min(pm.region_end(p, slot, pad, &x, r), loop if passes > 1 else math.F64_MAX) + off
+		end = min(end, whole) if passes > 1 else end
+		rx0 := lo.x + f32((r.at + off - beat0) * bw)
 		rx1 := lo.x + f32((end - beat0) * bw)
-		if rx1 < lo.x || rx0 > hi.x do continue
+		if rx1 < lo.x || rx0 > hi.x || rx1 <= rx0 do continue
 		c := color if !r.mute else ui.mix(color, t.text_dim, 0.7)
+		if pass > 0 do c = ui.mix(t.inset, c, 0.55)
 		// (Its box hides what is under it: it is what is heard there.)
 		im.DrawList_AddRectFilled(dl, {rx0, lo.y}, {rx1, hi.y}, ui.col(ui.mix(t.inset, c, 0.22 if boxes else 0.12)), 3 if boxes else 0)
 		pk := take_peaks_of(a, x.takes[r.take])
@@ -105,7 +114,7 @@ draw_part :: proc(a: ^App, dl: ^im.DrawList, slot, pad: int, lo, hi: im.Vec2, be
 			amp := f32(math.pow(10, f64(r.gain) / 20))
 			ink := ui.col(ui.mix(c, t.text, 0.15))
 			for px := max(rx0, lo.x); px < min(rx1, hi.x); px += 1 {
-				b0 := beat0 + f64(px - lo.x) / bw
+				b0 := beat0 + f64(px - lo.x) / bw - off
 				b1 := b0 + 1 / bw
 				f0 := (b0 - r.at) * fpb
 				f1 := (b1 - r.at) * fpb
@@ -116,7 +125,7 @@ draw_part :: proc(a: ^App, dl: ^im.DrawList, slot, pad: int, lo, hi: im.Vec2, be
 				vlo, vhi: f32
 				for k in k0 ..= k1 do vlo, vhi = min(vlo, pk.lo[k]), max(vhi, pk.hi[k])
 				secs_in := (b0 - r.at) * 60 / bpm
-				secs_out := (end - b0) * 60 / bpm
+				secs_out := (end - off - b0) * 60 / bpm
 				env: f64 = 1
 				if r.fade_in > 0 do env = min(env, secs_in / f64(r.fade_in))
 				if r.fade_out > 0 do env = min(env, secs_out / f64(r.fade_out))
@@ -126,7 +135,7 @@ draw_part :: proc(a: ^App, dl: ^im.DrawList, slot, pad: int, lo, hi: im.Vec2, be
 				im.DrawList_AddLine(dl, {px + 0.5, y0}, {px + 0.5, max(y1, y0 + 1)}, ink)
 			}
 		}
-		if !boxes do continue
+		if !boxes || pass > 0 do continue
 		// Its fades, as lines from silence, and their handles.
 		secs_beat := 60 / bpm
 		fi := f32(f64(r.fade_in) / secs_beat * bw)
@@ -257,6 +266,16 @@ draw_audio_tools :: proc(a: ^App) {
 		tr := f64(x.transpose)
 		if e := ui.number_drag("audio transpose", &tr, -24, 24, 1, 1, "%+.0f st", 64); e.changed do pm.set_part_warp(m, slot, pad, x.warp, f32(tr))
 		else if e.ended do app.seal(&m.history)
+	}
+	im.SameLine(0, 12)
+	// The track's own loop (polymeter), here as in the Notes grid's row menu.
+	{
+		cur := pm.part_beats(&m.project, slot, pad)
+		lb := cur
+		e := ui.number_drag("audio loop", &lb, 0.25, length, 0.25, 1.0 / 16, "Loop %.4g" if cur < length - 1e-9 else "Loop: off", 90)
+		if e.changed do pm.set_track_loop(m, slot, pad, lb)
+		if e.ended do app.seal(&m.history)
+		if im.IsItemHovered() do im.SetTooltip("The track's own loop: its first beats again each time round, to the sample (drag to the sequence's length: off)")
 	}
 	im.SameLine(0, 12)
 	draw_grid_controls(a, quantize = false)
@@ -400,6 +419,13 @@ draw_audio_view :: proc(a: ^App, length, snap: f64) {
 		im.DrawList_AddRectFilled(dl, {xof(av.range[0], bw, pos.x), lo.y}, {xof(av.range[1], bw, pos.x), hi.y}, ui.col(ui.with_alpha(t.accent, 0.18)))
 	}
 	draw_part(a, dl, slot, pad, lo, hi, 0, length, ui.rgb(p.pads[pad].color), boxes = true, sel = av.region)
+	// Its track's own loop: the end marked, what follows (its loop again) dimmed.
+	if loop := pm.part_beats(p, slot, pad); loop < length - 1e-9 {
+		lx := xof(loop, bw, pos.x)
+		im.DrawList_AddRectFilled(dl, {lx, lo.y}, hi, ui.col(ui.with_alpha(t.bg, 0.35)))
+		im.DrawList_AddLine(dl, {lx, pos.y}, {lx, hi.y}, ui.col(t.warn), 2)
+		im.DrawList_AddText(dl, {lx + 4, pos.y + 1}, ui.col(t.warn), fmt.ctprintf("loop %g", loop))
+	}
 	if av.range[1] > av.range[0] {
 		for b in av.range do im.DrawList_AddLine(dl, {xof(b, bw, pos.x), lo.y}, {xof(b, bw, pos.x), hi.y}, ui.col(t.accent), 1.5)
 	}

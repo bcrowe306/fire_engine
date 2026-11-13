@@ -29,7 +29,7 @@ export_midi :: proc(m: ^Model, path: string, slot: int) -> int {
 	total: f64 = 0
 	if slot >= 0 {
 		s := &p.sequences[slot]
-		for n in s.notes do if !n.muted do put(m, &per_pad, n, n.start, 0)
+		for n in played_notes(p, s^) do if !n.muted do put(m, &per_pad, n, n.start, 0)
 		total = seq_beats(p, s^)
 	} else {
 		pts := song_tempo_points(p)
@@ -40,7 +40,7 @@ export_midi :: proc(m: ^Model, path: string, slot: int) -> int {
 			period := clip_period(p, c)
 			if period <= 0 do continue
 			for off := -math.mod(c.phase, period); off < c.length - 1e-9; off += period {
-				for n in p.sequences[c.slot].notes {
+				for n in played_notes(p, p.sequences[c.slot]) {
 					x := off + n.start - c.start
 					if n.muted || n.start < c.start || n.start >= c.start + period || x < -1e-9 || x >= c.length - 1e-9 do continue
 					put(m, &per_pad, n, c.at + off + n.start - c.start, int(c.transpose))

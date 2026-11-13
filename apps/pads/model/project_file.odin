@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 37 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window
+PROJECT_VERSION :: 38 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window; 38: tracks' own loops
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -615,6 +615,15 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	}
 	fc.write_int(w, p.view.seq_lane0)
 	fc.write_int(w, p.view.seq_row0)
+	// v38: tracks' loops (those that have one).
+	nl := 0
+	for sq in p.sequences do for x in sq.loops do if x > 0 do nl += 1
+	fc.write_int(w, nl)
+	for sq, slot in p.sequences do for x, pad in sq.loops do if x > 0 {
+		fc.write_u8(w, u8(slot))
+		fc.write_u8(w, u8(pad))
+		fc.write_f32(w, x)
+	}
 }
 
 // v36: the audio parts clips name (only those): where, the takes, the
@@ -1238,6 +1247,15 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 			compact_rows(&p.lanes)
 			p.view.seq_lane0 = clamp(fc.read_int(r), 0, MAX_LANES - 1)
 			p.view.seq_row0 = clamp(fc.read_int(r), 0, SLOTS - 1)
+			if version >= 38 {
+				n := fc.read_int(r)
+				if n < 0 || n > SLOTS * PADS do n = 0
+				for _ in 0 ..< n {
+					slot, pad := int(fc.read_u8(r)), int(fc.read_u8(r))
+					x := fc.read_f32(r)
+					if slot < SLOTS && pad < PADS && x > 0 do p.sequences[slot].loops[pad] = x
+				}
+			}
 		} else {
 			p.view.seq_lane0, p.view.seq_row0 = 0, p.view.seq_bank * 4
 		}

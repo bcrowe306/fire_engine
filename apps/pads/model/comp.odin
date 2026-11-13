@@ -27,6 +27,7 @@ Comp_Job :: struct {
 	fpb:      f64, // frames per sequence beat, at `rate`
 	rate:     f64,
 	frames:   int, // the rendering's length (the sequence)
+	loop:     f64, // the part goes round in this many beats (its track's loop; the sequence's: none)
 	out_path: string, // (owned)
 	key:      int,    // slot * PADS + pad
 	done:     bool,   // atomic
@@ -46,7 +47,8 @@ comp_source :: proc(e: ^Engine, slot, pad: int) -> (src: ^stream.Source, bpm: f6
 	if x.count == 0 || x.take_count == 0 do return nil, bpm, true
 	s0 := app.store_get(&p.samples, x.takes[0])
 	if s0 == nil do return nil, bpm, true
-	if part_plain(x, s0.frames) && length_frames(p, slot, pad) == s0.frames do return source_of(e, x.takes[0]), bpm, true
+	looped := part_beats(p, slot, pad) < seq_beats(p, p.sequences[slot]) - 1e-9
+	if !looped && part_plain(x, s0.frames) && length_frames(p, slot, pad) == s0.frames do return source_of(e, x.takes[0]), bpm, true
 	path := comp_path(p, slot, pad, x)
 	key := slot * PADS + pad
 	if cs, ok := e.comp_sources[path]; ok {
@@ -94,7 +96,7 @@ length_frames :: proc(p: ^Project, slot, pad: int) -> i64 {
 @(private)
 comp_path :: proc(p: ^Project, slot, pad: int, x: Audio_Part) -> string {
 	x := x
-	h := hash.fnv64a(transmute([]u8)fmt.tprintf("%v|%v|%v", x.regions[:x.count], seq_beats(p, p.sequences[slot]), p.clips[slot][pad].bpm))
+	h := hash.fnv64a(transmute([]u8)fmt.tprintf("%v|%v|%v|%v", x.regions[:x.count], seq_beats(p, p.sequences[slot]), p.clips[slot][pad].bpm, part_beats(p, slot, pad)))
 	for t in x.takes[:x.take_count] {
 		if s := app.store_get(&p.samples, t); s != nil do h ~= hash.fnv64a(transmute([]u8)s.path) * 31
 	}
@@ -114,6 +116,7 @@ comp_start :: proc(e: ^Engine, slot, pad: int, x: Audio_Part, path: string) {
 	j.rate = s0.rate
 	j.fpb = frames_per_beat_of(p, slot, pad, x.takes[0])
 	j.frames = int(length_frames(p, slot, pad))
+	j.loop = part_beats(p, slot, pad)
 	j.out_path = strings.clone(path)
 	j.key = slot * PADS + pad
 	j.th = thread.create_and_start_with_poly_data(j, comp_render)
@@ -125,7 +128,7 @@ comp_start :: proc(e: ^Engine, slot, pad: int, x: Audio_Part, path: string) {
 comp_render :: proc(j: ^Comp_Job) {
 	defer intrinsics.atomic_store(&j.done, true)
 	defer free_all(context.temp_allocator)
-	out, ok := comp_mix(j.takes[:j.part.take_count], j.part, j.fpb, j.rate, j.frames, context.temp_allocator)
+	out, ok := comp_mix(j.takes[:j.part.take_count], j.part, j.fpb, j.rate, j.frames, context.temp_allocator, j.loop)
 	if !ok do return
 	os.make_directory_all(filepath.dir(j.out_path))
 	tmp := strings.concatenate({j.out_path, ".part"}, context.temp_allocator) // whole or not at all
@@ -140,9 +143,22 @@ comp_render :: proc(j: ^Comp_Job) {
 
 // Part `x` mixed: stereo, `frames` long at `rate` (`fpb` frames a beat),
 // its regions in order, each over what is under it. Takes at another rate
-// are read at this one (linear). Any thread.
-comp_mix :: proc(takes: []string, x: Audio_Part, fpb, rate: f64, frames: int, allocator := context.allocator) -> (out: [2][]f32, ok: bool) {
+// are read at this one (linear). With `loop` beats (a track's own loop,
+// shorter than the sequence): its first `loop` beats again each time
+// round, each pass starting on its exact frame (no drift). Any thread.
+comp_mix :: proc(takes: []string, x: Audio_Part, fpb, rate: f64, frames: int, allocator := context.allocator, loop := 0.0) -> (out: [2][]f32, ok: bool) {
 	if frames <= 0 do return
+	defer if ok && loop > 0 {
+		first := int(math.round(loop * fpb))
+		if first > 0 && first < frames {
+			for k := 1; ; k += 1 {
+				at := int(math.round(f64(k) * loop * fpb))
+				if at >= frames do break
+				n := min(first, frames - at)
+				for c in 0 ..< 2 do copy(out[c][at:][:n], out[c][:n])
+			}
+		}
+	}
 	for c in 0 ..< 2 do out[c] = make([]f32, frames, allocator)
 	audio := make([]Audio, len(takes), context.temp_allocator)
 	for path, k in takes {
@@ -234,7 +250,7 @@ part_audio :: proc(m: ^Model, slot, pad: int, allocator := context.temp_allocato
 	if s0 == nil do return
 	takes := make([]string, x.take_count, context.temp_allocator)
 	for t, k in x.takes[:x.take_count] do if s := app.store_get(&p.samples, t); s != nil do takes[k] = s.path
-	out := comp_mix(takes, x, frames_per_beat_of(p, slot, pad, x.takes[0]), s0.rate, int(length_frames(p, slot, pad)), allocator) or_return
+	out := comp_mix(takes, x, frames_per_beat_of(p, slot, pad, x.takes[0]), s0.rate, int(length_frames(p, slot, pad)), allocator, part_beats(p, slot, pad)) or_return
 	a.rate = s0.rate
 	a.channels = make([][]f32, 2, allocator)
 	a.channels[0], a.channels[1] = out[0], out[1]

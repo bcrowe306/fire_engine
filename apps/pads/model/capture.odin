@@ -1,5 +1,7 @@
 package pads_model
 
+import "core:math"
+
 import app "app:core"
 import "fire:clip"
 import tb "fire:timebase"
@@ -146,11 +148,18 @@ finish_hit :: proc(m: ^Model, c: ^Capture, i: int, beat: f64, k := 0) {
 	// A one-shot pad plays to its end however briefly it is hit: give the
 	// note a grid step, so it can be seen and edited.
 	if m.project.pads[i].mode == .One_Shot && !h.exact do d = max(d, grid_beats(m.project.transport.quantize.grid))
-	d = clamp(d, 1.0 / 64, length)
 	s := m.project.sequences[h.slot]
+	// A track with its own loop: into its loop, each pass over it.
+	t := track_beats(&m.project, s, i)
+	start := h.start
+	if t < length - 1e-9 {
+		start = math.mod(start, t)
+		if t - start < 1e-6 do start = 0
+	}
+	d = clamp(d, 1.0 / 64, t)
 	notes := make([dynamic]Seq_Note, 0, len(s.notes) + 1, context.temp_allocator)
 	append(&notes, ..s.notes)
-	append(&notes, Seq_Note{start = h.start, length = d, pad = u8(i), pitch = h.pitch, velocity = h.velocity, probability = 1})
+	append(&notes, Seq_Note{start = start, length = d, pad = u8(i), pitch = h.pitch, velocity = h.velocity, probability = 1})
 	s.notes = notes[:]
 	set_sequence(m, h.slot, .Record, "Record", s)
 }

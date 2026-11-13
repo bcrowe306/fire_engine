@@ -537,8 +537,9 @@ plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 		if sg.silent do continue // there, but not heard
 		if sg.step >= 0 do transpose = int(p.song.clips[sg.step].transpose)
 		lo, hi := sg.offset, min(sg.offset + sg.period, l) // its part of the sequence
+		notes := played_notes(p, s) // (looped tracks round their loops)
 		for off := 0.0; off < sg.span - 1e-9; off += sg.period {
-			for n in s.notes {
+			for n in notes {
 				if n.muted || n.start < lo - 1e-9 || n.start >= hi - 1e-9 || int(n.pad) >= PADS || off + n.start - lo >= sg.span - 1e-9 do continue
 				start := clip.swing(tb.Beats(n.start), g, f64(s.swing)) - tb.Beats(lo)
 				end := clip.swing(tb.Beats(min(n.start + n.length, hi)), g, f64(s.swing)) - tb.Beats(lo)

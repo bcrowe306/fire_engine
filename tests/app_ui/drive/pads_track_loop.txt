@@ -1,0 +1,18 @@
+# Per-track loops: the kick going round 3 beats in a 4/4 bar (its repeats
+# as ghosts, the rest dimmed), the hat as written; an audio track's loop
+# of 1.5 beats in the Audio tab.
+size 1440 900
+load 0 tests/app_ui/fixtures/kick.wav
+load 1 tests/app_ui/fixtures/hat.wav
+note 0 0 0.25 1
+note 0 1.5 0.25 1
+note 1 0 0.25 1
+note 1 2 0.25 1
+track_loop 0 3
+expect undo Track Loop
+take 2 tests/app_ui/fixtures/loop.wav
+track_loop 2 1.5
+screenshot track_loop_rows
+lane audio
+wait 3
+screenshot track_loop_audio

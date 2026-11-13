@@ -71,6 +71,7 @@ Sequence :: struct {
 	name:       [24]u8, // "" = "Sequence N"
 	bpm:        f64,    // its own tempo (it takes over when it plays); 0 = the project's
 	color:      u32,    // 0xRRGGBB; 0 = its slot's colour from SEQ_PALETTE
+	loops:      [PADS]f32, // each track's own loop, beats (0: none; see `track_beats`)
 }
 
 // One step of a pad's MIDI CC lane: controller `cc` goes to `value` at
@@ -390,6 +391,57 @@ Seq_Field :: enum {
 	Erase, // notes swept away in one drag
 	Color,
 	Mute,
+	Track_Loop,
+}
+
+// The beats pad `pad`'s part of sequence `s` goes round in: its own
+// loop (polymeter: 3 beats in a 4/4 bar drifts against it, starting again
+// at each of the sequence's passes), or the sequence.
+track_beats :: proc(p: ^Project, s: Sequence, pad: int) -> f64 {
+	l := seq_beats(p, s)
+	if pad < 0 || pad >= PADS do return l
+	if x := f64(s.loops[pad]); x > 0 && x < l - 1e-9 do return x
+	return l
+}
+
+// Sets pad `pad`'s loop in sequence `slot` to `beats` (0 or the sequence's
+// length or more: none), undoably.
+set_track_loop :: proc(m: ^Model, slot, pad: int, beats: f64) {
+	if slot < 0 || slot >= SLOTS || pad < 0 || pad >= PADS do return
+	s := m.project.sequences[slot]
+	l := seq_beats(&m.project, s)
+	b := f32(0) if beats <= 0 || beats >= l - 1e-9 else f32(max(beats, 1.0 / 16))
+	if s.loops[pad] == b do return
+	s.loops[pad] = b
+	set_sequence(m, slot, .Track_Loop, "Track Loop", s)
+	m.engine.audio_dirty = true // (an audio track's mix goes round in it)
+}
+
+// Sequence `s`'s notes as they play: a looped track's (those inside its
+// loop) again each time round it, to the sequence's end, each cut at its
+// loop's end; the others as they are. Temporary allocator; sorted as
+// `s.notes` is only when nothing loops.
+played_notes :: proc(p: ^Project, s: Sequence) -> []Seq_Note {
+	any := false
+	for x in s.loops do if x > 0 do any = true
+	if !any do return s.notes
+	l := seq_beats(p, s)
+	out := make([dynamic]Seq_Note, 0, len(s.notes) * 2, context.temp_allocator)
+	for n in s.notes {
+		t := track_beats(p, s, int(n.pad))
+		if t >= l - 1e-9 {
+			append(&out, n)
+			continue
+		}
+		if n.start >= t - 1e-9 do continue // (past its loop: not heard)
+		for off := 0.0; n.start + off < l - 1e-9; off += t {
+			x := n
+			x.start += off
+			x.length = min(n.length, t - n.start, l - x.start)
+			append(&out, x)
+		}
+	}
+	return out[:]
 }
 
 // Replaces slot `slot`'s sequence with `new` (copied), undoably, as an edit
@@ -463,7 +515,7 @@ put_sequence :: proc(m: ^Model, slot: int, s: Sequence) {
 
 @(private)
 sequences_equal :: proc(a, b: Sequence) -> bool {
-	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && a.color == b.color && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points) && slice.equal(a.ccs, b.ccs)
+	return a.bars == b.bars && a.swing == b.swing && a.swing_grid == b.swing_grid && a.name == b.name && a.bpm == b.bpm && a.color == b.color && a.loops == b.loops && slice.equal(a.notes, b.notes) && slice.equal(a.points, b.points) && slice.equal(a.ccs, b.ccs)
 }
 
 // Notes of one pad and pitch never overlap: taken in order (later ones are
