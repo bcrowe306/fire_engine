@@ -357,3 +357,104 @@ a_cc_lane_goes_out_as_midi_while_playing :: proc(t: ^testing.T) {
 	events, _ = pm.cc_points(pm.current_sequence(m), 0, 74)
 	testing.expect_value(t, len(events), 2)
 }
+
+@(test)
+note_repeat_records_every_repeat_on_the_sequences_grid :: proc(t: ^testing.T) {
+	// Pad 0 repeats at 1/8 (12000 frames at 120 BPM: its blip has gone
+	// quiet by the next). The transport's own grid runs ahead of the
+	// sequence (played 7777 frames after the start), yet the repeats fall on
+	// the sequence's 1/8s, and each is recorded where it played.
+	r := blips(t, "perf_repeat_rec")
+	defer rig_destroy(r)
+	m := &r.m
+	m.project.transport.quantize.on = false
+	fx := m.project.pads[0].midi_fx
+	fx.repeat_on, fx.repeat = true, {rate = .Eighth, gate = 0.5}
+	pm.set_midi_fx(m, 0, fx)
+	pm.sync(&m.engine)
+	render(r, 7777)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	STEP :: 12000
+	BEAT :: 24000.0
+	// Pressed 1000 frames after the fifth step (late: it plays at once, the
+	// next step a whole 11000 frames on, no stutter); let go 3 steps on.
+	now := 4 * STEP + 1000
+	render(r, now)
+	pm.hit(&m.engine, 0, true, 0.8)
+	held := render(r, 3 * STEP)
+	pm.hit(&m.engine, 0, false)
+	render(r, STEP)
+	now += 4 * STEP
+	got := onsets(held[0][:])
+	want := []int{0, 11000, 23000, 35000}
+	testing.expectf(t, len(got) == len(want), "a note at once, then each step (%v)", got)
+	for w, i in want do if i < len(got) do testing.expectf(t, abs((got[i] - got[0]) - w) <= 2, "note %d at %d (%v)", i, w, got)
+	// Pressed 1000 frames before a step (early: it is that step's note;
+	// the step doesn't play it again a moment later).
+	to := (now / STEP + 1) * STEP - 1000
+	render(r, to - now)
+	pm.hit(&m.engine, 0, true, 0.8)
+	early := render(r, 2 * STEP)
+	pm.hit(&m.engine, 0, false)
+	render(r, STEP)
+	got = onsets(early[0][:])
+	testing.expectf(t, len(got) == 2 && abs((got[1] - got[0]) - (1000 + STEP)) <= 2, "at once, then the step after (%v)", got)
+	pm.capture_poll(m, &c)
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+
+	// Recorded: every note the repeat played, where it played; each a gate
+	// long (a quarter of a beat; the last, until the key was let go). (The
+	// early press, on the next pass, falls before the first: overdubbed,
+	// a note over another of its pad would cut it.)
+	notes := m.project.sequences[0].notes
+	pass := 4 * BEAT // the sequence: a bar
+	at :: proc(frame: int, pass: f64) -> f64 { return math.mod(f64(frame), pass) / BEAT }
+	want_at := []f64{at(4 * STEP + 1000, pass), 2.5, 3, 3.5, at(to, pass), at(to + 1000 + STEP, pass)}
+	testing.expectf(t, len(notes) == len(want_at), "every repeat recorded (%v)", notes)
+	for w in want_at {
+		found := false
+		for n in notes do if n.pad == 0 && abs(n.start - w) < 1e-3 do found = true
+		testing.expectf(t, found, "a note at beat %v (%v)", w, notes)
+	}
+	for n in notes do if abs(n.start - 2.5) < 1e-3 do testing.expectf(t, abs(n.length - 0.25) < 1e-3, "a gate long (%v)", n.length)
+	for n in notes do if abs(n.start - 3.5) < 1e-3 do testing.expectf(t, abs(n.length - 1000 / BEAT) < 1e-3, "until let go (%v)", n.length)
+}
+
+@(test)
+the_arpeggiators_notes_are_recorded :: proc(t: ^testing.T) {
+	// A keyboard chord held on pad 0, arpeggiated up at 1/8 while recording:
+	// the sequence gets each note it played, its pitch, on the sequence's
+	// 1/8s (not the chord itself).
+	r := blips(t, "perf_arp_rec")
+	defer rig_destroy(r)
+	m := &r.m
+	m.project.transport.quantize.on = false
+	fx := m.project.pads[0].midi_fx
+	fx.arp_on, fx.arp = true, {mode = .Up, rate = .Eighth, gate = 0.5}
+	pm.set_midi_fx(m, 0, fx)
+	pm.sync(&m.engine)
+	render(r, 5555)
+	c: pm.Capture
+	defer pm.capture_destroy(&c)
+	pm.capture_arm(m, &c, true)
+	pm.play(&m.engine)
+	render(r, 12_000 + 3000) // just after the second 1/8
+	for pitch in ([]i8{0, 4, 7}) do pm.hit(&m.engine, 0, true, 0.9, pitch, keyboard = true)
+	render(r, 4 * 12_000)
+	for pitch in ([]i8{0, 4, 7}) do pm.hit(&m.engine, 0, false, 0, pitch, keyboard = true)
+	render(r, 12_000)
+	pm.capture_poll(m, &c)
+	pm.capture_arm(m, &c, false)
+	pm.stop(&m.engine)
+	notes := m.project.sequences[0].notes
+	testing.expectf(t, len(notes) == 4, "the four steps it played (%v)", notes)
+	pitches := []i8{0, 4, 7, 0}
+	for n, i in notes do if i < 4 {
+		testing.expectf(t, abs(n.start - (1 + 0.5 * f64(i))) < 1e-3, "note %d on the 1/8 (%v)", i, notes)
+		testing.expectf(t, n.pitch == pitches[i], "note %d up the chord (%v)", i, notes)
+	}
+}

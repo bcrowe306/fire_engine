@@ -31,10 +31,12 @@ Hit :: struct {
 // answers it).
 Taken :: struct {
 	using hit: Hit,
-	beat:     f64,  // the sequencer's position then
+	beat:     f64,  // the sequencer's position then (at its frame)
 	playing:  bool, // whether it was playing
 	midi_key: i16,  // the MIDI key, or -1 for a hit from the UI
 	no_pad:   bool, // a MIDI note no pad answers
+	effected: bool, // its pad's MIDI effect plays it: what the effect plays is recorded (`fx`), not this
+	fx:       bool, // a note the pad's MIDI effect played (note repeat's, the arpeggiator's)
 }
 
 // A pad's MIDI effects (note repeat or the arpeggiator, on its live
@@ -158,7 +160,15 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 	r := (^Router)(self)
 	out := ctx.events_out
 	if out == nil do return
-	for s in rt.spsc_pop(&r.settings) do router_set(r, s, out)
+	// The sequencer's timeline: where each note lands (recorded at its own
+	// frame), and the beats the MIDI effects step on while it plays.
+	tl := fc.transport_timeline(ctx.transport, r.timeline)
+	playing := tl != nil && tl.playing
+	beat_at :: proc "contextless" (t: ^fc.Transport, tl: ^fc.Timeline_State, offset: u32) -> f64 {
+		if tl == nil do return 0
+		return f64(fc.timeline_position_at(t, tl, int(offset)))
+	}
+	for s in rt.spsc_pop(&r.settings) do router_set(r, s, out, beat_at(ctx.transport, tl, 0), playing)
 	// Asked to silence everything: every voice of every pad, at once.
 	for &t in r.tracks do t.count = 0
 	if want := intrinsics.atomic_load(&r.silence); want != r.silenced {
@@ -166,9 +176,7 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 		for i in 0 ..< PADS do track_push(r, i, {0, fc.Note_Choke{id = fc.NOTE_ID_ANY, key = fc.NOTE_KEY_ALL}})
 		r.holding = {}
 	}
-	beat: f64
-	playing := false
-	if tl := fc.transport_timeline(ctx.transport, r.timeline); tl != nil do beat, playing = f64(tl.position), tl.playing
+	beat := beat_at(ctx.transport, tl, 0)
 
 	// Live notes: the UI's hits (at the start of the block), then MIDI.
 	live := fc.Event_Writer{buffer = r.live[:]}
@@ -181,7 +189,7 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 		} else {
 			fc.event_writer_push(&live, {0, note(h.on, 0, pad_key(int(h.pad)), h.velocity)})
 		}
-		if r.capture do rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = -1})
+		if r.capture do rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = -1, effected = pad_has_fx(r, int(h.pad))})
 	}
 	for e in ctx.events_in {
 		#partial switch v in e.payload {
@@ -223,14 +231,14 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 				h := Hit{pad = u8(t), on = on, velocity = vel, pitch = i8(int(key) - KEYS_CENTER), keyboard = true}
 				r.keys_pad[key] = h.pad
 				fc.event_writer_push(&live, {e.offset, note(on, KEYS_CHANNEL, key, vel)})
-				rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = i16(key)})
+				rt.spsc_push(&r.taken, Taken{hit = h, beat = beat_at(ctx.transport, tl, e.offset), playing = playing, midi_key = i16(key), effected = pad_has_fx(r, t)})
 				if on do intrinsics.atomic_add(&r.midi_in_hits[t], 1)
 				continue
 			}
 			// Else the drum map, for tracks that take any port's MIDI.
 			p := r.midi_map[key]
 			if p >= 0 && r.in_port[p] != IN_ALL do p = -1
-			rt.spsc_push(&r.taken, Taken{hit = {pad = u8(max(p, 0)), on = on, velocity = vel}, beat = beat, playing = playing, midi_key = i16(key), no_pad = p < 0})
+			rt.spsc_push(&r.taken, Taken{hit = {pad = u8(max(p, 0)), on = on, velocity = vel}, beat = beat_at(ctx.transport, tl, e.offset), playing = playing, midi_key = i16(key), no_pad = p < 0, effected = p >= 0 && pad_has_fx(r, int(p))})
 			if p >= 0 {
 				fc.event_writer_push(&live, {e.offset, note(on, 0, pad_key(int(p)), vel)})
 				if on do intrinsics.atomic_add(&r.midi_in_hits[p], 1)
@@ -254,11 +262,15 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			w := fc.Event_Writer{buffer = r.fx_in[:]}
 			for e in events do if live_pad(r, e) == pad do fc.event_writer_push(&w, e)
 			mine := fc.event_writer_events(&w)
+			from := fx.count
 			if r.effects[pad].arp_on {
-				pf.arp_process(&r.arp[pad], ctx.transport, ctx.frames, mine, &fx)
+				pf.arp_process(&r.arp[pad], ctx.transport, ctx.frames, mine, &fx, tl)
 			} else {
-				pf.repeat_process(&r.repeat[pad], ctx.transport, ctx.frames, mine, &fx)
+				pf.repeat_process(&r.repeat[pad], ctx.transport, ctx.frames, mine, &fx, tl)
 			}
+			// What the effect played is what is recorded (each note where it
+			// fell), not the key held.
+			if r.capture do for e in fx.buffer[from:fx.count] do fx_taken(r, e, beat_at(ctx.transport, tl, e.offset), playing)
 		}
 		events = fc.event_writer_events(&fx)
 		// In time order again (each pad's came apart).
@@ -353,9 +365,28 @@ note :: proc "contextless" (on: bool, channel, key: u8, velocity: f32) -> fc.Eve
 	return fc.Note_Off{id = fc.NOTE_ID_ANY, channel = channel, key = key}
 }
 
+// [rt] A note a MIDI effect played, to the UI (to record): its pad (as
+// `sound` plays it), and a keyboard note's pitch.
+@(private)
+fx_taken :: proc "contextless" (r: ^Router, e: fc.Event, beat: f64, playing: bool) {
+	on: bool
+	key, channel: u8
+	velocity: f32
+	#partial switch v in e.payload {
+	case fc.Note_On:  on, key, channel, velocity = true, v.key, v.channel, v.velocity
+	case fc.Note_Off: on, key, channel = false, v.key, v.channel
+	case: return
+	}
+	pad := live_pad(r, e)
+	if pad < 0 || pad >= PADS do return
+	h := Hit{pad = u8(pad), on = on, velocity = velocity}
+	if channel == KEYS_CHANNEL do h.pitch, h.keyboard = i8(int(key) - KEYS_CENTER), true
+	rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = -1, fx = true})
+}
+
 // [rt] A pad's new MIDI effect settings: what its old effect was playing ends.
 @(private)
-router_set :: proc "contextless" (r: ^Router, set: Pad_Fx_Set, out: ^fc.Event_Writer) {
+router_set :: proc "contextless" (r: ^Router, set: Pad_Fx_Set, out: ^fc.Event_Writer, beat: f64, playing: bool) {
 	i := set.pad
 	if i < 0 || i >= PADS do return
 	s := set.fx
@@ -372,7 +403,10 @@ router_set :: proc "contextless" (r: ^Router, set: Pad_Fx_Set, out: ^fc.Event_Wr
 		r.fx_pads[r.fx_count] = u8(k)
 		r.fx_count += 1
 	}
-	for e in fc.event_writer_events(&w) do sound(r, out, e)
+	for e in fc.event_writer_events(&w) {
+		sound(r, out, e)
+		if r.capture do fx_taken(r, e, beat, playing) // (a recorded note it was playing ends)
+	}
 }
 
 // [rt] Whether pad `i` has a MIDI effect on.

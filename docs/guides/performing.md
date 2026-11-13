@@ -28,6 +28,18 @@ perform.arp_init(&a, {mode = .Up_Down, rate = .Sixteenth})
 perform.arp_process(&a, ctx.transport, ctx.frames, ctx.events_in, ctx.events_out)
 ```
 
+**Whose grid.** Given a timeline (the last argument, `tl`), they step on
+its beats while it plays: a sequencer's 1/16s, so what they play lines up
+with its notes (and recorded, falls on its grid). Stopped, or without one,
+they step on the transport's free-running grid (shared with every other
+effect and with Link). A start, a stop or a locate ends what they are
+playing; the held keys carry on from the next step of the new beats.
+
+```odin
+tl := core.transport_timeline(ctx.transport, my_timeline)
+perform.repeat_process(&r, ctx.transport, ctx.frames, events, out, tl)
+```
+
 ## The arpeggiator
 
 - Held notes play one after another, a step apart; the first on the first
@@ -44,6 +56,11 @@ perform.arp_process(&a, ctx.transport, ctx.frames, ctx.events_in, ctx.events_out
 
 A held note plays at once, then again on every step while it is held
 (every held note, for chords). A key pressed exactly on a step plays once.
+A key pressed just before a step (within half a step, `REPEAT_EARLY`)
+plays at once *as that step's note*: the step passes it by, so there is
+no second note a moment after the first; pressed earlier, the step plays
+it again half a step or more later. The note at a press lasts a gate, at
+most to the next step it plays on.
 
 ## Guarantees
 

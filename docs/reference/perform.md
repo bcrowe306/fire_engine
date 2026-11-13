@@ -23,9 +23,12 @@ perform.arp_process(&a, ctx.transport, ctx.frames, ctx.events_in, ctx.events_out
 ```
 
 Notes they make land on the exact frame of their grid step at any block
-size. Without a transport (`ctx.transport` nil) they pass events through.
-Each note they play has its own `core.Note_Id`; every note they start,
-they end.
+size. Their grid is a timeline's when one is given and playing (the
+sequence's beats: the steps fall on its 1/16s, as recorded notes would), else
+the transport's free-running grid (shared with every other effect, and
+with Link). Without a transport
+(`ctx.transport` nil) they pass events through. Each note they play has its
+own `core.Note_Id`; every note they start, they end.
 
 ## Constants
 
@@ -36,6 +39,17 @@ MAX_HELD :: 32
 ```
 
 Notes held at once that the effects track; more are ignored.
+
+### REPEAT_EARLY
+
+```odin
+REPEAT_EARLY :: 0.5
+```
+
+How far before a step (of a step) a key counts as early for it: its note
+plays at once and stands for that step, which then doesn't play again
+(no second note a moment after the first). Pressed earlier than that,
+the note plays at once and the step plays too, a half step or more later.
 
 ## Types
 
@@ -149,6 +163,7 @@ Arp :: struct {
 	sounding: bool,
 	next_id: core.Note_Id,
 	rng: u64,
+	space: Space,
 }
 ```
 
@@ -169,6 +184,7 @@ The first note plays on the first step at or after the first key.
 | `sounding` |  |
 | `next_id` |  |
 | `rng` |  |
+| `space` | the beats `last` and the note-off are in |
 
 ### Repeat_Settings
 
@@ -196,8 +212,10 @@ Repeat :: struct {
 	order: u32,
 	playing: [32]Playing,
 	sounding: [32]bool,
+	skip: [32]timebase.Beats,
 	last: timebase.Beats,
 	next_id: core.Note_Id,
+	space: Space,
 }
 ```
 
@@ -213,8 +231,10 @@ through.
 | `order` |  |
 | `playing` |  |
 | `sounding` |  |
+| `skip` | a key pressed just before a step: that step (its note played already) |
 | `last` | the last grid step handled |
 | `next_id` |  |
+| `space` | the beats `last` and the note-offs are in |
 
 ## Procedures
 
@@ -279,10 +299,11 @@ Changes `a`'s settings (between blocks; the pattern carries on).
 ### arp_process
 
 ```odin
-arp_process :: proc "contextless"(a: ^Arp, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer)
+arp_process :: proc "contextless"(a: ^Arp, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer, tl: ^core.Timeline_State = nil)
 ```
 
-**Realtime-safe** (callable on the audio thread). Arpeggiates one block: `events_in` (sorted by offset) in, notes out.
+**Realtime-safe** (callable on the audio thread). Arpeggiates one block: `events_in` (sorted by offset) in, notes
+out; on timeline `tl`'s beats while it plays (nil: the free grid).
 
 ### arp_reset
 
@@ -312,10 +333,12 @@ Changes `r`'s settings (between blocks).
 ### repeat_process
 
 ```odin
-repeat_process :: proc "contextless"(r: ^Repeat, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer)
+repeat_process :: proc "contextless"(r: ^Repeat, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer, tl: ^core.Timeline_State = nil)
 ```
 
-**Realtime-safe** (callable on the audio thread). Repeats one block's held notes.
+**Realtime-safe** (callable on the audio thread). Repeats one block's held notes: each plays when its key is pressed,
+then on every step of the grid while it is held (timeline `tl`'s beats
+while it plays; nil, or stopped: the transport's grid).
 
 ### repeat_reset
 

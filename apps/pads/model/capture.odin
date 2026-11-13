@@ -25,6 +25,7 @@ Held_Hit :: struct {
 	velocity: f32,
 	pitch:    i8,
 	slot:     int, // the sequence it was played into
+	exact:    bool, // a MIDI effect's note: its length as played (no one-shot minimum)
 }
 
 // Arms (or disarms) recording. Disarming ends the take: its notes become one
@@ -64,7 +65,9 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 			c.midi_key = int(t.midi_key)
 			c.midi_count += 1
 		}
-		if t.no_pad || !c.armed || !t.playing do continue
+		// A key its pad's MIDI effect plays: the effect's notes are recorded
+		// instead (they come as `fx`).
+		if t.no_pad || t.effected || !c.armed || !t.playing do continue
 		i := int(t.pad)
 		t := t
 		if t.midi_key >= 0 && c.midi_offset != 0 do t.beat -= c.midi_offset * m.engine.bpm / 60 // (MIDI: the controller's delay)
@@ -72,8 +75,8 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 			// Just before a sequence's downbeat (its part's start, each pass;
 			// the top after a count-in): on the downbeat, so a hit a little
 			// early isn't lost at the end of the loop or before the top.
-			if slot, start, early := downbeat_ahead(m, c.preroll, t.beat); early {
-				append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot})
+			if slot, start, early := downbeat_ahead(m, c.preroll, t.beat); early && !t.fx {
+				append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot, false})
 				continue
 			}
 			_, slot, rel, ok := plan_locate(m.engine.plan, t.beat, editing_slot(m))
@@ -81,7 +84,7 @@ capture_poll :: proc(m: ^Model, c: ^Capture) -> (added: bool) {
 			start := input_quantize(m.project.transport.quantize, rel)
 			length := seq_beats(&m.project, m.project.sequences[slot])
 			if start >= length do start -= length
-			append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot})
+			append(&c.held[i], Held_Hit{start, t.beat, t.velocity, t.pitch, slot, t.fx})
 		} else if len(c.held[i]) > 0 {
 			k := 0 // the held hit of the same pitch (a chord's notes end one by one)
 			for h, j in c.held[i] do if h.pitch == t.pitch {
@@ -120,7 +123,7 @@ finish_hit :: proc(m: ^Model, c: ^Capture, i: int, beat: f64, k := 0) {
 	d := beat - h.played
 	// A one-shot pad plays to its end however briefly it is hit: give the
 	// note a grid step, so it can be seen and edited.
-	if m.project.pads[i].mode == .One_Shot do d = max(d, grid_beats(m.project.transport.quantize.grid))
+	if m.project.pads[i].mode == .One_Shot && !h.exact do d = max(d, grid_beats(m.project.transport.quantize.grid))
 	d = clamp(d, 1.0 / 64, length)
 	s := m.project.sequences[h.slot]
 	notes := make([dynamic]Seq_Note, 0, len(s.notes) + 1, context.temp_allocator)

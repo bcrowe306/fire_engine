@@ -389,12 +389,16 @@ records.
   on the bank holding the pad's own note (C3), and back in Pads mode the
   pads' own bank returns; the computer keyboard's pad keys follow);
   **Velocity**, the selected pad at 16 velocities. Then the pad's own
-  **note repeat** (held, it plays again on every step: its step and gate)
+  **note repeat** (held, it plays at once and again on every step of the
+  sequence's grid while playing, else the clock's: its step and gate; a
+  press just before a step is that step's note, never a double hit)
   and **arpeggiator** (the notes held on it — a chord in Keyboard mode —
   one after another: up, down, up-down, random, as played; 1–4 octaves;
   gate; latch), each with a bar of its steps lighting the one playing
   (bright while it is on); one or the other, saved with the pad, acting
-  on its live notes (not the sequencer's). And its **MIDI**: activity
+  on its live notes (not the sequencer's). Recording, what they play is
+  what goes into the sequence: each repeat, each arpeggiated note, where
+  it fell and as long as it sounded (not the key you held). And its **MIDI**: activity
   lights, the key that plays it and **Learn** (the next note you play
   plays it), and **MIDI out** (its hits also go out as a note on a
   channel, from its own output port). Projects from before each pad had

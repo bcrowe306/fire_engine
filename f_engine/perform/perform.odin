@@ -11,9 +11,12 @@ wrap them as graph nodes (events in, events out, no audio).
 	perform.arp_process(&a, ctx.transport, ctx.frames, ctx.events_in, ctx.events_out)
 
 Notes they make land on the exact frame of their grid step at any block
-size. Without a transport (`ctx.transport` nil) they pass events through.
-Each note they play has its own `core.Note_Id`; every note they start,
-they end.
+size. Their grid is a timeline's when one is given and playing (the
+sequence's beats: the steps fall on its 1/16s, as recorded notes would), else
+the transport's free-running grid (shared with every other effect, and
+with Link). Without a transport
+(`ctx.transport` nil) they pass events through. Each note they play has its
+own `core.Note_Id`; every note they start, they end.
 */
 package perform
 
@@ -74,20 +77,57 @@ Playing :: struct {
 @(private)
 Next :: enum u8 {Off, Event, Step, None}
 
-// [rt] The first grid step due in this call that was not handled before.
+// The beats an effect steps on in one call: a playing timeline's local
+// beats, or the transport's grid.
 @(private)
-first_step :: proc "contextless" (t: ^core.Transport, step, last: tb.Beats) -> tb.Beats {
-	b := core.transport_next_multiple(t, step)
+Clock :: struct {
+	t:  ^core.Transport,
+	tl: ^core.Timeline_State, // nil: the free grid
+}
+
+// Which beats an effect counted in last (when it changes, the beats before
+// mean nothing: a start, a stop, a locate).
+@(private)
+Space :: enum u8 {None, Free, Timeline}
+
+// [rt] The clock for this call, and whether its beats carry on from the
+// last call's (`space` updated).
+@(private)
+clock_for :: proc "contextless" (t: ^core.Transport, tl: ^core.Timeline_State, space: ^Space) -> (c: Clock, same: bool) {
+	want := Space.Timeline if tl != nil && tl.playing else Space.Free
+	same = want == space^ || space^ == .None
+	if want == .Timeline && .Jumped in tl.flags do same = false
+	space^ = want
+	return {t = t, tl = tl if want == .Timeline else nil}, same
+}
+
+// [rt] The clock's beat `offset` frames into the call.
+@(private)
+beat_at :: proc "contextless" (c: Clock, offset: int) -> tb.Beats {
+	if c.tl != nil do return core.timeline_position_at(c.t, c.tl, offset)
+	return core.transport_grid_at(c.t, offset)
+}
+
+// [rt] The frame offset of the clock's beat `b` in this call (`frames` or
+// more: not in it; 0: already passed).
+@(private)
+offset_at :: proc "contextless" (c: Clock, b: tb.Beats) -> int {
+	if c.tl != nil do return core.timeline_offset_of(c.t, c.tl, b)
+	return core.transport_offset_of(c.t, b)
+}
+
+// [rt] The first multiple of `step` due in this call that was not handled
+// before (`last`).
+@(private)
+first_step :: proc "contextless" (c: Clock, step, last: tb.Beats) -> tb.Beats {
+	b := core.timeline_next_multiple(c.t, c.tl, step) if c.tl != nil else core.transport_next_multiple(c.t, step)
 	for b <= last + step * 0.5 do b += step
 	return b
 }
 
-// [rt] The frame offset of grid beat `b` in this call (`frames` or more:
-// not in it).
+// A beat no step comes before (nothing handled yet).
 @(private)
-offset_at :: proc "contextless" (t: ^core.Transport, b: tb.Beats) -> int {
-	return core.transport_offset_of(t, b)
-}
+NEVER :: tb.Beats(-1e18)
 
 @(private)
 held_add :: proc "contextless" (held: ^[MAX_HELD]Held, count: ^int, order: ^u32, on: core.Note_On) {
@@ -154,11 +194,12 @@ Arp :: struct {
 	sounding: bool,
 	next_id:  core.Note_Id,
 	rng:      u64,
+	space:    Space,    // the beats `last` and the note-off are in
 }
 
 // Prepares `a` with `settings`.
 arp_init :: proc(a: ^Arp, settings: Arp_Settings) {
-	a^ = {next_id = 1, last = -1}
+	a^ = {next_id = 1, last = NEVER}
 	arp_set(a, settings)
 	a.rng = a.settings.seed
 }
@@ -175,20 +216,28 @@ arp_set :: proc "contextless" (a: ^Arp, settings: Arp_Settings) {
 	a.settings = s
 }
 
-// [rt] Arpeggiates one block: `events_in` (sorted by offset) in, notes out.
-arp_process :: proc "contextless" (a: ^Arp, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer) {
+// [rt] Arpeggiates one block: `events_in` (sorted by offset) in, notes
+// out; on timeline `tl`'s beats while it plays (nil: the free grid).
+arp_process :: proc "contextless" (a: ^Arp, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer, tl: ^core.Timeline_State = nil) {
 	if out == nil do return
 	if t == nil {
 		for e in events_in do core.event_writer_push(out, e)
 		return
 	}
+	c, same := clock_for(t, tl, &a.space)
+	if !same {
+		// A start, stop or locate: what sounds ends, the steps start again
+		// on these beats.
+		if a.sounding do arp_note_off(a, out, 0)
+		a.last = NEVER
+	}
 	step := rate_beats(a.settings.rate)
-	next_step := first_step(t, step, a.last)
+	next_step := first_step(c, step, a.last)
 	ei := 0
 	for {
-		off_o := offset_at(t, a.playing.off_at) if a.sounding else max(int)
+		off_o := offset_at(c, a.playing.off_at) if a.sounding else max(int)
 		ev_o := int(events_in[ei].offset) if ei < len(events_in) else max(int)
-		st_o := offset_at(t, next_step)
+		st_o := offset_at(c, next_step)
 		which := Next.None
 		at := frames
 		if off_o < at do which, at = .Off, off_o
@@ -299,13 +348,16 @@ Repeat :: struct {
 	order:    u32,
 	playing:  [MAX_HELD]Playing,
 	sounding: [MAX_HELD]bool,
+	skip:     [MAX_HELD]tb.Beats, // a key pressed just before a step: that step (its note played already)
 	last:     tb.Beats, // the last grid step handled
 	next_id:  core.Note_Id,
+	space:    Space,    // the beats `last` and the note-offs are in
 }
 
 // Prepares `r` with `settings`.
 repeat_init :: proc(r: ^Repeat, settings: Repeat_Settings) {
-	r^ = {next_id = 1, last = -1}
+	r^ = {next_id = 1, last = NEVER}
+	for &k in r.skip do k = NEVER
 	repeat_set(r, settings)
 }
 
@@ -317,24 +369,40 @@ repeat_set :: proc "contextless" (r: ^Repeat, settings: Repeat_Settings) {
 	r.settings = s
 }
 
-// [rt] Repeats one block's held notes.
-repeat_process :: proc "contextless" (r: ^Repeat, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer) {
+// How far before a step (of a step) a key counts as early for it: its note
+// plays at once and stands for that step, which then doesn't play again
+// (no second note a moment after the first). Pressed earlier than that,
+// the note plays at once and the step plays too, a half step or more later.
+REPEAT_EARLY :: 0.5
+
+// [rt] Repeats one block's held notes: each plays when its key is pressed,
+// then on every step of the grid while it is held (timeline `tl`'s beats
+// while it plays; nil, or stopped: the transport's grid).
+repeat_process :: proc "contextless" (r: ^Repeat, t: ^core.Transport, frames: int, events_in: []core.Event, out: ^core.Event_Writer, tl: ^core.Timeline_State = nil) {
 	if out == nil do return
 	if t == nil {
 		for e in events_in do core.event_writer_push(out, e)
 		return
 	}
+	c, same := clock_for(t, tl, &r.space)
+	if !same {
+		// A start, stop or locate: what sounds ends (its note-off was in the
+		// old beats), the held keys play again on the new beats' steps.
+		for i in 0 ..< MAX_HELD do if r.sounding[i] do repeat_off(r, out, 0, i)
+		r.last = NEVER
+		for &k in r.skip do k = NEVER
+	}
 	step := rate_beats(r.settings.rate)
-	next_step := first_step(t, step, r.last)
+	next_step := first_step(c, step, r.last)
 	ei := 0
 	for {
 		// The earliest note-off due.
 		off_o, off_i := max(int), -1
 		for i in 0 ..< MAX_HELD do if r.sounding[i] {
-			if o := offset_at(t, r.playing[i].off_at); o < off_o do off_o, off_i = o, i
+			if o := offset_at(c, r.playing[i].off_at); o < off_o do off_o, off_i = o, i
 		}
 		ev_o := int(events_in[ei].offset) if ei < len(events_in) else max(int)
-		st_o := offset_at(t, next_step)
+		st_o := offset_at(c, next_step)
 		// At one frame: note-offs, then the step, then new keys (a key
 		// pressed on a step plays once, not twice).
 		which := Next.None
@@ -355,10 +423,23 @@ repeat_process :: proc "contextless" (r: ^Repeat, t: ^core.Transport, frames: in
 				before := r.count
 				held_add(&r.held, &r.count, &r.order, v)
 				if r.count > before {
-					// Plays at once, until the next step.
-					beat := core.transport_grid_at(t, at)
+					// Plays at once. Just before a step (REPEAT_EARLY), it is
+					// that step's note: the step passes it by, and it lasts a
+					// gate from it. Otherwise it lasts a gate, at most to the
+					// next step.
+					i := r.count - 1
+					beat := beat_at(c, at)
+					gate := step * tb.Beats(r.settings.gate)
 					next := tb.Beats(math.floor(f64(beat / step) + 1e-9) + 1) * step
-					repeat_on(r, out, at, r.count - 1, beat + min(step * tb.Beats(r.settings.gate), next - beat))
+					on_step := beat - (next - step) < step * 1e-6 // (on a step: that step's note, the step not played again)
+					r.skip[i] = NEVER
+					if next - beat <= step * REPEAT_EARLY && !on_step && next > r.last {
+						r.skip[i] = next
+						repeat_on(r, out, at, i, next + gate)
+					} else {
+						if on_step do r.skip[i] = next - step
+						repeat_on(r, out, at, i, beat + min(gate, next - beat))
+					}
 				}
 			case core.Note_Off:
 				for i in 0 ..< r.count do if r.held[i].key == v.key && r.held[i].channel == v.channel {
@@ -366,7 +447,9 @@ repeat_process :: proc "contextless" (r: ^Repeat, t: ^core.Transport, frames: in
 					// Keep the playing slots in step with the held list.
 					copy(r.playing[i:r.count - 1], r.playing[i + 1:r.count])
 					copy(r.sounding[i:r.count - 1], r.sounding[i + 1:r.count])
+					copy(r.skip[i:r.count - 1], r.skip[i + 1:r.count])
 					r.sounding[r.count - 1] = false
+					r.skip[r.count - 1] = NEVER
 					break
 				}
 				held_remove(&r.held, &r.count, v.key, v.channel)
@@ -375,6 +458,7 @@ repeat_process :: proc "contextless" (r: ^Repeat, t: ^core.Transport, frames: in
 			}
 		case .Step:
 			for i in 0 ..< r.count {
+				if abs(r.skip[i] - next_step) < step * 0.25 do continue // its key's note is this step's
 				if r.sounding[i] do repeat_off(r, out, at, i)
 				repeat_on(r, out, at, i, next_step + step * tb.Beats(r.settings.gate))
 			}
@@ -404,4 +488,5 @@ repeat_off :: proc "contextless" (r: ^Repeat, out: ^core.Event_Writer, at: int, 
 repeat_reset :: proc "contextless" (r: ^Repeat, out: ^core.Event_Writer, at: int = 0) {
 	for i in 0 ..< MAX_HELD do if r.sounding[i] && out != nil do repeat_off(r, out, at, i)
 	r.count = 0
+	for &k in r.skip do k = NEVER
 }

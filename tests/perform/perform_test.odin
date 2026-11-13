@@ -186,3 +186,38 @@ without_a_transport_events_pass_through :: proc(t: ^testing.T) {
 	_, r := kit.render(&node, kit.buffer_make(0, 0, 48_000, context.temp_allocator), cfg, context.temp_allocator)
 	testing.expect_value(t, len(r.events_out), 1)
 }
+
+@(test)
+repeat_a_key_just_before_a_step_is_that_steps_note :: proc(t: ^testing.T) {
+	rep :: proc(t: ^testing.T, ev: []kit.Timed_Event, b: kit.Block_Pattern = nil) -> [dynamic]Made {
+		node, _ := perform.repeat_node_create({rate = .Sixteenth})
+		defer core.node_destroy(&node)
+		return run(t, &node, ev, 5 * STEP, b)
+	}
+	// Half a step or less before a step: it plays at once, and the step
+	// passes it by (no second note a moment later); the next step plays.
+	made := rep(t, {on(STEP - 500, 36), off(3 * STEP + 100, 36)})
+	frames, _ := ons(made[:])
+	want := []i64{STEP - 500, 2 * STEP, 3 * STEP}
+	testing.expectf(t, fmt.tprint(frames) == fmt.tprint(want), "early: %v (want %v)", frames, want)
+	balanced(t, made[:])
+	// Just over half a step before: at once, then the step too.
+	made = rep(t, {on(STEP / 2 - 100, 36), off(2 * STEP + 100, 36)})
+	frames, _ = ons(made[:])
+	want = []i64{STEP / 2 - 100, STEP, 2 * STEP}
+	testing.expectf(t, fmt.tprint(frames) == fmt.tprint(want), "earlier: %v (want %v)", frames, want)
+	balanced(t, made[:])
+	// On a step: once, not twice.
+	made = rep(t, {on(2 * STEP, 36), off(3 * STEP + 100, 36)})
+	frames, _ = ons(made[:])
+	want = []i64{2 * STEP, 3 * STEP}
+	testing.expectf(t, fmt.tprint(frames) == fmt.tprint(want), "on a step: %v (want %v)", frames, want)
+	balanced(t, made[:])
+	// Whatever the blocks.
+	ev := []kit.Timed_Event{on(STEP - 500, 36), on(STEP + 2000, 38), off(3 * STEP + 100, 36), off(4 * STEP - 10, 38)}
+	ref := rep(t, ev)
+	for b in ([]kit.Block_Pattern{kit.Fixed_Blocks{1}, kit.Fixed_Blocks{37}, kit.Random_Blocks{seed = 3, min = 0, max = 400}}) {
+		got := rep(t, ev, b)
+		testing.expectf(t, fmt.tprint(got) == fmt.tprint(ref), "blocks %v", b)
+	}
+}
