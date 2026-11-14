@@ -454,6 +454,7 @@ Node_VTable :: struct {
 	type_id: string,
 	state_version: u32,
 	save: proc(self: rawptr, w: ^State_Writer, ctx: ^Save_Context) -> Error,
+	name: string,
 }
 ```
 
@@ -472,6 +473,7 @@ from the device SDK look the same to the graph.
 | `type_id` | The ID this node type is registered under for loading saved state (see `Node_Registry`), such as "fire.gain". "" = cannot be saved. |
 | `state_version` | Version of what `save` writes; the loader receives it. |
 | `save` | Control thread. Writes what the type's `Node_Loader` needs to make the node again: construction settings and any state its parameters do not hold (the graph saves parameter values itself). May be nil: nothing. |
+| `name` | What profiles and logs call the type when it has no `type_id` (a node that is never saved). May be "". |
 
 ### Node_State
 
@@ -842,6 +844,15 @@ event_writer_clear :: proc "contextless"(w: ^Event_Writer)
 ```
 
 **Realtime-safe** (callable on the audio thread). Empties the writer and zeroes its dropped counter. Does not free the buffer.
+
+### node_type_name
+
+```odin
+node_type_name :: proc "contextless"(n: ^Node) -> string
+```
+
+**Realtime-safe** (callable on the audio thread). What profiles call node `n`'s type: its `type_id`, else its
+vtable's `name`, else "node".
 
 ### node_make
 

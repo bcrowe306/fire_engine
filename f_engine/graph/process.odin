@@ -4,6 +4,7 @@ import "base:intrinsics"
 
 import "fire:core"
 import "fire:rt"
+import "fire:prof"
 
 // [rt] Processes one block: `ctx.inputs` feed INPUT, OUTPUT's inputs are
 // written to `ctx.outputs`, `ctx.events_in` feed INPUT's events and OUTPUT's
@@ -17,6 +18,7 @@ import "fire:rt"
 //		graph.process((^graph.Graph)(user), &ctx)
 //	}
 process :: proc(g: ^Graph, ctx: ^core.Process_Context) {
+	prof.zone("graph")
 	adopt(g)
 	p := g.current
 	frames := min(ctx.frames, g.settings.max_block)
@@ -180,7 +182,9 @@ run_node :: proc(g: ^Graph, p: ^Plan, i: i32, frames: int, t0: i64, transport: ^
 			events_out = &s.events_out,
 			transport  = transport,
 		}
+		prof.begin(core.node_type_name(&s.node))
 		core.node_process(&s.node, &ctx)
+		prof.end()
 		dropped += s.events_out.dropped
 	}
 	if dropped > 0 do intrinsics.atomic_add_explicit(&g.events_dropped, u64(dropped), .Relaxed)

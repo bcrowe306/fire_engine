@@ -119,6 +119,7 @@ Router :: struct {
 
 @(private)
 router_vtable := fc.Node_VTable {
+	name = "pads.router",
 	prepare = proc(self: rawptr, cfg: fc.Prepare_Config, a: mem.Allocator) -> fc.Error { return .None },
 	process = router_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) {

@@ -22,6 +22,7 @@ Pan :: struct {
 
 @(private)
 pan_vtable := core.Node_VTable {
+	name = "fire.pan",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		p := (^Pan)(self)
 		v := p.pos.target

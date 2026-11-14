@@ -8,6 +8,7 @@ import "fire:core"
 import "fire:fx"
 import "fire:dsp"
 import "fire:rt"
+import "fire:prof"
 
 // The synth node: notes in, stereo out. Every parameter is a node
 // parameter (`osc_param`, `filter_param` ...); the rest of a patch comes
@@ -123,6 +124,7 @@ SCOPE_FRAMES :: 2048
 
 @(private)
 synth_vtable := core.Node_VTable {
+	name = "fire.synth",
 	prepare = synth_prepare,
 	process = synth_process,
 	reset   = proc(self: rawptr) {
@@ -574,7 +576,9 @@ render :: proc "contextless" (s: ^Synth, ctx: ^core.Process_Context, from, to: i
 					v.on = false
 					break
 				}
+				prof.begin("synth voice")
 				voice_render(s, &v, sr)
+				prof.end()
 				v.avail, v.read = CONTROL_FRAMES, 0
 			}
 			k := min(v.avail, vn - at)
@@ -603,7 +607,9 @@ render :: proc "contextless" (s: ^Synth, ctx: ^core.Process_Context, from, to: i
 	}
 	fx_modulate(s)
 	cp := chain_params(s)
+	prof.begin("synth effects")
 	fx.chain_render(&s.chain, &cp, base[0], base[1], s.sample_rate)
+	prof.end()
 	vol := math.pow(10, value(s, global_param(.Volume)) / 20)
 	outs := len(ctx.outputs)
 	peak := s.live.peak
@@ -715,7 +721,9 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 			mod = &srcbuf
 		}
 		raw := [2][]f32{v.raw[k][0][:n], v.raw[k][1][:n]}
+		prof.begin("synth osc")
 		osc_render(&s.shared, &v.oscs[k], &p, inc_buf, mod, tmp[0], tmp[1], &raw, sr)
+		prof.end()
 		route_source(s, Destination(int(value(s, osc_param(o, .Destination)))), tmp, f1, f2, dry, direct, n)
 	}
 	if value(s, sample_param(.On)) > 0 {
@@ -737,7 +745,9 @@ voice_render :: proc "contextless" (s: ^Synth, v: ^Voice, sr: f64) #no_bounds_ch
 			if !v.started do v.last_cut[k] = c
 			for i in 0 ..< n do cut[i] = v.last_cut[k] + (c - v.last_cut[k]) * f32(i + 1) / f32(n)
 			v.last_cut[k] = c
+			prof.begin("synth filter")
 			fx.filter_render(&v.filters[k], &p, cut, &buf, &buf, sr)
+			prof.end()
 		}
 		if k == 0 && serial {
 			for ch in 0 ..< 2 do for i in 0 ..< n do f2[ch][i] += buf[ch][i]

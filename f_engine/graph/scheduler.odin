@@ -9,6 +9,7 @@ import "core:thread"
 import "core:time"
 
 import "fire:core"
+import "fire:prof"
 import "fire:rt"
 
 // Multithreaded scheduling (see /design/graph/#scheduling-multithreaded).
@@ -215,6 +216,7 @@ worker_main :: proc(data: rawptr) {
 	w := (^Worker)(data)
 	g := w.g
 	pool := &g.pool
+	prof.thread_name("graph worker")
 	// Nodes must not allocate on any processing thread: give them the
 	// configured allocator (nil by default, so a mistake fails loudly).
 	context.allocator = g.settings.worker_allocator if g.settings.worker_allocator.procedure != nil else runtime.nil_allocator()

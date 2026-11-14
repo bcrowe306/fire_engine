@@ -8,6 +8,8 @@ import "core:unicode"
 
 import im "deps:imgui"
 
+import "fire:prof"
+
 // --- actions -------------------------------------------------------------------------------
 
 // The command key: Cmd on macOS, Ctrl elsewhere (ImGui swaps them on macOS).
@@ -471,12 +473,16 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 	}
 	if w.toolbar != nil {
 		flags := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking}
+		prof.begin("toolbar")
 		if im.BeginViewportSideBar("##toolbar", im.GetMainViewport(), .Up, w.toolbar_h, flags) do w.toolbar(w.toolbar_user)
+		prof.end()
 		im.End()
 	}
 	if w.statusbar != nil {
 		flags := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking}
+		prof.begin("statusbar")
 		if im.BeginViewportSideBar("##statusbar", im.GetMainViewport(), .Down, w.statusbar_h, flags) do w.statusbar(w.toolbar_user)
+		prof.end()
 		im.End()
 	}
 	// The Library-like area on the left and the bottom area are windows of
@@ -572,7 +578,9 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 				at, size := im.GetWindowPos(), im.GetWindowSize()
 				im.DrawList_AddRectFilled(im.GetWindowDrawList(), at, {at.x + size.x, at.y + size.y}, col(current.inset))
 			}
+			prof.begin(p.title)
 			p.draw(p.user)
+			prof.end()
 		}
 		im.End()
 	}

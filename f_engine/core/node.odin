@@ -30,6 +30,18 @@ Node_VTable :: struct {
 	// node again: construction settings and any state its parameters do not
 	// hold (the graph saves parameter values itself). May be nil: nothing.
 	save: proc(self: rawptr, w: ^State_Writer, ctx: ^Save_Context) -> Error,
+	// What profiles and logs call the type when it has no `type_id` (a node
+	// that is never saved). May be "".
+	name: string,
+}
+
+// [rt] What profiles call node `n`'s type: its `type_id`, else its
+// vtable's `name`, else "node".
+node_type_name :: proc "contextless" (n: ^Node) -> string {
+	if n.vtable == nil do return "node"
+	if n.vtable.type_id != "" do return n.vtable.type_id
+	if n.vtable.name != "" do return n.vtable.name
+	return "node"
 }
 
 // Lifecycle state of a `Node`, tracked by `node_prepare` and `node_release`.

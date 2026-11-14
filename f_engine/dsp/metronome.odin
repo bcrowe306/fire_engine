@@ -69,6 +69,7 @@ Metronome :: struct {
 
 @(private)
 metronome_vtable := core.Node_VTable {
+	name = "fire.metronome",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		m := (^Metronome)(self)
 		m.rate = cfg.sample_rate

@@ -41,6 +41,7 @@ Preview_Node :: struct {
 
 @(private)
 preview_vtable := fc.Node_VTable {
+	name = "pads.preview",
 	prepare = proc(self: rawptr, cfg: fc.Prepare_Config, a: mem.Allocator) -> fc.Error {
 		(^Preview_Node)(self).rate = cfg.sample_rate
 		return .None

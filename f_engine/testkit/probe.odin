@@ -42,6 +42,7 @@ Probe :: struct {
 
 @(private)
 probe_vtable := core.Node_VTable {
+	name = "fire.probe",
 	prepare = probe_prepare,
 	process = probe_process,
 	reset   = proc(self: rawptr) {},

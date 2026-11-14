@@ -31,6 +31,8 @@ import imsdl "deps:imgui/backends/sdl3"
 import imgpu "deps:imgui/backends/sdlgpu3"
 import sdl "deps:sdl3"
 
+import "fire:prof"
+
 // How to open the platform. Zero values are sensible defaults.
 Platform_Settings :: struct {
 	title:    string, // window title
@@ -186,6 +188,8 @@ frame_begin :: proc(p: ^Platform) -> bool {
 		p.driver.zoom = z
 		driver_step(p.driver, p)
 	}
+	prof.begin("events")
+	defer prof.end()
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
 		// Zoomed: the window's positions are ImGui's times the zoom.
@@ -244,7 +248,10 @@ frame_begin :: proc(p: ^Platform) -> bool {
 // the window. Takes the driver's screenshot, if it asked for one. Headless,
 // only a frame a screenshot takes is drawn (unless `draw_unseen`).
 frame_end :: proc(p: ^Platform) {
+	prof.zone("frame_end")
+	prof.begin("im.Render")
 	im.Render()
+	prof.end()
 	shot := p.driver != nil && p.driver.shot_path != ""
 	if p.settings.headless && !p.settings.draw_unseen && !shot {
 		// Textures ImGui wants made or updated (the font atlas) wait in its
@@ -267,6 +274,8 @@ frame_end :: proc(p: ^Platform) {
 	sdl.GetWindowSizeInPixels(p.window, &w, &h)
 	ensure_target(p, u32(max(w, 1)), u32(max(h, 1)))
 
+	prof.begin("gpu draw")
+	defer prof.end()
 	imgpu.PrepareDrawData(draw_data, cmd)
 	color := sdl.GPUColorTargetInfo {
 		texture     = p.target,

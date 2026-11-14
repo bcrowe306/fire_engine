@@ -30,6 +30,7 @@ Wet :: struct {
 
 @(private)
 wet_vtable := core.Node_VTable {
+	name = "fire.wet",
 	prepare = wet_prepare,
 	release = proc(self: rawptr, a: mem.Allocator) {
 		w := (^Wet)(self)

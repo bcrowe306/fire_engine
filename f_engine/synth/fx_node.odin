@@ -30,6 +30,7 @@ effect_node_infos: [fx.Effect][dynamic]core.Param_Info
 
 @(private)
 effect_node_vtable := core.Node_VTable {
+	name = "fire.effect",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, allocator: mem.Allocator) -> core.Error {
 		n := (^Effect_Node)(self)
 		n.sample_rate = cfg.sample_rate

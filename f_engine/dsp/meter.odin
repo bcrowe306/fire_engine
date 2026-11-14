@@ -19,6 +19,7 @@ Meter :: struct {
 
 @(private)
 meter_vtable := core.Node_VTable {
+	name = "fire.meter",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error { return .None },
 	process = meter_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) { free((^Meter)(self), a) },

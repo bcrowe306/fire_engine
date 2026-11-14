@@ -18,6 +18,7 @@ Track_In :: struct {
 
 @(private)
 track_in_vtable := fc.Node_VTable {
+	name = "pads.track_in",
 	prepare = proc(self: rawptr, cfg: fc.Prepare_Config, a: mem.Allocator) -> fc.Error { return .None },
 	process = track_in_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) { free((^Track_In)(self), a) },

@@ -67,6 +67,7 @@ Loudness_Meter :: struct {
 
 @(private)
 loudness_vtable := core.Node_VTable {
+	name = "fire.loudness",
 	prepare = loudness_prepare,
 	process = loudness_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) { free((^Loudness_Meter)(self), a) },
@@ -277,6 +278,7 @@ Stereo_Analyser :: struct {
 
 @(private)
 stereo_vtable := core.Node_VTable {
+	name = "fire.stereo",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		s := (^Stereo_Analyser)(self)
 		fs := cfg.sample_rate if cfg.sample_rate > 0 else 48_000

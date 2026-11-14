@@ -15,6 +15,7 @@ import "fire:session"
 import "fire:stream"
 import "fire:stretch"
 import "fire:transport"
+import "fire:prof"
 
 // What the host opens. Zero values are the system's defaults.
 Host_Settings :: struct {
@@ -500,6 +501,8 @@ open_device :: proc(h: ^Host) -> fc.Error {
 	cb := backend.Device_Callback {
 		process = proc(user: rawptr, block: ^backend.Io_Block) {
 			h := (^Host)(user)
+			prof.thread_name("audio")
+			prof.zone("audio callback")
 			t0 := time.tick_now()
 			run_block(h, block.inputs, block.outputs, block.frames, block.output_ns)
 			// The load: this callback's time against the time its frames last.

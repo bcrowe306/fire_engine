@@ -19,6 +19,7 @@ Tap :: struct {
 
 @(private)
 tap_vtable := core.Node_VTable {
+	name = "fire.tap",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error { return .None },
 	process = tap_process,
 	reset   = proc(self: rawptr) {},

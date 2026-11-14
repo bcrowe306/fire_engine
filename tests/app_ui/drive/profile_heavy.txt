@@ -1,0 +1,167 @@
+# A heavy project for profiling (`scripts/profile.sh`; not a test): eight
+# synth pads (3 oscillators x 4 unison voices, 2 filters; four with chorus
+# and reverb) holding chords, drums and a chopped loop, inserts and a bus
+# reverb, playing. scripts/profile.sh adds which panel is shown.
+size 1440 900
+bars 4
+synth 0
+synth_param 0 140 1
+synth_param 0 180 1
+synth_param 0 108 4
+synth_param 0 148 4
+synth_param 0 188 4
+synth_param 0 330 1
+synth_param 0 700 1
+synth_param 0 956 1
+synth 1
+synth_param 1 140 1
+synth_param 1 180 1
+synth_param 1 108 4
+synth_param 1 148 4
+synth_param 1 188 4
+synth_param 1 330 1
+synth_param 1 700 1
+synth_param 1 956 1
+synth 2
+synth_param 2 140 1
+synth_param 2 180 1
+synth_param 2 108 4
+synth_param 2 148 4
+synth_param 2 188 4
+synth_param 2 330 1
+synth_param 2 700 1
+synth_param 2 956 1
+synth 3
+synth_param 3 140 1
+synth_param 3 180 1
+synth_param 3 108 4
+synth_param 3 148 4
+synth_param 3 188 4
+synth_param 3 330 1
+synth_param 3 700 1
+synth_param 3 956 1
+synth 4
+synth_param 4 140 1
+synth_param 4 180 1
+synth_param 4 108 4
+synth_param 4 148 4
+synth_param 4 188 4
+synth_param 4 330 1
+synth 5
+synth_param 5 140 1
+synth_param 5 180 1
+synth_param 5 108 4
+synth_param 5 148 4
+synth_param 5 188 4
+synth_param 5 330 1
+synth 6
+synth_param 6 140 1
+synth_param 6 180 1
+synth_param 6 108 4
+synth_param 6 148 4
+synth_param 6 188 4
+synth_param 6 330 1
+synth 7
+synth_param 7 140 1
+synth_param 7 180 1
+synth_param 7 108 4
+synth_param 7 148 4
+synth_param 7 188 4
+synth_param 7 330 1
+load 8 tests/app_ui/fixtures/kick.wav
+load 9 tests/app_ui/fixtures/hat.wav
+load 12 tests/app_ui/fixtures/loop.wav
+chop 12 equal 4
+insert 8 0 compressor
+insert 9 0 filter
+insert 12 0 saturation
+insert 0 0 delay
+insert 4 0 compressor
+busfx 0 0 reverb
+send 8 1 -12
+send 12 1 -9
+note 0 0 3.75 0.7
+note 0 4 3.75 0.7
+note 0 8 3.75 0.7
+note 0 12 3.75 0.7
+note 1 0 3.75 0.7
+note 1 4 3.75 0.7
+note 1 8 3.75 0.7
+note 1 12 3.75 0.7
+note 2 0 3.75 0.7
+note 2 4 3.75 0.7
+note 2 8 3.75 0.7
+note 2 12 3.75 0.7
+note 3 0 3.75 0.7
+note 3 4 3.75 0.7
+note 3 8 3.75 0.7
+note 3 12 3.75 0.7
+note 4 0 3.75 0.7
+note 4 4 3.75 0.7
+note 4 8 3.75 0.7
+note 4 12 3.75 0.7
+note 5 0 3.75 0.7
+note 5 4 3.75 0.7
+note 5 8 3.75 0.7
+note 5 12 3.75 0.7
+note 6 0 3.75 0.7
+note 6 4 3.75 0.7
+note 6 8 3.75 0.7
+note 6 12 3.75 0.7
+note 7 0 3.75 0.7
+note 7 4 3.75 0.7
+note 7 8 3.75 0.7
+note 7 12 3.75 0.7
+note 8 0 0.25 1
+note 9 0.5 0.25 0.6
+note 12 0 0.5 0.8
+note 8 1 0.25 1
+note 9 1.5 0.25 0.6
+note 13 1 0.5 0.8
+note 8 2 0.25 1
+note 9 2.5 0.25 0.6
+note 14 2 0.5 0.8
+note 8 3 0.25 1
+note 9 3.5 0.25 0.6
+note 15 3 0.5 0.8
+note 8 4 0.25 1
+note 9 4.5 0.25 0.6
+note 12 4 0.5 0.8
+note 8 5 0.25 1
+note 9 5.5 0.25 0.6
+note 13 5 0.5 0.8
+note 8 6 0.25 1
+note 9 6.5 0.25 0.6
+note 14 6 0.5 0.8
+note 8 7 0.25 1
+note 9 7.5 0.25 0.6
+note 15 7 0.5 0.8
+note 8 8 0.25 1
+note 9 8.5 0.25 0.6
+note 12 8 0.5 0.8
+note 8 9 0.25 1
+note 9 9.5 0.25 0.6
+note 13 9 0.5 0.8
+note 8 10 0.25 1
+note 9 10.5 0.25 0.6
+note 14 10 0.5 0.8
+note 8 11 0.25 1
+note 9 11.5 0.25 0.6
+note 15 11 0.5 0.8
+note 8 12 0.25 1
+note 9 12.5 0.25 0.6
+note 12 12 0.5 0.8
+note 8 13 0.25 1
+note 9 13.5 0.25 0.6
+note 13 13 0.5 0.8
+note 8 14 0.25 1
+note 9 14.5 0.25 0.6
+note 14 14 0.5 0.8
+note 8 15 0.25 1
+note 9 15.5 0.25 0.6
+note 15 15 0.5 0.8
+point 0 volume 0 -12
+point 0 volume 8 0
+select 0
+play
+wait 30

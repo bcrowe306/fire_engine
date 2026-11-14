@@ -1,0 +1,99 @@
+---
+title: Profiling
+description: Measuring where Pads and the engine spend their time with Spall traces (fire:prof), the benchmark projects, the trace summary, and perf on Linux.
+---
+
+Pads has to fit small machines (a Raspberry Pi 4 or 5, a low-end x86
+laptop, an ARM laptop), so changes made for speed are measured first and
+judged by their numbers on the ARM test machine, not only on a fast Mac.
+
+## Zones: `fire:prof`
+
+`fire:prof` records named zones into a [Spall](https://gravitymoth.com/spall/)
+trace (Odin's `core:prof/spall`). It is off unless the build has
+`-define:FIRE_PROF=true`; then `prof.zone` costs a few nanoseconds, and off
+it compiles to nothing, so zones stay in the code.
+
+```odin
+import "fire:prof"
+
+draw_mixer :: proc(a: ^App) {
+	prof.zone("mixer") // ends with the scope
+	...
+	prof.begin("strips")
+	...
+	prof.end()
+}
+```
+
+Every thread writes into a buffer of its own (32 MB, made on its first
+zone) and names itself with `prof.thread_name`. A full buffer is written
+out on its own thread (shown as "Spall Trace Buffer Flush"); on the audio
+thread that is a syscall, so a profiling build is for measuring, not for
+playing live.
+
+What is zoned now:
+
+- **Audio:** the device callback (`audio callback`), each block of the
+  graph (`graph`) and each node in it, by type (`node_type_name`: its
+  `type_id`, else its vtable's `name`); the graph's worker threads; in
+  Synth 1, each voice step (`synth voice`), its oscillators (`synth osc`)
+  and filters (`synth filter`), and its effects chain (`synth effects`).
+- **UI:** the frame (`frame`) and its parts (`api_frame`, `host_update`,
+  `fake audio`, `workspace`, `project_frame`, `sync`, `editors_frame`),
+  every panel by its title (`Mixer`, `Sequence`, ...), the toolbar and
+  status bar, SDL's events (`events`), `im.Render` and the GPU draw
+  (`gpu draw`).
+
+## Recording a trace
+
+```bash
+task app:pads-prof                       # .build/app/pads-prof, zones built in
+.build/app/pads-prof --trace pads.spall  # use it; the trace is written when it quits
+```
+
+Open the file at [gravitymoth.com/spall](https://gravitymoth.com/spall/) for
+a timeline, or summarize it:
+
+```bash
+python3 scripts/prof.py pads.spall --per frame --budget graph=5333
+python3 scripts/prof.py before.spall after.spall --compare --per frame
+```
+
+For each thread (graph workers merged), each zone's calls, total and self
+time (less the zones inside it), the median and 99th percentile of one
+call, and with `--per frame` its time per frame. `--budget ZONE=US` sets a
+zone's calls against a budget: an audio block of 256 frames at 48 kHz is
+5333 µs, a frame at 60 a second 16667 µs.
+
+## The benchmark
+
+```bash
+./scripts/profile.sh [DIR] [FRAMES]      # default .build/profile, 600 frames
+```
+
+It plays `tests/app_ui/drive/profile_heavy.txt` (eight synth pads of three
+oscillators × four unison voices and two filters, four with chorus and
+reverb, holding chords; drums and a chopped loop; inserts, a bus reverb)
+headless on the fake device, with each main view shown (Sequence, Mixer,
+Song, Perform), and an empty project; a trace and a summary of each go into
+DIR. On a machine without a GPU, `gpu draw` is the software renderer's.
+
+## Cache and branch counters: perf (Linux)
+
+```bash
+perf stat -e cycles,instructions,cache-misses,L1-dcache-load-misses,LLC-load-misses,dTLB-load-misses,branch-misses -- \
+  .build/app/pads-prof --fake --headless --profile 600 --drive .build/profile/heavy-sequence.txt
+perf record -F 1999 -g -- .build/app/pads-prof --fake --headless --profile 600 --drive .build/profile/heavy-sequence.txt
+perf report --no-children --sort symbol
+```
+
+Virtual machines may not pass the hardware counters through (perf then
+reports them `<not supported>`); `perf record` still samples by time.
+
+## Smaller pieces
+
+- `tools/synth_bench`: Synth 1's voices against their budget, with one
+  thing taken away at a time.
+- `tools/node_bench`: each engine node, and a mix of tracks.
+- `pads --profile N`: the CPU time of N frames drawn flat out.

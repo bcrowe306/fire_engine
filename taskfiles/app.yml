@@ -50,6 +50,12 @@ tasks:
       - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
       - echo {{.OPT}}{{.LINK}} > {{.OUT}}/pads.opt
 
+  pads-prof:
+    desc: 'Build Pads with profiling zones (-define:FIRE_PROF=true) into .build/app/pads-prof: run it with --trace FILE, summarize with scripts/prof.py (docs/guides/profiling.md).'
+    cmds:
+      - mkdir -p {{.OUT}}
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -define:FIRE_PROF=true -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads-prof{{.EXE}}
+
   gallery:
     desc: 'Build and run the widget gallery (args go to it: task app:gallery -- --drive tests/app_ui/drive/gallery.txt --headless).'
     cmds:

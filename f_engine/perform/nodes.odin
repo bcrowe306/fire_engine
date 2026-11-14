@@ -20,6 +20,7 @@ Repeat_Node :: struct {
 
 @(private)
 arp_node_vtable := core.Node_VTable {
+	name = "fire.arp",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error { return .None },
 	process = proc(self: rawptr, ctx: ^core.Process_Context) {
 		n := (^Arp_Node)(self)
@@ -51,6 +52,7 @@ arp_node_set :: proc(n: ^Arp_Node, settings: Arp_Settings) -> bool {
 
 @(private)
 repeat_node_vtable := core.Node_VTable {
+	name = "fire.note_repeat",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error { return .None },
 	process = proc(self: rawptr, ctx: ^core.Process_Context) {
 		n := (^Repeat_Node)(self)

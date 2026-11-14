@@ -67,6 +67,7 @@ Bitcrush :: struct {
 
 @(private)
 bitcrush_vtable := core.Node_VTable {
+	name = "fire.bitcrush",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		b := (^Bitcrush)(self)
 		smoothed_init_from_param(&b.mix, bitcrush_params[2], cfg.sample_rate)
@@ -133,6 +134,7 @@ Ring_Mod :: struct {
 
 @(private)
 ring_vtable := core.Node_VTable {
+	name = "fire.ringmod",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		r := (^Ring_Mod)(self)
 		hz, mix := r.hz.target, r.mix.target
@@ -201,6 +203,7 @@ Comb :: struct {
 
 @(private)
 comb_vtable := core.Node_VTable {
+	name = "fire.comb",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		cb := (^Comb)(self)
 		hz, mix := cb.hz.target, cb.mix.target
@@ -298,6 +301,7 @@ Pitch_Shift :: struct {
 
 @(private)
 pitch_vtable := core.Node_VTable {
+	name = "fire.pitch",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		p := (^Pitch_Shift)(self)
 		s, mix := p.semis.target, p.mix.target
@@ -403,6 +407,7 @@ Cutter :: struct {
 
 @(private)
 cutter_vtable := core.Node_VTable {
+	name = "fire.cutter",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		ct := (^Cutter)(self)
 		ct.rate = cfg.sample_rate
@@ -485,6 +490,7 @@ Stutter :: struct {
 
 @(private)
 stutter_vtable := core.Node_VTable {
+	name = "fire.stutter",
 	prepare = proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) -> core.Error {
 		s := (^Stutter)(self)
 		s.rate = cfg.sample_rate

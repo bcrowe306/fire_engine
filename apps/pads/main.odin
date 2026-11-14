@@ -28,6 +28,8 @@ Options:
 	               port; the one chosen is printed): see app:ui's Control and tests/e2e
 	--profile N    draw N frames as fast as possible and print the CPU time per frame
 	               (after the drive script, if one is given: profile a loaded project)
+	--trace FILE   record a Spall trace of the run into FILE (a build with
+	               -define:FIRE_PROF=true: task app:pads PROF=1); see docs/guides/profiling.md
 */
 package pads
 
@@ -38,6 +40,8 @@ import "core:strings"
 import "core:slice"
 import "core:strconv"
 import "core:time"
+
+import "fire:prof"
 
 import app "app:core"
 import "app:ui"
@@ -125,6 +129,7 @@ main :: proc() {
 	ui.crash_install()
 	context.assertion_failure_proc = ui.crash_assertion
 	project, drive, out, headless, fake, profile, prefs := "", "", ".build/app/shots", false, false, 0, ""
+	trace := ""
 	fake_interface := false
 	control_size := Control_Size.Auto
 	control := -1
@@ -145,6 +150,7 @@ main :: proc() {
 		case "--headless": headless = true
 		case "--fake":     fake = true
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
+		case "--trace":    trace = next(&i)
 		case "--prefs":    prefs = next(&i)
 		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
 		case "--surface":  append(&surfaces, next(&i))
@@ -158,6 +164,13 @@ main :: proc() {
 			os.exit(2)
 		}
 	}
+	// (Stopped last of all: after the audio device has closed.)
+	if trace != "" {
+		if !prof.ENABLED do fmt.eprintln("pads: --trace needs a build with -define:FIRE_PROF=true (task app:pads PROF=1)")
+		else if !prof.start(trace) do fmt.eprintln("pads: could not make", trace)
+		else do prof.thread_name("main")
+	}
+	defer prof.stop()
 	a := new(App)
 	a.fake_interface = fake_interface
 	a.control_size = control_size
@@ -381,10 +394,17 @@ open_engine :: proc(a: ^App, fake: bool) -> bool {
 
 // One frame: events, the engine, then the UI.
 frame :: proc(a: ^App) {
+	prof.zone("frame")
+	prof.begin("api_frame")
 	pa.api_frame(&a.api, f64(im.GetIO().DeltaTime)) // (posted calls, what is due, subscribers told)
+	prof.end()
 	app.dispatch(&a.bus)
+	prof.begin("host_update")
 	app.host_update(&a.host)
+	prof.end()
+	prof.begin("fake audio")
 	run_fake(a)
+	prof.end()
 	handle_drops(a)
 	update_meters(a)
 	if a.settings.recording == "" do ui.handle_shortcuts(&a.actions) // (not while a new shortcut is pressed)
@@ -400,7 +420,9 @@ frame :: proc(a: ^App) {
 	// How the app is left goes with the project when it saves.
 	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.win_row / 4, seq_lane0 = a.perf.win_lane, seq_row0 = a.perf.win_row, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
+	prof.begin("workspace")
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
+	prof.end()
 	fold_pads_check(a)
 	draw_plugin_choice(a)
 	draw_wave_editor(a)
@@ -413,10 +435,16 @@ frame :: proc(a: ^App) {
 	draw_settings(a)
 	draw_rename_project(a)
 	draw_seq_dialogs(a)
+	prof.begin("project_frame")
 	project_frame(a)
+	prof.end()
+	prof.begin("sync")
 	pm.sync(&a.m.engine)
+	prof.end()
 	pm.plugins_idle(&a.m)
+	prof.begin("editors_frame")
 	editors_frame(a)
+	prof.end()
 	pm.capture_poll(&a.m, &a.capture)
 	live_audio_frame(a)
 	// A MIDI pad pressed while the Sample control is armed records into it
