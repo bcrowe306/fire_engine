@@ -12,6 +12,21 @@ Table_V1 :: struct {
 	api_post: proc "c" (api: ^Api, call: Post_Proc, user: rawptr) -> Result,
 	api_version: proc "c" (api: ^Api, out: ^i64) -> Result,
 	last_error: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	audio_part: proc "c" (api: ^Api, slot: i64, pad: i64, out: ^Part_State) -> Result,
+	audio_region: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, out: ^Region) -> Result,
+	audio_add_take: proc "c" (api: ^Api, slot: i64, pad: i64, path: cstring, path_len: i64, at: f64) -> Result,
+	audio_split: proc "c" (api: ^Api, slot: i64, pad: i64, beat: f64) -> Result,
+	audio_delete_range: proc "c" (api: ^Api, slot: i64, pad: i64, from: f64, to: f64) -> Result,
+	audio_crop: proc "c" (api: ^Api, slot: i64, pad: i64, from: f64, to: f64) -> Result,
+	audio_move_region: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, at: f64) -> Result,
+	audio_trim_region: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, beat: f64, end: bool) -> Result,
+	audio_delete_region: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64) -> Result,
+	audio_set_region: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, region: Region) -> Result,
+	audio_normalize_region: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64) -> Result,
+	audio_use_take: proc "c" (api: ^Api, slot: i64, pad: i64, take: i64, from: f64, to: f64) -> Result,
+	audio_consolidate: proc "c" (api: ^Api, slot: i64, pad: i64) -> Result,
+	audio_set_warp: proc "c" (api: ^Api, slot: i64, pad: i64, warp: Audio_Warp, transpose: f32) -> Result,
+	audio_clear: proc "c" (api: ^Api, pad: i64) -> Result,
 	device_preset_count: proc "c" (api: ^Api, out: ^i64) -> Result,
 	device_preset_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	device_preset_category: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -118,6 +133,39 @@ Table_V1 :: struct {
 	project_discard_backup: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result,
 	project_unused_files: proc "c" (api: ^Api, out: ^Unused_Files) -> Result,
 	project_clean_up: proc "c" (api: ^Api, undo_only: bool, cache: bool, out: ^Clean_Up) -> Result,
+	recording_state: proc "c" (api: ^Api, out: ^Recording_State) -> Result,
+	recording_record: proc "c" (api: ^Api, on: bool) -> Result,
+	recording_sample_start: proc "c" (api: ^Api, pad: i64, method: Sampling, threshold_db: f32, bars: i64) -> Result,
+	recording_sample_stop: proc "c" (api: ^Api) -> Result,
+	sequence_current: proc "c" (api: ^Api, out: ^i64) -> Result,
+	sequence_state: proc "c" (api: ^Api, slot: i64, out: ^Sequence_State) -> Result,
+	sequence_name: proc "c" (api: ^Api, slot: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	sequence_select: proc "c" (api: ^Api, slot: i64) -> Result,
+	sequence_set_name: proc "c" (api: ^Api, slot: i64, name: cstring, name_len: i64) -> Result,
+	sequence_set_bars: proc "c" (api: ^Api, slot: i64, bars: i64) -> Result,
+	sequence_set_tempo: proc "c" (api: ^Api, slot: i64, bpm: f64) -> Result,
+	sequence_set_color: proc "c" (api: ^Api, slot: i64, color: i64) -> Result,
+	sequence_set_swing: proc "c" (api: ^Api, slot: i64, amount: f32, grid: Grid) -> Result,
+	sequence_quantize: proc "c" (api: ^Api, slot: i64, grid: Grid, strength: f64) -> Result,
+	sequence_duplicate: proc "c" (api: ^Api, slot: i64, out: ^i64) -> Result,
+	sequence_copy: proc "c" (api: ^Api, from: i64, to: i64) -> Result,
+	sequence_double: proc "c" (api: ^Api, slot: i64) -> Result,
+	sequence_clear: proc "c" (api: ^Api, slot: i64) -> Result,
+	sequence_set_track_loop: proc "c" (api: ^Api, slot: i64, pad: i64, beats: f64) -> Result,
+	sequence_note: proc "c" (api: ^Api, slot: i64, index: i64, out: ^Note) -> Result,
+	sequence_add_note: proc "c" (api: ^Api, slot: i64, n: Note, out: ^i64) -> Result,
+	sequence_set_note: proc "c" (api: ^Api, slot: i64, index: i64, n: Note, out: ^i64) -> Result,
+	sequence_remove_notes: proc "c" (api: ^Api, slot: i64, indices: [^]i64, indices_len: i64) -> Result,
+	sequence_cc: proc "c" (api: ^Api, slot: i64, index: i64, out: ^Cc) -> Result,
+	sequence_add_cc: proc "c" (api: ^Api, slot: i64, c: Cc) -> Result,
+	sequence_clear_cc: proc "c" (api: ^Api, slot: i64, pad: i64, cc: i64, from: f64, to: f64) -> Result,
+	sequence_point: proc "c" (api: ^Api, slot: i64, index: i64, out: ^Point) -> Result,
+	sequence_add_point: proc "c" (api: ^Api, slot: i64, ref: Param_Ref, beat: f64, value: f32, curve: f32) -> Result,
+	sequence_add_pad_point: proc "c" (api: ^Api, slot: i64, pad: i64, lane: Pad_Lane, beat: f64, value: f32, curve: f32) -> Result,
+	sequence_remove_point: proc "c" (api: ^Api, slot: i64, index: i64) -> Result,
+	sequence_set_input_quantize: proc "c" (api: ^Api, on: bool, grid: Grid, strength: f32, swing: f32) -> Result,
+	sequence_midi_fx: proc "c" (api: ^Api, pad: i64, out: ^Midi_Fx) -> Result,
+	sequence_set_midi_fx: proc "c" (api: ^Api, pad: i64, fx: Midi_Fx) -> Result,
 	settings_count: proc "c" (api: ^Api, out: ^i64) -> Result,
 	settings_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	settings_info: proc "c" (api: ^Api, name: cstring, name_len: i64, out: ^Setting_Info) -> Result,
@@ -161,6 +209,21 @@ table_fill :: proc(api: ^Api) {
 	t.api_post = c_api_post
 	t.api_version = c_api_version
 	t.last_error = c_last_error
+	t.audio_part = c_audio_part
+	t.audio_region = c_audio_region
+	t.audio_add_take = c_audio_add_take
+	t.audio_split = c_audio_split
+	t.audio_delete_range = c_audio_delete_range
+	t.audio_crop = c_audio_crop
+	t.audio_move_region = c_audio_move_region
+	t.audio_trim_region = c_audio_trim_region
+	t.audio_delete_region = c_audio_delete_region
+	t.audio_set_region = c_audio_set_region
+	t.audio_normalize_region = c_audio_normalize_region
+	t.audio_use_take = c_audio_use_take
+	t.audio_consolidate = c_audio_consolidate
+	t.audio_set_warp = c_audio_set_warp
+	t.audio_clear = c_audio_clear
 	t.device_preset_count = c_device_preset_count
 	t.device_preset_name = c_device_preset_name
 	t.device_preset_category = c_device_preset_category
@@ -267,6 +330,39 @@ table_fill :: proc(api: ^Api) {
 	t.project_discard_backup = c_project_discard_backup
 	t.project_unused_files = c_project_unused_files
 	t.project_clean_up = c_project_clean_up
+	t.recording_state = c_recording_state
+	t.recording_record = c_recording_record
+	t.recording_sample_start = c_recording_sample_start
+	t.recording_sample_stop = c_recording_sample_stop
+	t.sequence_current = c_sequence_current
+	t.sequence_state = c_sequence_state
+	t.sequence_name = c_sequence_name
+	t.sequence_select = c_sequence_select
+	t.sequence_set_name = c_sequence_set_name
+	t.sequence_set_bars = c_sequence_set_bars
+	t.sequence_set_tempo = c_sequence_set_tempo
+	t.sequence_set_color = c_sequence_set_color
+	t.sequence_set_swing = c_sequence_set_swing
+	t.sequence_quantize = c_sequence_quantize
+	t.sequence_duplicate = c_sequence_duplicate
+	t.sequence_copy = c_sequence_copy
+	t.sequence_double = c_sequence_double
+	t.sequence_clear = c_sequence_clear
+	t.sequence_set_track_loop = c_sequence_set_track_loop
+	t.sequence_note = c_sequence_note
+	t.sequence_add_note = c_sequence_add_note
+	t.sequence_set_note = c_sequence_set_note
+	t.sequence_remove_notes = c_sequence_remove_notes
+	t.sequence_cc = c_sequence_cc
+	t.sequence_add_cc = c_sequence_add_cc
+	t.sequence_clear_cc = c_sequence_clear_cc
+	t.sequence_point = c_sequence_point
+	t.sequence_add_point = c_sequence_add_point
+	t.sequence_add_pad_point = c_sequence_add_pad_point
+	t.sequence_remove_point = c_sequence_remove_point
+	t.sequence_set_input_quantize = c_sequence_set_input_quantize
+	t.sequence_midi_fx = c_sequence_midi_fx
+	t.sequence_set_midi_fx = c_sequence_set_midi_fx
 	t.settings_count = c_settings_count
 	t.settings_name = c_settings_name
 	t.settings_info = c_settings_info
@@ -322,6 +418,101 @@ c_last_error :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) ->
 		([^]u8)(out)[n] = 0
 	}
 	return r
+}
+
+@(private)
+c_audio_part :: proc "c" (api: ^Api, slot: i64, pad: i64, out: ^Part_State) -> Result {
+	context = runtime.default_context()
+	v, r := audio_part(api, slot, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_audio_region :: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, out: ^Region) -> Result {
+	context = runtime.default_context()
+	v, r := audio_region(api, slot, pad, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_audio_add_take :: proc "c" (api: ^Api, slot: i64, pad: i64, path: cstring, path_len: i64, at: f64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return audio_add_take(api, slot, pad, path_s, at)
+}
+
+@(private)
+c_audio_split :: proc "c" (api: ^Api, slot: i64, pad: i64, beat: f64) -> Result {
+	context = runtime.default_context()
+	return audio_split(api, slot, pad, beat)
+}
+
+@(private)
+c_audio_delete_range :: proc "c" (api: ^Api, slot: i64, pad: i64, from: f64, to: f64) -> Result {
+	context = runtime.default_context()
+	return audio_delete_range(api, slot, pad, from, to)
+}
+
+@(private)
+c_audio_crop :: proc "c" (api: ^Api, slot: i64, pad: i64, from: f64, to: f64) -> Result {
+	context = runtime.default_context()
+	return audio_crop(api, slot, pad, from, to)
+}
+
+@(private)
+c_audio_move_region :: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, at: f64) -> Result {
+	context = runtime.default_context()
+	return audio_move_region(api, slot, pad, index, at)
+}
+
+@(private)
+c_audio_trim_region :: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, beat: f64, end: bool) -> Result {
+	context = runtime.default_context()
+	return audio_trim_region(api, slot, pad, index, beat, end)
+}
+
+@(private)
+c_audio_delete_region :: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64) -> Result {
+	context = runtime.default_context()
+	return audio_delete_region(api, slot, pad, index)
+}
+
+@(private)
+c_audio_set_region :: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64, region: Region) -> Result {
+	context = runtime.default_context()
+	return audio_set_region(api, slot, pad, index, region)
+}
+
+@(private)
+c_audio_normalize_region :: proc "c" (api: ^Api, slot: i64, pad: i64, index: i64) -> Result {
+	context = runtime.default_context()
+	return audio_normalize_region(api, slot, pad, index)
+}
+
+@(private)
+c_audio_use_take :: proc "c" (api: ^Api, slot: i64, pad: i64, take: i64, from: f64, to: f64) -> Result {
+	context = runtime.default_context()
+	return audio_use_take(api, slot, pad, take, from, to)
+}
+
+@(private)
+c_audio_consolidate :: proc "c" (api: ^Api, slot: i64, pad: i64) -> Result {
+	context = runtime.default_context()
+	return audio_consolidate(api, slot, pad)
+}
+
+@(private)
+c_audio_set_warp :: proc "c" (api: ^Api, slot: i64, pad: i64, warp: Audio_Warp, transpose: f32) -> Result {
+	context = runtime.default_context()
+	return audio_set_warp(api, slot, pad, warp, transpose)
+}
+
+@(private)
+c_audio_clear :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return audio_clear(api, pad)
 }
 
 @(private)
@@ -1140,6 +1331,232 @@ c_project_clean_up :: proc "c" (api: ^Api, undo_only: bool, cache: bool, out: ^C
 	v, r := project_clean_up(api, undo_only, cache)
 	if out != nil do out^ = v
 	return r
+}
+
+@(private)
+c_recording_state :: proc "c" (api: ^Api, out: ^Recording_State) -> Result {
+	context = runtime.default_context()
+	v, r := recording_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_recording_record :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return recording_record(api, on)
+}
+
+@(private)
+c_recording_sample_start :: proc "c" (api: ^Api, pad: i64, method: Sampling, threshold_db: f32, bars: i64) -> Result {
+	context = runtime.default_context()
+	return recording_sample_start(api, pad, method, threshold_db, bars)
+}
+
+@(private)
+c_recording_sample_stop :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return recording_sample_stop(api)
+}
+
+@(private)
+c_sequence_current :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_current(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_state :: proc "c" (api: ^Api, slot: i64, out: ^Sequence_State) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_state(api, slot)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_name :: proc "c" (api: ^Api, slot: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := sequence_name(api, slot)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_sequence_select :: proc "c" (api: ^Api, slot: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_select(api, slot)
+}
+
+@(private)
+c_sequence_set_name :: proc "c" (api: ^Api, slot: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return sequence_set_name(api, slot, name_s)
+}
+
+@(private)
+c_sequence_set_bars :: proc "c" (api: ^Api, slot: i64, bars: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_set_bars(api, slot, bars)
+}
+
+@(private)
+c_sequence_set_tempo :: proc "c" (api: ^Api, slot: i64, bpm: f64) -> Result {
+	context = runtime.default_context()
+	return sequence_set_tempo(api, slot, bpm)
+}
+
+@(private)
+c_sequence_set_color :: proc "c" (api: ^Api, slot: i64, color: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_set_color(api, slot, color)
+}
+
+@(private)
+c_sequence_set_swing :: proc "c" (api: ^Api, slot: i64, amount: f32, grid: Grid) -> Result {
+	context = runtime.default_context()
+	return sequence_set_swing(api, slot, amount, grid)
+}
+
+@(private)
+c_sequence_quantize :: proc "c" (api: ^Api, slot: i64, grid: Grid, strength: f64) -> Result {
+	context = runtime.default_context()
+	return sequence_quantize(api, slot, grid, strength)
+}
+
+@(private)
+c_sequence_duplicate :: proc "c" (api: ^Api, slot: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_duplicate(api, slot)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_copy :: proc "c" (api: ^Api, from: i64, to: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_copy(api, from, to)
+}
+
+@(private)
+c_sequence_double :: proc "c" (api: ^Api, slot: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_double(api, slot)
+}
+
+@(private)
+c_sequence_clear :: proc "c" (api: ^Api, slot: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_clear(api, slot)
+}
+
+@(private)
+c_sequence_set_track_loop :: proc "c" (api: ^Api, slot: i64, pad: i64, beats: f64) -> Result {
+	context = runtime.default_context()
+	return sequence_set_track_loop(api, slot, pad, beats)
+}
+
+@(private)
+c_sequence_note :: proc "c" (api: ^Api, slot: i64, index: i64, out: ^Note) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_note(api, slot, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_add_note :: proc "c" (api: ^Api, slot: i64, n: Note, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_add_note(api, slot, n)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_set_note :: proc "c" (api: ^Api, slot: i64, index: i64, n: Note, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_set_note(api, slot, index, n)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_remove_notes :: proc "c" (api: ^Api, slot: i64, indices: [^]i64, indices_len: i64) -> Result {
+	context = runtime.default_context()
+	indices_s := indices[:max(indices_len, 0)] if indices != nil else nil
+	return sequence_remove_notes(api, slot, indices_s)
+}
+
+@(private)
+c_sequence_cc :: proc "c" (api: ^Api, slot: i64, index: i64, out: ^Cc) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_cc(api, slot, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_add_cc :: proc "c" (api: ^Api, slot: i64, c: Cc) -> Result {
+	context = runtime.default_context()
+	return sequence_add_cc(api, slot, c)
+}
+
+@(private)
+c_sequence_clear_cc :: proc "c" (api: ^Api, slot: i64, pad: i64, cc: i64, from: f64, to: f64) -> Result {
+	context = runtime.default_context()
+	return sequence_clear_cc(api, slot, pad, cc, from, to)
+}
+
+@(private)
+c_sequence_point :: proc "c" (api: ^Api, slot: i64, index: i64, out: ^Point) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_point(api, slot, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_add_point :: proc "c" (api: ^Api, slot: i64, ref: Param_Ref, beat: f64, value: f32, curve: f32) -> Result {
+	context = runtime.default_context()
+	return sequence_add_point(api, slot, ref, beat, value, curve)
+}
+
+@(private)
+c_sequence_add_pad_point :: proc "c" (api: ^Api, slot: i64, pad: i64, lane: Pad_Lane, beat: f64, value: f32, curve: f32) -> Result {
+	context = runtime.default_context()
+	return sequence_add_pad_point(api, slot, pad, lane, beat, value, curve)
+}
+
+@(private)
+c_sequence_remove_point :: proc "c" (api: ^Api, slot: i64, index: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_remove_point(api, slot, index)
+}
+
+@(private)
+c_sequence_set_input_quantize :: proc "c" (api: ^Api, on: bool, grid: Grid, strength: f32, swing: f32) -> Result {
+	context = runtime.default_context()
+	return sequence_set_input_quantize(api, on, grid, strength, swing)
+}
+
+@(private)
+c_sequence_midi_fx :: proc "c" (api: ^Api, pad: i64, out: ^Midi_Fx) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_midi_fx(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_set_midi_fx :: proc "c" (api: ^Api, pad: i64, fx: Midi_Fx) -> Result {
+	context = runtime.default_context()
+	return sequence_set_midi_fx(api, pad, fx)
 }
 
 @(private)

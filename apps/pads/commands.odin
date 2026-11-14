@@ -193,18 +193,21 @@ register_commands :: proc(a: ^App) {
 
 	// Notes.
 	add(c, {id = "note.delete", label = "Delete Note", icon = ui.ICON_TRASH_2, kinds = {.Note}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.remove_notes(&a.m, t.slot, {t.index}); a.seq.selected = -1 }})
+		run = proc(a: ^App, t: Target) { pa.sequence_remove_notes(&a.api, i64(t.slot), {i64(t.index)}); a.seq.selected = -1 }})
 	add(c, {id = "note.duplicate", label = "Duplicate Note", icon = ui.ICON_COPY_PLUS, kinds = {.Note}, group = 0,
-		run = proc(a: ^App, t: Target) { n := a.m.project.sequences[t.slot].notes[t.index]; n.start += n.length; pm.add_note(&a.m, t.slot, n) }})
+		run = proc(a: ^App, t: Target) {
+			n, _ := pa.sequence_note(&a.api, i64(t.slot), i64(t.index))
+			n.start += n.length
+			pa.sequence_add_note(&a.api, i64(t.slot), n)
+		}})
 	add(c, {id = "note.loud", label = "Velocity 100%", icon = ui.ICON_SIGNAL_HIGH, kinds = {.Note}, group = 1, run = proc(a: ^App, t: Target) { note_velocity(a, t, 1) }})
 	add(c, {id = "note.medium", label = "Velocity 70%", icon = ui.ICON_SIGNAL_MEDIUM, kinds = {.Note}, group = 1, run = proc(a: ^App, t: Target) { note_velocity(a, t, 0.7) }})
 	add(c, {id = "note.soft", label = "Velocity 40%", icon = ui.ICON_SIGNAL_LOW, kinds = {.Note}, group = 1, run = proc(a: ^App, t: Target) { note_velocity(a, t, 0.4) }})
 	add(c, {id = "note.chance", label = "Chance 50%", icon = ui.ICON_DICES, kinds = {.Note}, group = 1,
 		run = proc(a: ^App, t: Target) {
-			n := a.m.project.sequences[t.slot].notes[t.index]
+			n, _ := pa.sequence_note(&a.api, i64(t.slot), i64(t.index))
 			n.probability = 1 if n.probability < 1 else 0.5
-			pm.set_note(&a.m, t.slot, t.index, n, .Probability, "Set Chance")
-			app.seal(&a.m.history)
+			pa.sequence_set_note(&a.api, i64(t.slot), i64(t.index), n)
 		},
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.sequences[t.slot].notes[t.index].probability < 1 }})
 
@@ -221,7 +224,7 @@ register_commands :: proc(a: ^App) {
 		run = proc(a: ^App, t: Target) { delete_selection(a) }, enabled = proc(a: ^App, t: Target) -> bool { return len(a.seq.sel) > 0 }})
 
 	// Sequences.
-	add(c, {id = "seq.select", label = "Edit", icon = ui.ICON_LIST_MUSIC, kinds = {.Sequence}, group = 0, run = proc(a: ^App, t: Target) { pm.select_slot(&a.m, t.slot) }})
+	add(c, {id = "seq.select", label = "Edit", icon = ui.ICON_LIST_MUSIC, kinds = {.Sequence}, group = 0, run = proc(a: ^App, t: Target) { pa.sequence_select(&a.api, i64(t.slot)) }})
 	add(c, {id = "seq.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Sequence}, group = 0, keys = "F2", run = proc(a: ^App, t: Target) { begin_rename_sequence(a, t.slot) }})
 	add(c, {id = "seq.lane_left", label = "Move to the Lane Before", icon = ui.ICON_CHEVRON_LEFT, kinds = {.Sequence}, group = 2,
 		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot) - 1, pm.lane_rows(p, pm.seq_lane(p, t.slot) - 1)) },
@@ -235,23 +238,22 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "seq.row_down", label = "Move Down a Row", icon = ui.ICON_CHEVRON_DOWN, kinds = {.Sequence}, group = 2,
 		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot), int(p.lanes.place[t.slot].row) - 1) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.lanes.place[t.slot].row > 0 }})
-	add(c, {id = "seq.duplicate", label = "Duplicate", icon = ui.ICON_COPY_PLUS, kinds = {.Sequence}, group = 1, keys = "Cmd+D", run = proc(a: ^App, t: Target) { pm.duplicate_sequence(&a.m, t.slot) }})
+	add(c, {id = "seq.duplicate", label = "Duplicate", icon = ui.ICON_COPY_PLUS, kinds = {.Sequence}, group = 1, keys = "Cmd+D", run = proc(a: ^App, t: Target) { pa.sequence_duplicate(&a.api, i64(t.slot)) }})
 	add(c, {id = "seq.copy_bars", label = "Copy Bars to…", icon = ui.ICON_COPY, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { begin_copy_bars(a, t.slot) }})
-	add(c, {id = "seq.double", label = "Double", icon = ui.ICON_MERGE, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pm.double_sequence(&a.m, t.slot) }})
+	add(c, {id = "seq.double", label = "Double", icon = ui.ICON_MERGE, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pa.sequence_double(&a.api, i64(t.slot)) }})
 	add(c, {id = "seq.to_song", label = "Add to Song", icon = ui.ICON_LIST_ORDERED, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pm.song_add(&a.m, t.slot) }})
 	add(c, {id = "seq.tempo", label = "Own Tempo", icon = ui.ICON_GAUGE, kinds = {.Sequence}, group = 2,
 		run = proc(a: ^App, t: Target) {
 			own := a.m.project.sequences[t.slot].bpm > 0
-			pm.set_sequence_tempo(&a.m, t.slot, 0 if own else a.m.project.bpm)
-			app.seal(&a.m.history)
+			pa.sequence_set_tempo(&a.api, i64(t.slot), 0 if own else a.m.project.bpm)
 		},
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.sequences[t.slot].bpm > 0 }})
-	add(c, {id = "seq.clear", label = "Clear", icon = ui.ICON_TRASH_2, kinds = {.Sequence}, group = 3, run = proc(a: ^App, t: Target) { pm.clear_sequence(&a.m, t.slot) }})
+	add(c, {id = "seq.clear", label = "Clear", icon = ui.ICON_TRASH_2, kinds = {.Sequence}, group = 3, run = proc(a: ^App, t: Target) { pa.sequence_clear(&a.api, i64(t.slot)) }})
 
 	// Song clips (each acts on the selection when the clip is in it).
 	add(c, {id = "clip.edit", label = "Edit Its Sequence", icon = ui.ICON_LIST_MUSIC, kinds = {.Song_Clip}, group = 0,
 		run = proc(a: ^App, t: Target) {
-			pm.select_slot(&a.m, int(a.m.project.song.clips[t.index].slot))
+			pa.sequence_select(&a.api, i64(int(a.m.project.song.clips[t.index].slot)))
 			ui.panel_focus(&a.ws, "sequence")
 		}})
 	add(c, {id = "clip.mute", label = "Mute", icon = ui.ICON_VOLUME_X, kinds = {.Song_Clip}, group = 1,
@@ -333,11 +335,11 @@ register_commands :: proc(a: ^App) {
 
 	// Automation points.
 	add(c, {id = "point.delete", label = "Delete Point", icon = ui.ICON_TRASH_2, kinds = {.Point}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.remove_point(&a.m, t.slot, t.index) }})
+		run = proc(a: ^App, t: Target) { pa.sequence_remove_point(&a.api, i64(t.slot), i64(t.index)) }})
 
 	// An audio pad's take.
 	add(c, {id = "take.clear", label = "Clear Take", icon = ui.ICON_ERASER, kinds = {.Take}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.clear_clip(&a.m, t.index) }})
+		run = proc(a: ^App, t: Target) { pa.audio_clear(&a.api, i64(t.index)) }})
 }
 
 @(private)
@@ -348,10 +350,9 @@ slot_full :: proc(a: ^App, t: Target) -> bool {
 
 @(private)
 note_velocity :: proc(a: ^App, t: Target, v: f32) {
-	n := a.m.project.sequences[t.slot].notes[t.index]
+	n, _ := pa.sequence_note(&a.api, i64(t.slot), i64(t.index))
 	n.velocity = v
-	pm.set_note(&a.m, t.slot, t.index, n, .Velocity, "Set Velocity")
-	app.seal(&a.m.history)
+	pa.sequence_set_note(&a.api, i64(t.slot), i64(t.index), n)
 }
 
 // The palette's entries for the selection: the selected pad's commands

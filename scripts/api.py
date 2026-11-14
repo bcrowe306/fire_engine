@@ -61,6 +61,9 @@ MODULE_TITLES = {
     "effects": "Effects: inserts, bus effects, performance effects, sends, sidechains",
     "devices": "Devices: synth presets, plug-in instruments",
     "mixer": "Mixer: buses, outputs, groups, cue, meters, loudness, latency",
+    "sequencer": "Sequencer: sequences, notes, CC, automation, quantize, note repeat, the arpeggiator",
+    "audio": "Audio tracks: takes, regions, comping, consolidating, warp",
+    "recording": "Recording: Rec, sampling into pads",
 }
 
 
@@ -144,6 +147,9 @@ def parse():
                 if not d.params or d.params[0][1] != "^Api":
                     continue
                 d.params = d.params[1:]
+                for pname, _, _ in d.params:
+                    if pname in ("r", "v", "val", "ok", "out", "out_len", "out_cap", "args", "obj"):
+                        sys.exit(f"api.py: {d.name}: a parameter may not be named {pname!r} (the generated code uses it)")
                 ret = (m.group(3) or "").strip()
                 if ret == "Result":
                     d.value = None

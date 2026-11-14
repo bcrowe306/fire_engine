@@ -249,7 +249,7 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 	im.Spacing()
 	im.Spacing()
 	im.BeginDisabled(c.sample == 0)
-	if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
+	if im.Button(ui.ICON_ERASER + "  Clear Take") do pa.audio_clear(&a.api, i64(i))
 	im.EndDisabled()
 	im.SameLine()
 	if im.Button(ui.ICON_TRASH + "  Clear Pad") do pa.pad_clear(&a.api, i64(i))

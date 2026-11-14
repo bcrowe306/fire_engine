@@ -202,18 +202,18 @@ draw_audio_tools :: proc(a: ^App) {
 	ui.name("audio delete")
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_CROP, "Crop: keep only the range, or the region", disabled = !has || (!region && av.range[1] <= av.range[0])) {
-		pm.crop_to(m, slot, pad, lo, hi)
+		pa.audio_crop(&a.api, i64(slot), i64(pad), lo, hi)
 		av.region, av.range = -1, {}
 	}
 	ui.name("audio crop")
 	im.SameLine(0, 12)
-	if ui.icon_button(ui.ICON_SIGNAL_HIGH, "Normalize: the region's loudest at 0 dB", disabled = !region) do pm.normalize_region(m, slot, pad, ri)
+	if ui.icon_button(ui.ICON_SIGNAL_HIGH, "Normalize: the region's loudest at 0 dB", disabled = !region) do pa.audio_normalize_region(&a.api, i64(slot), i64(pad), i64(ri))
 	ui.name("audio normalize")
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_FLIP_HORIZONTAL, "Reverse: the region backwards", on = region && x.regions[ri].reverse, disabled = !region) {
 		r := x.regions[ri]
 		r.reverse = !r.reverse
-		pm.set_region(m, slot, pad, ri, "Reverse", r)
+		pm.set_region(m, slot, pad, ri, "Reverse", r) // api-lint: its step named Reverse (audio_set_region names its "Region")
 		app.seal(&m.history)
 	}
 	ui.name("audio reverse")
@@ -232,7 +232,7 @@ draw_audio_tools :: proc(a: ^App) {
 			s := app.store_get(&m.project.samples, x.takes[k])
 			name := s.name if s != nil else "?"
 			if im.Selectable(fmt.ctprintf("Take %d · %s · from beat %.2f###take%d", k + 1, name, x.take_at[k] + 1, k)) {
-				pm.use_take(m, slot, pad, k, lo, hi)
+				pa.audio_use_take(&a.api, i64(slot), i64(pad), i64(k), lo, hi)
 			}
 		}
 		im.EndCombo()
@@ -248,21 +248,20 @@ draw_audio_tools :: proc(a: ^App) {
 	ui.name("audio spread")
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_COMBINE, "Consolidate: the part as it plays written as a new take", disabled = !has) {
-		if pm.consolidate(m, slot, pad) do av.region, av.range = 0, {}
+		if pa.audio_consolidate(&a.api, i64(slot), i64(pad)) == .Ok do av.region, av.range = 0, {}
 	}
 	ui.name("audio consolidate")
 	im.SameLine(0, 12)
 	warp := int(x.warp)
 	ui.flow(150, 2)
 	if ui.segmented("audio warp", {"Repitch", "Stretch"}, &warp) {
-		pm.set_part_warp(m, slot, pad, pm.Clip_Warp(warp), x.transpose)
-		app.seal(&m.history)
+		pa.audio_set_warp(&a.api, i64(slot), i64(pad), pa.Audio_Warp(warp), clamp(x.transpose, -24, 24))
 	}
 	if im.IsItemHovered() do im.SetTooltip("At another tempo: faster or slower with its pitch (Repitch), or its pitch kept (Stretch; and transposed)")
 	if x.warp == .Stretch {
 		im.SameLine(0, 4)
 		tr := f64(x.transpose)
-		if e := ui.number_drag("audio transpose", &tr, -24, 24, 1, 1, "%+.0f st", 64); e.changed do pm.set_part_warp(m, slot, pad, x.warp, f32(tr))
+		if e := ui.number_drag("audio transpose", &tr, -24, 24, 1, 1, "%+.0f st", 64); e.changed do pa.audio_set_warp(&a.api, i64(slot), i64(pad), pa.Audio_Warp(x.warp), clamp(f32(tr), -24, 24))
 		else if e.ended do app.seal(&m.history)
 	}
 	im.SameLine(0, 12)
@@ -271,8 +270,11 @@ draw_audio_tools :: proc(a: ^App) {
 		cur := pm.part_beats(&m.project, slot, pad)
 		lb := cur
 		e := ui.number_drag("audio loop", &lb, 0.25, length, 0.25, 1.0 / 16, "Loop %.4g" if cur < length - 1e-9 else "Loop: off", 90)
-		if e.changed do pm.set_track_loop(m, slot, pad, lb)
-		if e.ended do app.seal(&m.history)
+		if e.changed {
+			pa.history_gesture_begin(&a.api)
+			pa.sequence_set_track_loop(&a.api, i64(slot), i64(pad), lb)
+		}
+		if e.ended do pa.history_gesture_end(&a.api)
 		if im.IsItemHovered() do im.SetTooltip("The track's own loop: its first beats again each time round, to the sample (drag to the sequence's length: off)")
 	}
 	im.SameLine(0, 12)
@@ -320,12 +322,12 @@ audio_split :: proc(a: ^App) {
 	av := &a.seq.aud
 	slot, pad := m.project.slot, a.selected
 	if av.range[1] > av.range[0] {
-		app.begin(&m.history, "Split")
-		pm.split_at(m, slot, pad, av.range[0])
-		pm.split_at(m, slot, pad, av.range[1])
-		app.end(&m.history)
+		pa.history_group_begin(&a.api, "Split")
+		pa.audio_split(&a.api, i64(slot), i64(pad), av.range[0])
+		pa.audio_split(&a.api, i64(slot), i64(pad), av.range[1])
+		pa.history_group_end(&a.api)
 	} else {
-		pm.split_at(m, slot, pad, av.cursor)
+		pa.audio_split(&a.api, i64(slot), i64(pad), av.cursor)
 	}
 	av.region = pm.region_at(&m.project, slot, pad, av.cursor)
 }
@@ -350,9 +352,10 @@ audio_cut :: proc(a: ^App, copying: bool) {
 	slot, pad := m.project.slot, a.selected
 	if copying do audio_copy(a)
 	if av.range[1] > av.range[0] {
-		pm.delete_range(m, slot, pad, av.range[0], av.range[1], "Cut" if copying else "Delete")
+		if copying do pm.delete_range(m, slot, pad, av.range[0], av.range[1], "Cut") // api-lint: its step named Cut (audio_delete_range's is Delete)
+		else do pa.audio_delete_range(&a.api, i64(slot), i64(pad), av.range[0], av.range[1])
 	} else if av.region >= 0 {
-		pm.delete_region(m, slot, pad, av.region)
+		pa.audio_delete_region(&a.api, i64(slot), i64(pad), i64(av.region))
 	}
 	av.region = -1
 }

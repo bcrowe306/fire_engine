@@ -34,6 +34,162 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := last_error(api)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_audio_part":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := audio_part(api, slot, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_audio_region":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := audio_region(api, slot, pad, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_audio_add_take":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		path := remote_string(args, "path", &ok)
+		at := remote_f64_or(args, "at", 0, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_add_take(api, slot, pad, path, at)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_split":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		beat := remote_f64(args, "beat", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_split(api, slot, pad, beat)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_delete_range":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		from := remote_f64(args, "from", &ok)
+		to := remote_f64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_delete_range(api, slot, pad, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_crop":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		from := remote_f64(args, "from", &ok)
+		to := remote_f64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_crop(api, slot, pad, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_move_region":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		at := remote_f64(args, "at", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_move_region(api, slot, pad, index, at)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_trim_region":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		beat := remote_f64(args, "beat", &ok)
+		end := remote_bool(args, "end", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_trim_region(api, slot, pad, index, beat, end)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_delete_region":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_delete_region(api, slot, pad, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_set_region":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		region := remote_struct_Region(args, "region", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_set_region(api, slot, pad, index, region)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_normalize_region":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_normalize_region(api, slot, pad, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_use_take":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		take := remote_i64(args, "take", &ok)
+		from := remote_f64(args, "from", &ok)
+		to := remote_f64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_use_take(api, slot, pad, take, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_consolidate":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_consolidate(api, slot, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_set_warp":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		warp := Audio_Warp(remote_enum(args, "warp", Audio_Warp_NAMES[:], &ok))
+		transpose := remote_f32(args, "transpose", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_set_warp(api, slot, pad, warp, transpose)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_audio_clear":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := audio_clear(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_device_preset_count":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -923,6 +1079,307 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := project_clean_up(api, undo_only, cache)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_recording_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := recording_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_recording_record":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := recording_record(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_recording_sample_start":
+		pad := remote_i64(args, "pad", &ok)
+		method := Sampling(remote_enum(args, "method", Sampling_NAMES[:], &ok))
+		threshold_db := remote_f32_or(args, "threshold_db", -40, &ok)
+		bars := remote_i64_or(args, "bars", 1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := recording_sample_start(api, pad, method, threshold_db, bars)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_recording_sample_stop":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := recording_sample_stop(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_current":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_current(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_state":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_state(api, slot)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_name":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_name(api, slot)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_select":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_select(api, slot)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_name":
+		slot := remote_i64(args, "slot", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_name(api, slot, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_bars":
+		slot := remote_i64(args, "slot", &ok)
+		bars := remote_i64(args, "bars", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_bars(api, slot, bars)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_tempo":
+		slot := remote_i64(args, "slot", &ok)
+		bpm := remote_f64(args, "bpm", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_tempo(api, slot, bpm)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_color":
+		slot := remote_i64(args, "slot", &ok)
+		color := remote_i64(args, "color", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_color(api, slot, color)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_swing":
+		slot := remote_i64(args, "slot", &ok)
+		amount := remote_f32(args, "amount", &ok)
+		grid := Grid(remote_enum(args, "grid", Grid_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_swing(api, slot, amount, grid)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_quantize":
+		slot := remote_i64(args, "slot", &ok)
+		grid := Grid(remote_enum(args, "grid", Grid_NAMES[:], &ok))
+		strength := remote_f64_or(args, "strength", 1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_quantize(api, slot, grid, strength)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_duplicate":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_duplicate(api, slot)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_copy":
+		from := remote_i64(args, "from", &ok)
+		to := remote_i64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_copy(api, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_double":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_double(api, slot)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_clear":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_clear(api, slot)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_track_loop":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		beats := remote_f64(args, "beats", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_track_loop(api, slot, pad, beats)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_note":
+		slot := remote_i64(args, "slot", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_note(api, slot, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_add_note":
+		slot := remote_i64(args, "slot", &ok)
+		n := remote_struct_Note(args, "n", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_add_note(api, slot, n)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_set_note":
+		slot := remote_i64(args, "slot", &ok)
+		index := remote_i64(args, "index", &ok)
+		n := remote_struct_Note(args, "n", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_set_note(api, slot, index, n)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_remove_notes":
+		slot := remote_i64(args, "slot", &ok)
+		indices := remote_i64s(args, "indices", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_remove_notes(api, slot, indices)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_cc":
+		slot := remote_i64(args, "slot", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_cc(api, slot, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_add_cc":
+		slot := remote_i64(args, "slot", &ok)
+		c := remote_struct_Cc(args, "c", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_add_cc(api, slot, c)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_clear_cc":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		cc := remote_i64(args, "cc", &ok)
+		from := remote_f64(args, "from", &ok)
+		to := remote_f64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_clear_cc(api, slot, pad, cc, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_point":
+		slot := remote_i64(args, "slot", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_point(api, slot, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_add_point":
+		slot := remote_i64(args, "slot", &ok)
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		beat := remote_f64(args, "beat", &ok)
+		value := remote_f32(args, "value", &ok)
+		curve := remote_f32_or(args, "curve", 0, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_add_point(api, slot, ref, beat, value, curve)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_add_pad_point":
+		slot := remote_i64(args, "slot", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		lane := Pad_Lane(remote_enum(args, "lane", Pad_Lane_NAMES[:], &ok))
+		beat := remote_f64(args, "beat", &ok)
+		value := remote_f32(args, "value", &ok)
+		curve := remote_f32_or(args, "curve", 0, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_add_pad_point(api, slot, pad, lane, beat, value, curve)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_remove_point":
+		slot := remote_i64(args, "slot", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_remove_point(api, slot, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_set_input_quantize":
+		on := remote_bool(args, "on", &ok)
+		grid := Grid(remote_enum(args, "grid", Grid_NAMES[:], &ok))
+		strength := remote_f32(args, "strength", &ok)
+		swing := remote_f32(args, "swing", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_input_quantize(api, on, grid, strength, swing)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_midi_fx":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_midi_fx(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_set_midi_fx":
+		pad := remote_i64(args, "pad", &ok)
+		fx := remote_struct_Midi_Fx(args, "fx", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_midi_fx(api, pad, fx)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_settings_count":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -1155,6 +1612,9 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 Result_NAMES := [?]string{"Ok", "Not_Found", "Invalid_Argument", "Busy", "Unsupported", "Io_Error"}
 
 @(private)
+Audio_Warp_NAMES := [?]string{"Repitch", "Stretch"}
+
+@(private)
 Effect_Place_NAMES := [?]string{"Insert", "Bus", "Main", "Perf"}
 
 @(private)
@@ -1182,6 +1642,18 @@ Device_NAMES := [?]string{"Sound", "Insert", "Volume", "Pan", "Send", "Eq"}
 Param_Unit_NAMES := [?]string{"None", "Decibels", "Hertz", "Milliseconds", "Percent", "Semitones", "Ratio"}
 
 @(private)
+Sampling_NAMES := [?]string{"Hold", "Arm", "Threshold", "Bars"}
+
+@(private)
+Grid_NAMES := [?]string{"Quarter", "Eighth", "Eighth_Triplet", "Sixteenth", "Sixteenth_Triplet", "Thirty_Second", "Thirty_Second_Triplet", "Sixty_Fourth"}
+
+@(private)
+Pad_Lane_NAMES := [?]string{"Volume", "Pitch", "Eq_Low", "Eq_Mid", "Eq_High", "Cutoff", "Resonance"}
+
+@(private)
+Arp_Mode_NAMES := [?]string{"Up", "Down", "Up_Down", "Random", "As_Played"}
+
+@(private)
 Setting_Kind_NAMES := [?]string{"Bool", "Int", "Number", "Choice", "Text"}
 
 @(private)
@@ -1195,6 +1667,59 @@ Metronome_Sound_NAMES := [?]string{"Beep", "Wood", "Stick", "Cowbell"}
 
 @(private)
 Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
+
+@(private)
+remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Cc
+	v.beat = remote_f64_or(obj, "beat", 0, ok)
+	v.pad = remote_i64_or(obj, "pad", 0, ok)
+	v.cc = remote_i64_or(obj, "cc", 0, ok)
+	v.value = remote_i64_or(obj, "value", 0, ok)
+	return v
+}
+
+@(private)
+remote_struct_Midi_Fx :: proc(args: json.Object, name: string, ok: ^bool) -> Midi_Fx {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Midi_Fx
+	v.repeat = remote_bool_or(obj, "repeat", false, ok)
+	v.repeat_rate = Grid(remote_enum_or(obj, "repeat_rate", Grid_NAMES[:], 0, ok))
+	v.repeat_gate = remote_f32_or(obj, "repeat_gate", 0, ok)
+	v.arp = remote_bool_or(obj, "arp", false, ok)
+	v.arp_mode = Arp_Mode(remote_enum_or(obj, "arp_mode", Arp_Mode_NAMES[:], 0, ok))
+	v.arp_rate = Grid(remote_enum_or(obj, "arp_rate", Grid_NAMES[:], 0, ok))
+	v.arp_octaves = remote_i64_or(obj, "arp_octaves", 0, ok)
+	v.arp_gate = remote_f32_or(obj, "arp_gate", 0, ok)
+	v.arp_latch = remote_bool_or(obj, "arp_latch", false, ok)
+	return v
+}
+
+@(private)
+remote_struct_Note :: proc(args: json.Object, name: string, ok: ^bool) -> Note {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Note
+	v.start = remote_f64_or(obj, "start", 0, ok)
+	v.length = remote_f64_or(obj, "length", 0, ok)
+	v.pad = remote_i64_or(obj, "pad", 0, ok)
+	v.pitch = remote_i64_or(obj, "pitch", 0, ok)
+	v.velocity = remote_f32_or(obj, "velocity", 0, ok)
+	v.probability = remote_f32_or(obj, "probability", 0, ok)
+	v.muted = remote_bool_or(obj, "muted", false, ok)
+	return v
+}
 
 @(private)
 remote_struct_Output :: proc(args: json.Object, name: string, ok: ^bool) -> Output {
@@ -1226,6 +1751,27 @@ remote_struct_Param_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> P
 }
 
 @(private)
+remote_struct_Region :: proc(args: json.Object, name: string, ok: ^bool) -> Region {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Region
+	v.take = remote_i64_or(obj, "take", 0, ok)
+	v.at = remote_f64_or(obj, "at", 0, ok)
+	v.start = remote_i64_or(obj, "start", 0, ok)
+	v.end = remote_i64_or(obj, "end", 0, ok)
+	v.gain_db = remote_f32_or(obj, "gain_db", 0, ok)
+	v.pan = remote_f32_or(obj, "pan", 0, ok)
+	v.fade_in = remote_f32_or(obj, "fade_in", 0, ok)
+	v.fade_out = remote_f32_or(obj, "fade_out", 0, ok)
+	v.mute = remote_bool_or(obj, "mute", false, ok)
+	v.reverse = remote_bool_or(obj, "reverse", false, ok)
+	return v
+}
+
+@(private)
 remote_struct_Slot_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> Slot_Ref {
 	obj, is := args[name].(json.Object)
 	if !is {
@@ -1243,6 +1789,21 @@ remote_struct_Slot_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> Sl
 REMOTE_METHODS := [?]string{
 	"pads_api_version",
 	"pads_last_error",
+	"pads_audio_part",
+	"pads_audio_region",
+	"pads_audio_add_take",
+	"pads_audio_split",
+	"pads_audio_delete_range",
+	"pads_audio_crop",
+	"pads_audio_move_region",
+	"pads_audio_trim_region",
+	"pads_audio_delete_region",
+	"pads_audio_set_region",
+	"pads_audio_normalize_region",
+	"pads_audio_use_take",
+	"pads_audio_consolidate",
+	"pads_audio_set_warp",
+	"pads_audio_clear",
 	"pads_device_preset_count",
 	"pads_device_preset_name",
 	"pads_device_preset_category",
@@ -1349,6 +1910,39 @@ REMOTE_METHODS := [?]string{
 	"pads_project_discard_backup",
 	"pads_project_unused_files",
 	"pads_project_clean_up",
+	"pads_recording_state",
+	"pads_recording_record",
+	"pads_recording_sample_start",
+	"pads_recording_sample_stop",
+	"pads_sequence_current",
+	"pads_sequence_state",
+	"pads_sequence_name",
+	"pads_sequence_select",
+	"pads_sequence_set_name",
+	"pads_sequence_set_bars",
+	"pads_sequence_set_tempo",
+	"pads_sequence_set_color",
+	"pads_sequence_set_swing",
+	"pads_sequence_quantize",
+	"pads_sequence_duplicate",
+	"pads_sequence_copy",
+	"pads_sequence_double",
+	"pads_sequence_clear",
+	"pads_sequence_set_track_loop",
+	"pads_sequence_note",
+	"pads_sequence_add_note",
+	"pads_sequence_set_note",
+	"pads_sequence_remove_notes",
+	"pads_sequence_cc",
+	"pads_sequence_add_cc",
+	"pads_sequence_clear_cc",
+	"pads_sequence_point",
+	"pads_sequence_add_point",
+	"pads_sequence_add_pad_point",
+	"pads_sequence_remove_point",
+	"pads_sequence_set_input_quantize",
+	"pads_sequence_midi_fx",
+	"pads_sequence_set_midi_fx",
 	"pads_settings_count",
 	"pads_settings_name",
 	"pads_settings_info",

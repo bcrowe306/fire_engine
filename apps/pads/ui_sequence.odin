@@ -62,22 +62,21 @@ track_loop_items :: proc(a: ^App, slot, pad: int, length: f64) {
 	presets := [?]f64{1, 2, 3, 5, 6, 7, 0.5, 1.5}
 	if im.BeginMenu("Track Loop") {
 		if im.MenuItem("No Track Loop", nil, !looped) {
-			app.seal(&m.history)
-			pm.set_track_loop(m, slot, pad, 0)
-			app.seal(&m.history)
+			pa.sequence_set_track_loop(&a.api, i64(slot), i64(pad), 0)
 		}
 		for b in presets do if b < length - 1e-9 {
 			if im.MenuItem(fmt.ctprintf("%g beat%s", b, "" if b == 1 else "s"), nil, looped && abs(cur - b) < 1e-6) {
-				app.seal(&m.history)
-				pm.set_track_loop(m, slot, pad, b)
-				app.seal(&m.history)
+				pa.sequence_set_track_loop(&a.api, i64(slot), i64(pad), b)
 			}
 		}
 		im.Separator()
 		x := cur if looped else length
 		e := ui.number_drag("track loop beats", &x, 0.25, length, 0.25, 1.0 / 16, "%.4g beats", 140)
-		if e.changed do pm.set_track_loop(m, slot, pad, x)
-		if e.ended do app.seal(&m.history)
+		if e.changed {
+			pa.history_gesture_begin(&a.api)
+			pa.sequence_set_track_loop(&a.api, i64(slot), i64(pad), x)
+		}
+		if e.ended do pa.history_gesture_end(&a.api)
 		im.EndMenu()
 	}
 	if im.IsItemHovered() do im.SetTooltip("This track goes round on its own, inside the sequence: 3 beats in a 4/4 bar drifts against the rest (starting again each pass)")
@@ -412,7 +411,7 @@ draw_sequence :: proc(user: rawptr) {
 		if m.project.pads[pad].kind == .Audio {
 			// (An audio track: a take where it was let go.)
 			at := math.max(st.view.beat0 + f64(im.GetIO().MousePos.x - top.x - ui.roll_rows_width(rows)) / (f64(avail.x - ui.roll_rows_width(rows)) / max(st.view.beats, 1e-6)), 0)
-			if pm.add_take_file(m, slot, pad, e.dropped, snap_down(at, snap)) == .None do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A take on %s", pm.pad_label(pad)))
+			if pa.audio_add_take(&a.api, i64(slot), i64(pad), e.dropped, max(snap_down(at, snap), 0)) == .Ok do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A take on %s", pm.pad_label(pad)))
 			else do ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.dropped)))
 		} else if pa.pad_load_sample(&a.api, i64(pad), e.dropped) == .Ok {
 			a.selected = pad
@@ -717,7 +716,7 @@ draw_grid_controls :: proc(a: ^App, quantize: bool) {
 	if !quantize do return
 	q: cstring = ui.ICON_MAGNET + "##Quantize" if seq_bar_narrow else ui.ICON_MAGNET + "  Quantize"
 	ui.flow(ui.button_width(q), 8 if seq_bar_narrow else -1)
-	if im.Button(q) do pm.quantize_sequence(m, m.project.slot, pm.quantize_grid(&m.engine, st.grid))
+	if im.Button(q) do pa.sequence_quantize(&a.api, i64(m.project.slot), pa.Grid(pm.quantize_grid(&m.engine, st.grid)))
 	ui.name("Quantize")
 	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Move the sequence's notes to %s", fmt.tprintf("note repeat's %s (it is on)", pm.GRID_NAMES[pm.quantize_grid(&m.engine, st.grid)]) if m.engine.repeat_all else "the grid"))
 	// Input quantize: notes recorded from now on, moved as they come in.
@@ -815,28 +814,33 @@ draw_transport :: proc(a: ^App) {
 	ui.flow(96)
 	im.SetNextItemWidth(96)
 	bars := i32(s.bars)
-	if im.DragInt("##bars", &bars, 0.1, 1, pm.MAX_BARS, "%d bars" if bars > 1 else "%d bar", {.ClampOnInput}) do pm.set_bars(m, slot, int(bars))
-	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+	if im.DragInt("##bars", &bars, 0.1, 1, pm.MAX_BARS, "%d bars" if bars > 1 else "%d bar", {.ClampOnInput}) {
+		pa.history_gesture_begin(&a.api)
+		pa.sequence_set_bars(&a.api, i64(slot), i64(clamp(int(bars), 1, pm.MAX_BARS)))
+	}
+	if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 	ui.flow(ui.button_width("×2"))
-	if im.Button("×2") do pm.double_sequence(m, slot)
+	if im.Button("×2") do pa.sequence_double(&a.api, i64(slot))
 	if im.IsItemHovered() do im.SetTooltip("Double the sequence (its notes repeat)")
 
 	// Swing.
 	ui.flow(120, 20)
 	im.SetNextItemWidth(120)
 	sw := s.swing * 100
-	if im.DragFloat("##swing", &sw, 0.5, 0, 100, "Swing %.0f%%", {.ClampOnInput}) do pm.set_swing(m, slot, sw / 100, s.swing_grid)
-	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+	if im.DragFloat("##swing", &sw, 0.5, 0, 100, "Swing %.0f%%", {.ClampOnInput}) {
+		pa.history_gesture_begin(&a.api)
+		pa.sequence_set_swing(&a.api, i64(slot), clamp(sw / 100, 0, 1), pa.Grid(s.swing_grid))
+	}
+	if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 	ui.flow(ui.button_width("1/16") * 2)
 	sg := 0 if s.swing_grid == .Eighth else 1
 	if ui.segmented("swing_grid", {"1/8", "1/16"}, &sg) {
-		pm.set_swing(m, slot, s.swing, .Eighth if sg == 0 else .Sixteenth)
-		app.seal(&m.history)
+		pa.sequence_set_swing(&a.api, i64(slot), s.swing, .Eighth if sg == 0 else .Sixteenth)
 	}
 
 	// Clearing.
 	ui.flow(im.GetFrameHeight())
-	if ui.icon_button(ui.ICON_TRASH_2, "Clear the sequence") do pm.clear_sequence(m, slot)
+	if ui.icon_button(ui.ICON_TRASH_2, "Clear the sequence") do pa.sequence_clear(&a.api, i64(slot))
 	_ = t
 }
 
@@ -848,10 +852,7 @@ toggle_play :: proc(a: ^App) {
 // Arms or disarms recording; arming while stopped starts playing (after
 // the count-in).
 toggle_record :: proc(a: ^App) {
-	on := !a.capture.armed
-	pm.capture_arm(&a.m, &a.capture, on)
-	// From a stop: the count-in first (if the transport has one).
-	if _, playing := pm.position(&a.m.engine); on && !playing do pa.transport_play(&a.api, count_in = true)
+	pa.recording_record(&a.api, !a.capture.armed) // (from a stop: it plays, after the count-in)
 }
 
 _ :: slice.contains

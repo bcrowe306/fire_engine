@@ -273,8 +273,8 @@ draw_sample_bar :: proc(a: ^App) {
 	recording := a.rec.active
 	if ui.icon_button(ui.ICON_CIRCLE, "Record the input onto this pad", on = recording, color = ui.rgb(0xf0555a)) {
 		if recording {
-			pm.record_stop(&a.rec)
-		} else if pm.record_start(m, &a.rec, i) != .None {
+			pa.recording_sample_stop(&a.api)
+		} else if pa.recording_sample_start(&a.api, i64(i), .Hold) != .Ok {
 			ui.toast(&a.ws.toasts, .Warning, "No audio input to record from")
 		}
 	}
@@ -346,7 +346,7 @@ draw_take :: proc(a: ^App, i: int) {
 		ui.name("edit audio")
 		if im.IsItemHovered() do im.SetTooltip("In the Sequence view's Audio tab")
 		im.SameLine()
-		if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
+		if im.Button(ui.ICON_ERASER + "  Clear Take") do pa.audio_clear(&a.api, i64(i))
 		im.Spacing()
 		avail := im.GetContentRegionAvail()
 		pos := im.GetCursorScreenPos()
@@ -385,7 +385,7 @@ draw_take :: proc(a: ^App, i: int) {
 	im.AlignTextToFramePadding()
 	im.TextDisabled("%s", fmt.ctprintf("%s · %.2f s at %.0f BPM", pm.sequence_name(&m.project, m.project.slot), f64(s.frames) / s.rate, c.bpm))
 	im.SameLine()
-	if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
+	if im.Button(ui.ICON_ERASER + "  Clear Take") do pa.audio_clear(&a.api, i64(i))
 	im.Spacing()
 	head: i64 = -1
 	if rel, playing := pm.position(&m.engine); playing do head = i64(rel * s.rate * 60 / c.bpm) % max(s.frames, 1)

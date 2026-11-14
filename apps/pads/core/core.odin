@@ -14,6 +14,8 @@ Core :: struct {
 	host:      app.Host,
 	m:         pm.Model,
 	capture:   pm.Capture,   // recording into the sequence (Rec)
+	rec:       pm.Recording, // recording a sample into a pad
+	sample_holding: int,     // the pad recording while it is held (-1: none); letting it go stops it
 	transport: Transport,    // the transport's own state (tap tempo, Stop pressed twice)
 	files:     Files,        // the project's place, the recent projects, Pads' folders
 	hooks:     Hooks,        // what the app does around the core's actions

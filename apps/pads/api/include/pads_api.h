@@ -34,6 +34,13 @@ enum {
 	PADS_RESULT_IO_ERROR = 5,
 };
 
+// How an audio track's part follows a tempo it wasn't recorded at.
+typedef int32_t Pads_Audio_Warp;
+enum {
+	PADS_AUDIO_WARP_REPITCH = 0,
+	PADS_AUDIO_WARP_STRETCH = 1,
+};
+
 // Where an effect slot is.
 typedef int32_t Pads_Effect_Place;
 enum {
@@ -118,6 +125,51 @@ enum {
 	PADS_PARAM_UNIT_RATIO = 6,
 };
 
+// How a sample is recorded into a pad.
+typedef int32_t Pads_Sampling;
+enum {
+	PADS_SAMPLING_HOLD = 0,
+	PADS_SAMPLING_ARM = 1,
+	PADS_SAMPLING_THRESHOLD = 2,
+	PADS_SAMPLING_BARS = 3,
+};
+
+// A grid: quantize, swing, input quantize, note repeat and the
+// arpeggiator step by one.
+typedef int32_t Pads_Grid;
+enum {
+	PADS_GRID_QUARTER = 0,
+	PADS_GRID_EIGHTH = 1,
+	PADS_GRID_EIGHTH_TRIPLET = 2,
+	PADS_GRID_SIXTEENTH = 3,
+	PADS_GRID_SIXTEENTH_TRIPLET = 4,
+	PADS_GRID_THIRTY_SECOND = 5,
+	PADS_GRID_THIRTY_SECOND_TRIPLET = 6,
+	PADS_GRID_SIXTY_FOURTH = 7,
+};
+
+// A pad's own automation lane (beside any parameter: a Param_Ref).
+typedef int32_t Pads_Pad_Lane;
+enum {
+	PADS_PAD_LANE_VOLUME = 0,
+	PADS_PAD_LANE_PITCH = 1,
+	PADS_PAD_LANE_EQ_LOW = 2,
+	PADS_PAD_LANE_EQ_MID = 3,
+	PADS_PAD_LANE_EQ_HIGH = 4,
+	PADS_PAD_LANE_CUTOFF = 5,
+	PADS_PAD_LANE_RESONANCE = 6,
+};
+
+// How the arpeggiator walks the held notes.
+typedef int32_t Pads_Arp_Mode;
+enum {
+	PADS_ARP_MODE_UP = 0,
+	PADS_ARP_MODE_DOWN = 1,
+	PADS_ARP_MODE_UP_DOWN = 2,
+	PADS_ARP_MODE_RANDOM = 3,
+	PADS_ARP_MODE_AS_PLAYED = 4,
+};
+
 // What a setting is (`settings_info`).
 typedef int32_t Pads_Setting_Kind;
 enum {
@@ -180,6 +232,30 @@ enum {
 typedef void (*Pads_Change_Fn)(Pads_Api* api, Pads_Topic topic, int64_t index, void* user);
 // A call posted from another thread, run on the control thread.
 typedef void (*Pads_Post_Fn)(Pads_Api* api, void* user);
+
+// Audio track `pad`'s part in sequence `slot`: its takes, the regions
+// that play them, how it follows the tempo.
+typedef struct Pads_Part_State {
+	int64_t regions; // audio_region 0..regions-1 (in order along the sequence)
+	int64_t takes; // takes recorded or added
+	double beats; // how long it plays (its own loop, or the sequence)
+	Pads_Audio_Warp warp;
+	float transpose; // semitones (Stretch)
+} Pads_Part_State;
+
+// A region: part of a take, placed in the sequence.
+typedef struct Pads_Region {
+	int64_t take; // which of the part's takes it plays
+	double at; // where it starts: beats into the sequence
+	int64_t start; // the take's frames it plays: from
+	int64_t end; // ... to
+	float gain_db;
+	float pan; // -1..1
+	float fade_in; // seconds
+	float fade_out; // seconds
+	bool mute;
+	bool reverse;
+} Pads_Region;
 
 // An effect slot.
 typedef struct Pads_Slot_Ref {
@@ -321,6 +397,73 @@ typedef struct Pads_Clean_Up {
 	int64_t bytes;
 } Pads_Clean_Up;
 
+// Recording now.
+typedef struct Pads_Recording_State {
+	bool armed; // Rec: notes played, knobs moved (with Auto), and armed audio tracks' inputs go into the sequence while it plays
+	bool recording; // armed and playing (or counting in)
+	bool sampling; // a sample is being recorded into a pad
+	int64_t sample_pad; // ... which (-1: none)
+	int64_t latency; // frames a take is moved earlier by (the device's round trip and the setting)
+} Pads_Recording_State;
+
+// Sequence `slot` now (its name: sequence_name).
+typedef struct Pads_Sequence_State {
+	bool used; // it has notes, automation or takes
+	bool current; // the one shown and played (Pattern)
+	int64_t bars;
+	double beats; // how long it is
+	double bpm; // its own tempo (0: the project's)
+	int64_t color; // 0xRRGGBB, as shown (its own or its slot's)
+	float swing; // 0..1
+	Pads_Grid swing_grid;
+	int64_t notes; // sequence_note 0..notes-1
+	int64_t points; // automation points (sequence_point)
+	int64_t ccs; // MIDI CC steps (sequence_cc)
+} Pads_Sequence_State;
+
+// A note.
+typedef struct Pads_Note {
+	double start; // beats from the sequence's top
+	double length; // beats (> 0)
+	int64_t pad; // the pad it plays
+	int64_t pitch; // semitones from the pad's own (-64..63; keyboard mode)
+	float velocity; // 0..1
+	float probability; // 0..1: its chance each time round
+	bool muted; // kept, silent
+} Pads_Note;
+
+// A MIDI CC step: pad `pad`'s controller `cc` goes to `value` at `beat`.
+typedef struct Pads_Cc {
+	double beat;
+	int64_t pad;
+	int64_t cc; // 0..127
+	int64_t value; // 0..127
+} Pads_Cc;
+
+// An automation point.
+typedef struct Pads_Point {
+	double beat;
+	float value; // in its parameter's units
+	float curve; // the segment to the next: 0 a line, -1..1 bending
+	bool own; // a pad's own lane (`pad`, `pad_lane`), else a parameter's (`param`)
+	int64_t pad;
+	Pads_Pad_Lane pad_lane;
+	Pads_Param_Ref param;
+} Pads_Point;
+
+// A pad's note repeat and arpeggiator (its MIDI effects).
+typedef struct Pads_Midi_Fx {
+	bool repeat;
+	Pads_Grid repeat_rate; // Quarter .. Thirty_Second_Triplet
+	float repeat_gate; // 0.05..1 of a step
+	bool arp;
+	Pads_Arp_Mode arp_mode;
+	Pads_Grid arp_rate;
+	int64_t arp_octaves; // 1..4
+	float arp_gate; // 0.05..1
+	bool arp_latch; // it goes on after the keys are let go
+} Pads_Midi_Fx;
+
 // What setting `name` is.
 typedef struct Pads_Setting_Info {
 	Pads_Setting_Kind kind;
@@ -371,6 +514,45 @@ typedef struct Pads_Api_V1 {
 	// Why the last call that failed failed, in words (temporary: until the
 	// next failure). "" before any.
 	Pads_Result (*last_error)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Audio track `pad`'s part in sequence `slot`. Unsupported for a pad that
+	// isn't an audio track.
+	Pads_Result (*audio_part)(Pads_Api* api, int64_t slot, int64_t pad, Pads_Part_State* out);
+	// Region `index` of audio track `pad`'s part in sequence `slot`.
+	Pads_Result (*audio_region)(Pads_Api* api, int64_t slot, int64_t pad, int64_t index, Pads_Region* out);
+	// Adds the audio file at `path` as a take of audio track `pad` in sequence
+	// `slot`, at beat `at` (on top of what is there). Undoably; Io_Error if
+	// it can't be read.
+	Pads_Result (*audio_add_take)(Pads_Api* api, int64_t slot, int64_t pad, const char* path, int64_t path_len, double at);
+	// Splits the region under beat `beat`, undoably.
+	Pads_Result (*audio_split)(Pads_Api* api, int64_t slot, int64_t pad, double beat);
+	// Deletes beats `from`..`to` of the part (silence there), undoably.
+	Pads_Result (*audio_delete_range)(Pads_Api* api, int64_t slot, int64_t pad, double from, double to);
+	// Keeps only beats `from`..`to` of the part, undoably.
+	Pads_Result (*audio_crop)(Pads_Api* api, int64_t slot, int64_t pad, double from, double to);
+	// Moves region `index` to start at beat `at`, undoably (a gesture's
+	// moves merge).
+	Pads_Result (*audio_move_region)(Pads_Api* api, int64_t slot, int64_t pad, int64_t index, double at);
+	// Moves region `index`'s start (or its end, with `end`) to beat `beat`,
+	// undoably.
+	Pads_Result (*audio_trim_region)(Pads_Api* api, int64_t slot, int64_t pad, int64_t index, double beat, bool end);
+	// Deletes region `index`, undoably.
+	Pads_Result (*audio_delete_region)(Pads_Api* api, int64_t slot, int64_t pad, int64_t index);
+	// Sets region `index`'s gain, pan, fades, mute and reversing (its take,
+	// place and frames as they are), undoably.
+	Pads_Result (*audio_set_region)(Pads_Api* api, int64_t slot, int64_t pad, int64_t index, Pads_Region region);
+	// Raises region `index` so its loudest is full scale, undoably.
+	Pads_Result (*audio_normalize_region)(Pads_Api* api, int64_t slot, int64_t pad, int64_t index);
+	// Plays take `take` over beats `from`..`to` (comping: the best of each
+	// pass), undoably.
+	Pads_Result (*audio_use_take)(Pads_Api* api, int64_t slot, int64_t pad, int64_t take, double from, double to);
+	// Renders the part to one take (its regions, fades and gains as it
+	// plays), undoably. Busy while it can't yet (a take still being rendered).
+	Pads_Result (*audio_consolidate)(Pads_Api* api, int64_t slot, int64_t pad);
+	// How the part follows a tempo it wasn't recorded at, and its transpose
+	// (-24..24 semitones; Stretch), undoably.
+	Pads_Result (*audio_set_warp)(Pads_Api* api, int64_t slot, int64_t pad, Pads_Audio_Warp warp, float transpose);
+	// Clears audio track `pad`'s take in the current sequence, undoably.
+	Pads_Result (*audio_clear)(Pads_Api* api, int64_t pad);
 	// Built-in synth presets there are (device_preset_name lists them).
 	Pads_Result (*device_preset_count)(Pads_Api* api, int64_t* out);
 	// Built-in preset `index`'s name ("Warm Pad"). Temporary.
@@ -654,6 +836,91 @@ typedef struct Pads_Api_V1 {
 	// `undo_only` the samples only undo would bring back (undo is forgotten),
 	// with `cache` the renderings. Io_Error if some couldn't be moved.
 	Pads_Result (*project_clean_up)(Pads_Api* api, bool undo_only, bool cache, Pads_Clean_Up* out);
+	// Recording now.
+	Pads_Result (*recording_state)(Pads_Api* api, Pads_Recording_State* out);
+	// Arms Rec (or disarms it). Armed while stopped, it starts playing, after
+	// the count-in if there is one (transport_set_count_in).
+	Pads_Result (*recording_record)(Pads_Api* api, bool on);
+	// Records a sample into pad `pad` from its input (its strip's In), by
+	// `method` (Threshold: from `threshold_db`, -80..0; Bars: `bars`, 1..16).
+	// It lands on the pad (one undo step) when it stops. Unsupported when the
+	// pad has no input or there is no audio input.
+	Pads_Result (*recording_sample_start)(Pads_Api* api, int64_t pad, Pads_Sampling method, float threshold_db, int64_t bars);
+	// Stops the sample being recorded (Hold, Threshold; Bars stop by
+	// themselves). Not_Found when none is.
+	Pads_Result (*recording_sample_stop)(Pads_Api* api);
+	// The sequence shown and played (Pattern).
+	Pads_Result (*sequence_current)(Pads_Api* api, int64_t* out);
+	// Sequence `slot` now.
+	Pads_Result (*sequence_state)(Pads_Api* api, int64_t slot, Pads_Sequence_State* out);
+	// Sequence `slot`'s name: its own, else "Sequence N". Temporary.
+	Pads_Result (*sequence_name)(Pads_Api* api, int64_t slot, char* out, int64_t out_cap, int64_t* out_len);
+	// Shows and plays sequence `slot`: at once when stopped; playing, when
+	// the launch quantize says. Not an edit.
+	Pads_Result (*sequence_select)(Pads_Api* api, int64_t slot);
+	// Names sequence `slot` (up to 23 bytes; "": "Sequence N" again), undoably.
+	Pads_Result (*sequence_set_name)(Pads_Api* api, int64_t slot, const char* name, int64_t name_len);
+	// Sets sequence `slot`'s length (1..64 bars), undoably. Notes past the end
+	// are kept (they come back if it grows) but don't play.
+	Pads_Result (*sequence_set_bars)(Pads_Api* api, int64_t slot, int64_t bars);
+	// Gives sequence `slot` its own tempo (40..300 BPM; 0: the project's),
+	// undoably.
+	Pads_Result (*sequence_set_tempo)(Pads_Api* api, int64_t slot, double bpm);
+	// Colours sequence `slot` (0xRRGGBB; 0: its slot's), undoably.
+	Pads_Result (*sequence_set_color)(Pads_Api* api, int64_t slot, int64_t color);
+	// Swings sequence `slot`'s off-beats of `grid` (Eighth or Sixteenth) by
+	// `amount` (0..1), undoably.
+	Pads_Result (*sequence_set_swing)(Pads_Api* api, int64_t slot, float amount, Pads_Grid grid);
+	// Moves sequence `slot`'s notes toward `grid` by `strength` (0..1; 1: onto
+	// it), undoably.
+	Pads_Result (*sequence_quantize)(Pads_Api* api, int64_t slot, Pads_Grid grid, double strength);
+	// Copies sequence `slot` (all of it, named "… copy") into the next empty
+	// slot and shows it: which. Not_Found when every slot is used.
+	Pads_Result (*sequence_duplicate)(Pads_Api* api, int64_t slot, int64_t* out);
+	// Copies sequence `from` onto slot `to` (what was there replaced), undoably.
+	Pads_Result (*sequence_copy)(Pads_Api* api, int64_t from, int64_t to);
+	// Doubles sequence `slot`: twice as long, its notes and automation again
+	// in the new half. Undoably; Invalid_Argument past 64 bars.
+	Pads_Result (*sequence_double)(Pads_Api* api, int64_t slot);
+	// Empties sequence `slot` (its notes and automation), undoably.
+	Pads_Result (*sequence_clear)(Pads_Api* api, int64_t slot);
+	// Pad `pad`'s own loop in sequence `slot`: `beats` long (0, or the
+	// sequence's length or more: none). Undoably.
+	Pads_Result (*sequence_set_track_loop)(Pads_Api* api, int64_t slot, int64_t pad, double beats);
+	// Note `index` of sequence `slot` (in order: by start, then pad).
+	Pads_Result (*sequence_note)(Pads_Api* api, int64_t slot, int64_t index, Pads_Note* out);
+	// Adds note `n` to sequence `slot` (where it overlaps one of its pad's and
+	// pitch, the new one wins): its index. Undoably.
+	Pads_Result (*sequence_add_note)(Pads_Api* api, int64_t slot, Pads_Note n, int64_t* out);
+	// Changes note `index` of sequence `slot` to `n`: its index now (notes stay
+	// in order). Undoably (a gesture's moves merge).
+	Pads_Result (*sequence_set_note)(Pads_Api* api, int64_t slot, int64_t index, Pads_Note n, int64_t* out);
+	// Removes the notes `indices` of sequence `slot`: one undo step.
+	Pads_Result (*sequence_remove_notes)(Pads_Api* api, int64_t slot, const int64_t* indices, int64_t indices_len);
+	// MIDI CC step `index` of sequence `slot` (by pad, controller, beat).
+	Pads_Result (*sequence_cc)(Pads_Api* api, int64_t slot, int64_t index, Pads_Cc* out);
+	// Adds MIDI CC step `c` to sequence `slot`, undoably.
+	Pads_Result (*sequence_add_cc)(Pads_Api* api, int64_t slot, Pads_Cc c);
+	// Removes the MIDI CC steps of pad `pad`'s controller `cc` in sequence
+	// `slot` from beat `from` to `to`, undoably.
+	Pads_Result (*sequence_clear_cc)(Pads_Api* api, int64_t slot, int64_t pad, int64_t cc, double from, double to);
+	// Automation point `index` of sequence `slot` (by lane, then beat).
+	Pads_Result (*sequence_point)(Pads_Api* api, int64_t slot, int64_t index, Pads_Point* out);
+	// Adds a point to parameter `ref`'s automation in sequence `slot`: at
+	// `beat`, `value` (its units, in its range), `curve` (-1..1) to the next.
+	// Undoably.
+	Pads_Result (*sequence_add_point)(Pads_Api* api, int64_t slot, Pads_Param_Ref ref, double beat, float value, float curve);
+	// Adds a point to pad `pad`'s own `lane` in sequence `slot`. Undoably.
+	Pads_Result (*sequence_add_pad_point)(Pads_Api* api, int64_t slot, int64_t pad, Pads_Pad_Lane lane, double beat, float value, float curve);
+	// Removes automation point `index` of sequence `slot`, undoably.
+	Pads_Result (*sequence_remove_point)(Pads_Api* api, int64_t slot, int64_t index);
+	// Input quantize: notes recorded move toward `grid` by `strength` (0..1),
+	// its off-beats swung by `swing` (0..1). Undoably.
+	Pads_Result (*sequence_set_input_quantize)(Pads_Api* api, bool on, Pads_Grid grid, float strength, float swing);
+	// Pad `pad`'s note repeat and arpeggiator.
+	Pads_Result (*sequence_midi_fx)(Pads_Api* api, int64_t pad, Pads_Midi_Fx* out);
+	// Sets pad `pad`'s note repeat and arpeggiator, undoably.
+	Pads_Result (*sequence_set_midi_fx)(Pads_Api* api, int64_t pad, Pads_Midi_Fx fx);
 	// Settings there are (settings_name lists them).
 	Pads_Result (*settings_count)(Pads_Api* api, int64_t* out);
 	// Setting `index`'s name: "section.key", as settings.ini has it

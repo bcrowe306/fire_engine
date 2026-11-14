@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -474,7 +475,7 @@ draw_lanes_body :: proc(a: ^App, v: Song_View, total: f64) {
 			}
 		}
 		if hovered && im.IsMouseDoubleClicked(.Left) {
-			pm.select_slot(m, int(c.slot))
+			pa.sequence_select(&a.api, i64(int(c.slot)))
 			ui.panel_focus(&a.ws, "sequence")
 		}
 		_ = active
@@ -966,7 +967,7 @@ draw_song_side :: proc(a: ^App) {
 		ui.name(fmt.tprintf("song seq %d", k + 1))
 		hovered := im.IsItemHovered()
 		if hovered && im.IsMouseDoubleClicked(.Left) && used do pm.song_add(m, k)
-		else if clicked do pm.select_slot(m, k)
+		else if clicked do pa.sequence_select(&a.api, i64(k))
 		item_menu(a, seq_target(k), "##sidemenu")
 		if used && im.BeginDragDropSource() {
 			slot := i32(k)

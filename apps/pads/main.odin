@@ -59,10 +59,8 @@ App :: struct {
 	selected: int,
 	lit:      [pm.PADS]f32, // seconds a pad stays lit after a hit
 	held:     [pm.PADS]bool,
-	rec:      pm.Recording,
 	sample_armed:   bool, // the Sample control is on: the next pad pressed records (Arm, Threshold, Bars)
 	sample_latched: bool, // ... and stays on after each take (Ctrl- or Cmd-click it)
-	sample_holding: int,  // the pad recording while it is held (-1: none); its release stops it
 	wave:     Wave_State,
 	device:   Device_State, // the device tabs' LFO traces
 	seq_ops:  Seq_Ops, // renaming, copying bars, the copied part
@@ -711,7 +709,7 @@ sample_press :: proc(a: ^App, index: int, alt: bool) -> bool {
 		return false
 	}
 	s := &a.settings
-	if pm.record_start(&a.m, &a.rec, index, method, s.sample_threshold_db, s.sample_bars) != .None {
+	if pa.recording_sample_start(&a.api, i64(index), pa.Sampling(method), clamp(s.sample_threshold_db, -80, 0), i64(clamp(s.sample_bars, 1, 16))) != .Ok {
 		ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("%s's input is set to No input: pick one on its strip", pm.pad_label(index)) if a.m.project.pads[index].input.from == .None else "No audio input to record from")
 		return true
 	}
@@ -725,6 +723,5 @@ sample_press :: proc(a: ^App, index: int, alt: bool) -> bool {
 // A pad let go: the sample being recorded into it while held stops.
 sample_release :: proc(a: ^App, index: int) {
 	if a.sample_holding != index || index < 0 do return
-	pm.record_stop(&a.rec)
-	a.sample_holding = -1
+	pa.recording_sample_stop(&a.api)
 }

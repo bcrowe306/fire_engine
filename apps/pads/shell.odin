@@ -105,16 +105,16 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { a := (^App)(u); pa.transport_set_metronome(&a.api, !a.m.engine.metronome) },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).m.engine.metronome }})
 	add(acts, {id = "quantize", label = "Quantize Sequence", icon = ui.ICON_MAGNET, chord = ui.MOD_CMD | i32(im.Key.U), user = a,
-		run = proc(u: rawptr) { a := (^App)(u); pm.quantize_sequence(&a.m, a.m.project.slot, a.seq.grid) }})
+		run = proc(u: rawptr) { a := (^App)(u); pa.sequence_quantize(&a.api, i64(a.m.project.slot), pa.Grid(a.seq.grid)) }})
 	add(acts, {id = "double", label = "Double Sequence", icon = ui.ICON_COPY_PLUS, user = a,
-		run = proc(u: rawptr) { a := (^App)(u); pm.double_sequence(&a.m, a.m.project.slot) }})
+		run = proc(u: rawptr) { a := (^App)(u); pa.sequence_double(&a.api, i64(a.m.project.slot)) }})
 	add(acts, {id = "duplicate_sequence", label = "Duplicate Sequence", icon = ui.ICON_COPY_PLUS, chord = ui.MOD_CMD | i32(im.Key.D), user = a,
 		run = proc(u: rawptr) {
 			a := (^App)(u)
 			switch {
 			case editing_notes(a): duplicate_selection(a)
 			case song_editing(a):  song_duplicate(a)
-			case:                  pm.duplicate_sequence(&a.m, a.m.project.slot)
+			case:                  pa.sequence_duplicate(&a.api, i64(a.m.project.slot))
 			}
 		}})
 	add(acts, {id = "rename_sequence", label = "Rename Sequence…", icon = ui.ICON_PENCIL, chord = i32(im.Key.F2), user = a,
@@ -128,7 +128,7 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { a := (^App)(u); if a.song_ui.focused do song_paste(a); else do paste_marked(a) },
 		enabled = proc(u: rawptr) -> bool { a := (^App)(u); return a.song_ui.copied_n > 0 if a.song_ui.focused else a.seq_ops.has_part }})
 	add(acts, {id = "clear_sequence", label = "Clear Sequence", icon = ui.ICON_TRASH_2, user = a,
-		run = proc(u: rawptr) { a := (^App)(u); pm.clear_sequence(&a.m, a.m.project.slot) }})
+		run = proc(u: rawptr) { a := (^App)(u); pa.sequence_clear(&a.api, i64(a.m.project.slot)) }})
 	add(acts, {id = "quit", label = "Quit", icon = ui.ICON_LOG_OUT, chord = ui.MOD_CMD | i32(im.Key.Q), user = a,
 		run = proc(u: rawptr) { leave((^App)(u), .Quit) }})
 	register_commands(a)
@@ -456,7 +456,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "take": // take PAD FILE: FILE a take of audio track PAD in the current sequence (at its top)
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
 			if a.m.project.pads[i].kind != .Audio do pa.pad_set_kind(&a.api, i64(i), .Audio)
-			if pm.add_take_file(&a.m, a.m.project.slot, i, strings.join(w[2:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not add the take")
+			if pa.audio_add_take(&a.api, i64(a.m.project.slot), i64(i), strings.join(w[2:], " ", context.temp_allocator)) != .Ok do return drive_fail(a, "could not add the take")
 			a.selected = i
 			return true
 		}
@@ -578,13 +578,11 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		return true
 	case "arp", "repeat": // arp|repeat [off]: the selected pad's
-		p := a.m.project.pads[a.selected].midi_fx
+		fx, _ := pa.sequence_midi_fx(&a.api, i64(a.selected))
 		on := len(w) < 2 || w[1] != "off"
-		if w[0] == "arp" do p.arp_on, p.repeat_on = on, p.repeat_on && !on
-		else do p.repeat_on, p.arp_on = on, p.arp_on && !on
-		pm.set_midi_fx(&a.m, a.selected, p)
-		app.seal(&a.m.history)
-		return true
+		if w[0] == "arp" do fx.arp, fx.repeat = on, fx.repeat && !on
+		else do fx.repeat, fx.arp = on, fx.arp && !on
+		return pa.sequence_set_midi_fx(&a.api, i64(a.selected), fx) == .Ok
 	case "midi":
 		// midi KEY VELOCITY [PORT] (0 = note-off; the port's index, 0 by default)
 		if len(w) < 3 do return false
@@ -630,8 +628,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return pa.transport_set_count_in(&a.api, i64(clamp(num(w, 1), 0, 2))) == .Ok
 	case "track_loop": // track_loop PAD BEATS: the pad's own loop in the current sequence (0: none)
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
-			pm.set_track_loop(&a.m, a.m.project.slot, i, f64(numf(w, 2)))
-			app.seal(&a.m.history)
+			pa.sequence_set_track_loop(&a.api, i64(a.m.project.slot), i64(i), max(f64(numf(w, 2)), 0))
 			return true
 		}
 	case "window": // window LANE ROW (1-based): the launcher's window there
@@ -687,8 +684,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "resonance": param = .Resonance
 		case: return false
 		}
-		pm.add_point(&a.m, a.m.project.slot, {pad = u8(i), param = param, beat = f64(numf(w, 3)), value = numf(w, 4)})
-		return true
+		lo, hi := pm.lane_range(param)
+		return pa.sequence_add_pad_point(&a.api, i64(a.m.project.slot), i64(i), pa.Pad_Lane(param), max(f64(numf(w, 3)), 0), clamp(numf(w, 4), lo, hi)) == .Ok
 	case "lane":
 		// lane velocity|chance|automation [volume|pitch|low|mid|high]
 		if len(w) < 2 do return false
@@ -1094,7 +1091,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "stop":
 		return pa.transport_stop(&a.api) == .Ok
 	case "rec":
-		pm.capture_arm(&a.m, &a.capture, len(w) < 2 || w[1] != "off")
+		pm.capture_arm(&a.m, &a.capture, len(w) < 2 || w[1] != "off") // api-lint: Rec armed without starting (a script starts it itself)
 		return true
 	case "metronome":
 		return pa.transport_set_metronome(&a.api, len(w) < 2 || w[1] != "off") == .Ok
@@ -1136,26 +1133,22 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "slot":
 		if k := num(w, 1); k >= 1 && k <= pm.SLOTS {
-			pm.select_slot(&a.m, k - 1)
+			pa.sequence_select(&a.api, i64(k - 1))
 			return true
 		}
 	case "bars":
 		if k := num(w, 1); k >= 1 {
-			pm.set_bars(&a.m, a.m.project.slot, k)
-			app.seal(&a.m.history)
-			return true
+			return pa.sequence_set_bars(&a.api, i64(a.m.project.slot), i64(min(k, pm.MAX_BARS))) == .Ok
 		}
 	case "note":
 		if len(w) < 4 do return false
 		i := num(w, 1)
 		if !pad_ok(i) do return false
 		vel := numf(w, 4) if len(w) > 4 else 0.8
-		pm.add_note(&a.m, a.m.project.slot, {start = f64(numf(w, 2)), length = f64(numf(w, 3)), pad = u8(i), velocity = vel, probability = 1})
-		return true
+		_, r := pa.sequence_add_note(&a.api, i64(a.m.project.slot), {start = f64(numf(w, 2)), length = f64(numf(w, 3)), pad = i64(i), velocity = vel, probability = 1})
+		return r == .Ok
 	case "swing":
-		pm.set_swing(&a.m, a.m.project.slot, numf(w, 1), .Sixteenth)
-		app.seal(&a.m.history)
-		return true
+		return pa.sequence_set_swing(&a.api, i64(a.m.project.slot), clamp(numf(w, 1), 0, 1), .Sixteenth) == .Ok
 	case "tempo":
 		return pa.transport_set_tempo(&a.api, clamp(f64(numf(w, 1)), 40, 300)) == .Ok
 	case "action":

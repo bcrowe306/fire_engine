@@ -121,3 +121,20 @@ def test_the_mixer_through_the_api(app):
     assert app.api("mixer_bus_name", bus=g) == "Toms"
     r = app.api("mixer_set_bus_output", check=False, bus=b, output={"kind": "Bus", "index": b})
     assert r["result"] == "Invalid_Argument"
+
+
+def test_the_sequencer_through_the_api(app):
+    app.api("sequence_set_bars", slot=0, bars=2)
+    i = app.api("sequence_add_note", slot=0, n={"start": 0.5, "length": 0.25, "pad": 0, "velocity": 0.9, "probability": 1})
+    assert app.state()["notes"] == 1
+    n = app.api("sequence_note", slot=0, index=i)
+    n["velocity"] = 0.4
+    app.api("sequence_set_note", slot=0, index=i, n=n)
+    assert app.state()["undo"] == "Set Velocity"
+    app.api("sequence_quantize", slot=0, grid="Quarter")
+    assert app.state()["note_list"][0]["start"] == 0 or app.state()["note_list"][0]["start"] == 1
+    app.key("cmd+z")
+    assert app.state()["note_list"][0]["start"] == 0.5
+    app.api("sequence_select", slot=3)
+    app.wait(2)
+    assert app.api("sequence_current") == 3 and app.state()["slot"] == 4

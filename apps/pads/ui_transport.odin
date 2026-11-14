@@ -3,7 +3,6 @@ package pads
 import "core:fmt"
 import "core:math"
 
-import app "app:core"
 import "app:ui"
 import pa "api"
 import pm "model"
@@ -83,7 +82,7 @@ draw_toolbar :: proc(user: rawptr) {
 	ui.flex_begin(&st.left, {max(cx - side_gap - lx, 1), TOOLBAR_H})
 	ui.flex_next(&st.left)
 	// The sequence.
-	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pm.select_slot(m, p.slot - 1)
+	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = p.slot == 0) do pa.sequence_select(&a.api, i64(p.slot - 1))
 	im.SameLine(0, 0)
 	im.SetNextItemWidth(118)
 	bar_dl, combo_at := im.GetWindowDrawList(), im.GetCursorScreenPos()
@@ -92,7 +91,7 @@ draw_toolbar :: proc(user: rawptr) {
 	if open {
 		for k in 0 ..< pm.SLOTS {
 			label := fmt.ctprintf("     %s###s%d", pm.sequence_name(p, k), k)
-			if im.Selectable(label, k == p.slot) do pm.select_slot(m, k)
+			if im.Selectable(label, k == p.slot) do pa.sequence_select(&a.api, i64(k))
 			{ // its colour: a filled dot when it has notes, a ring when empty
 				mn, mx := im.GetItemRectMin(), im.GetItemRectMax()
 				cc := ui.rgb(pm.sequence_color(p, k))
@@ -112,7 +111,7 @@ draw_toolbar :: proc(user: rawptr) {
 		im.EndPopup()
 	}
 	im.SameLine(0, 0)
-	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = p.slot >= pm.SLOTS - 1) do pm.select_slot(m, p.slot + 1)
+	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = p.slot >= pm.SLOTS - 1) do pa.sequence_select(&a.api, i64(p.slot + 1))
 	ui.flex_next(&st.left)
 	// What plays (the sequence, or the song), and when a sequence picked
 	// while playing takes over.
@@ -275,12 +274,7 @@ draw_input_quantize :: proc(a: ^App) {
 	t := ui.theme()
 	// Input quantize: on/off, and its grid, strength and swing.
 	q := tr.quantize
-	if ui.icon_button(ui.ICON_MAGNET, "Input quantize: on (recorded notes move toward the grid)" if q.on else "Input quantize: off", on = q.on) {
-		n := tr
-		n.quantize.on = !q.on
-		pm.set_transport(m, .Quantize, "Input Quantize", n)
-		app.seal(&m.history)
-	}
+	if ui.icon_button(ui.ICON_MAGNET, "Input quantize: on (recorded notes move toward the grid)" if q.on else "Input quantize: off", on = q.on) do pa.sequence_set_input_quantize(&a.api, !q.on, pa.Grid(q.grid), q.strength, q.swing)
 	im.SameLine(0, 0)
 	im.AlignTextToFramePadding()
 	im.TextColored(transmute(im.Vec4)(t.text if q.on else t.text_dim), "%s", pm.GRID_NAMES[q.grid])
@@ -290,30 +284,23 @@ draw_input_quantize :: proc(a: ^App) {
 		im.TextDisabled("Input quantize")
 		im.SetNextItemWidth(180)
 		if ui.combo("##qgrid", pm.GRID_NAMES[q.grid]) {
-			for g in pm.Grid do if im.Selectable(pm.GRID_NAMES[g], g == q.grid) {
-				n := tr
-				n.quantize.grid = g
-				pm.set_transport(m, .Quantize, "Quantize Grid", n)
-				app.seal(&m.history)
-			}
+			for g in pm.Grid do if im.Selectable(pm.GRID_NAMES[g], g == q.grid) do pa.sequence_set_input_quantize(&a.api, q.on, pa.Grid(g), q.strength, q.swing)
 			im.EndCombo()
 		}
 		str := q.strength * 100
 		im.SetNextItemWidth(180)
 		if im.SliderFloat("##strength", &str, 0, 100, "Strength %.0f%%") {
-			n := tr
-			n.quantize.strength = str / 100
-			pm.set_transport(m, .Quantize_Strength, "Quantize Strength", n)
+			pa.history_gesture_begin(&a.api)
+			pa.sequence_set_input_quantize(&a.api, q.on, pa.Grid(q.grid), clamp(str / 100, 0, 1), q.swing)
 		}
-		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+		if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 		sw := q.swing * 100
 		im.SetNextItemWidth(180)
 		if im.SliderFloat("##qswing", &sw, 0, 100, "Swing %.0f%%") {
-			n := tr
-			n.quantize.swing = sw / 100
-			pm.set_transport(m, .Quantize_Swing, "Quantize Swing", n)
+			pa.history_gesture_begin(&a.api)
+			pa.sequence_set_input_quantize(&a.api, q.on, pa.Grid(q.grid), q.strength, clamp(sw / 100, 0, 1))
 		}
-		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+		if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 		im.EndPopup()
 	}
 
@@ -359,8 +346,7 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 		latch := io.KeyCtrl || io.KeySuper // (Ctrl- or Cmd-click)
 		switch {
 		case recording && !a.sample_latched:
-			pm.record_stop(&a.rec)
-			a.sample_holding = -1
+			pa.recording_sample_stop(&a.api)
 		case s.sample_method == .Hold:
 			ui.toast(&a.ws.toasts, .Info, "Option-press (Alt) a pad to record into it while you hold it")
 		case latch:
@@ -369,8 +355,7 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 			a.sample_armed = a.sample_latched
 		case:
 			if recording {
-				pm.record_stop(&a.rec)
-				a.sample_holding = -1
+				pa.recording_sample_stop(&a.api)
 			}
 			a.sample_armed = !a.sample_armed && !a.sample_latched
 			a.sample_latched = false

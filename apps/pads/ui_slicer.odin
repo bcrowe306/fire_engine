@@ -357,8 +357,8 @@ draw_tools_record :: proc(a: ^App, i: int, same_line := true) {
 	recording := a.rec.active
 	if ui.icon_button(ui.ICON_CIRCLE, "Record the input into this slicer", on = recording, color = ui.rgb(0xf0555a)) {
 		if recording {
-			pm.record_stop(&a.rec)
-		} else if pm.record_start(&a.m, &a.rec, i) != .None {
+			pa.recording_sample_stop(&a.api)
+		} else if pa.recording_sample_start(&a.api, i64(i), .Hold) != .Ok {
 			ui.toast(&a.ws.toasts, .Warning, "No audio input to record from")
 		}
 	}

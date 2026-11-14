@@ -70,13 +70,13 @@ seq_color_menu :: proc(a: ^App, slot: int) {
 		return hit
 	}
 	im.PushIDInt(-1)
-	if swatch(pm.SEQ_PALETTE[slot % len(pm.SEQ_PALETTE)], cur == 0, "colour default") do pm.set_sequence_color(m, slot, 0)
+	if swatch(pm.SEQ_PALETTE[slot % len(pm.SEQ_PALETTE)], cur == 0, "colour default") do pa.sequence_set_color(&a.api, i64(slot), 0)
 	im.PopID()
 	if im.IsItemHovered() do im.SetTooltip("Its slot's own colour")
 	for c, k in PAD_PALETTE {
 		if k % 6 != 5 do im.SameLine(0, 4)
 		im.PushIDInt(i32(k))
-		if swatch(c, cur == c, fmt.tprintf("colour %d", k + 1)) do pm.set_sequence_color(m, slot, c)
+		if swatch(c, cur == c, fmt.tprintf("colour %d", k + 1)) do pa.sequence_set_color(&a.api, i64(slot), i64(c))
 		im.PopID()
 	}
 }
@@ -88,7 +88,7 @@ sequence_head :: proc(a: ^App) {
 	slot := m.project.slot
 	name := pm.sequence_name(&m.project, slot)
 	// The sequence before and after it (as the toolbar's arrows).
-	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = slot == 0) do pm.select_slot(m, slot - 1)
+	if ui.icon_button(ui.ICON_CHEVRON_LEFT, "Previous sequence", disabled = slot == 0) do pa.sequence_select(&a.api, i64(slot - 1))
 	ui.name("sequence before")
 	im.SameLine(0, 0)
 	im.PushFontFloat(a.platform.fonts.semibold, 15)
@@ -110,24 +110,26 @@ sequence_head :: proc(a: ^App) {
 		im.EndPopup()
 	}
 	im.SameLine(0, 0)
-	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = slot >= pm.SLOTS - 1) do pm.select_slot(m, slot + 1)
+	if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "Next sequence", disabled = slot >= pm.SLOTS - 1) do pa.sequence_select(&a.api, i64(slot + 1))
 	ui.name("sequence after")
 	im.SameLine(0, 4)
-	if ui.icon_button(ui.ICON_COPY_PLUS, "Duplicate to the next empty sequence (Cmd+D)") do pm.duplicate_sequence(m, slot)
+	if ui.icon_button(ui.ICON_COPY_PLUS, "Duplicate to the next empty sequence (Cmd+D)") do pa.sequence_duplicate(&a.api, i64(slot))
 	// Its own tempo: on, and how fast.
 	im.SameLine(0, 4)
 	s := m.project.sequences[slot]
 	own := s.bpm > 0
 	if ui.icon_button(ui.ICON_GAUGE, "Own tempo: on (it plays at its tempo, from where it takes over)" if own else "Own tempo: off (the project's)", on = own) {
-		pm.set_sequence_tempo(m, slot, 0 if own else m.project.bpm)
-		app.seal(&m.history)
+		pa.sequence_set_tempo(&a.api, i64(slot), 0 if own else m.project.bpm)
 	}
 	if own {
 		im.SameLine(0, 2)
 		bpm := s.bpm
 		e := ui.number_drag("seq tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", 96)
-		if e.changed do pm.set_sequence_tempo(m, slot, bpm)
-		if e.ended do app.seal(&m.history)
+		if e.changed {
+			pa.history_gesture_begin(&a.api)
+			pa.sequence_set_tempo(&a.api, i64(slot), clamp(bpm, 40, 300))
+		}
+		if e.ended do pa.history_gesture_end(&a.api)
 	}
 }
 
@@ -146,7 +148,7 @@ draw_seq_dialogs :: proc(a: ^App) {
 		done := im.InputText("##seq_rename", cstring(&o.rename_buf[0]), len(o.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("sequence rename")
 		if done || im.Button("Rename") {
-			pm.rename_sequence(m, o.rename_slot, strings.truncate_to_byte(string(o.rename_buf[:]), 0))
+			pa.sequence_set_name(&a.api, i64(o.rename_slot), strings.truncate_to_byte(string(o.rename_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()

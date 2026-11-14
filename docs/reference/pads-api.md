@@ -35,6 +35,128 @@ last_error :: proc(api: ^Api) -> (string, Result)
 
 Why the last call that failed failed, in words (temporary: until the next failure). "" before any.
 
+## Audio tracks: takes, regions, comping, consolidating, warp
+
+### audio_part
+
+```odin
+audio_part :: proc(api: ^Api, slot: i64, pad: i64) -> (Part_State, Result)
+```
+
+Audio track `pad`'s part in sequence `slot`. Unsupported for a pad that isn't an audio track.
+
+### audio_region
+
+```odin
+audio_region :: proc(api: ^Api, slot: i64, pad: i64, index: i64) -> (Region, Result)
+```
+
+Region `index` of audio track `pad`'s part in sequence `slot`.
+
+### audio_add_take
+
+```odin
+audio_add_take :: proc(api: ^Api, slot: i64, pad: i64, path: string, at: f64 = 0) -> Result
+```
+
+Adds the audio file at `path` as a take of audio track `pad` in sequence `slot`, at beat `at` (on top of what is there). Undoably; Io_Error if it can't be read.
+
+### audio_split
+
+```odin
+audio_split :: proc(api: ^Api, slot: i64, pad: i64, beat: f64) -> Result
+```
+
+Splits the region under beat `beat`, undoably.
+
+### audio_delete_range
+
+```odin
+audio_delete_range :: proc(api: ^Api, slot: i64, pad: i64, from: f64, to: f64) -> Result
+```
+
+Deletes beats `from`..`to` of the part (silence there), undoably.
+
+### audio_crop
+
+```odin
+audio_crop :: proc(api: ^Api, slot: i64, pad: i64, from: f64, to: f64) -> Result
+```
+
+Keeps only beats `from`..`to` of the part, undoably.
+
+### audio_move_region
+
+```odin
+audio_move_region :: proc(api: ^Api, slot: i64, pad: i64, index: i64, at: f64) -> Result
+```
+
+Moves region `index` to start at beat `at`, undoably (a gesture's moves merge).
+
+### audio_trim_region
+
+```odin
+audio_trim_region :: proc(api: ^Api, slot: i64, pad: i64, index: i64, beat: f64, end: bool) -> Result
+```
+
+Moves region `index`'s start (or its end, with `end`) to beat `beat`, undoably.
+
+### audio_delete_region
+
+```odin
+audio_delete_region :: proc(api: ^Api, slot: i64, pad: i64, index: i64) -> Result
+```
+
+Deletes region `index`, undoably.
+
+### audio_set_region
+
+```odin
+audio_set_region :: proc(api: ^Api, slot: i64, pad: i64, index: i64, region: Region) -> Result
+```
+
+Sets region `index`'s gain, pan, fades, mute and reversing (its take, place and frames as they are), undoably.
+
+### audio_normalize_region
+
+```odin
+audio_normalize_region :: proc(api: ^Api, slot: i64, pad: i64, index: i64) -> Result
+```
+
+Raises region `index` so its loudest is full scale, undoably.
+
+### audio_use_take
+
+```odin
+audio_use_take :: proc(api: ^Api, slot: i64, pad: i64, take: i64, from: f64, to: f64) -> Result
+```
+
+Plays take `take` over beats `from`..`to` (comping: the best of each pass), undoably.
+
+### audio_consolidate
+
+```odin
+audio_consolidate :: proc(api: ^Api, slot: i64, pad: i64) -> Result
+```
+
+Renders the part to one take (its regions, fades and gains as it plays), undoably. Busy while it can't yet (a take still being rendered).
+
+### audio_set_warp
+
+```odin
+audio_set_warp :: proc(api: ^Api, slot: i64, pad: i64, warp: Audio_Warp, transpose: f32) -> Result
+```
+
+How the part follows a tempo it wasn't recorded at, and its transpose (-24..24 semitones; Stretch), undoably.
+
+### audio_clear
+
+```odin
+audio_clear :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Clears audio track `pad`'s take in the current sequence, undoably.
+
 ## Devices: synth presets, plug-in instruments
 
 ### device_preset_count
@@ -897,6 +1019,274 @@ project_clean_up :: proc(api: ^Api, undo_only: bool, cache: bool) -> (Clean_Up, 
 
 Moves the files the project doesn't use to the Trash (from where they can be put back) and saves it: those nothing uses, and with `undo_only` the samples only undo would bring back (undo is forgotten), with `cache` the renderings. Io_Error if some couldn't be moved.
 
+## Recording: Rec, sampling into pads
+
+### recording_state
+
+```odin
+recording_state :: proc(api: ^Api) -> (Recording_State, Result)
+```
+
+Recording now.
+
+### recording_record
+
+```odin
+recording_record :: proc(api: ^Api, on: bool) -> Result
+```
+
+Arms Rec (or disarms it). Armed while stopped, it starts playing, after the count-in if there is one (transport_set_count_in).
+
+### recording_sample_start
+
+```odin
+recording_sample_start :: proc(api: ^Api, pad: i64, method: Sampling, threshold_db: f32 = -40, bars: i64 = 1) -> Result
+```
+
+Records a sample into pad `pad` from its input (its strip's In), by `method` (Threshold: from `threshold_db`, -80..0; Bars: `bars`, 1..16). It lands on the pad (one undo step) when it stops. Unsupported when the pad has no input or there is no audio input.
+
+### recording_sample_stop
+
+```odin
+recording_sample_stop :: proc(api: ^Api) -> Result
+```
+
+Stops the sample being recorded (Hold, Threshold; Bars stop by themselves). Not_Found when none is.
+
+## Sequencer: sequences, notes, CC, automation, quantize, note repeat, the arpeggiator
+
+### sequence_current
+
+```odin
+sequence_current :: proc(api: ^Api) -> (i64, Result)
+```
+
+The sequence shown and played (Pattern).
+
+### sequence_state
+
+```odin
+sequence_state :: proc(api: ^Api, slot: i64) -> (Sequence_State, Result)
+```
+
+Sequence `slot` now.
+
+### sequence_name
+
+```odin
+sequence_name :: proc(api: ^Api, slot: i64) -> (string, Result)
+```
+
+Sequence `slot`'s name: its own, else "Sequence N". Temporary.
+
+### sequence_select
+
+```odin
+sequence_select :: proc(api: ^Api, slot: i64) -> Result
+```
+
+Shows and plays sequence `slot`: at once when stopped; playing, when the launch quantize says. Not an edit.
+
+### sequence_set_name
+
+```odin
+sequence_set_name :: proc(api: ^Api, slot: i64, name: string) -> Result
+```
+
+Names sequence `slot` (up to 23 bytes; "": "Sequence N" again), undoably.
+
+### sequence_set_bars
+
+```odin
+sequence_set_bars :: proc(api: ^Api, slot: i64, bars: i64) -> Result
+```
+
+Sets sequence `slot`'s length (1..64 bars), undoably. Notes past the end are kept (they come back if it grows) but don't play.
+
+### sequence_set_tempo
+
+```odin
+sequence_set_tempo :: proc(api: ^Api, slot: i64, bpm: f64) -> Result
+```
+
+Gives sequence `slot` its own tempo (40..300 BPM; 0: the project's), undoably.
+
+### sequence_set_color
+
+```odin
+sequence_set_color :: proc(api: ^Api, slot: i64, color: i64) -> Result
+```
+
+Colours sequence `slot` (0xRRGGBB; 0: its slot's), undoably.
+
+### sequence_set_swing
+
+```odin
+sequence_set_swing :: proc(api: ^Api, slot: i64, amount: f32, grid: Grid) -> Result
+```
+
+Swings sequence `slot`'s off-beats of `grid` (Eighth or Sixteenth) by `amount` (0..1), undoably.
+
+### sequence_quantize
+
+```odin
+sequence_quantize :: proc(api: ^Api, slot: i64, grid: Grid, strength: f64 = 1) -> Result
+```
+
+Moves sequence `slot`'s notes toward `grid` by `strength` (0..1; 1: onto it), undoably.
+
+### sequence_duplicate
+
+```odin
+sequence_duplicate :: proc(api: ^Api, slot: i64) -> (i64, Result)
+```
+
+Copies sequence `slot` (all of it, named "… copy") into the next empty slot and shows it: which. Not_Found when every slot is used.
+
+### sequence_copy
+
+```odin
+sequence_copy :: proc(api: ^Api, from: i64, to: i64) -> Result
+```
+
+Copies sequence `from` onto slot `to` (what was there replaced), undoably.
+
+### sequence_double
+
+```odin
+sequence_double :: proc(api: ^Api, slot: i64) -> Result
+```
+
+Doubles sequence `slot`: twice as long, its notes and automation again in the new half. Undoably; Invalid_Argument past 64 bars.
+
+### sequence_clear
+
+```odin
+sequence_clear :: proc(api: ^Api, slot: i64) -> Result
+```
+
+Empties sequence `slot` (its notes and automation), undoably.
+
+### sequence_set_track_loop
+
+```odin
+sequence_set_track_loop :: proc(api: ^Api, slot: i64, pad: i64, beats: f64) -> Result
+```
+
+Pad `pad`'s own loop in sequence `slot`: `beats` long (0, or the sequence's length or more: none). Undoably.
+
+### sequence_note
+
+```odin
+sequence_note :: proc(api: ^Api, slot: i64, index: i64) -> (Note, Result)
+```
+
+Note `index` of sequence `slot` (in order: by start, then pad).
+
+### sequence_add_note
+
+```odin
+sequence_add_note :: proc(api: ^Api, slot: i64, n: Note) -> (i64, Result)
+```
+
+Adds note `n` to sequence `slot` (where it overlaps one of its pad's and pitch, the new one wins): its index. Undoably.
+
+### sequence_set_note
+
+```odin
+sequence_set_note :: proc(api: ^Api, slot: i64, index: i64, n: Note) -> (i64, Result)
+```
+
+Changes note `index` of sequence `slot` to `n`: its index now (notes stay in order). Undoably (a gesture's moves merge).
+
+### sequence_remove_notes
+
+```odin
+sequence_remove_notes :: proc(api: ^Api, slot: i64, indices: []i64) -> Result
+```
+
+Removes the notes `indices` of sequence `slot`: one undo step.
+
+### sequence_cc
+
+```odin
+sequence_cc :: proc(api: ^Api, slot: i64, index: i64) -> (Cc, Result)
+```
+
+MIDI CC step `index` of sequence `slot` (by pad, controller, beat).
+
+### sequence_add_cc
+
+```odin
+sequence_add_cc :: proc(api: ^Api, slot: i64, c: Cc) -> Result
+```
+
+Adds MIDI CC step `c` to sequence `slot`, undoably.
+
+### sequence_clear_cc
+
+```odin
+sequence_clear_cc :: proc(api: ^Api, slot: i64, pad: i64, cc: i64, from: f64, to: f64) -> Result
+```
+
+Removes the MIDI CC steps of pad `pad`'s controller `cc` in sequence `slot` from beat `from` to `to`, undoably.
+
+### sequence_point
+
+```odin
+sequence_point :: proc(api: ^Api, slot: i64, index: i64) -> (Point, Result)
+```
+
+Automation point `index` of sequence `slot` (by lane, then beat).
+
+### sequence_add_point
+
+```odin
+sequence_add_point :: proc(api: ^Api, slot: i64, ref: Param_Ref, beat: f64, value: f32, curve: f32 = 0) -> Result
+```
+
+Adds a point to parameter `ref`'s automation in sequence `slot`: at `beat`, `value` (its units, in its range), `curve` (-1..1) to the next. Undoably.
+
+### sequence_add_pad_point
+
+```odin
+sequence_add_pad_point :: proc(api: ^Api, slot: i64, pad: i64, lane: Pad_Lane, beat: f64, value: f32, curve: f32 = 0) -> Result
+```
+
+Adds a point to pad `pad`'s own `lane` in sequence `slot`. Undoably.
+
+### sequence_remove_point
+
+```odin
+sequence_remove_point :: proc(api: ^Api, slot: i64, index: i64) -> Result
+```
+
+Removes automation point `index` of sequence `slot`, undoably.
+
+### sequence_set_input_quantize
+
+```odin
+sequence_set_input_quantize :: proc(api: ^Api, on: bool, grid: Grid, strength: f32, swing: f32) -> Result
+```
+
+Input quantize: notes recorded move toward `grid` by `strength` (0..1), its off-beats swung by `swing` (0..1). Undoably.
+
+### sequence_midi_fx
+
+```odin
+sequence_midi_fx :: proc(api: ^Api, pad: i64) -> (Midi_Fx, Result)
+```
+
+Pad `pad`'s note repeat and arpeggiator.
+
+### sequence_set_midi_fx
+
+```odin
+sequence_set_midi_fx :: proc(api: ^Api, pad: i64, fx: Midi_Fx) -> Result
+```
+
+Sets pad `pad`'s note repeat and arpeggiator, undoably.
+
 ## Settings, by name
 
 ### settings_count
@@ -1143,6 +1533,12 @@ What a call came to. `last_error` says why it wasn't `Ok`.
 
 `Ok`, `Not_Found`, `Invalid_Argument`, `Busy`, `Unsupported`, `Io_Error`
 
+### Audio_Warp
+
+How an audio track's part follows a tempo it wasn't recorded at.
+
+`Repitch`, `Stretch`
+
 ### Effect_Place
 
 Where an effect slot is.
@@ -1197,6 +1593,30 @@ What a parameter's values are in.
 
 `None`, `Decibels`, `Hertz`, `Milliseconds`, `Percent`, `Semitones`, `Ratio`
 
+### Sampling
+
+How a sample is recorded into a pad.
+
+`Hold`, `Arm`, `Threshold`, `Bars`
+
+### Grid
+
+A grid: quantize, swing, input quantize, note repeat and the arpeggiator step by one.
+
+`Quarter`, `Eighth`, `Eighth_Triplet`, `Sixteenth`, `Sixteenth_Triplet`, `Thirty_Second`, `Thirty_Second_Triplet`, `Sixty_Fourth`
+
+### Pad_Lane
+
+A pad's own automation lane (beside any parameter: a Param_Ref).
+
+`Volume`, `Pitch`, `Eq_Low`, `Eq_Mid`, `Eq_High`, `Cutoff`, `Resonance`
+
+### Arp_Mode
+
+How the arpeggiator walks the held notes.
+
+`Up`, `Down`, `Up_Down`, `Random`, `As_Played`
+
 ### Setting_Kind
 
 What a setting is (`settings_info`).
@@ -1226,6 +1646,35 @@ The metronome's sound.
 What the tempo, start and stop follow.
 
 `Internal`, `Midi_Clock`, `Link`
+
+### Part_State
+
+Audio track `pad`'s part in sequence `slot`: its takes, the regions that play them, how it follows the tempo.
+
+| Field | Type | |
+|---|---|---|
+| `regions` | `i64` | audio_region 0..regions-1 (in order along the sequence) |
+| `takes` | `i64` | takes recorded or added |
+| `beats` | `f64` | how long it plays (its own loop, or the sequence) |
+| `warp` | `Audio_Warp` |  |
+| `transpose` | `f32` | semitones (Stretch) |
+
+### Region
+
+A region: part of a take, placed in the sequence.
+
+| Field | Type | |
+|---|---|---|
+| `take` | `i64` | which of the part's takes it plays |
+| `at` | `f64` | where it starts: beats into the sequence |
+| `start` | `i64` | the take's frames it plays: from |
+| `end` | `i64` | ... to |
+| `gain_db` | `f32` |  |
+| `pan` | `f32` | -1..1 |
+| `fade_in` | `f32` | seconds |
+| `fade_out` | `f32` | seconds |
+| `mute` | `bool` |  |
+| `reverse` | `bool` |  |
 
 ### Slot_Ref
 
@@ -1405,6 +1854,91 @@ What `project_clean_up` did.
 |---|---|---|
 | `files` | `i64` | moved to the Trash |
 | `bytes` | `i64` |  |
+
+### Recording_State
+
+Recording now.
+
+| Field | Type | |
+|---|---|---|
+| `armed` | `bool` | Rec: notes played, knobs moved (with Auto), and armed audio tracks' inputs go into the sequence while it plays |
+| `recording` | `bool` | armed and playing (or counting in) |
+| `sampling` | `bool` | a sample is being recorded into a pad |
+| `sample_pad` | `i64` | ... which (-1: none) |
+| `latency` | `i64` | frames a take is moved earlier by (the device's round trip and the setting) |
+
+### Sequence_State
+
+Sequence `slot` now (its name: sequence_name).
+
+| Field | Type | |
+|---|---|---|
+| `used` | `bool` | it has notes, automation or takes |
+| `current` | `bool` | the one shown and played (Pattern) |
+| `bars` | `i64` |  |
+| `beats` | `f64` | how long it is |
+| `bpm` | `f64` | its own tempo (0: the project's) |
+| `color` | `i64` | 0xRRGGBB, as shown (its own or its slot's) |
+| `swing` | `f32` | 0..1 |
+| `swing_grid` | `Grid` |  |
+| `notes` | `i64` | sequence_note 0..notes-1 |
+| `points` | `i64` | automation points (sequence_point) |
+| `ccs` | `i64` | MIDI CC steps (sequence_cc) |
+
+### Note
+
+A note.
+
+| Field | Type | |
+|---|---|---|
+| `start` | `f64` | beats from the sequence's top |
+| `length` | `f64` | beats (> 0) |
+| `pad` | `i64` | the pad it plays |
+| `pitch` | `i64` | semitones from the pad's own (-64..63; keyboard mode) |
+| `velocity` | `f32` | 0..1 |
+| `probability` | `f32` | 0..1: its chance each time round |
+| `muted` | `bool` | kept, silent |
+
+### Cc
+
+A MIDI CC step: pad `pad`'s controller `cc` goes to `value` at `beat`.
+
+| Field | Type | |
+|---|---|---|
+| `beat` | `f64` |  |
+| `pad` | `i64` |  |
+| `cc` | `i64` | 0..127 |
+| `value` | `i64` | 0..127 |
+
+### Point
+
+An automation point.
+
+| Field | Type | |
+|---|---|---|
+| `beat` | `f64` |  |
+| `value` | `f32` | in its parameter's units |
+| `curve` | `f32` | the segment to the next: 0 a line, -1..1 bending |
+| `own` | `bool` | a pad's own lane (`pad`, `pad_lane`), else a parameter's (`param`) |
+| `pad` | `i64` |  |
+| `pad_lane` | `Pad_Lane` |  |
+| `param` | `Param_Ref` |  |
+
+### Midi_Fx
+
+A pad's note repeat and arpeggiator (its MIDI effects).
+
+| Field | Type | |
+|---|---|---|
+| `repeat` | `bool` |  |
+| `repeat_rate` | `Grid` | Quarter .. Thirty_Second_Triplet |
+| `repeat_gate` | `f32` | 0.05..1 of a step |
+| `arp` | `bool` |  |
+| `arp_mode` | `Arp_Mode` |  |
+| `arp_rate` | `Grid` |  |
+| `arp_octaves` | `i64` | 1..4 |
+| `arp_gate` | `f32` | 0.05..1 |
+| `arp_latch` | `bool` | it goes on after the keys are let go |
 
 ### Setting_Info
 

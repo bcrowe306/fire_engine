@@ -4,8 +4,9 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 ---
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
-settings), 3 (pads, params, effects, devices) and 4 (mixer) built
-2026-11-14; the rest planned (decisions taken 2026-11-13). Using it: the
+settings), 3 (pads, params, effects, devices), 4 (mixer) and 5
+(sequencer, audio, recording) built 2026-11-14; the rest planned
+(decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -131,6 +132,40 @@ devices and effects (and the knobs moved onto `param_set`).
 - The Mixer's bus strips, its add, group, rename, routing and cue
   controls, the bus commands, Perform's main fader and the shell's bus
   commands use them; the lint checks it.
+
+### Stage 5, as built (sequencer, audio, recording)
+
+- `sequence_*`: the current one, a sequence's state and name; select
+  (not an edit), name, bars, tempo, colour, swing, quantize, duplicate,
+  copy, double, clear, a track's loop; notes (get, add, set, remove
+  several: indices change as notes stay in order, so add and set return
+  where it is), CC steps (get, add, clear a range), automation points
+  (get; add to any parameter's lane by `Param_Ref`, its range from
+  `param_info`, or to a pad's own lane; remove); input quantize; a pad's
+  note repeat and arpeggiator (`Midi_Fx`).
+- `audio_*`: a part's state and regions; add a take, split, delete a
+  range, crop, move, trim, set a region's gain, pan, fades, mute and
+  reversing, normalize, use a take over a range (comping), consolidate,
+  warp, clear. `recording_*`: Rec (`recording_record` starts from a stop
+  with the count-in, as the toolbar's), sampling into a pad (start by
+  method, stop). The sampling recorder (`rec`, `sample_holding`) moved
+  into the core.
+- Moved: the sequence commands, note and point commands, the toolbar's
+  sequence picker and input quantize, the Sequence view's bars, swing,
+  quantize, track loop and clear, the sequence bar (colour, tempo,
+  duplicate, rename), the launcher's and song's selects, the MIDI effects
+  panel, the Audio tab's toolbar (crop, normalize, takes, consolidate,
+  warp, split, delete), Rec, the Sample control and the pads' record
+  buttons, and the shell's commands.
+- **Not moved yet (as the knobs): the editors' drags.** The note grid's
+  painting, dragging, velocity and chance lanes and its CC and automation
+  drawing (`ui_sequence.odin`), and the Audio tab's region drags (move,
+  trim, fades, from their own base: `ui_audio.odin`) are gestures inside
+  the editors; the lint exempts those files for those calls. They move
+  with the `ui` module. Two steps keep their own names through the model
+  (`api-lint:`): an audio Cut and a region's Reverse.
+- The generator refuses a parameter named as its own code's variables
+  (`r`, `v`, `ok`...): `audio_set_region`'s `r` collided.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,

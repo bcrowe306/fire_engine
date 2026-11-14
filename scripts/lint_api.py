@@ -44,6 +44,23 @@ MODULES = {
     "mixer": [
         (r"\bpm\.(add_bus|delete_bus|rename_bus|set_bus_dest|set_pad_bus|group_pads|ungroup|set_group_folded|set_pad_cue|set_bus_cue|main_loudness_reset|set_bus)\(", "mixer_* (buses, outputs, groups, cue, loudness)"),
     ],
+    "sequencer": [
+        (r"\bpm\.(select_slot|rename_sequence|set_sequence_tempo|set_sequence_color|duplicate_sequence|double_sequence|clear_sequence|copy_sequence|set_bars|set_swing|quantize_sequence|set_track_loop|set_midi_fx)\(", "sequence_*"),
+        (r"\bpm\.set_transport\([^)]*\.Quantize", "sequence_set_input_quantize"),
+        # (The note editor's drags, its velocity and chance lanes and its CC
+        # and automation drawing stay its own until the ui module: they are
+        # gestures inside the grid.)
+        (r"\bpm\.(add_note|remove_notes|set_note|add_point|set_point|remove_point|add_cc|set_cc)\(", "sequence_add_note / set_note / remove_notes / add_point / remove_point / add_cc", None, ("ui_sequence.odin",)),
+    ],
+    "audio": [
+        (r"\bpm\.(split_at|delete_range|crop_to|delete_region|normalize_region|use_take|consolidate|set_part_warp|clear_clip|add_take_file)\(", "audio_*"),
+        # (The Audio tab's region drags (move, trim, fade, its gain and pan)
+        # stay its own until the ui module: gestures with their own base.)
+        (r"\bpm\.(move_region|trim_region|set_region)\(", "audio_move_region / trim_region / set_region", None, ("ui_audio.odin",)),
+    ],
+    "recording": [
+        (r"\bpm\.(capture_arm|record_start|record_stop)\(", "recording_record / sample_start / sample_stop"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [
@@ -64,7 +81,9 @@ def main():
                 for module, rules in MODULES.items():
                     for rule in rules:
                         pattern, use = rule[0], rule[1]
-                        if len(rule) > 2 and f != rule[2]:
+                        if len(rule) > 2 and rule[2] is not None and f != rule[2]:
+                            continue
+                        if len(rule) > 3 and f in rule[3]:
                             continue
                         if re.search(pattern, code):
                             problems.append(f"apps/pads/{f}:{n}: the {module} module's API does this: use {use}\n\t{line.strip()}")

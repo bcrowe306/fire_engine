@@ -4,6 +4,7 @@ import "core:fmt"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import pf "fire:perform"
@@ -97,7 +98,7 @@ draw_repeat_fx :: proc(a: ^App, i: int) {
 		ended = ended || e.ended
 	}
 	step_strip(m, fx.repeat.rate, fx.repeat_on)
-	midi_fx_edit(m, i, fx, "Note Repeat", changed, ended)
+	midi_fx_edit(a, i, fx, "Note Repeat", changed, ended)
 }
 
 // Pad `i`'s arpeggiator: on (repeat off), latch, its order, step, octaves
@@ -142,13 +143,16 @@ draw_arp_fx :: proc(a: ^App, i: int) {
 		ended = ended || e.ended
 	}
 	step_strip(m, fx.arp.rate, fx.arp_on)
-	midi_fx_edit(m, i, fx, "Arpeggiator", changed, ended)
+	midi_fx_edit(a, i, fx, "Arpeggiator", changed, ended)
 }
 
 @(private)
-midi_fx_edit :: proc(m: ^pm.Model, i: int, fx: pm.Perform, name: string, changed, ended: bool) {
-	if changed do pm.set_midi_fx(m, i, fx, name)
-	if ended do app.seal(&m.history)
+midi_fx_edit :: proc(a: ^App, i: int, fx: pm.Perform, name: string, changed, ended: bool) {
+	if changed {
+		pa.history_gesture_begin(&a.api) // (a drag: one step)
+		pa.sequence_set_midi_fx(&a.api, i64(i), pa.midi_fx_of(fx))
+	}
+	if ended do pa.history_gesture_end(&a.api)
 }
 
 // Pad `i`'s MIDI: the activity lights, the key that plays it (Learn: the

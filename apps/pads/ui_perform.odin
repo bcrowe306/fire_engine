@@ -257,7 +257,7 @@ draw_launcher :: proc(a: ^App) {
 			im.DrawList_AddText(dl, {pos.x + (size - ts.x) / 2, pos.y + (size - ts.y) / 2}, ui.col(t.text_dim if hot else ui.with_alpha(t.text_dim, 0.4)), "+")
 			if hot do im.SetTooltip("%s", fmt.ctprintf("A new sequence at the end of %s", pm.launch_lane_name(p, lane)))
 			if clicked {
-				if n := pm.new_sequence_in(m, lane); n >= 0 do pm.select_slot(m, n)
+				if n := pm.new_sequence_in(m, lane); n >= 0 do pa.sequence_select(&a.api, i64(n))
 				else do ui.toast(&a.ws.toasts, .Warning, "Every sequence is in use (64)")
 			}
 			seq_drop(a, lane, lrow)
@@ -279,7 +279,7 @@ draw_launcher :: proc(a: ^App) {
 				im.DrawList_AddText(dl, {pos.x + (size - ts.x) / 2, pos.y + (size - ts.y) / 2}, ui.col(t.text_dim), "+")
 				im.SetTooltip("%s", fmt.ctprintf("%s (empty): click to make a new sequence here", pm.sequence_name(p, slot)))
 			}
-			if clicked do pm.select_slot(m, slot)
+			if clicked do pa.sequence_select(&a.api, i64(slot))
 			seq_drop(a, lane, lrow)
 			item_menu(a, seq_target(slot), "##cellmenu")
 			continue
@@ -456,7 +456,7 @@ launch_lane_menu :: proc(a: ^App) {
 	im.Separator()
 	if im.MenuItem(ui.ICON_SQUARE + "  Stop") do pm.stop_column(&m.engine, lane)
 	if im.MenuItem(ui.ICON_PLUS + "  New Sequence Here") {
-		if n := pm.new_sequence_in(m, lane); n >= 0 do pm.select_slot(m, n)
+		if n := pm.new_sequence_in(m, lane); n >= 0 do pa.sequence_select(&a.api, i64(n))
 	}
 	if im.MenuItem(ui.ICON_TRASH_2 + "  Delete Lane", nil, false, p.lanes.count > 1) {
 		pm.delete_lane(m, lane)
@@ -667,7 +667,7 @@ seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
 	_, playing := pm.position(&m.engine)
 	io := im.GetIO()
 	if !from_key && io.KeyAlt {
-		if !playing do pm.select_slot(m, slot) // (Option: go to it, not start it)
+		if !playing do pa.sequence_select(&a.api, i64(slot)) // (Option: go to it, not start it)
 		return
 	}
 	if m.project.launch_hold {

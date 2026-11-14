@@ -21,8 +21,9 @@ procedure is in the [reference](/reference/pads-api/).
 
 The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
-**settings**, **pads**, **params**, **effects**, **devices** and
-**mixer**, with results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
+**settings**, **pads**, **params**, **effects**, **devices**,
+**mixer**, **sequencer**, **audio** and **recording**, with results,
+errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
 menus and script commands for these already go through it.
 
 ## Results and errors
@@ -233,6 +234,45 @@ A bus can't go round to itself (`Invalid_Argument`). Meters
 (`mixer_pad_meter`, `mixer_bus_meter`, `mixer_cue_meter`,
 `mixer_input_meter`), main's loudness and the latencies are polled; the
 `Mixer` topic reports the rest (levels, pans, mutes, routing, groups).
+
+## The sequencer
+
+Sequences are slots 0..63; `sequence_current` is the one shown and
+played. Notes are kept in order (by start, then pad), so adding or moving
+one returns where it is now:
+
+```odin
+pads_api.sequence_set_bars(api, 0, 2)
+i, _ := pads_api.sequence_add_note(api, 0, {start = 0, length = 0.25, pad = 0, velocity = 0.9, probability = 1})
+n, _ := pads_api.sequence_note(api, 0, i)
+n.velocity = 0.5
+pads_api.sequence_set_note(api, 0, i, n)              // "Set Velocity"
+pads_api.sequence_quantize(api, 0, .Sixteenth)
+pads_api.sequence_add_point(api, 0, cutoff_ref, 2, 800, 0) // automation of any parameter
+pads_api.sequence_set_input_quantize(api, true, .Sixteenth, 1, 0)
+fx, _ := pads_api.sequence_midi_fx(api, 0)            // a pad's note repeat and arpeggiator
+fx.arp = true
+pads_api.sequence_set_midi_fx(api, 0, fx)
+```
+
+A note's step is named for what changed ("Set Velocity", "Set Chance",
+"Mute Note", else "Edit Note"); in a gesture, the same change's moves
+merge.
+
+## Audio tracks and recording
+
+An audio track's part in a sequence is its takes and the regions that
+play them (`audio_part`, `audio_region`):
+
+```odin
+pads_api.pad_set_kind(api, 3, .Audio)
+pads_api.audio_add_take(api, 0, 3, "/Takes/guitar.wav", 0)
+pads_api.audio_split(api, 0, 3, 4)
+pads_api.audio_use_take(api, 0, 3, 1, 4, 8)           // take 1 over beats 4..8 (comping)
+pads_api.audio_set_warp(api, 0, 3, .Stretch, -2)
+pads_api.recording_record(api, true)                  // Rec: from a stop it plays, after the count-in
+pads_api.recording_sample_start(api, 5, .Bars, -40, 2) // the next two bars into pad 5
+```
 
 ## From C
 
