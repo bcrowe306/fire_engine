@@ -23,6 +23,31 @@ Table_V1 :: struct {
 	history_group_end: proc "c" (api: ^Api) -> Result,
 	history_gesture_begin: proc "c" (api: ^Api) -> Result,
 	history_gesture_end: proc "c" (api: ^Api) -> Result,
+	project_state: proc "c" (api: ^Api, out: ^Project_State) -> Result,
+	project_dir: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	project_name: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	project_new: proc "c" (api: ^Api, discard_changes: bool) -> Result,
+	project_new_from_template: proc "c" (api: ^Api, name: cstring, name_len: i64, discard_changes: bool) -> Result,
+	project_open: proc "c" (api: ^Api, dir: cstring, dir_len: i64, discard_changes: bool) -> Result,
+	project_save: proc "c" (api: ^Api) -> Result,
+	project_save_as: proc "c" (api: ^Api, path: cstring, path_len: i64, replace: bool) -> Result,
+	project_rename: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
+	project_recent: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	project_template_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	project_save_template: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
+	project_recover: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result,
+	project_discard_backup: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result,
+	project_unused_files: proc "c" (api: ^Api, out: ^Unused_Files) -> Result,
+	project_clean_up: proc "c" (api: ^Api, undo_only: bool, cache: bool, out: ^Clean_Up) -> Result,
+	settings_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	settings_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	settings_info: proc "c" (api: ^Api, name: cstring, name_len: i64, out: ^Setting_Info) -> Result,
+	settings_about: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	settings_choice: proc "c" (api: ^Api, name: cstring, name_len: i64, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	settings_get_number: proc "c" (api: ^Api, name: cstring, name_len: i64, out: ^f64) -> Result,
+	settings_get_text: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	settings_set_number: proc "c" (api: ^Api, name: cstring, name_len: i64, value: f64) -> Result,
+	settings_set_text: proc "c" (api: ^Api, name: cstring, name_len: i64, value: cstring, value_len: i64) -> Result,
 	subscribe: proc "c" (api: ^Api, topic: Topic, index: i64, callback: Change_Proc, user: rawptr, out: ^Subscription) -> Result,
 	unsubscribe: proc "c" (api: ^Api, sub: Subscription) -> Result,
 	transport_state: proc "c" (api: ^Api, out: ^Transport_State) -> Result,
@@ -41,6 +66,8 @@ Table_V1 :: struct {
 	transport_set_metronome_accent: proc "c" (api: ^Api, on: bool) -> Result,
 	transport_set_metronome_recording_only: proc "c" (api: ^Api, on: bool) -> Result,
 	transport_set_song_mode: proc "c" (api: ^Api, on: bool) -> Result,
+	transport_set_sync: proc "c" (api: ^Api, sync: Sync) -> Result,
+	transport_set_clock_out: proc "c" (api: ^Api, on: bool) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -66,6 +93,31 @@ table_fill :: proc(api: ^Api) {
 	t.history_group_end = c_history_group_end
 	t.history_gesture_begin = c_history_gesture_begin
 	t.history_gesture_end = c_history_gesture_end
+	t.project_state = c_project_state
+	t.project_dir = c_project_dir
+	t.project_name = c_project_name
+	t.project_new = c_project_new
+	t.project_new_from_template = c_project_new_from_template
+	t.project_open = c_project_open
+	t.project_save = c_project_save
+	t.project_save_as = c_project_save_as
+	t.project_rename = c_project_rename
+	t.project_recent = c_project_recent
+	t.project_template_name = c_project_template_name
+	t.project_save_template = c_project_save_template
+	t.project_recover = c_project_recover
+	t.project_discard_backup = c_project_discard_backup
+	t.project_unused_files = c_project_unused_files
+	t.project_clean_up = c_project_clean_up
+	t.settings_count = c_settings_count
+	t.settings_name = c_settings_name
+	t.settings_info = c_settings_info
+	t.settings_about = c_settings_about
+	t.settings_choice = c_settings_choice
+	t.settings_get_number = c_settings_get_number
+	t.settings_get_text = c_settings_get_text
+	t.settings_set_number = c_settings_set_number
+	t.settings_set_text = c_settings_set_text
 	t.subscribe = c_subscribe
 	t.unsubscribe = c_unsubscribe
 	t.transport_state = c_transport_state
@@ -84,6 +136,8 @@ table_fill :: proc(api: ^Api) {
 	t.transport_set_metronome_accent = c_transport_set_metronome_accent
 	t.transport_set_metronome_recording_only = c_transport_set_metronome_recording_only
 	t.transport_set_song_mode = c_transport_set_song_mode
+	t.transport_set_sync = c_transport_set_sync
+	t.transport_set_clock_out = c_transport_set_clock_out
 }
 
 @(private)
@@ -200,6 +254,231 @@ c_history_gesture_end :: proc "c" (api: ^Api) -> Result {
 }
 
 @(private)
+c_project_state :: proc "c" (api: ^Api, out: ^Project_State) -> Result {
+	context = runtime.default_context()
+	v, r := project_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_project_dir :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := project_dir(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_project_name :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := project_name(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_project_new :: proc "c" (api: ^Api, discard_changes: bool) -> Result {
+	context = runtime.default_context()
+	return project_new(api, discard_changes)
+}
+
+@(private)
+c_project_new_from_template :: proc "c" (api: ^Api, name: cstring, name_len: i64, discard_changes: bool) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return project_new_from_template(api, name_s, discard_changes)
+}
+
+@(private)
+c_project_open :: proc "c" (api: ^Api, dir: cstring, dir_len: i64, discard_changes: bool) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return project_open(api, dir_s, discard_changes)
+}
+
+@(private)
+c_project_save :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return project_save(api)
+}
+
+@(private)
+c_project_save_as :: proc "c" (api: ^Api, path: cstring, path_len: i64, replace: bool) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return project_save_as(api, path_s, replace)
+}
+
+@(private)
+c_project_rename :: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return project_rename(api, name_s)
+}
+
+@(private)
+c_project_recent :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := project_recent(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_project_template_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := project_template_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_project_save_template :: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return project_save_template(api, name_s)
+}
+
+@(private)
+c_project_recover :: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return project_recover(api, dir_s)
+}
+
+@(private)
+c_project_discard_backup :: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return project_discard_backup(api, dir_s)
+}
+
+@(private)
+c_project_unused_files :: proc "c" (api: ^Api, out: ^Unused_Files) -> Result {
+	context = runtime.default_context()
+	v, r := project_unused_files(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_project_clean_up :: proc "c" (api: ^Api, undo_only: bool, cache: bool, out: ^Clean_Up) -> Result {
+	context = runtime.default_context()
+	v, r := project_clean_up(api, undo_only, cache)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_settings_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := settings_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_settings_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := settings_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_settings_info :: proc "c" (api: ^Api, name: cstring, name_len: i64, out: ^Setting_Info) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	v, r := settings_info(api, name_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_settings_about :: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	s, r := settings_about(api, name_s)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_settings_choice :: proc "c" (api: ^Api, name: cstring, name_len: i64, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	s, r := settings_choice(api, name_s, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_settings_get_number :: proc "c" (api: ^Api, name: cstring, name_len: i64, out: ^f64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	v, r := settings_get_number(api, name_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_settings_get_text :: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	s, r := settings_get_text(api, name_s)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_settings_set_number :: proc "c" (api: ^Api, name: cstring, name_len: i64, value: f64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return settings_set_number(api, name_s, value)
+}
+
+@(private)
+c_settings_set_text :: proc "c" (api: ^Api, name: cstring, name_len: i64, value: cstring, value_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	value_s := string(([^]u8)(value)[:max(value_len, 0)]) if value != nil else ""
+	return settings_set_text(api, name_s, value_s)
+}
+
+@(private)
 c_subscribe :: proc "c" (api: ^Api, topic: Topic, index: i64, callback: Change_Proc, user: rawptr, out: ^Subscription) -> Result {
 	context = runtime.default_context()
 	v, r := subscribe(api, topic, index, callback, user)
@@ -311,4 +590,16 @@ c_transport_set_metronome_recording_only :: proc "c" (api: ^Api, on: bool) -> Re
 c_transport_set_song_mode :: proc "c" (api: ^Api, on: bool) -> Result {
 	context = runtime.default_context()
 	return transport_set_song_mode(api, on)
+}
+
+@(private)
+c_transport_set_sync :: proc "c" (api: ^Api, sync: Sync) -> Result {
+	context = runtime.default_context()
+	return transport_set_sync(api, sync)
+}
+
+@(private)
+c_transport_set_clock_out :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return transport_set_clock_out(api, on)
 }

@@ -15,6 +15,11 @@ Core :: struct {
 	m:         pm.Model,
 	capture:   pm.Capture,   // recording into the sequence (Rec)
 	transport: Transport,    // the transport's own state (tap tempo, Stop pressed twice)
+	files:     Files,        // the project's place, the recent projects, Pads' folders
+	hooks:     Hooks,        // what the app does around the core's actions
+	registry:  Settings,     // the app's settings, by name
+	why:       [256]u8,      // why the last action failed (`why`)
+	why_len:   int,
 }
 
 // The transport's state beside the project's settings.

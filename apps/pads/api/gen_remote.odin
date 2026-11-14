@@ -114,6 +114,207 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := history_gesture_end(api)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_project_dir":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_dir(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_project_name":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_name(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_project_new":
+		discard_changes := remote_bool(args, "discard_changes", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_new(api, discard_changes)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_new_from_template":
+		name := remote_string(args, "name", &ok)
+		discard_changes := remote_bool(args, "discard_changes", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_new_from_template(api, name, discard_changes)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_open":
+		dir := remote_string(args, "dir", &ok)
+		discard_changes := remote_bool(args, "discard_changes", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_open(api, dir, discard_changes)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_save":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_save(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_save_as":
+		path := remote_string(args, "path", &ok)
+		replace := remote_bool_or(args, "replace", false, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_save_as(api, path, replace)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_rename":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_rename(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_recent":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_recent(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_project_template_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_template_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_project_save_template":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_save_template(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_recover":
+		dir := remote_string(args, "dir", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_recover(api, dir)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_discard_backup":
+		dir := remote_string(args, "dir", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_discard_backup(api, dir)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_unused_files":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_unused_files(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_project_clean_up":
+		undo_only := remote_bool(args, "undo_only", &ok)
+		cache := remote_bool(args, "cache", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_clean_up(api, undo_only, cache)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_info":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_info(api, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_about":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_about(api, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_choice":
+		name := remote_string(args, "name", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_choice(api, name, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_get_number":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_get_number(api, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_get_text":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := settings_get_text(api, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_settings_set_number":
+		name := remote_string(args, "name", &ok)
+		value := remote_f64(args, "value", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := settings_set_number(api, name, value)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_settings_set_text":
+		name := remote_string(args, "name", &ok)
+		value := remote_string(args, "value", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := settings_set_text(api, name, value)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_unsubscribe":
 		sub := remote_sub(args, "sub", &ok)
 		if !ok {
@@ -247,6 +448,22 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := transport_set_song_mode(api, on)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_transport_set_sync":
+		sync := Sync(remote_enum(args, "sync", Sync_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := transport_set_sync(api, sync)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_transport_set_clock_out":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := transport_set_clock_out(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case:
 		remote_answer(out, .Not_Found, nil, "no such method")
 	}
@@ -256,10 +473,19 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 Result_NAMES := [?]string{"Ok", "Not_Found", "Invalid_Argument", "Busy", "Unsupported", "Io_Error"}
 
 @(private)
+Setting_Kind_NAMES := [?]string{"Bool", "Int", "Number", "Choice", "Text"}
+
+@(private)
+Setting_Group_NAMES := [?]string{"Appearance", "Audio", "Midi", "Sync", "Recording", "Project", "Plugins"}
+
+@(private)
 Topic_NAMES := [?]string{"Transport", "History", "Selection", "Pad", "Mixer", "Sequence", "Song", "Launcher", "Project", "Settings", "Recording", "Ui"}
 
 @(private)
 Metronome_Sound_NAMES := [?]string{"Beep", "Wood", "Stick", "Cowbell"}
+
+@(private)
+Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
 
 // The remote methods' names (pads_...), in the table's order.
 REMOTE_METHODS := [?]string{
@@ -276,6 +502,31 @@ REMOTE_METHODS := [?]string{
 	"pads_history_group_end",
 	"pads_history_gesture_begin",
 	"pads_history_gesture_end",
+	"pads_project_state",
+	"pads_project_dir",
+	"pads_project_name",
+	"pads_project_new",
+	"pads_project_new_from_template",
+	"pads_project_open",
+	"pads_project_save",
+	"pads_project_save_as",
+	"pads_project_rename",
+	"pads_project_recent",
+	"pads_project_template_name",
+	"pads_project_save_template",
+	"pads_project_recover",
+	"pads_project_discard_backup",
+	"pads_project_unused_files",
+	"pads_project_clean_up",
+	"pads_settings_count",
+	"pads_settings_name",
+	"pads_settings_info",
+	"pads_settings_about",
+	"pads_settings_choice",
+	"pads_settings_get_number",
+	"pads_settings_get_text",
+	"pads_settings_set_number",
+	"pads_settings_set_text",
 	"pads_unsubscribe",
 	"pads_transport_state",
 	"pads_transport_play",
@@ -293,4 +544,6 @@ REMOTE_METHODS := [?]string{
 	"pads_transport_set_metronome_accent",
 	"pads_transport_set_metronome_recording_only",
 	"pads_transport_set_song_mode",
+	"pads_transport_set_sync",
+	"pads_transport_set_clock_out",
 }

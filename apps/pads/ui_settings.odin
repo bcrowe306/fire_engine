@@ -8,6 +8,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pc "core"
 import pm "model"
 import pf "fire:perform"
 import im "deps:imgui"
@@ -70,7 +71,6 @@ App_Settings :: struct {
 	default_buses: int,
 	default_lanes: int, // the launcher's, a new project's
 	projects_folder: string, // where Save starts for a new project ("" = Documents)
-	unsaved_folder:  string, // where new projects are until saved ("" = Music/Pads/Unsaved; see `unsaved_root`)
 	autosave_min: int,       // 0 = off
 	open_last: bool,         // open the last project on start
 	export_rate: f64,
@@ -255,7 +255,7 @@ settings_load :: proc(a: ^App) {
 	s.default_buses = clamp(app.ini_int(ini_, "project", "buses", pm.DEFAULT_BUSES), 1, pm.BUSES)
 	s.default_lanes = clamp(app.ini_int(ini_, "project", "lanes", pm.DEFAULT_LANES), 1, pm.MAX_LANES)
 	s.projects_folder = strings.clone(g(ini_, "project", "folder", ""))
-	s.unsaved_folder = strings.clone(g(ini_, "project", "unsaved_folder", ""))
+	a.files.unsaved_folder = strings.clone(g(ini_, "project", "unsaved_folder", ""))
 	s.autosave_min = clamp(app.ini_int(ini_, "project", "autosave_minutes", 1), 0, 60)
 	s.open_last = app.ini_bool(ini_, "project", "open_last", false)
 	s.export_rate = app.ini_f64(ini_, "project", "export_rate", 48_000)
@@ -323,7 +323,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_int(ini, "project", "buses", s.default_buses)
 	app.ini_set_int(ini, "project", "lanes", s.default_lanes)
 	app.ini_set(ini, "project", "folder", s.projects_folder)
-	app.ini_set(ini, "project", "unsaved_folder", s.unsaved_folder)
+	app.ini_set(ini, "project", "unsaved_folder", a.files.unsaved_folder)
 	app.ini_set_int(ini, "project", "autosave_minutes", s.autosave_min)
 	app.ini_set_bool(ini, "project", "open_last", s.open_last)
 	app.ini_set_f64(ini, "project", "export_rate", s.export_rate)
@@ -334,6 +334,7 @@ settings_save :: proc(a: ^App) {
 	for k in s.defaults do app.ini_remove(ini, "keys", k.id)
 	for k in s.keys do app.ini_set(ini, "keys", k.id, chord_name(k.chord) if k.chord != 0 else "none")
 	if !app.ini_save(ini, s.path) do ui.toast(&a.ws.toasts, .Error, "Could not save the settings")
+	pc.settings_touched(&a.core) // (the API's subscribers hear of it)
 }
 
 // Frees the settings.
@@ -350,7 +351,6 @@ settings_destroy :: proc(s: ^App_Settings) {
 	delete(s.midi_off)
 	delete(s.midi_output)
 	delete(s.projects_folder)
-	delete(s.unsaved_folder)
 	for x in s.plugin_folders do delete(x)
 	delete(s.plugin_folders)
 	for x in s.blocked do delete(x)
@@ -1341,13 +1341,13 @@ page_project :: proc(a: ^App) -> (changed: bool) {
 	}
 	hint("Where Save starts for a new project.")
 	label("Unsaved projects")
-	im.TextUnformatted(fmt.ctprintf("%s", unsaved_root(a)))
+	im.TextUnformatted(fmt.ctprintf("%s", pc.unsaved_root(&a.core)))
 	im.SameLine()
 	if im.SmallButton("Choose…##unsaved") do choose_folder(a, .Unsaved)
-	if s.unsaved_folder != "" {
+	if a.files.unsaved_folder != "" {
 		im.SameLine()
 		if im.SmallButton("Default##unsaved") {
-			set_string(&s.unsaved_folder, "")
+			set_string(&a.files.unsaved_folder, "")
 			changed = true
 		}
 	}

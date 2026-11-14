@@ -184,14 +184,20 @@ draw_menu :: proc(user: rawptr) {
 	a := (^App)(user)
 	if im.BeginMenu("File") {
 		ui.menu_action(&a.actions, "new")
-		names, dirs := template_list(a)
-		if im.BeginMenu("New from Template", len(names) > 0) {
-			for n, k in names do if im.MenuItem(fmt.ctprintf("%s", n)) do leave(a, .New_From, dirs[k])
+		ps, _ := pa.project_state(&a.api)
+		if im.BeginMenu("New from Template", ps.templates > 0) {
+			for k in 0 ..< ps.templates {
+				n, _ := pa.project_template_name(&a.api, k)
+				if im.MenuItem(fmt.ctprintf("%s", n)) do leave(a, .New_From, n)
+			}
 			im.EndMenu()
 		}
 		ui.menu_action(&a.actions, "open")
-		if im.BeginMenu("Open Recent", len(a.proj.recent) > 0) {
-			for r in a.proj.recent do if im.MenuItem(fmt.ctprintf("%s", filepath.base(r))) do leave(a, .Open, r)
+		if im.BeginMenu("Open Recent", ps.recent > 0) {
+			for k in 0 ..< ps.recent {
+				r, _ := pa.project_recent(&a.api, k)
+				if im.MenuItem(fmt.ctprintf("%s###recent%d", filepath.base(r), k)) do leave(a, .Open, r)
+			}
 			im.EndMenu()
 		}
 		ui.menu_action(&a.actions, "save")
@@ -407,6 +413,7 @@ subscribe_imports :: proc(a: ^App) {
 //	route PAD BUS (0 = main) / busvol BUS DB / mute|solo pad N|bus B (toggles) / perf N on|off
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
 //	save / save_as DIR / rename_project NAME / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
+//	setting NAME VALUE   a setting, by its settings.ini name ("project.tempo 100", "midi.sync Midi_Clock")
 //	resample / song add SLOT [REPEATS] | mode on|off | loop on|off | clear / switch end|bar|beat|now / export_dialog [off]
 //	expect file PATH / expect song K / expect dirty 0|1 / expect pads_loaded K
 //	theme light|dark, action ID
@@ -646,7 +653,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// repeat_all on|off [RATE]: the toolbar's note repeat (RATE: 1/4 1/8 1/8T 1/16 1/16T 1/32 1/32T)
 		if len(w) < 2 do return false
 		a.m.engine.repeat_all = w[1] == "on"
-		if len(w) > 2 do for r, k in RATE_NAMES do if string(r) == w[2] do a.settings.repeat_rate = k
+		if len(w) > 2 do for r, k in RATE_NAMES do if string(r) == w[2] do pa.settings_set_number(&a.api, "note_repeat.rate", f64(k))
 		a.m.engine.repeat_all_settings = {rate = a.settings.repeat_rate, gate = a.settings.repeat_gate}
 		return true
 	case "arm":
@@ -699,10 +706,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "template": // template save NAME | template new NAME: save the project as a template, or a new project from one
 		if len(w) < 3 do return false
 		name := strings.join(w[2:], " ", context.temp_allocator)
-		dir, _ := filepath.join({templates_folder(a), strings.concatenate({pm.safe_name(name), ".pads"}, context.temp_allocator)}, context.temp_allocator)
-		if w[1] == "save" do return pm.model_save_copy(&a.m, dir) == .None
-		new_from_template(a, dir)
-		return true
+		if w[1] == "save" do return pa.project_save_template(&a.api, name) == .Ok
+		return pa.project_new_from_template(&a.api, name, discard_changes = true) == .Ok
 	case "export_midi": // export_midi SLOT|song PATH: a sequence (1..) or the song as a MIDI file
 		if len(w) < 3 do return false
 		slot := -1 if w[1] == "song" else num(w, 1) - 1
@@ -919,15 +924,16 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		pm.hold_perf_fx(&a.m, i, len(w) < 3 || w[2] != "off")
 		return true
 	case "save": // (in place, even a new project: no dialog in a script)
-		if a.proj.untitled do return pm.model_save(&a.m) == .None
-		return save_project(a)
+		return pa.project_save(&a.api) == .Ok
 	case "rename_project":
 		if len(w) < 2 do return false
 		return rename_project(a, strings.join(w[1:], " ", context.temp_allocator))
 	case "save_as":
 		if len(w) < 2 do return false
-		if !save_into(a, strings.join(w[1:], " ", context.temp_allocator)) do return drive_fail(a, "could not save as")
-		session_mark(a)
+		if r := pa.project_save_as(&a.api, strings.join(w[1:], " ", context.temp_allocator), replace = true); r != .Ok { // (a script's folder from its last run: written over)
+			why, _ := pa.last_error(&a.api)
+			return drive_fail(a, fmt.tprintf("could not save as: %s", why))
+		}
 		return true
 	case "open":
 		if len(w) < 2 do return false
@@ -1096,16 +1102,18 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return pa.transport_set_metronome(&a.api, len(w) < 2 || w[1] != "off") == .Ok
 	case "mixer": // mixer inserts|eq|sends|io on|off / mixer narrow|wide: the Mixer's bar
 		if len(w) < 2 do return false
-		v := &a.settings.mixer_view
 		on := len(w) < 3 || w[2] != "off"
 		switch w[1] {
-		case "inserts": v.inserts = on
-		case "eq":      v.eq = on
-		case "sends":   v.sends = on
-		case "io":      v.io = on
-		case "narrow":  v.narrow = true
-		case "wide":    v.narrow = false
-		case: return false
+		case "inserts", "eq", "sends", "io": return pa.settings_set_number(&a.api, fmt.tprintf("mixer.%s", w[1]), 1 if on else 0) == .Ok
+		case "narrow": return pa.settings_set_number(&a.api, "mixer.narrow", 1) == .Ok
+		case "wide":   return pa.settings_set_number(&a.api, "mixer.narrow", 0) == .Ok
+		}
+		return false
+	case "setting": // setting NAME VALUE: a setting by its settings.ini name ("project.tempo 100", "midi.sync Midi_Clock")
+		if len(w) < 3 do return false
+		if r := pa.settings_set_text(&a.api, w[1], strings.join(w[2:], " ", context.temp_allocator)); r != .Ok {
+			why, _ := pa.last_error(&a.api)
+			return drive_fail(a, why)
 		}
 		return true
 	case "launch":

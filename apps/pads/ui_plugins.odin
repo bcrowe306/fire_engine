@@ -290,7 +290,7 @@ subscribe_settings :: proc(a: ^App) {
 		defer delete(e.path)
 		switch e.what {
 		case .Projects: set_string(&a.settings.projects_folder, e.path)
-		case .Unsaved: set_string(&a.settings.unsaved_folder, e.path)
+		case .Unsaved: set_string(&a.files.unsaved_folder, e.path)
 		case .Plugins:
 			for f in a.settings.plugin_folders do if f == e.path do return
 			append(&a.settings.plugin_folders, strings.clone(e.path))

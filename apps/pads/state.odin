@@ -335,7 +335,7 @@ state_json :: proc(a: ^App) -> string {
 	s.beat, s.playing = ts.beat, ts.playing
 	s.slot, s.bpm = p.slot + 1, ts.bpm
 	s.metronome = ts.metronome
-	s.project_dir, s.untitled = p.dir, a.proj.untitled
+	s.project_dir, s.untitled = p.dir, a.files.untitled
 	s.recording = a.capture.armed
 	tr := p.transport
 	s.loop, s.count_in, s.metro_db, s.metro_rec_only = tr.loop, tr.count_in, tr.metro_db, tr.metro_rec_only

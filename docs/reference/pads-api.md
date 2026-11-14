@@ -125,6 +125,210 @@ history_gesture_end :: proc(api: ^Api) -> Result
 
 Ends the gesture: the next edit is a new step.
 
+## Project: new, open, save, templates, clean up
+
+### project_state
+
+```odin
+project_state :: proc(api: ^Api) -> (Project_State, Result)
+```
+
+The project now.
+
+### project_dir
+
+```odin
+project_dir :: proc(api: ^Api) -> (string, Result)
+```
+
+The project's folder (an untitled one's is in the unsaved folder). Temporary.
+
+### project_name
+
+```odin
+project_name :: proc(api: ^Api) -> (string, Result)
+```
+
+The project's name: its folder's, without ".pads" ("Untitled" before it is saved). Temporary.
+
+### project_new
+
+```odin
+project_new :: proc(api: ^Api, discard_changes: bool) -> Result
+```
+
+A new, empty project. With changes not saved, Busy unless `discard_changes` (they are lost; an untitled project's folder goes).
+
+### project_new_from_template
+
+```odin
+project_new_from_template :: proc(api: ^Api, name: string, discard_changes: bool) -> Result
+```
+
+A new, untitled project from the template called `name`. Not_Found if there is none; Busy with changes not saved unless `discard_changes`.
+
+### project_open
+
+```odin
+project_open :: proc(api: ^Api, dir: string, discard_changes: bool) -> Result
+```
+
+Opens the project in folder `dir`. Not_Found if there is none there; Busy with changes not saved unless `discard_changes`.
+
+### project_save
+
+```odin
+project_save :: proc(api: ^Api) -> Result
+```
+
+Saves the project where it is (an untitled one stays untitled, in the unsaved folder: `project_save_as` gives it a place).
+
+### project_save_as
+
+```odin
+project_save_as :: proc(api: ^Api, path: string, replace: bool = false) -> Result
+```
+
+Saves the project as folder `path` (".pads" added when missing), which it is from now on. Invalid_Argument if something is there already, unless `replace` (the project is written into that folder).
+
+### project_rename
+
+```odin
+project_rename :: proc(api: ^Api, name: string) -> Result
+```
+
+Renames the project's folder to "<name>.pads", where it is. Unsupported for an untitled project (save it as); Invalid_Argument for a name a folder can't have, or one taken.
+
+### project_recent
+
+```odin
+project_recent :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Recent project `index`'s folder (0: the latest). Temporary.
+
+### project_template_name
+
+```odin
+project_template_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Template `index`'s name (in name order). Temporary.
+
+### project_save_template
+
+```odin
+project_save_template :: proc(api: ^Api, name: string) -> Result
+```
+
+Saves a copy of the project as template `name` (one of that name is replaced). New projects can start from it.
+
+### project_recover
+
+```odin
+project_recover :: proc(api: ^Api, dir: string) -> Result
+```
+
+Opens the backup the project in `dir` left when Pads stopped without closing (its changes, not yet saved). Not_Found if it left none.
+
+### project_discard_backup
+
+```odin
+project_discard_backup :: proc(api: ^Api, dir: string) -> Result
+```
+
+Throws away the backup the project in `dir` left (an unsaved project's folder with it).
+
+### project_unused_files
+
+```odin
+project_unused_files :: proc(api: ^Api) -> (Unused_Files, Result)
+```
+
+The files in the project's folder it doesn't use now, by kind.
+
+### project_clean_up
+
+```odin
+project_clean_up :: proc(api: ^Api, undo_only: bool, cache: bool) -> (Clean_Up, Result)
+```
+
+Moves the files the project doesn't use to the Trash (from where they can be put back) and saves it: those nothing uses, and with `undo_only` the samples only undo would bring back (undo is forgotten), with `cache` the renderings. Io_Error if some couldn't be moved.
+
+## Settings, by name
+
+### settings_count
+
+```odin
+settings_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+Settings there are (settings_name lists them).
+
+### settings_name
+
+```odin
+settings_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Setting `index`'s name: "section.key", as settings.ini has it ("project.tempo", "midi.sync"). Temporary.
+
+### settings_info
+
+```odin
+settings_info :: proc(api: ^Api, name: string) -> (Setting_Info, Result)
+```
+
+What setting `name` is: its kind, its group, its range or choices.
+
+### settings_about
+
+```odin
+settings_about :: proc(api: ^Api, name: string) -> (string, Result)
+```
+
+What setting `name` does, in a few words. Temporary.
+
+### settings_choice
+
+```odin
+settings_choice :: proc(api: ^Api, name: string, index: i64) -> (string, Result)
+```
+
+Choice `index` of setting `name` ("Midi_Clock"). Temporary.
+
+### settings_get_number
+
+```odin
+settings_get_number :: proc(api: ^Api, name: string) -> (f64, Result)
+```
+
+Setting `name` as a number: a Bool's 0 or 1, a Choice's index (a Text's 0).
+
+### settings_get_text
+
+```odin
+settings_get_text :: proc(api: ^Api, name: string) -> (string, Result)
+```
+
+Setting `name` as text: "true", "120", a choice's name, a folder. Temporary.
+
+### settings_set_number
+
+```odin
+settings_set_number :: proc(api: ^Api, name: string, value: f64) -> Result
+```
+
+Sets setting `name` to `value` (a Bool: nonzero is true; a Choice: its index), applies it and saves the settings. Invalid_Argument out of its range; Io_Error if it couldn't be applied (it is put back).
+
+### settings_set_text
+
+```odin
+settings_set_text :: proc(api: ^Api, name: string, value: string) -> Result
+```
+
+Sets setting `name` from text (a Text's words, a Choice's name, "true" or "false", a number), applies it and saves the settings.
+
 ## Changes
 
 ### subscribe
@@ -273,6 +477,22 @@ transport_set_song_mode :: proc(api: ^Api, on: bool) -> Result
 
 Plays the song (true) or the sequence shown (false: Pattern).
 
+### transport_set_sync
+
+```odin
+transport_set_sync :: proc(api: ^Api, sync: Sync) -> Result
+```
+
+Follows `sync` for the tempo, start and stop (the setting "midi.sync": saved with the settings, not the project). Link not built in: Internal.
+
+### transport_set_clock_out
+
+```odin
+transport_set_clock_out :: proc(api: ^Api, on: bool) -> Result
+```
+
+Sends MIDI clock to the output port, or stops (the setting "midi.clock_out").
+
 ## Types
 
 ### Result
@@ -280,6 +500,18 @@ Plays the song (true) or the sequence shown (false: Pattern).
 What a call came to. `last_error` says why it wasn't `Ok`.
 
 `Ok`, `Not_Found`, `Invalid_Argument`, `Busy`, `Unsupported`, `Io_Error`
+
+### Setting_Kind
+
+What a setting is (`settings_info`).
+
+`Bool`, `Int`, `Number`, `Choice`, `Text`
+
+### Setting_Group
+
+What part of Pads a setting changes (applied when it is set: the audio device reopened, the MIDI ports, what the tempo follows...).
+
+`Appearance`, `Audio`, `Midi`, `Sync`, `Recording`, `Project`, `Plugins`
 
 ### Topic
 
@@ -293,6 +525,12 @@ The metronome's sound.
 
 `Beep`, `Wood`, `Stick`, `Cowbell`
 
+### Sync
+
+What the tempo, start and stop follow.
+
+`Internal`, `Midi_Clock`, `Link`
+
 ### History_State
 
 The undo history now: steps that can be undone and redone, and whether the project has changed since it was saved.
@@ -303,6 +541,51 @@ The undo history now: steps that can be undone and redone, and whether the proje
 | `redo_steps` | `i64` | steps undone that can be redone |
 | `dirty` | `bool` | changed since it was saved |
 | `grouping` | `bool` | a group is open (history_group_begin) |
+
+### Project_State
+
+The project now: where it is, whether it changed, the lists beside it.
+
+| Field | Type | |
+|---|---|---|
+| `untitled` | `bool` | not saved anywhere yet (it is in the unsaved folder) |
+| `dirty` | `bool` | changed since it was saved |
+| `recent` | `i64` | projects in the recent list (project_recent) |
+| `templates` | `i64` | templates there are (project_template_name) |
+
+### Unused_Files
+
+What `project_unused_files` found: files the project doesn't use, by kind, and their size.
+
+| Field | Type | |
+|---|---|---|
+| `unused` | `i64` | files in its samples folders nothing uses |
+| `unused_bytes` | `i64` |  |
+| `undo_only` | `i64` | samples only undoing would bring back |
+| `undo_only_bytes` | `i64` |  |
+| `cache` | `i64` | renderings, made again when needed |
+| `cache_bytes` | `i64` |  |
+
+### Clean_Up
+
+What `project_clean_up` did.
+
+| Field | Type | |
+|---|---|---|
+| `files` | `i64` | moved to the Trash |
+| `bytes` | `i64` |  |
+
+### Setting_Info
+
+What setting `name` is.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | `Setting_Kind` |  |
+| `group` | `Setting_Group` |  |
+| `min` | `f64` | Int and Number |
+| `max` | `f64` |  |
+| `choices` | `i64` | Choice: how many (settings_choice) |
 
 ### Transport_State
 
@@ -329,4 +612,6 @@ The transport now. The playhead (`beat`, `timeline_beat`, the position) moves wi
 | `metronome_sound` | `Metronome_Sound` |  |
 | `metronome_accent` | `bool` | the bar's first beat clicks louder |
 | `metronome_recording_only` | `bool` | it clicks only while recording (and counting in) |
+| `sync` | `Sync` | what the tempo follows (the setting "midi.sync") |
+| `clock_out` | `bool` | MIDI clock goes out (the setting "midi.clock_out") |
 

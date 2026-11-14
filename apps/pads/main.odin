@@ -45,6 +45,7 @@ import pa "api"
 import pc "core"
 import pm "model"
 import im "deps:imgui"
+import sdl "deps:sdl3"
 
 App :: struct {
 	using core: pc.Core, // the model and the app's state without the window (bus, host, m, capture, transport)
@@ -190,8 +191,10 @@ main :: proc() {
 		trash, _ := filepath.join({a.prefs, "Trash"}, context.temp_allocator)
 		app.trash_redirect(trash)
 	}
-	recent_load(a)
-	if project == "" && a.settings.open_last && len(a.proj.recent) > 0 do project = a.proj.recent[0]
+	files_init(a)
+	defer pc.files_destroy(&a.files)
+	pc.recent_load(&a.core)
+	if project == "" && a.settings.open_last && len(a.files.recent) > 0 do project = a.files.recent[0]
 	untitled := project == "" // a new project in the unsaved folder, until it is saved somewhere
 	if project == "" {
 		// (A script without --prefs: the system's temporary folder, not the
@@ -199,7 +202,7 @@ main :: proc() {
 		if drive != "" && a.prefs == "" {
 			dir, _ := os.make_directory_temp("", "Untitled.pads", context.allocator)
 			project = dir
-		} else do project = unsaved_new(a)
+		} else do project = pc.unsaved_new(&a.core)
 	}
 	p := &a.platform
 	layout := ""
@@ -230,9 +233,11 @@ main :: proc() {
 	outputs_apply(a)
 	pa.api_init(&a.api, &a.core)
 	defer pa.api_destroy(&a.api)
+	settings_register(a)
+	defer pc.settings_destroy(&a.core)
 	// (After the model is gone, its files let go: an unsaved project left
 	// without saving.)
-	defer if a.proj.discard != "" && is_unsaved(a, a.proj.discard) do os.remove_all(a.proj.discard)
+	defer if a.files.discard != "" && pc.is_unsaved(&a.core, a.files.discard) do os.remove_all(a.files.discard)
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
@@ -241,19 +246,19 @@ main :: proc() {
 	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}
 	project_defaults_apply(a)
 	if f, _ := filepath.join({project, pm.PROJECT_FILE}, context.temp_allocator); os.exists(f) {
-		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project)
+		if pm.model_load(&a.m, project) != .None do fmt.eprintln("pads: could not open", project) // api-lint: the project Pads starts with, before its first frame
 		else do view_restore(a)
 	} else {
-		pm.model_new(&a.m, project)
+		pm.model_new(&a.m, project) // api-lint: the project Pads starts with
 	}
 	pa.transport_set_metronome(&a.api, true) // (the click on; a new project's clicks only while recording: see Project_Defaults.recording)
-	a.proj.untitled = untitled
-	a.proj.last_save = time.tick_now()
-	a.proj.last_backup = time.tick_now()
+	a.files.untitled = untitled
+	a.files.last_save = time.tick_now()
+	a.files.last_backup = time.tick_now()
 	// Stopped last time without closing: its backup, offered.
 	if drive == "" {
-		if crashed := session_crashed(a); crashed != "" do a.leave.recover = strings.clone(crashed)
-		session_mark(a)
+		if crashed := pc.session_crashed(&a.core); crashed != "" do a.leave.recover = strings.clone(crashed)
+		pc.session_mark(&a.core)
 	}
 	sync_apply(a)
 	defer plugin_choice_clear(&a.plugin_choice)
@@ -322,7 +327,7 @@ main :: proc() {
 		run_profile(a, profile)
 	}
 	// Leaving (asked first, when there were changes): a clean exit.
-	if drive == "" do session_unmark(a)
+	if drive == "" do pc.session_unmark(&a.core)
 	if drive != "" {
 		for s in a.driver.shots do fmt.println("screenshot:", s)
 		if a.driver.failed do os.exit(1)
@@ -636,6 +641,25 @@ view_restore :: proc(a: ^App) {
 	v := a.m.project.view
 	a.play_mode, a.keys, a.bank, a.selected, a.perf.win_lane, a.perf.win_row, a.perf.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_lane0, v.seq_row0, v.seq_keys
 	a.seq.mode = v.seq_mode
+}
+
+// Where Pads keeps its own files (the core's `Folders`), and what the app
+// does when the core opens a project.
+files_init :: proc(a: ^App) {
+	f := &a.files.folders
+	f.settings = strings.clone(settings_folder(a))
+	f.prefs = strings.clone(a.prefs if a.prefs != "" else settings_folder(a))
+	_ = prefs_file(a, "recent.txt") // (kept elsewhere before settings.ini: brought over the first time)
+	// New projects until saved: Music/Pads/Unsaved (with --prefs: in it, so
+	// a test stays in its own), else beside the settings.
+	switch {
+	case a.prefs != "":
+		f.unsaved, _ = filepath.join({a.prefs, "Unsaved"})
+	case:
+		if d := sdl.GetUserFolder(.MUSIC); d != nil do f.unsaved, _ = filepath.join({string(d), "Pads", "Unsaved"})
+		else do f.unsaved, _ = filepath.join({settings_folder(a), "Unsaved"})
+	}
+	a.hooks = {user = a, opened = project_opened}
 }
 
 // Draws `frames` frames back to back and prints the CPU time per frame.

@@ -28,6 +28,14 @@ MODULES = {
         (r"\b(project|p)\.song_mode\s*=[^=]", "transport_set_song_mode"),
         (r"\b(engine|e)\.metronome\s*=[^=]", "transport_set_metronome"),
     ],
+    "project": [
+        (r"\bpm\.model_(new|new_from|load|save|save_as|save_copy|move|load_backup|discard_backup|save_backup)\(", "project_new / open / save / save_as / rename / recover"),
+    ],
+    # (The Settings window is the editor of the same fields the registry
+    # points at; the test-script commands set them through the API.)
+    "settings": [
+        (r"\ba\.settings\.(?!theme\b|open\b|page\b)\w+(\.\w+)*\s*=[^=]", "settings_set_number / settings_set_text", "shell.odin"),
+    ],
 }
 
 
@@ -41,7 +49,10 @@ def main():
             for n, line in enumerate(fh, 1):
                 code = line.split("//", 1)[0] if "api-lint:" not in line else ""
                 for module, rules in MODULES.items():
-                    for pattern, use in rules:
+                    for rule in rules:
+                        pattern, use = rule[0], rule[1]
+                        if len(rule) > 2 and f != rule[2]:
+                            continue
                         if re.search(pattern, code):
                             problems.append(f"apps/pads/{f}:{n}: the {module} module's API does this: use {use}\n\t{line.strip()}")
     if problems:

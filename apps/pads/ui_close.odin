@@ -1,12 +1,11 @@
 package pads
 
 import "core:fmt"
-import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "core:time"
 
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -41,37 +40,34 @@ leave :: proc(a: ^App, action: Leave_Action, path := "") {
 	st.asking = true
 }
 
-// Does what leaving waited on (the project's backup thrown away).
+// Does what leaving waited on (what was open left without saving: the
+// API throws its backup away, and an unsaved project's folder).
 @(private)
 leave_go :: proc(a: ^App) {
 	st := &a.leave
 	action := st.action
 	st.action, st.asking, st.saving_as = .None, false, false
-	// An unsaved project left without saving: its folder goes (when the
-	// next one is open; quitting, once Pads has let go of its files).
-	left := strings.clone(a.m.project.dir, context.temp_allocator) if a.proj.untitled else ""
 	switch action {
 	case .None:
 	case .Quit:
-		pm.model_discard_backup(a.m.project.dir)
-		if left != "" {
-			delete(a.proj.discard)
-			a.proj.discard = strings.clone(left)
+		// (An unsaved project left without saving: its folder goes once Pads
+		// has let go of its files.)
+		pm.model_discard_backup(a.m.project.dir) // api-lint: quitting without saving: the backup goes, the project stays open until Pads has stopped
+		if a.files.untitled {
+			delete(a.files.discard)
+			a.files.discard = strings.clone(a.m.project.dir)
 		}
 		a.platform.running = false
 	case .New:
-		pm.model_discard_backup(a.m.project.dir)
 		new_project(a)
-		unsaved_discard(a, left)
 	case .New_From:
-		pm.model_discard_backup(a.m.project.dir)
-		new_from_template(a, st.path)
-		unsaved_discard(a, left)
+		if toast_failed(a, pa.project_new_from_template(&a.api, st.path, discard_changes = true), "Could not start from that template") {
+			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A new project from %s", st.path))
+		}
 	case .Open_Dialog:
 		project_dialog(a, .Open)
 	case .Open:
-		pm.model_discard_backup(a.m.project.dir)
-		if open_project(a, st.path) do unsaved_discard(a, left)
+		open_project(a, st.path)
 	}
 }
 
@@ -95,7 +91,7 @@ draw_leave :: proc(a: ^App) {
 			im.TextDisabled("Without saving, they are lost.")
 			im.Spacing()
 			if im.Button("Save", {110, 0}) {
-				if a.proj.untitled {
+				if a.files.untitled {
 					st.saving_as, st.asking = true, false
 					project_dialog(a, .Save_As) // (then the action, once saved)
 				} else if save_project(a) {
@@ -126,12 +122,7 @@ draw_leave :: proc(a: ^App) {
 			im.TextDisabled("They were autosaved, but not saved into the project.")
 			im.Spacing()
 			if im.Button("Recover", {110, 0}) {
-				fresh := strings.clone(a.m.project.dir, context.temp_allocator) if a.proj.untitled else "" // (the new one Pads started with)
-				if pm.model_load_backup(&a.m, st.recover) == .None {
-					a.proj.untitled = is_unsaved(a, a.m.project.dir) // (an unsaved one: Save asks for a place)
-					unsaved_discard(a, fresh)
-					session_mark(a)
-					view_restore(a)
+				if toast_failed(a, pa.project_recover(&a.api, st.recover), "Could not recover") {
 					ui.toast(&a.ws.toasts, .Success, "Recovered: save to keep the changes")
 				}
 				delete(st.recover)
@@ -141,8 +132,7 @@ draw_leave :: proc(a: ^App) {
 			ui.name("recover")
 			im.SameLine()
 			if im.Button("Discard", {110, 0}) {
-				pm.model_discard_backup(st.recover)
-				unsaved_discard(a, st.recover) // (an unsaved one: nothing of it to keep)
+				pa.project_discard_backup(&a.api, st.recover) // (an unsaved one's folder too: nothing of it to keep)
 				delete(st.recover)
 				st.recover = ""
 				im.CloseCurrentPopup()
@@ -151,84 +141,6 @@ draw_leave :: proc(a: ^App) {
 			im.EndPopup()
 		}
 	}
-}
-
-// The marker saying which project is open (in the settings folder).
-@(private)
-session_marker :: proc(a: ^App) -> string {
-	p, _ := filepath.join({settings_folder(a), "open-project.txt"}, context.temp_allocator)
-	return p
-}
-
-// Notes that the project is open (until a clean exit).
-session_mark :: proc(a: ^App) {
-	_ = os.write_entire_file(session_marker(a), transmute([]u8)a.m.project.dir)
-}
-
-// A clean exit: the marker and the open project's backup gone.
-session_unmark :: proc(a: ^App) {
-	pm.model_discard_backup(a.m.project.dir)
-	os.remove(session_marker(a))
-}
-
-// At start: the project open when Pads last stopped without closing, if
-// it left a backup newer than itself ("" none).
-session_crashed :: proc(a: ^App) -> string {
-	data, err := os.read_entire_file(session_marker(a), context.temp_allocator)
-	if err != nil do return ""
-	dir := strings.trim_space(string(data))
-	if dir == "" || !pm.model_backup_newer(dir) do return ""
-	return dir
-}
-
-// Autosaves (as backups) every few minutes, while there are changes.
-autosave_frame :: proc(a: ^App) {
-	st := &a.proj
-	every := time.Duration(a.settings.autosave_min) * time.Minute
-	if every > 0 && pm.model_dirty(&a.m) && time.tick_since(st.last_backup) > every && !st.exporting {
-		pm.model_save_backup(&a.m)
-		st.last_backup = time.tick_now()
-	}
-}
-
-// --- templates ---------------------------------------------------------------------------------
-
-// Where the user's project templates are (each a project folder).
-templates_folder :: proc(a: ^App) -> string {
-	p, _ := filepath.join({settings_folder(a), "Templates"}, context.temp_allocator)
-	return p
-}
-
-// The templates there are: their names and folders (temporary allocator).
-template_list :: proc(a: ^App) -> (names, dirs: []string) {
-	ns := make([dynamic]string, context.temp_allocator)
-	ds := make([dynamic]string, context.temp_allocator)
-	h, err := os.open(templates_folder(a))
-	if err != nil do return
-	defer os.close(h)
-	infos, _ := os.read_dir(h, -1, context.temp_allocator)
-	for fi in infos do if fi.type == .Directory && strings.has_suffix(fi.name, ".pads") {
-		append(&ns, strings.trim_suffix(fi.name, ".pads"))
-		d, _ := filepath.join({templates_folder(a), fi.name}, context.temp_allocator)
-		append(&ds, d)
-	}
-	return ns[:], ds[:]
-}
-
-// A new, untitled project made from the template in folder `dir`.
-new_from_template :: proc(a: ^App, dir: string) {
-	to := unsaved_new(a)
-	defer delete(to)
-	if pm.model_new_from(&a.m, dir, to) != .None {
-		ui.toast(&a.ws.toasts, .Error, "Could not start from that template")
-		return
-	}
-	a.proj.untitled = true
-	a.selected, a.bank, a.fx = 0, 0, {}
-	a.seq.selected = -1
-	view_restore(a)
-	session_mark(a)
-	ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A new project from %s", strings.trim_suffix(filepath.base(dir), ".pads")))
 }
 
 // The Save as Template dialog's state.
@@ -250,10 +162,7 @@ draw_template_save :: proc(a: ^App) {
 		ui.name("template name")
 		name := strings.trim_space(strings.truncate_to_byte(string(st.name[:]), 0))
 		if (im.Button("Save") || enter) && name != "" {
-			dir, _ := filepath.join({templates_folder(a), strings.concatenate({pm.safe_name(name), ".pads"}, context.temp_allocator)}, context.temp_allocator)
-			os.remove_all(dir) // (the same name: replaced)
-			if pm.model_save_copy(&a.m, dir) == .None do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the template %s", name))
-			else do ui.toast(&a.ws.toasts, .Error, "Could not save the template")
+			if toast_failed(a, pa.project_save_template(&a.api, name), "Could not save the template") do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the template %s", name))
 			st.open = false
 			im.CloseCurrentPopup()
 		}

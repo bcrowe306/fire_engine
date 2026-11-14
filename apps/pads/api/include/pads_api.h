@@ -34,6 +34,29 @@ enum {
 	PADS_RESULT_IO_ERROR = 5,
 };
 
+// What a setting is (`settings_info`).
+typedef int32_t Pads_Setting_Kind;
+enum {
+	PADS_SETTING_KIND_BOOL = 0,
+	PADS_SETTING_KIND_INT = 1,
+	PADS_SETTING_KIND_NUMBER = 2,
+	PADS_SETTING_KIND_CHOICE = 3,
+	PADS_SETTING_KIND_TEXT = 4,
+};
+
+// What part of Pads a setting changes (applied when it is set: the
+// audio device reopened, the MIDI ports, what the tempo follows...).
+typedef int32_t Pads_Setting_Group;
+enum {
+	PADS_SETTING_GROUP_APPEARANCE = 0,
+	PADS_SETTING_GROUP_AUDIO = 1,
+	PADS_SETTING_GROUP_MIDI = 2,
+	PADS_SETTING_GROUP_SYNC = 3,
+	PADS_SETTING_GROUP_RECORDING = 4,
+	PADS_SETTING_GROUP_PROJECT = 5,
+	PADS_SETTING_GROUP_PLUGINS = 6,
+};
+
 // What a subscriber hears about. Topics whose module isn't built yet
 // answer `subscribe` with `Unsupported`.
 typedef int32_t Pads_Topic;
@@ -61,6 +84,14 @@ enum {
 	PADS_METRONOME_SOUND_COWBELL = 3,
 };
 
+// What the tempo, start and stop follow.
+typedef int32_t Pads_Sync;
+enum {
+	PADS_SYNC_INTERNAL = 0,
+	PADS_SYNC_MIDI_CLOCK = 1,
+	PADS_SYNC_LINK = 2,
+};
+
 // Called on the control thread when `topic` changed (`index`: which; -1 all).
 typedef void (*Pads_Change_Fn)(Pads_Api* api, Pads_Topic topic, int64_t index, void* user);
 // A call posted from another thread, run on the control thread.
@@ -74,6 +105,40 @@ typedef struct Pads_History_State {
 	bool dirty; // changed since it was saved
 	bool grouping; // a group is open (history_group_begin)
 } Pads_History_State;
+
+// The project now: where it is, whether it changed, the lists beside it.
+typedef struct Pads_Project_State {
+	bool untitled; // not saved anywhere yet (it is in the unsaved folder)
+	bool dirty; // changed since it was saved
+	int64_t recent; // projects in the recent list (project_recent)
+	int64_t templates; // templates there are (project_template_name)
+} Pads_Project_State;
+
+// What `project_unused_files` found: files the project doesn't use, by
+// kind, and their size.
+typedef struct Pads_Unused_Files {
+	int64_t unused; // files in its samples folders nothing uses
+	int64_t unused_bytes;
+	int64_t undo_only; // samples only undoing would bring back
+	int64_t undo_only_bytes;
+	int64_t cache; // renderings, made again when needed
+	int64_t cache_bytes;
+} Pads_Unused_Files;
+
+// What `project_clean_up` did.
+typedef struct Pads_Clean_Up {
+	int64_t files; // moved to the Trash
+	int64_t bytes;
+} Pads_Clean_Up;
+
+// What setting `name` is.
+typedef struct Pads_Setting_Info {
+	Pads_Setting_Kind kind;
+	Pads_Setting_Group group;
+	double min; // Int and Number
+	double max;
+	int64_t choices; // Choice: how many (settings_choice)
+} Pads_Setting_Info;
 
 // The transport now. The playhead (`beat`, `timeline_beat`, the position)
 // moves without a change being reported: poll it.
@@ -97,6 +162,8 @@ typedef struct Pads_Transport_State {
 	Pads_Metronome_Sound metronome_sound;
 	bool metronome_accent; // the bar's first beat clicks louder
 	bool metronome_recording_only; // it clicks only while recording (and counting in)
+	Pads_Sync sync; // what the tempo follows (the setting "midi.sync")
+	bool clock_out; // MIDI clock goes out (the setting "midi.clock_out")
 } Pads_Transport_State;
 
 // The function table, version 1. It only grows: `size` says how much of it
@@ -146,6 +213,77 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*history_gesture_begin)(Pads_Api* api);
 	// Ends the gesture: the next edit is a new step.
 	Pads_Result (*history_gesture_end)(Pads_Api* api);
+	// The project now.
+	Pads_Result (*project_state)(Pads_Api* api, Pads_Project_State* out);
+	// The project's folder (an untitled one's is in the unsaved folder).
+	// Temporary.
+	Pads_Result (*project_dir)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// The project's name: its folder's, without ".pads" ("Untitled" before
+	// it is saved). Temporary.
+	Pads_Result (*project_name)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// A new, empty project. With changes not saved, Busy unless
+	// `discard_changes` (they are lost; an untitled project's folder goes).
+	Pads_Result (*project_new)(Pads_Api* api, bool discard_changes);
+	// A new, untitled project from the template called `name`. Not_Found if
+	// there is none; Busy with changes not saved unless `discard_changes`.
+	Pads_Result (*project_new_from_template)(Pads_Api* api, const char* name, int64_t name_len, bool discard_changes);
+	// Opens the project in folder `dir`. Not_Found if there is none there;
+	// Busy with changes not saved unless `discard_changes`.
+	Pads_Result (*project_open)(Pads_Api* api, const char* dir, int64_t dir_len, bool discard_changes);
+	// Saves the project where it is (an untitled one stays untitled, in the
+	// unsaved folder: `project_save_as` gives it a place).
+	Pads_Result (*project_save)(Pads_Api* api);
+	// Saves the project as folder `path` (".pads" added when missing), which
+	// it is from now on. Invalid_Argument if something is there already,
+	// unless `replace` (the project is written into that folder).
+	Pads_Result (*project_save_as)(Pads_Api* api, const char* path, int64_t path_len, bool replace);
+	// Renames the project's folder to "<name>.pads", where it is.
+	// Unsupported for an untitled project (save it as); Invalid_Argument for
+	// a name a folder can't have, or one taken.
+	Pads_Result (*project_rename)(Pads_Api* api, const char* name, int64_t name_len);
+	// Recent project `index`'s folder (0: the latest). Temporary.
+	Pads_Result (*project_recent)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Template `index`'s name (in name order). Temporary.
+	Pads_Result (*project_template_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Saves a copy of the project as template `name` (one of that name is
+	// replaced). New projects can start from it.
+	Pads_Result (*project_save_template)(Pads_Api* api, const char* name, int64_t name_len);
+	// Opens the backup the project in `dir` left when Pads stopped without
+	// closing (its changes, not yet saved). Not_Found if it left none.
+	Pads_Result (*project_recover)(Pads_Api* api, const char* dir, int64_t dir_len);
+	// Throws away the backup the project in `dir` left (an unsaved project's
+	// folder with it).
+	Pads_Result (*project_discard_backup)(Pads_Api* api, const char* dir, int64_t dir_len);
+	// The files in the project's folder it doesn't use now, by kind.
+	Pads_Result (*project_unused_files)(Pads_Api* api, Pads_Unused_Files* out);
+	// Moves the files the project doesn't use to the Trash (from where they
+	// can be put back) and saves it: those nothing uses, and with
+	// `undo_only` the samples only undo would bring back (undo is forgotten),
+	// with `cache` the renderings. Io_Error if some couldn't be moved.
+	Pads_Result (*project_clean_up)(Pads_Api* api, bool undo_only, bool cache, Pads_Clean_Up* out);
+	// Settings there are (settings_name lists them).
+	Pads_Result (*settings_count)(Pads_Api* api, int64_t* out);
+	// Setting `index`'s name: "section.key", as settings.ini has it
+	// ("project.tempo", "midi.sync"). Temporary.
+	Pads_Result (*settings_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// What setting `name` is: its kind, its group, its range or choices.
+	Pads_Result (*settings_info)(Pads_Api* api, const char* name, int64_t name_len, Pads_Setting_Info* out);
+	// What setting `name` does, in a few words. Temporary.
+	Pads_Result (*settings_about)(Pads_Api* api, const char* name, int64_t name_len, char* out, int64_t out_cap, int64_t* out_len);
+	// Choice `index` of setting `name` ("Midi_Clock"). Temporary.
+	Pads_Result (*settings_choice)(Pads_Api* api, const char* name, int64_t name_len, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Setting `name` as a number: a Bool's 0 or 1, a Choice's index (a Text's 0).
+	Pads_Result (*settings_get_number)(Pads_Api* api, const char* name, int64_t name_len, double* out);
+	// Setting `name` as text: "true", "120", a choice's name, a folder.
+	// Temporary.
+	Pads_Result (*settings_get_text)(Pads_Api* api, const char* name, int64_t name_len, char* out, int64_t out_cap, int64_t* out_len);
+	// Sets setting `name` to `value` (a Bool: nonzero is true; a Choice: its
+	// index), applies it and saves the settings. Invalid_Argument out of its
+	// range; Io_Error if it couldn't be applied (it is put back).
+	Pads_Result (*settings_set_number)(Pads_Api* api, const char* name, int64_t name_len, double value);
+	// Sets setting `name` from text (a Text's words, a Choice's name, "true"
+	// or "false", a number), applies it and saves the settings.
+	Pads_Result (*settings_set_text)(Pads_Api* api, const char* name, int64_t name_len, const char* value, int64_t value_len);
 	// Calls `callback` with `user` when `topic` changes (`index`: only for
 	// that pad, bus...; -1: all). Control thread. Unsupported for a topic
 	// this version doesn't report (see `TOPICS`).
@@ -193,6 +331,12 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*transport_set_metronome_recording_only)(Pads_Api* api, bool on);
 	// Plays the song (true) or the sequence shown (false: Pattern).
 	Pads_Result (*transport_set_song_mode)(Pads_Api* api, bool on);
+	// Follows `sync` for the tempo, start and stop (the setting "midi.sync":
+	// saved with the settings, not the project). Link not built in: Internal.
+	Pads_Result (*transport_set_sync)(Pads_Api* api, Pads_Sync sync);
+	// Sends MIDI clock to the output port, or stops (the setting
+	// "midi.clock_out").
+	Pads_Result (*transport_set_clock_out)(Pads_Api* api, bool on);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

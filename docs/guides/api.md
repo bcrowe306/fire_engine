@@ -20,9 +20,10 @@ declarations (`python3 scripts/api.py`), so the three never differ. Every
 procedure is in the [reference](/reference/pads-api/).
 
 The API is being built a module at a time ([the design](/design/api/)).
-In this version: **history** and **transport**, with results, errors,
-threading and changes. Pads' own toolbar, history menu, shortcuts and
-script commands for these already go through it.
+In this version: **history**, **transport**, **project** and
+**settings**, with results, errors, threading and changes. Pads' own
+toolbar, History and File menus, shortcuts, and script commands for these
+already go through it.
 
 ## Results and errors
 
@@ -93,6 +94,50 @@ sub, _ := pads_api.subscribe(api, .Transport, -1, on_transport, nil)
 The playhead (`beat`, the bar and beat) moves without being reported:
 poll `transport_state` for it, as for meters. Topics whose module isn't
 built yet answer `Unsupported` (`TOPICS` lists those reported).
+
+## Projects
+
+A project is a folder ("Beat.pads"). A new one is untitled: it lives in
+the unsaved folder until `project_save_as` gives it a place (and a
+name). Leaving a project with changes not saved is `Busy` unless the call
+says they may go: Pads asks first, and so should a surface.
+
+```odin
+if pads_api.project_open(api, "/Music/Beat.pads", discard_changes = false) == .Busy {
+	pads_api.project_save(api) // (or ask, as Pads does)
+	pads_api.project_open(api, "/Music/Beat.pads", discard_changes = false)
+}
+pads_api.project_save_as(api, "/Music/Groove")      // Groove.pads, from now on the project
+pads_api.project_rename(api, "Groove 2")            // its folder renamed, where it is
+pads_api.project_save_template(api, "Groove Kit")   // File > New from Template lists it
+```
+
+`project_state` says whether it is untitled or changed, and how many
+recent projects and templates there are (`project_recent`,
+`project_template_name`). `project_unused_files` and `project_clean_up`
+are Clean Up Project; `project_recover` opens the backup a project left
+when Pads stopped without closing.
+
+## Settings
+
+Every setting has the name settings.ini gives it, `section.key`:
+`project.tempo` (a new project's), `audio.buffer`, `midi.sync`,
+`appearance.zoom`. `settings_count` and `settings_name` list them,
+`settings_info` says what each is (Bool, Int, Number, Choice or Text,
+its range, its choices). Setting one applies it where it acts (the audio
+device reopens, the MIDI ports, the sync) and saves the settings:
+
+```odin
+pads_api.settings_set_number(api, "project.tempo", 96)
+pads_api.settings_set_text(api, "midi.sync", "Midi_Clock")   // a choice by its name
+pads_api.settings_set_text(api, "project.folder", "/Music/Projects")
+zoom, _ := pads_api.settings_get_number(api, "appearance.zoom")
+```
+
+Out of range is `Invalid_Argument`; an audio setting the device won't
+open with is `Io_Error`, and it is put back. `transport_set_sync` and
+`transport_set_clock_out` set the two the transport follows. In a drive
+script: `setting midi.sync Midi_Clock`.
 
 ## From C
 

@@ -1,6 +1,7 @@
 package pads_api
 
 import "fire:dsp"
+import pc "../core"
 import pm "../model"
 
 // The metronome's sound.
@@ -9,6 +10,13 @@ Metronome_Sound :: enum i32 {
 	Wood,
 	Stick,
 	Cowbell,
+}
+
+// What the tempo, start and stop follow.
+Sync :: enum i32 {
+	Internal,   // Pads' own tempo
+	Midi_Clock, // an outside MIDI clock (its tempo, Start, Stop, position)
+	Link,       // an Ableton Link session (when built in; else Internal)
 }
 
 // The transport now. The playhead (`beat`, `timeline_beat`, the position)
@@ -33,6 +41,8 @@ Transport_State :: struct {
 	metronome_sound: Metronome_Sound,
 	metronome_accent: bool, // the bar's first beat clicks louder
 	metronome_recording_only: bool, // it clicks only while recording (and counting in)
+	sync:          Sync, // what the tempo follows (the setting "midi.sync")
+	clock_out:     bool, // MIDI clock goes out (the setting "midi.clock_out")
 }
 
 // The transport now.
@@ -58,6 +68,8 @@ transport_state :: proc(api: ^Api) -> (Transport_State, Result) {
 	s.metronome, s.metronome_db = e.metronome, tr.metro_db
 	s.metronome_sound = Metronome_Sound(tr.click)
 	s.metronome_accent, s.metronome_recording_only = !tr.no_accent, tr.metro_rec_only
+	if x := pc.setting_find(api.core, "midi.sync"); x != nil do s.sync = Sync(pc.setting_number(x))
+	if x := pc.setting_find(api.core, "midi.clock_out"); x != nil do s.clock_out = pc.setting_number(x) != 0
 	return s, .Ok
 }
 
@@ -186,6 +198,21 @@ transport_set_song_mode :: proc(api: ^Api, on: bool) -> Result {
 	p.song_mode = on
 	api.core.m.engine.seq_dirty = true
 	return .Ok
+}
+
+// Follows `sync` for the tempo, start and stop (the setting "midi.sync":
+// saved with the settings, not the project). Link not built in: Internal.
+transport_set_sync :: proc(api: ^Api, sync: Sync) -> Result {
+	if sync < min(Sync) || sync > max(Sync) do return fail(api, .Invalid_Argument, "no such sync")
+	if pc.setting_find(api.core, "midi.sync") == nil do return fail(api, .Unsupported, "this app has no sync setting")
+	return settings_set_number(api, "midi.sync", f64(sync))
+}
+
+// Sends MIDI clock to the output port, or stops (the setting
+// "midi.clock_out").
+transport_set_clock_out :: proc(api: ^Api, on: bool) -> Result {
+	if pc.setting_find(api.core, "midi.clock_out") == nil do return fail(api, .Unsupported, "this app has no clock out setting")
+	return settings_set_number(api, "midi.clock_out", 1 if on else 0)
 }
 
 @(private)

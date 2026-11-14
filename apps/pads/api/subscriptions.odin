@@ -11,14 +11,14 @@ Topic :: enum i32 {
 	Sequence,
 	Song,
 	Launcher,
-	Project,
-	Settings,
+	Project,   // another project open, saved somewhere, renamed; the recent list
+	Settings,  // any setting
 	Recording,
 	Ui,
 }
 
 // The topics this version reports.
-TOPICS :: bit_set[Topic]{.Transport, .History}
+TOPICS :: bit_set[Topic]{.Transport, .History, .Project, .Settings}
 
 // Called on the control thread, once a frame at most, when `topic`
 // changed (`index`: which pad, bus...; -1 for the whole topic), with the
@@ -44,6 +44,9 @@ Seen :: struct {
 	transport: Transport_State,
 	history:   History_State,
 	undo_name: [64]u8,
+	project:   Project_State,
+	dir:       [256]u8,
+	settings:  u64,
 }
 
 // Calls `callback` with `user` when `topic` changes (`index`: only for
@@ -79,6 +82,8 @@ deliver_changes :: proc(api: ^Api) {
 	changed: bit_set[Topic]
 	if now.transport != api.last.transport do changed += {.Transport}
 	if now.history != api.last.history || now.undo_name != api.last.undo_name do changed += {.History}
+	if now.project != api.last.project || now.dir != api.last.dir do changed += {.Project}
+	if now.settings != api.last.settings do changed += {.Settings}
 	api.last = now
 	if changed == {} do return
 	// (A callback may subscribe or unsubscribe: go by id over a copy.)
@@ -102,5 +107,10 @@ seen_now :: proc(api: ^Api) -> Seen {
 	s.history, _ = history_state(api)
 	name, _ := history_undo_name(api)
 	copy(s.undo_name[:], name)
+	// (Not `project_state`: whether it is dirty is History's, and the
+	// templates are a folder, not read every frame.)
+	s.project = {untitled = api.core.files.untitled, recent = i64(len(api.core.files.recent))}
+	copy(s.dir[:], api.core.m.project.dir)
+	s.settings = api.core.registry.version
 	return s
 }

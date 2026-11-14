@@ -2,6 +2,7 @@ package test_pads_api
 
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 import "core:testing"
 
 import app "app:core"
@@ -31,6 +32,11 @@ rig_make :: proc(t: ^testing.T, name: string) -> ^Rig {
 	r.dir, _ = filepath.join({kit.artifacts_root(), "pads_api", name})
 	os.remove_all(r.dir)
 	for k := 0; k < 100 && !os.is_dir(r.dir); k += 1 do os.make_directory_all(r.dir)
+	// Pads' own folders, in the test's.
+	c.files.folders.settings, _ = filepath.join({r.dir, "settings"})
+	c.files.folders.prefs = strings.clone(c.files.folders.settings)
+	c.files.folders.unsaved, _ = filepath.join({r.dir, "Unsaved"})
+	os.make_directory_all(c.files.folders.settings)
 	testing.expect_value(t, pm.model_init(&c.m, &c.host, r.dir), fc.Error.None)
 	testing.expect_value(t, pm.model_new(&c.m, r.dir), fc.Error.None)
 	pa.api_init(&r.api, c)
@@ -41,6 +47,8 @@ rig_make :: proc(t: ^testing.T, name: string) -> ^Rig {
 rig_destroy :: proc(r: ^Rig) {
 	pa.api_destroy(&r.api)
 	pm.capture_destroy(&r.core.capture)
+	pc.files_destroy(&r.core.files)
+	pc.settings_destroy(&r.core)
 	pm.model_destroy(&r.core.m)
 	app.host_destroy(&r.core.host)
 	app.bus_destroy(&r.core.bus)

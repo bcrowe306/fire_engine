@@ -39,3 +39,34 @@ def test_failures_say_why(app):
     # (A drive command still works between API calls.)
     app.cmd("tempo 111")
     assert app.api("transport_state")["bpm"] == 111
+
+
+def test_project_through_the_api(app, tmp_path):
+    assert app.api("project_state")["untitled"]
+    app.api("transport_set_tempo", bpm=101)
+    # Changes not saved: another project only if they may go.
+    r = app.api("project_new", check=False, discard_changes=False)
+    assert r["result"] == "Busy"
+    app.api("project_save_as", path=str(tmp_path / "Through"))
+    assert app.api("project_name") == "Through"
+    assert app.state()["untitled"] is False
+    app.api("project_rename", name="Renamed")
+    assert app.api("project_dir").endswith("Renamed.pads")
+    app.api("project_new", discard_changes=False)
+    assert app.state()["bpm"] == 120
+    app.api("project_open", dir=str(tmp_path / "Renamed.pads"), discard_changes=False)
+    assert app.state()["bpm"] == 101
+
+
+def test_settings_through_the_api(app):
+    n = app.api("settings_count")
+    names = [app.api("settings_name", index=k) for k in range(n)]
+    assert "project.tempo" in names and "midi.sync" in names
+    info = app.api("settings_info", name="project.tempo")
+    assert info["kind"] == "Number" and info["min"] == 40
+    app.api("settings_set_number", name="mixer.narrow", value=1)
+    assert app.state()["mixer_view"]["narrow"] is True
+    app.cmd("setting mixer.narrow false")
+    assert app.api("settings_get_text", name="mixer.narrow") == "false"
+    r = app.api("settings_set_text", check=False, name="midi.sync", value="Tape")
+    assert r["result"] == "Invalid_Argument" and "Internal" in r["error"]

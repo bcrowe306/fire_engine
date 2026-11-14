@@ -54,6 +54,8 @@ MODULE_TITLES = {
     "subscriptions": "Changes",
     "history": "History: undo, redo, groups, gestures",
     "transport": "Transport",
+    "project": "Project: new, open, save, templates, clean up",
+    "settings": "Settings, by name",
 }
 
 

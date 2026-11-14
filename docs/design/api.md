@@ -3,8 +3,9 @@ title: The Pads API design
 description: One Odin API for everything Pads does, a C ABI and remote methods generated from it, and the app a client of it; built a module at a time.
 ---
 
-Status: stage 1 (the foundation, history, transport) built 2026-11-14;
-the rest planned (decisions taken 2026-11-13). Using it: the
+Status: stages 1 (the foundation, history, transport) and 2 (project,
+settings) built 2026-11-14; the rest planned (decisions taken
+2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -33,9 +34,36 @@ the rest planned (decisions taken 2026-11-13). Using it: the
   `subscribe` and `api_post` aren't remote yet (stage 8).
 - The lint is `scripts/lint_api.py` (in `task app:lint` and CI): the calls
   into the model a built module owns, banned in package `pads`.
-- Transport sync (MIDI clock, Link) lives in the app's settings: it moves
-  with **settings** in stage 2. Input quantize (in the toolbar) is the
-  sequencer's, stage 5.
+- Input quantize (in the toolbar) is the sequencer's, stage 5.
+
+### Stage 2, as built
+
+- The project's files moved into the core (`Files`: untitled, the recent
+  list, Pads' folders, the unsaved folder's setting) with the actions
+  (`core/project.odin`): new, from a template, open, save, save as,
+  rename, templates, recover, autosave, clean up, the open-project
+  marker. Each returns an `Outcome` (the `Result`s, in order) and why.
+  What the UI does around them (selection and view reset) is a hook,
+  `Hooks.opened`; the toasts are the UI's, from `last_error`.
+- Leaving a project with changes is `Busy` unless `discard_changes`; the
+  API then throws its backup away and an untitled one's folder, as
+  Pads' own leave flow did. The ask-to-save prompt stays the UI's.
+- Settings are a registry in the core (`core/settings.odin`): each the
+  app's field by pointer, named as settings.ini names it, with its kind,
+  range or choices and a group the app applies (`settings_apply` in
+  `settings_api.odin`: reopen the device, the ports, the sync; then
+  save). Pads' `App_Settings` keeps its fields (the theme is ImGui's);
+  the registry points at them. The Settings window still edits those
+  fields itself; the test-script commands (`mixer`, `repeat_all`'s rate,
+  the new `setting NAME VALUE`) go through the API, as the lint checks
+  for shell.odin.
+- Sync is the setting `midi.sync`; `transport_set_sync`,
+  `transport_set_clock_out` and the transport snapshot's `sync` and
+  `clock_out` read and set it.
+- Topics `Project` (another folder, untitled or not, the recent list)
+  and `Settings` (a version the registry and Pads' own save bump).
+- Not yet: the Clean Up dialog keeps its per-file choice (it calls the
+  model with the files ticked); the API cleans up by kind.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,
