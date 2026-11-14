@@ -5,6 +5,7 @@ import "core:path/filepath"
 import "core:strings"
 
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -42,18 +43,14 @@ preset_entries :: proc(a: ^App) -> []Preset_Entry {
 
 @(private = "file")
 load_entry :: proc(a: ^App, e: Preset_Entry) {
-	m := &a.m
 	if e.builtin >= 0 {
-		pm.preset_apply_builtin(m, a.selected, e.builtin)
+		pa.device_load_preset(&a.api, i64(a.selected), i64(e.builtin))
 		return
 	}
 	path, _ := filepath.join({preset_folder(a), strings.concatenate({e.name, pm.PRESET_EXT}, context.temp_allocator)}, context.temp_allocator)
-	pr, err := pm.preset_read(path)
-	if err != .None {
+	if pa.device_load_preset_file(&a.api, i64(a.selected), path) != .Ok {
 		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Couldn't read the preset %s", e.name))
-		return
 	}
-	pm.preset_apply(m, a.selected, &pr)
 }
 
 // The preset bar, right-aligned at `right` on the line at `y`.
@@ -121,7 +118,7 @@ draw_preset_save :: proc(a: ^App) {
 		ui.name("preset name")
 		name := strings.trim_space(strings.truncate_to_byte(string(st.name[:]), 0))
 		if (im.Button("Save") || enter) && name != "" {
-			if _, err := pm.preset_save(&a.m, a.selected, preset_folder(a), name); err == .None {
+			if _, r := pa.device_save_preset(&a.api, i64(a.selected), preset_folder(a), name); r == .Ok {
 				ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the preset %s", name))
 			} else {
 				ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Couldn't save the preset %s", name))

@@ -5,6 +5,7 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import pf "fire:perform"
@@ -145,7 +146,7 @@ draw_perform_bar :: proc(a: ^App) {
 	if !a.perf_hold {
 		for i in 0 ..< pm.PERF_FX do if a.perf_latched[i] {
 			a.perf_latched[i] = false
-			if !a.perf_held[i] do pm.hold_perf_fx(m, i, false)
+			if !a.perf_held[i] do pa.effect_hold(&a.api, i64(i), false)
 		}
 	}
 }
@@ -508,16 +509,16 @@ draw_perf_fx :: proc(a: ^App) {
 			a.perf_held[i] = true
 			if a.perf_hold {
 				a.perf_latched[i] = !a.perf_latched[i]
-				pm.hold_perf_fx(m, i, a.perf_latched[i], press)
+				pa.effect_hold(&a.api, i64(i), a.perf_latched[i], press)
 			} else {
-				pm.hold_perf_fx(m, i, true, press)
+				pa.effect_hold(&a.api, i64(i), true, press)
 			}
 		}
 		if hit.held do pm.perf_intensity_live(m, i, press)
 		intensity_fill(a, i, lo, hi)
 		if hit.released {
 			a.perf_held[i] = false
-			if !a.perf_hold do pm.hold_perf_fx(m, i, false)
+			if !a.perf_hold do pa.effect_hold(&a.api, i64(i), false)
 		}
 		if hit.selected && !hit.menu do show_device(a, {.Perf, i, 0}) // Shift- or Cmd-click: edit it
 		if hit.menu {

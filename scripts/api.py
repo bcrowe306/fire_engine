@@ -58,6 +58,8 @@ MODULE_TITLES = {
     "settings": "Settings, by name",
     "pads": "Pads",
     "params": "Parameters, by reference",
+    "effects": "Effects: inserts, bus effects, performance effects, sends, sidechains",
+    "devices": "Devices: synth presets, plug-in instruments",
 }
 
 

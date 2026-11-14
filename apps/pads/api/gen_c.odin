@@ -12,6 +12,32 @@ Table_V1 :: struct {
 	api_post: proc "c" (api: ^Api, call: Post_Proc, user: rawptr) -> Result,
 	api_version: proc "c" (api: ^Api, out: ^i64) -> Result,
 	last_error: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	device_preset_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	device_preset_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	device_preset_category: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	device_load_preset: proc "c" (api: ^Api, pad: i64, index: i64) -> Result,
+	device_load_preset_file: proc "c" (api: ^Api, pad: i64, path: cstring, path_len: i64) -> Result,
+	device_save_preset: proc "c" (api: ^Api, pad: i64, dir: cstring, dir_len: i64, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	device_preset_of: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	device_load_plugin: proc "c" (api: ^Api, pad: i64, path: cstring, path_len: i64, id: cstring, id_len: i64, name: cstring, name_len: i64) -> Result,
+	effect_kind_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	effect_kind_name: proc "c" (api: ^Api, kind: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	effect_state: proc "c" (api: ^Api, s: Slot_Ref, out: ^Effect_State) -> Result,
+	effect_name: proc "c" (api: ^Api, s: Slot_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	effect_set: proc "c" (api: ^Api, s: Slot_Ref, kind: i64) -> Result,
+	effect_set_plugin: proc "c" (api: ^Api, s: Slot_Ref, path: cstring, path_len: i64, id: cstring, id_len: i64, name: cstring, name_len: i64) -> Result,
+	effect_clear: proc "c" (api: ^Api, s: Slot_Ref) -> Result,
+	effect_set_on: proc "c" (api: ^Api, s: Slot_Ref, on: bool) -> Result,
+	effect_swap: proc "c" (api: ^Api, a: Slot_Ref, b: Slot_Ref) -> Result,
+	effect_get_param: proc "c" (api: ^Api, s: Slot_Ref, id: i64, out: ^f64) -> Result,
+	effect_set_param: proc "c" (api: ^Api, s: Slot_Ref, id: i64, value: f64) -> Result,
+	effect_hold: proc "c" (api: ^Api, index: i64, on: bool, intensity: f32) -> Result,
+	effect_set_intensity: proc "c" (api: ^Api, index: i64, intensity: f32) -> Result,
+	effect_set_send_pre: proc "c" (api: ^Api, pad: i64, send: i64, pre: bool) -> Result,
+	effect_key: proc "c" (api: ^Api, s: Slot_Ref, out: ^Key_State) -> Result,
+	effect_set_key: proc "c" (api: ^Api, s: Slot_Ref, kind: Key_Kind, index: i64) -> Result,
+	effect_set_key_filter: proc "c" (api: ^Api, s: Slot_Ref, hz: f32) -> Result,
+	effect_set_key_listen: proc "c" (api: ^Api, s: Slot_Ref, on: bool) -> Result,
 	history_state: proc "c" (api: ^Api, out: ^History_State) -> Result,
 	history_undo: proc "c" (api: ^Api) -> Result,
 	history_redo: proc "c" (api: ^Api) -> Result,
@@ -110,6 +136,32 @@ table_fill :: proc(api: ^Api) {
 	t.api_post = c_api_post
 	t.api_version = c_api_version
 	t.last_error = c_last_error
+	t.device_preset_count = c_device_preset_count
+	t.device_preset_name = c_device_preset_name
+	t.device_preset_category = c_device_preset_category
+	t.device_load_preset = c_device_load_preset
+	t.device_load_preset_file = c_device_load_preset_file
+	t.device_save_preset = c_device_save_preset
+	t.device_preset_of = c_device_preset_of
+	t.device_load_plugin = c_device_load_plugin
+	t.effect_kind_count = c_effect_kind_count
+	t.effect_kind_name = c_effect_kind_name
+	t.effect_state = c_effect_state
+	t.effect_name = c_effect_name
+	t.effect_set = c_effect_set
+	t.effect_set_plugin = c_effect_set_plugin
+	t.effect_clear = c_effect_clear
+	t.effect_set_on = c_effect_set_on
+	t.effect_swap = c_effect_swap
+	t.effect_get_param = c_effect_get_param
+	t.effect_set_param = c_effect_set_param
+	t.effect_hold = c_effect_hold
+	t.effect_set_intensity = c_effect_set_intensity
+	t.effect_set_send_pre = c_effect_set_send_pre
+	t.effect_key = c_effect_key
+	t.effect_set_key = c_effect_set_key
+	t.effect_set_key_filter = c_effect_set_key_filter
+	t.effect_set_key_listen = c_effect_set_key_listen
 	t.history_state = c_history_state
 	t.history_undo = c_history_undo
 	t.history_redo = c_history_redo
@@ -220,6 +272,217 @@ c_last_error :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) ->
 		([^]u8)(out)[n] = 0
 	}
 	return r
+}
+
+@(private)
+c_device_preset_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := device_preset_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_device_preset_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := device_preset_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_device_preset_category :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := device_preset_category(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_device_load_preset :: proc "c" (api: ^Api, pad: i64, index: i64) -> Result {
+	context = runtime.default_context()
+	return device_load_preset(api, pad, index)
+}
+
+@(private)
+c_device_load_preset_file :: proc "c" (api: ^Api, pad: i64, path: cstring, path_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return device_load_preset_file(api, pad, path_s)
+}
+
+@(private)
+c_device_save_preset :: proc "c" (api: ^Api, pad: i64, dir: cstring, dir_len: i64, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	s, r := device_save_preset(api, pad, dir_s, name_s)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_device_preset_of :: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := device_preset_of(api, pad)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_device_load_plugin :: proc "c" (api: ^Api, pad: i64, path: cstring, path_len: i64, id: cstring, id_len: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	id_s := string(([^]u8)(id)[:max(id_len, 0)]) if id != nil else ""
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return device_load_plugin(api, pad, path_s, id_s, name_s)
+}
+
+@(private)
+c_effect_kind_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := effect_kind_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_kind_name :: proc "c" (api: ^Api, kind: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := effect_kind_name(api, kind)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_effect_state :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Effect_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_state(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_name :: proc "c" (api: ^Api, s: Slot_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := effect_name(api, s)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_effect_set :: proc "c" (api: ^Api, s: Slot_Ref, kind: i64) -> Result {
+	context = runtime.default_context()
+	return effect_set(api, s, kind)
+}
+
+@(private)
+c_effect_set_plugin :: proc "c" (api: ^Api, s: Slot_Ref, path: cstring, path_len: i64, id: cstring, id_len: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	id_s := string(([^]u8)(id)[:max(id_len, 0)]) if id != nil else ""
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return effect_set_plugin(api, s, path_s, id_s, name_s)
+}
+
+@(private)
+c_effect_clear :: proc "c" (api: ^Api, s: Slot_Ref) -> Result {
+	context = runtime.default_context()
+	return effect_clear(api, s)
+}
+
+@(private)
+c_effect_set_on :: proc "c" (api: ^Api, s: Slot_Ref, on: bool) -> Result {
+	context = runtime.default_context()
+	return effect_set_on(api, s, on)
+}
+
+@(private)
+c_effect_swap :: proc "c" (api: ^Api, a: Slot_Ref, b: Slot_Ref) -> Result {
+	context = runtime.default_context()
+	return effect_swap(api, a, b)
+}
+
+@(private)
+c_effect_get_param :: proc "c" (api: ^Api, s: Slot_Ref, id: i64, out: ^f64) -> Result {
+	context = runtime.default_context()
+	v, r := effect_get_param(api, s, id)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_set_param :: proc "c" (api: ^Api, s: Slot_Ref, id: i64, value: f64) -> Result {
+	context = runtime.default_context()
+	return effect_set_param(api, s, id, value)
+}
+
+@(private)
+c_effect_hold :: proc "c" (api: ^Api, index: i64, on: bool, intensity: f32) -> Result {
+	context = runtime.default_context()
+	return effect_hold(api, index, on, intensity)
+}
+
+@(private)
+c_effect_set_intensity :: proc "c" (api: ^Api, index: i64, intensity: f32) -> Result {
+	context = runtime.default_context()
+	return effect_set_intensity(api, index, intensity)
+}
+
+@(private)
+c_effect_set_send_pre :: proc "c" (api: ^Api, pad: i64, send: i64, pre: bool) -> Result {
+	context = runtime.default_context()
+	return effect_set_send_pre(api, pad, send, pre)
+}
+
+@(private)
+c_effect_key :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Key_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_key(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_set_key :: proc "c" (api: ^Api, s: Slot_Ref, kind: Key_Kind, index: i64) -> Result {
+	context = runtime.default_context()
+	return effect_set_key(api, s, kind, index)
+}
+
+@(private)
+c_effect_set_key_filter :: proc "c" (api: ^Api, s: Slot_Ref, hz: f32) -> Result {
+	context = runtime.default_context()
+	return effect_set_key_filter(api, s, hz)
+}
+
+@(private)
+c_effect_set_key_listen :: proc "c" (api: ^Api, s: Slot_Ref, on: bool) -> Result {
+	context = runtime.default_context()
+	return effect_set_key_listen(api, s, on)
 }
 
 @(private)

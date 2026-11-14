@@ -40,7 +40,7 @@ any_parameter_is_listed_read_and_set :: proc(t: ^testing.T) {
 	testing.expect_value(t, pa.param_set(api, attack, 0.05), pa.Result.Ok)
 	testing.expect(t, abs(r.core.m.project.pads[0].attack - 0.05) < 1e-6, "the pad's attack")
 	name, _ := pa.history_undo_name(api)
-	testing.expect_value(t, name, "Set Attack")
+	testing.expect_value(t, name, "Set Attack") // (named after the parameter)
 	// A fader, a pan, a send: fixed ranges.
 	vol := pa.Param_Ref{track = .Pad, index = 0, device = .Volume}
 	testing.expect_value(t, pa.param_set(api, vol, -9), pa.Result.Ok)

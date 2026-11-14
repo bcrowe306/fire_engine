@@ -21,8 +21,8 @@ procedure is in the [reference](/reference/pads-api/).
 
 The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
-**settings**, **pads** and **params**, with results, errors, threading
-and changes. Pads' own toolbar, History and File menus, shortcuts, pad
+**settings**, **pads**, **params**, **effects** and **devices**, with
+results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
 menus and script commands for these already go through it.
 
 ## Results and errors
@@ -178,6 +178,40 @@ moves are one undo step, and with Pads' automation recording armed and
 playing, they are written into the sequence, as a knob's are. The value
 `param_get` reads is the project's (what automation moves it to while it
 plays is the playhead's business).
+
+## Effects
+
+An effect slot is a `Slot_Ref`: a pad's insert (0..3), a bus's or
+main's effect (0..4), or a performance effect (0..15). Effect kinds are
+listed by `effect_kind_count` and `effect_kind_name` ("Reverb"):
+
+```odin
+ins := pads_api.Slot_Ref{place = .Insert, index = 0, slot = 0}
+pads_api.effect_set(api, ins, reverb)                // a new one, its defaults
+pads_api.effect_set_on(api, ins, false)              // bypassed
+pads_api.effect_swap(api, ins, {place = .Insert, index = 0, slot = 1})
+pads_api.effect_set_plugin(api, ins, "/Library/Audio/Plug-Ins/CLAP/X.clap", "com.x.verb", "X Verb")
+pads_api.effect_set_key(api, ins, .Pad, 3)           // a compressor keyed from pad 3
+pads_api.effect_hold(api, 2, true, 0.7)              // performance effect 2, held
+```
+
+An insert's or a bus effect's parameters are parameters (device
+`Insert`); `effect_get_param`/`effect_set_param` reach them by the
+effect's own ids, a performance effect's too. A send's level is a
+parameter (device `Send`); `effect_set_send_pre` takes it before the
+fader.
+
+## Devices
+
+The synth's built-in presets (`device_preset_count`, `_name`,
+`_category`), presets saved as files, and CLAP instruments:
+
+```odin
+pads_api.device_load_preset(api, 4, 0)                    // built-in preset 0: pad 4 a synth
+path, _ := pads_api.device_save_preset(api, 4, "/Presets", "Mine")
+pads_api.device_load_preset_file(api, 5, path)
+pads_api.device_load_plugin(api, 6, "/Library/Audio/Plug-Ins/CLAP/S.clap", "com.s.synth", "S")
+```
 
 ## From C
 

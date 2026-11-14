@@ -34,6 +34,23 @@ enum {
 	PADS_RESULT_IO_ERROR = 5,
 };
 
+// Where an effect slot is.
+typedef int32_t Pads_Effect_Place;
+enum {
+	PADS_EFFECT_PLACE_INSERT = 0,
+	PADS_EFFECT_PLACE_BUS = 1,
+	PADS_EFFECT_PLACE_MAIN = 2,
+	PADS_EFFECT_PLACE_PERF = 3,
+};
+
+// What a compressor's or gate's sidechain listens to.
+typedef int32_t Pads_Key_Kind;
+enum {
+	PADS_KEY_KIND_NONE = 0,
+	PADS_KEY_KIND_PAD = 1,
+	PADS_KEY_KIND_BUS = 2,
+};
+
 // What a pad is.
 typedef int32_t Pads_Pad_Kind;
 enum {
@@ -155,6 +172,29 @@ enum {
 typedef void (*Pads_Change_Fn)(Pads_Api* api, Pads_Topic topic, int64_t index, void* user);
 // A call posted from another thread, run on the control thread.
 typedef void (*Pads_Post_Fn)(Pads_Api* api, void* user);
+
+// An effect slot.
+typedef struct Pads_Slot_Ref {
+	Pads_Effect_Place place;
+	int64_t index; // the pad, the bus, the performance effect
+	int64_t slot;
+} Pads_Slot_Ref;
+
+// What is in a slot.
+typedef struct Pads_Effect_State {
+	int64_t kind; // its effect kind (effect_kind_name; 0: empty)
+	bool on; // on (off: bypassed)
+	bool plugin; // a CLAP plug-in (its name: effect_name)
+} Pads_Effect_State;
+
+// What the effect in slot `s` listens to (a compressor's, a gate's), and
+// how.
+typedef struct Pads_Key_State {
+	Pads_Key_Kind kind;
+	int64_t index; // the pad or the bus
+	float hpf_hz; // the key's high-pass (0: none)
+	bool listen; // the track plays the key instead (to set it by)
+} Pads_Key_State;
 
 // The undo history now: steps that can be undone and redone, and whether
 // the project has changed since it was saved.
@@ -281,6 +321,78 @@ typedef struct Pads_Api_V1 {
 	// Why the last call that failed failed, in words (temporary: until the
 	// next failure). "" before any.
 	Pads_Result (*last_error)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Built-in synth presets there are (device_preset_name lists them).
+	Pads_Result (*device_preset_count)(Pads_Api* api, int64_t* out);
+	// Built-in preset `index`'s name ("Warm Pad"). Temporary.
+	Pads_Result (*device_preset_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Built-in preset `index`'s kind ("Bass", "Pad", "Lead"). Temporary.
+	Pads_Result (*device_preset_category)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Puts built-in preset `index` on pad `pad` (it becomes a synth): one undo
+	// step.
+	Pads_Result (*device_load_preset)(Pads_Api* api, int64_t pad, int64_t index);
+	// Puts the preset saved at `path` on pad `pad` (it becomes a synth): one
+	// undo step. Io_Error if it can't be read.
+	Pads_Result (*device_load_preset_file)(Pads_Api* api, int64_t pad, const char* path, int64_t path_len);
+	// Saves synth pad `pad`'s patch as preset `name` in folder `dir`: the
+	// file's path. Unsupported for a pad that isn't a synth.
+	Pads_Result (*device_save_preset)(Pads_Api* api, int64_t pad, const char* dir, int64_t dir_len, const char* name, int64_t name_len, char* out, int64_t out_cap, int64_t* out_len);
+	// The preset synth pad `pad`'s patch came from ("" if none). Temporary.
+	Pads_Result (*device_preset_of)(Pads_Api* api, int64_t pad, char* out, int64_t out_cap, int64_t* out_len);
+	// Makes pad `pad` play CLAP instrument `id` of the library at `path`
+	// (named `name`): one undo step.
+	Pads_Result (*device_load_plugin)(Pads_Api* api, int64_t pad, const char* path, int64_t path_len, const char* id, int64_t id_len, const char* name, int64_t name_len);
+	// Effect kinds there are (effect_kind_name names them; 0 is empty).
+	Pads_Result (*effect_kind_count)(Pads_Api* api, int64_t* out);
+	// Effect kind `kind`'s name, as the UI shows it ("Reverb", "Low-pass").
+	// Temporary.
+	Pads_Result (*effect_kind_name)(Pads_Api* api, int64_t kind, char* out, int64_t out_cap, int64_t* out_len);
+	// What is in slot `s`.
+	Pads_Result (*effect_state)(Pads_Api* api, Pads_Slot_Ref s, Pads_Effect_State* out);
+	// The name of what is in slot `s` ("Reverb", a plug-in's; "Empty").
+	// Temporary.
+	Pads_Result (*effect_name)(Pads_Api* api, Pads_Slot_Ref s, char* out, int64_t out_cap, int64_t* out_len);
+	// Puts a new effect of kind `kind` (its default settings) in slot `s`,
+	// undoably (0: empties it). Unsupported for the plug-in kind
+	// (effect_set_plugin) and an empty performance effect.
+	Pads_Result (*effect_set)(Pads_Api* api, Pads_Slot_Ref s, int64_t kind);
+	// Puts CLAP plug-in `id` from the library at `path` (named `name`) in slot
+	// `s`, undoably. Unsupported for a performance effect.
+	Pads_Result (*effect_set_plugin)(Pads_Api* api, Pads_Slot_Ref s, const char* path, int64_t path_len, const char* id, int64_t id_len, const char* name, int64_t name_len);
+	// Empties slot `s`, undoably. Unsupported for a performance effect.
+	Pads_Result (*effect_clear)(Pads_Api* api, Pads_Slot_Ref s);
+	// Turns the effect in slot `s` on, or bypasses it, undoably. Not_Found
+	// for an empty slot.
+	Pads_Result (*effect_set_on)(Pads_Api* api, Pads_Slot_Ref s, bool on);
+	// Swaps the effects in slots `a` and `b` of one pad's inserts or one bus
+	// (or main), undoably: how effects are put in another order.
+	Pads_Result (*effect_swap)(Pads_Api* api, Pads_Slot_Ref a, Pads_Slot_Ref b);
+	// Parameter `id` of the effect in slot `s` (plain units; a performance
+	// effect's too: param_get covers the others).
+	Pads_Result (*effect_get_param)(Pads_Api* api, Pads_Slot_Ref s, int64_t id, double* out);
+	// Sets parameter `id` of the effect in slot `s` (plain units, in its
+	// range), undoably (a touch's or a gesture's moves merge).
+	Pads_Result (*effect_set_param)(Pads_Api* api, Pads_Slot_Ref s, int64_t id, double value);
+	// Holds performance effect `index` (it plays while held) at `intensity`
+	// (0..1; -1: its own), or lets it go. Not an edit.
+	Pads_Result (*effect_hold)(Pads_Api* api, int64_t index, bool on, float intensity);
+	// Sets performance effect `index`'s own intensity (0..1): what it plays
+	// at when its pad's press doesn't say. Undoably.
+	Pads_Result (*effect_set_intensity)(Pads_Api* api, int64_t index, float intensity);
+	// Takes pad `pad`'s send to bus `send` + 1 from before its fader (`pre`)
+	// or after, undoably. (Its level is a parameter: device Send.)
+	Pads_Result (*effect_set_send_pre)(Pads_Api* api, int64_t pad, int64_t send, bool pre);
+	// What the effect in slot `s` listens to.
+	Pads_Result (*effect_key)(Pads_Api* api, Pads_Slot_Ref s, Pads_Key_State* out);
+	// Makes the effect in slot `s` (a compressor, a gate) listen to `kind`
+	// `index` (None: itself; it stops listening), undoably. Invalid_Argument
+	// for a key it can't have (itself, or a bus it feeds).
+	Pads_Result (*effect_set_key)(Pads_Api* api, Pads_Slot_Ref s, Pads_Key_Kind kind, int64_t index);
+	// Sets the key's high-pass (0..2000 Hz; 0: none) of the effect in slot
+	// `s`, undoably.
+	Pads_Result (*effect_set_key_filter)(Pads_Api* api, Pads_Slot_Ref s, float hz);
+	// Makes the track play the key of the effect in slot `s` (filtered)
+	// instead, to set it by, or not. Undoably.
+	Pads_Result (*effect_set_key_listen)(Pads_Api* api, Pads_Slot_Ref s, bool on);
 	// The history now.
 	Pads_Result (*history_state)(Pads_Api* api, Pads_History_State* out);
 	// Undoes the last step. Not_Found with nothing to undo; Busy while a

@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
-import app "app:core"
 import "app:ui"
 import pa "api"
 import pm "model"
@@ -156,22 +155,20 @@ put_device :: proc(a: ^App, index: int, code: string) -> bool {
 		case:           return false
 		}
 	case "preset", "mine":
-		app.begin(&m.history, "Load Preset")
-		defer app.end(&m.history)
+		pa.history_group_begin(&a.api, "Load Preset")
+		defer pa.history_group_end(&a.api)
 		if m.project.pads[index].kind != .Synth do pa.pad_set_kind(&a.api, i64(index), .Synth)
 		if words[0] == "preset" {
-			pm.preset_apply_builtin(m, index, n)
+			if pa.device_load_preset(&a.api, i64(index), i64(n)) != .Ok do return false
 		} else {
 			path := strings.concatenate({preset_folder(a), "/", arg, pm.PRESET_EXT}, context.temp_allocator)
-			pr, err := pm.preset_read(path)
-			if err != .None do return false
-			pm.preset_apply(m, index, &pr)
+			if pa.device_load_preset_file(&a.api, i64(index), path) != .Ok do return false
 		}
 	case "clapi":
 		entries := plugin_instruments(a)
 		if n < 0 || n >= len(entries) do return false
 		e := entries[n]
-		pm.make_plugin_pad(m, index, e.path, e.id, e.name)
+		pa.device_load_plugin(&a.api, i64(index), e.path, e.id, e.name)
 	case "fx", "clap":
 		slot := -1
 		for s, k in m.project.pads[index].inserts do if s.kind == .None {
@@ -182,18 +179,16 @@ put_device :: proc(a: ^App, index: int, code: string) -> bool {
 			ui.toast(&a.ws.toasts, .Error, fmt.tprintf("%s has no empty insert", pm.pad_label(index)))
 			return false
 		}
-		s: pm.Effect_Slot
+		ref := pa.Slot_Ref{place = .Insert, index = i64(index), slot = i64(slot)}
 		if words[0] == "fx" {
 			if n <= 0 || n > int(max(pm.Effect_Kind)) do return false
-			s = pm.new_effect(pm.Effect_Kind(n))
+			if pa.effect_set(&a.api, ref, i64(n)) != .Ok do return false
 		} else {
 			entries := plugin_effects(a)
 			if n < 0 || n >= len(entries) do return false
 			e := entries[n]
-			s = pm.new_plugin_effect(&m.project, e.path, e.id, e.name)
+			if pa.effect_set_plugin(&a.api, ref, e.path, e.id, e.name) != .Ok do return false
 		}
-		pm.set_insert(m, index, slot, s, "Add Effect")
-		app.seal(&m.history)
 		a.selected = index
 		show_device(a, {.Pad, index, slot})
 		return true

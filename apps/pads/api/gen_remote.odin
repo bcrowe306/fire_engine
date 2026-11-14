@@ -34,6 +34,237 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := last_error(api)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_device_preset_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := device_preset_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_device_preset_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := device_preset_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_device_preset_category":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := device_preset_category(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_device_load_preset":
+		pad := remote_i64(args, "pad", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := device_load_preset(api, pad, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_device_load_preset_file":
+		pad := remote_i64(args, "pad", &ok)
+		path := remote_string(args, "path", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := device_load_preset_file(api, pad, path)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_device_save_preset":
+		pad := remote_i64(args, "pad", &ok)
+		dir := remote_string(args, "dir", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := device_save_preset(api, pad, dir, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_device_preset_of":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := device_preset_of(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_device_load_plugin":
+		pad := remote_i64(args, "pad", &ok)
+		path := remote_string(args, "path", &ok)
+		id := remote_string(args, "id", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := device_load_plugin(api, pad, path, id, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_kind_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_kind_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_kind_name":
+		kind := remote_i64(args, "kind", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_kind_name(api, kind)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_state":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_state(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_name":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_name(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_set":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		kind := remote_i64(args, "kind", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set(api, s, kind)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_plugin":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		path := remote_string(args, "path", &ok)
+		id := remote_string(args, "id", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_plugin(api, s, path, id, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_clear":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_clear(api, s)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_on":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_on(api, s, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_swap":
+		a := remote_struct_Slot_Ref(args, "a", &ok)
+		b := remote_struct_Slot_Ref(args, "b", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_swap(api, a, b)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_get_param":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		id := remote_i64(args, "id", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_get_param(api, s, id)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_set_param":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		id := remote_i64(args, "id", &ok)
+		value := remote_f64(args, "value", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_param(api, s, id, value)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_hold":
+		index := remote_i64(args, "index", &ok)
+		on := remote_bool(args, "on", &ok)
+		intensity := remote_f32_or(args, "intensity", -1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_hold(api, index, on, intensity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_intensity":
+		index := remote_i64(args, "index", &ok)
+		intensity := remote_f32(args, "intensity", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_intensity(api, index, intensity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_send_pre":
+		pad := remote_i64(args, "pad", &ok)
+		send := remote_i64(args, "send", &ok)
+		pre := remote_bool(args, "pre", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_send_pre(api, pad, send, pre)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_key":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_key(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_set_key":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		kind := Key_Kind(remote_enum(args, "kind", Key_Kind_NAMES[:], &ok))
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_key(api, s, kind, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_key_filter":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		hz := remote_f32(args, "hz", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_key_filter(api, s, hz)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_key_listen":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_key_listen(api, s, on)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_history_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -716,6 +947,12 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 Result_NAMES := [?]string{"Ok", "Not_Found", "Invalid_Argument", "Busy", "Unsupported", "Io_Error"}
 
 @(private)
+Effect_Place_NAMES := [?]string{"Insert", "Bus", "Main", "Perf"}
+
+@(private)
+Key_Kind_NAMES := [?]string{"None", "Pad", "Bus"}
+
+@(private)
 Pad_Kind_NAMES := [?]string{"Sampler", "Audio", "Slicer", "Synth", "Plugin"}
 
 @(private)
@@ -764,10 +1001,50 @@ remote_struct_Param_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> P
 	return v
 }
 
+@(private)
+remote_struct_Slot_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> Slot_Ref {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Slot_Ref
+	v.place = Effect_Place(remote_enum_or(obj, "place", Effect_Place_NAMES[:], 0, ok))
+	v.index = remote_i64_or(obj, "index", 0, ok)
+	v.slot = remote_i64_or(obj, "slot", 0, ok)
+	return v
+}
+
 // The remote methods' names (pads_...), in the table's order.
 REMOTE_METHODS := [?]string{
 	"pads_api_version",
 	"pads_last_error",
+	"pads_device_preset_count",
+	"pads_device_preset_name",
+	"pads_device_preset_category",
+	"pads_device_load_preset",
+	"pads_device_load_preset_file",
+	"pads_device_save_preset",
+	"pads_device_preset_of",
+	"pads_device_load_plugin",
+	"pads_effect_kind_count",
+	"pads_effect_kind_name",
+	"pads_effect_state",
+	"pads_effect_name",
+	"pads_effect_set",
+	"pads_effect_set_plugin",
+	"pads_effect_clear",
+	"pads_effect_set_on",
+	"pads_effect_swap",
+	"pads_effect_get_param",
+	"pads_effect_set_param",
+	"pads_effect_hold",
+	"pads_effect_set_intensity",
+	"pads_effect_set_send_pre",
+	"pads_effect_key",
+	"pads_effect_set_key",
+	"pads_effect_set_key_filter",
+	"pads_effect_set_key_listen",
 	"pads_history_state",
 	"pads_history_undo",
 	"pads_history_redo",

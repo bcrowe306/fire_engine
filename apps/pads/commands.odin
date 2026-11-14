@@ -276,15 +276,15 @@ register_commands :: proc(a: ^App) {
 	// Effect slots (inserts, bus slots, performance effects).
 	add(c, {id = "slot.edit", label = "Edit Effect", icon = ui.ICON_SLIDERS_HORIZONTAL, kinds = {.Slot}, group = 0, run = proc(a: ^App, t: Target) { show_device(a, t.fx) }})
 	add(c, {id = "slot.bypass", label = "On", icon = ui.ICON_POWER, kinds = {.Slot}, group = 0,
-		run = proc(a: ^App, t: Target) { s, _ := pm.target_slot(&a.m, t.fx); s.on = !s.on; pm.set_target_slot(&a.m, t.fx, s, "Effect On" if s.on else "Effect Off") },
+		run = proc(a: ^App, t: Target) { s, _ := pm.target_slot(&a.m, t.fx); pa.effect_set_on(&a.api, slot_ref(t.fx), !s.on) },
 		enabled = slot_full, checked = proc(a: ^App, t: Target) -> bool { s, _ := pm.target_slot(&a.m, t.fx); return s.on }})
 	add(c, {id = "slot.copy", label = "Copy Effect", icon = ui.ICON_COPY, kinds = {.Slot}, group = 1,
 		run = proc(a: ^App, t: Target) { a.slot_clip, _ = pm.target_slot(&a.m, t.fx); a.has_slot_clip = true }, enabled = slot_full})
 	add(c, {id = "slot.paste", label = "Paste Effect", icon = ui.ICON_CLIPBOARD_PASTE, kinds = {.Slot}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.set_target_slot(&a.m, t.fx, a.slot_clip, "Paste Effect") },
+		run = proc(a: ^App, t: Target) { pm.set_target_slot(&a.m, t.fx, a.slot_clip, "Paste Effect") }, // api-lint: the effect as it was copied (the clipboard is the UI's)
 		enabled = proc(a: ^App, t: Target) -> bool { return a.has_slot_clip && (t.fx.kind != .Perf || a.slot_clip.kind != .None) }})
 	add(c, {id = "slot.clear", label = "Remove Effect", icon = ui.ICON_X, kinds = {.Slot}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.set_target_slot(&a.m, t.fx, {}, "Remove Effect") },
+		run = proc(a: ^App, t: Target) { pa.effect_clear(&a.api, slot_ref(t.fx)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return slot_full(a, t) && t.fx.kind != .Perf }})
 
 	// Buses.

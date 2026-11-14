@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
@@ -47,8 +48,11 @@ draw_effect :: proc(user: rawptr) {
 	if t.kind == .Perf {
 		x := m.project.perf_intensity[t.index]
 		ke := ui.knob("Intensity", &x, 0, 1, 1, "%.2f")
-		if ke.changed do pm.set_perf_intensity(m, t.index, x)
-		if ke.ended do app.seal(&m.history)
+		if ke.changed {
+			pa.history_gesture_begin(&a.api)
+			pa.effect_set_intensity(&a.api, i64(t.index), clamp(x, 0, 1))
+		}
+		if ke.ended do pa.history_gesture_end(&a.api)
 		if im.IsItemHovered() do im.SetTooltip("How hard it plays: where you press its pad sets it while held (the top: all of it)")
 		im.SameLine(0, 14)
 	}
@@ -58,17 +62,13 @@ draw_effect :: proc(user: rawptr) {
 		for k in pm.Effect_Kind {
 			if k == .Plugin || pm.effect_kind_legacy(k) do continue
 			if t.kind == .Perf && k == .None do continue
-			if im.Selectable(pm.EFFECT_NAMES[k], k == s.kind && s.kind != .Plugin) && k != s.kind {
-				ns := pm.new_effect(k)
-				if t.kind == .Perf do ns.on = false
-				pm.set_target_slot(m, t, ns, "Set Effect")
-			}
+			if im.Selectable(pm.EFFECT_NAMES[k], k == s.kind && s.kind != .Plugin) && k != s.kind do pa.effect_set(&a.api, slot_ref(t), i64(k))
 		}
 		im.Separator()
 		// The plug-ins found (Settings > Plug-ins), then any file.
 		for pe in plugin_effects(a) {
 			if im.Selectable(fmt.ctprintf("%s  %s###pl%s", ui.ICON_LAYOUT_GRID, pe.name, pe.id), s.kind == .Plugin && s.plugin_id == pe.id) {
-				pm.set_target_slot(m, t, pm.new_plugin_effect(&m.project, pe.path, pe.id, pe.name), "Add Plug-in")
+				pa.effect_set_plugin(&a.api, slot_ref(t), pe.path, pe.id, pe.name)
 			}
 			if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s %s", pe.vendor, pe.version))
 		}
@@ -85,14 +85,10 @@ draw_effect :: proc(user: rawptr) {
 		im.TextDisabled("On while its pad is held")
 	} else {
 		on := s.on
-		if ui.toggle("On", &on) {
-			ns := s
-			ns.on = on
-			pm.set_target_slot(m, t, ns, "Bypass" if !on else "Effect On")
-		}
+		if ui.toggle("On", &on) do pa.effect_set_on(&a.api, slot_ref(t), on)
 		im.SameLine(0, 12)
 		if ui.icon_button(ui.ICON_TRASH_2, "Remove the effect") {
-			pm.set_target_slot(m, t, {}, "Remove Effect")
+			pa.effect_clear(&a.api, slot_ref(t))
 			return
 		}
 	}
@@ -251,7 +247,7 @@ choose_plugin :: proc(a: ^App, path: string, t: pm.Fx_Target) -> bool {
 		return false
 	}
 	if len(effects) == 1 {
-		pm.set_target_slot(&a.m, t, pm.new_plugin_effect(&a.m.project, path, effects[0].id, effects[0].name), "Add Plug-in")
+		pa.effect_set_plugin(&a.api, slot_ref(t), path, effects[0].id, effects[0].name)
 		return true
 	}
 	c := &a.plugin_choice
@@ -282,7 +278,7 @@ draw_plugin_choice :: proc(a: ^App) {
 	if im.BeginPopupModal("Choose a plug-in", nil, {.AlwaysAutoResize}) {
 		for name, i in c.names {
 			if im.Selectable(fmt.ctprintf("%s##%d", name, i)) {
-				pm.set_target_slot(&a.m, c.target, pm.new_plugin_effect(&a.m.project, c.path, c.ids[i], name), "Add Plug-in")
+				pa.effect_set_plugin(&a.api, slot_ref(c.target), c.path, c.ids[i], name)
 				plugin_choice_clear(c)
 				im.CloseCurrentPopup()
 				break
@@ -333,25 +329,20 @@ draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 	im.SameLine()
 	im.SetNextItemWidth(160)
 	if ui.combo("##sidechain", fmt.ctprintf("%s", name(p, s.key))) {
-		set :: proc(m: ^pm.Model, t: pm.Fx_Target, s: pm.Effect_Slot, k: pm.Key_Source) {
-			ns := s
-			ns.key = k
-			if k.kind == .None do ns.listen = false
-			pm.set_target_slot(m, t, ns, "Sidechain")
-		}
-		if im.Selectable("None (itself)", s.key.kind == .None) do set(m, t, s, {})
+		set :: proc(a: ^App, t: pm.Fx_Target, k: pm.Key_Source) { pa.effect_set_key(&a.api, slot_ref(t), pa.Key_Kind(k.kind), i64(k.index)) }
+		if im.Selectable("None (itself)", s.key.kind == .None) do set(a, t, {})
 		ui.name("key none")
 		im.SeparatorText("Pads")
 		for i in 0 ..< pm.PADS do if pm.pad_used(p, i) && pm.key_allowed(p, t, {.Pad, i}) {
 			k := pm.Key_Source{.Pad, i}
 			label := fmt.ctprintf("%s  %s###kp%d", pm.pad_label(i), pm.pad_name(&p.pads[i]), i)
-			if im.Selectable(label, s.key == k) do set(m, t, s, k)
+			if im.Selectable(label, s.key == k) do set(a, t, k)
 			ui.name(fmt.tprintf("key pad %s", pm.pad_label(i)))
 		}
 		im.SeparatorText("Buses")
 		for b in 0 ..< p.bus_count do if pm.key_allowed(p, t, {.Bus, b}) {
 			k := pm.Key_Source{.Bus, b}
-			if im.Selectable(fmt.ctprintf("%s###kb%d", pm.bus_index_name(p, b), b), s.key == k) do set(m, t, s, k)
+			if im.Selectable(fmt.ctprintf("%s###kb%d", pm.bus_index_name(p, b), b), s.key == k) do set(a, t, k)
 			ui.name(fmt.tprintf("key bus %d", b + 1))
 		}
 		im.EndCombo()
@@ -367,17 +358,21 @@ draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 	e := ui.number_drag("key hpf", &hpf, 0, 2000, 10, 1, "Key high-pass %.0f Hz", 170)
 	if im.IsItemHovered() do im.SetTooltip("The key's high-pass (0 Hz: none): above the bass, a kick keys by its click")
 	dragging, held = e.active && !e.ended, hpf
-	if e.ended || (e.changed && !e.active) {
-		ns := s
-		ns.key_hpf = f32(hpf)
-		pm.set_target_slot(m, t, ns, "Key Filter")
-	}
+	if e.ended || (e.changed && !e.active) do pa.effect_set_key_filter(&a.api, slot_ref(t), clamp(f32(hpf), 0, 2000))
 	im.SameLine(0, 12)
 	listen := s.listen
-	if ui.toggle("Listen", &listen) {
-		ns := s
-		ns.listen = listen
-		pm.set_target_slot(m, t, ns, "Listen to Key")
-	}
+	if ui.toggle("Listen", &listen) do pa.effect_set_key_listen(&a.api, slot_ref(t), listen)
 	if im.IsItemHovered() do im.SetTooltip("The track plays the key (filtered) instead, while on")
+}
+
+// The API's name for effect slot `t`.
+slot_ref :: proc(t: pm.Fx_Target) -> pa.Slot_Ref {
+	#partial switch t.kind {
+	case .Pad:  return {place = .Insert, index = i64(t.index), slot = i64(t.slot)}
+	case .Bus:
+		if t.index >= pm.BUSES do return {place = .Main, slot = i64(t.slot)}
+		return {place = .Bus, index = i64(t.index), slot = i64(t.slot)}
+	case .Perf: return {place = .Perf, index = i64(t.index)}
+	}
+	return {place = pa.Effect_Place(-1)}
 }

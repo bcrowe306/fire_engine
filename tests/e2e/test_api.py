@@ -93,3 +93,17 @@ def test_pads_and_params_through_the_api(app, fixtures):
     assert "Cutoff" in names
     r = app.api("pad_set_volume", check=False, pad=2, db=40)
     assert r["result"] == "Invalid_Argument"
+
+
+def test_effects_through_the_api(app, fixtures):
+    import os
+    app.api("pad_load_sample", pad=0, path=os.path.join(fixtures, "kick.wav"))
+    kinds = [app.api("effect_kind_name", kind=k) for k in range(app.api("effect_kind_count"))]
+    slot = {"place": "Insert", "index": 0, "slot": 0}
+    app.api("effect_set", s=slot, kind=kinds.index("Reverb"))
+    assert app.api("effect_name", s=slot) == "Reverb"
+    assert app.pad(0)["inserts"][0] == "Reverb"
+    app.api("effect_set_on", s=slot, on=False)
+    assert app.api("effect_state", s=slot)["on"] is False
+    app.key("cmd+z")
+    assert app.api("effect_state", s=slot)["on"] is True

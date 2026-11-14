@@ -3,6 +3,7 @@ package pads
 import "core:fmt"
 
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -387,7 +388,7 @@ device_content :: proc(a: ^App) {
 			if n % 6 != 0 do im.SameLine()
 			n += 1
 			if im.Button(fmt.ctprintf("%s###add%d", pm.EFFECT_NAMES[k], int(k)), {110, 0}) {
-				pm.set_target_slot(m, fx, pm.new_effect(k), "Add Effect")
+				pa.effect_set(&a.api, slot_ref(fx), i64(k))
 				show_device(a, fx)
 			}
 			ui.name(fmt.tprintf("add %s", pm.EFFECT_NAMES[k]))

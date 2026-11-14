@@ -35,6 +35,218 @@ last_error :: proc(api: ^Api) -> (string, Result)
 
 Why the last call that failed failed, in words (temporary: until the next failure). "" before any.
 
+## Devices: synth presets, plug-in instruments
+
+### device_preset_count
+
+```odin
+device_preset_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+Built-in synth presets there are (device_preset_name lists them).
+
+### device_preset_name
+
+```odin
+device_preset_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Built-in preset `index`'s name ("Warm Pad"). Temporary.
+
+### device_preset_category
+
+```odin
+device_preset_category :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Built-in preset `index`'s kind ("Bass", "Pad", "Lead"). Temporary.
+
+### device_load_preset
+
+```odin
+device_load_preset :: proc(api: ^Api, pad: i64, index: i64) -> Result
+```
+
+Puts built-in preset `index` on pad `pad` (it becomes a synth): one undo step.
+
+### device_load_preset_file
+
+```odin
+device_load_preset_file :: proc(api: ^Api, pad: i64, path: string) -> Result
+```
+
+Puts the preset saved at `path` on pad `pad` (it becomes a synth): one undo step. Io_Error if it can't be read.
+
+### device_save_preset
+
+```odin
+device_save_preset :: proc(api: ^Api, pad: i64, dir: string, name: string) -> (string, Result)
+```
+
+Saves synth pad `pad`'s patch as preset `name` in folder `dir`: the file's path. Unsupported for a pad that isn't a synth.
+
+### device_preset_of
+
+```odin
+device_preset_of :: proc(api: ^Api, pad: i64) -> (string, Result)
+```
+
+The preset synth pad `pad`'s patch came from ("" if none). Temporary.
+
+### device_load_plugin
+
+```odin
+device_load_plugin :: proc(api: ^Api, pad: i64, path: string, id: string, name: string) -> Result
+```
+
+Makes pad `pad` play CLAP instrument `id` of the library at `path` (named `name`): one undo step.
+
+## Effects: inserts, bus effects, performance effects, sends, sidechains
+
+### effect_kind_count
+
+```odin
+effect_kind_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+Effect kinds there are (effect_kind_name names them; 0 is empty).
+
+### effect_kind_name
+
+```odin
+effect_kind_name :: proc(api: ^Api, kind: i64) -> (string, Result)
+```
+
+Effect kind `kind`'s name, as the UI shows it ("Reverb", "Low-pass"). Temporary.
+
+### effect_state
+
+```odin
+effect_state :: proc(api: ^Api, s: Slot_Ref) -> (Effect_State, Result)
+```
+
+What is in slot `s`.
+
+### effect_name
+
+```odin
+effect_name :: proc(api: ^Api, s: Slot_Ref) -> (string, Result)
+```
+
+The name of what is in slot `s` ("Reverb", a plug-in's; "Empty"). Temporary.
+
+### effect_set
+
+```odin
+effect_set :: proc(api: ^Api, s: Slot_Ref, kind: i64) -> Result
+```
+
+Puts a new effect of kind `kind` (its default settings) in slot `s`, undoably (0: empties it). Unsupported for the plug-in kind (effect_set_plugin) and an empty performance effect.
+
+### effect_set_plugin
+
+```odin
+effect_set_plugin :: proc(api: ^Api, s: Slot_Ref, path: string, id: string, name: string) -> Result
+```
+
+Puts CLAP plug-in `id` from the library at `path` (named `name`) in slot `s`, undoably. Unsupported for a performance effect.
+
+### effect_clear
+
+```odin
+effect_clear :: proc(api: ^Api, s: Slot_Ref) -> Result
+```
+
+Empties slot `s`, undoably. Unsupported for a performance effect.
+
+### effect_set_on
+
+```odin
+effect_set_on :: proc(api: ^Api, s: Slot_Ref, on: bool) -> Result
+```
+
+Turns the effect in slot `s` on, or bypasses it, undoably. Not_Found for an empty slot.
+
+### effect_swap
+
+```odin
+effect_swap :: proc(api: ^Api, a: Slot_Ref, b: Slot_Ref) -> Result
+```
+
+Swaps the effects in slots `a` and `b` of one pad's inserts or one bus (or main), undoably: how effects are put in another order.
+
+### effect_get_param
+
+```odin
+effect_get_param :: proc(api: ^Api, s: Slot_Ref, id: i64) -> (f64, Result)
+```
+
+Parameter `id` of the effect in slot `s` (plain units; a performance effect's too: param_get covers the others).
+
+### effect_set_param
+
+```odin
+effect_set_param :: proc(api: ^Api, s: Slot_Ref, id: i64, value: f64) -> Result
+```
+
+Sets parameter `id` of the effect in slot `s` (plain units, in its range), undoably (a touch's or a gesture's moves merge).
+
+### effect_hold
+
+```odin
+effect_hold :: proc(api: ^Api, index: i64, on: bool, intensity: f32 = -1) -> Result
+```
+
+Holds performance effect `index` (it plays while held) at `intensity` (0..1; -1: its own), or lets it go. Not an edit.
+
+### effect_set_intensity
+
+```odin
+effect_set_intensity :: proc(api: ^Api, index: i64, intensity: f32) -> Result
+```
+
+Sets performance effect `index`'s own intensity (0..1): what it plays at when its pad's press doesn't say. Undoably.
+
+### effect_set_send_pre
+
+```odin
+effect_set_send_pre :: proc(api: ^Api, pad: i64, send: i64, pre: bool) -> Result
+```
+
+Takes pad `pad`'s send to bus `send` + 1 from before its fader (`pre`) or after, undoably. (Its level is a parameter: device Send.)
+
+### effect_key
+
+```odin
+effect_key :: proc(api: ^Api, s: Slot_Ref) -> (Key_State, Result)
+```
+
+What the effect in slot `s` listens to.
+
+### effect_set_key
+
+```odin
+effect_set_key :: proc(api: ^Api, s: Slot_Ref, kind: Key_Kind, index: i64) -> Result
+```
+
+Makes the effect in slot `s` (a compressor, a gate) listen to `kind` `index` (None: itself; it stops listening), undoably. Invalid_Argument for a key it can't have (itself, or a bus it feeds).
+
+### effect_set_key_filter
+
+```odin
+effect_set_key_filter :: proc(api: ^Api, s: Slot_Ref, hz: f32) -> Result
+```
+
+Sets the key's high-pass (0..2000 Hz; 0: none) of the effect in slot `s`, undoably.
+
+### effect_set_key_listen
+
+```odin
+effect_set_key_listen :: proc(api: ^Api, s: Slot_Ref, on: bool) -> Result
+```
+
+Makes the track play the key of the effect in slot `s` (filtered) instead, to set it by, or not. Undoably.
+
 ## History: undo, redo, groups, gestures
 
 ### history_state
@@ -729,6 +941,18 @@ What a call came to. `last_error` says why it wasn't `Ok`.
 
 `Ok`, `Not_Found`, `Invalid_Argument`, `Busy`, `Unsupported`, `Io_Error`
 
+### Effect_Place
+
+Where an effect slot is.
+
+`Insert`, `Bus`, `Main`, `Perf`
+
+### Key_Kind
+
+What a compressor's or gate's sidechain listens to.
+
+`None`, `Pad`, `Bus`
+
 ### Pad_Kind
 
 What a pad is.
@@ -794,6 +1018,37 @@ The metronome's sound.
 What the tempo, start and stop follow.
 
 `Internal`, `Midi_Clock`, `Link`
+
+### Slot_Ref
+
+An effect slot.
+
+| Field | Type | |
+|---|---|---|
+| `place` | `Effect_Place` |  |
+| `index` | `i64` | the pad, the bus, the performance effect |
+| `slot` | `i64` |  |
+
+### Effect_State
+
+What is in a slot.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | `i64` | its effect kind (effect_kind_name; 0: empty) |
+| `on` | `bool` | on (off: bypassed) |
+| `plugin` | `bool` | a CLAP plug-in (its name: effect_name) |
+
+### Key_State
+
+What the effect in slot `s` listens to (a compressor's, a gate's), and how.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | `Key_Kind` |  |
+| `index` | `i64` | the pad or the bus |
+| `hpf_hz` | `f32` | the key's high-pass (0: none) |
+| `listen` | `bool` | the track plays the key instead (to set it by) |
 
 ### History_State
 

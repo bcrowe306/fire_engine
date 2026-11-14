@@ -729,16 +729,14 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) <= k do return false
 		kind, ok := effect_kind(w[k])
 		if !ok do return false
-		s := pm.new_effect(kind)
-		if target.kind == .Perf do s.on = false
-		pm.set_target_slot(&a.m, target, s, "Set Effect")
+		if pa.effect_set(&a.api, slot_ref(target), i64(kind)) != .Ok do return false
 		a.fx = target
 		return true
 	case "plugin":
 		// plugin BUS SLOT ID PATH
 		if len(w) < 5 do return false
 		t := pm.Fx_Target{.Bus, num(w, 1), num(w, 2)}
-		pm.set_target_slot(&a.m, t, pm.new_plugin_effect(&a.m.project, strings.join(w[4:], " ", context.temp_allocator), w[3], w[3]), "Add Plug-in")
+		if pa.effect_set_plugin(&a.api, slot_ref(t), strings.join(w[4:], " ", context.temp_allocator), w[3], w[3]) != .Ok do return false
 		a.fx = t
 		return true
 	case "fx_param":
@@ -762,9 +760,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// send PAD BUS DB [pre|post]
 		i, b := num(w, 1), num(w, 2)
 		if !pad_ok(i) || b < 1 || b > a.m.project.bus_count || len(w) < 4 do return false
-		pm.set_send_db(&a.m, i, b, numf(w, 3))
-		app.seal(&a.m.history)
-		if len(w) > 4 do pm.set_send_pre(&a.m, i, b, w[4] == "pre")
+		if pa.param_set(&a.api, {track = .Pad, index = i64(i), device = .Send, slot = i64(b - 1)}, f64(clamp(numf(w, 3), pm.SEND_MIN_DB, 6))) != .Ok do return false
+		if len(w) > 4 do pa.effect_set_send_pre(&a.api, i64(i), i64(b - 1), w[4] == "pre")
 		return true
 	case "route":
 		if i := num(w, 1); pad_ok(i) {
@@ -933,8 +930,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// perf N on|off: hold (or let go of) performance effect N (0..15)
 		i := num(w, 1)
 		if i < 0 || i >= pm.PERF_FX do return false
-		pm.hold_perf_fx(&a.m, i, len(w) < 3 || w[2] != "off")
-		return true
+		return pa.effect_hold(&a.api, i64(i), len(w) < 3 || w[2] != "off") == .Ok
 	case "save": // (in place, even a new project: no dialog in a script)
 		return pa.project_save(&a.api) == .Ok
 	case "rename_project":
@@ -1210,24 +1206,26 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return pm.group_pads(&a.m, pads[:], name) > 0
 	case "sidechain": // sidechain PAD SLOT pad N | bus B | off [listen] [hpf HZ]: insert SLOT (0..) of pad PAD (0..) keyed from pad N (0..) or bus B (0..)
 		if len(w) < 4 do return false
-		pad, slot := num(w, 1), num(w, 2)
-		if pad < 0 || pad >= pm.PADS || slot < 0 || slot >= pm.PAD_INSERTS do return false
-		sl := a.m.project.pads[pad].inserts[slot]
+		ref := pa.Slot_Ref{place = .Insert, index = i64(num(w, 1)), slot = i64(num(w, 2))}
+		kind := pa.Key_Kind.None
 		switch w[3] {
-		case "pad": sl.key = {.Pad, num(w, 4)}
-		case "bus": sl.key = {.Bus, num(w, 4)}
-		case "off": sl.key = {}
+		case "pad": kind = .Pad
+		case "bus": kind = .Bus
+		case "off":
 		case: return false
 		}
-		sl.listen = false
+		pa.history_group_begin(&a.api, "Sidechain")
+		defer pa.history_group_end(&a.api)
+		if pa.effect_set_key(&a.api, ref, kind, i64(num(w, 4))) != .Ok do return false
+		listen := false
 		for k := 5; k < len(w); k += 1 {
-			if w[k] == "listen" do sl.listen = true
+			if w[k] == "listen" do listen = true
 			if w[k] == "hpf" && k + 1 < len(w) {
 				x, _ := strconv.parse_f32(w[k + 1])
-				sl.key_hpf = x
+				if pa.effect_set_key_filter(&a.api, ref, x) != .Ok do return false
 			}
 		}
-		pm.set_insert(&a.m, pad, slot, sl, "Sidechain")
+		if kind != .None do pa.effect_set_key_listen(&a.api, ref, listen)
 		return true
 	case "plugin_pad": // plugin_pad PAD PATH ID: pad PAD (0..) plays plug-in ID of the CLAP file at PATH (from the working folder), selected
 		if len(w) < 4 do return false
@@ -1237,7 +1235,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			for d in lib.plugins do if d.id == w[3] do name = strings.clone(d.name, context.temp_allocator)
 			clap.library_close(lib)
 		}
-		pm.make_plugin_pad(&a.m, i, absolute(w[2]), w[3], name)
+		if pa.device_load_plugin(&a.api, i64(i), absolute(w[2]), w[3], name) != .Ok do return false
 		a.selected = i
 		show_device(a, {.Instrument, i, 0})
 		return true

@@ -4,8 +4,8 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 ---
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
-settings) and 3a (pads, params) built 2026-11-14; 3b (devices, effects)
-and the rest planned (decisions taken 2026-11-13). Using it: the
+settings) and 3 (pads, params, effects, devices) built 2026-11-14; the
+rest planned (decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -92,8 +92,30 @@ devices and effects (and the knobs moved onto `param_set`).
 - The generator takes a struct as an argument (C: by value; remote: a
   JSON object of its fields, any left out zero). `Param_Info`'s default
   is `default_value` (`default` is C's).
-- The knobs still write the model themselves (stage 3b moves them onto
-  `param_set`); the lint covers the pads' fields.
+- The lint covers the pads' fields.
+
+### Stage 3b, as built (effects, devices)
+
+- `effects`: `Slot_Ref` (an insert, a bus's or main's effect, a
+  performance effect); kinds by index and name; set (a new one; an
+  empty slot's step "Add Effect", else "Set Effect"; a performance
+  effect starts off), set a plug-in, clear, on/bypass, swap (the order),
+  a parameter by the effect's id (performance effects too), hold and
+  intensity, a send's pre/post, and the sidechain (key, its high-pass,
+  listen). The effect view, the device panel's adds, the Mixer's slot
+  drags and send menu, the performance pads, the slot commands and the
+  shell's effect commands use them (Paste Effect stays the UI's
+  clipboard).
+- `devices`: the synth's built-in presets, preset files (load, save),
+  the preset a pad came from, a CLAP instrument on a pad.
+- `param_set` names its step after the parameter ("Set Cutoff").
+- **Not moved yet: the device knobs.** The sampler's, the synth's and
+  the effects' knobs (about 28 places) still write the model through
+  its setters, each with its own display scaling, merging key and step
+  name ("Shape Envelope", "Voice Mode", which tests and users see). They
+  move onto `param_set` with the `ui` module (stage 7), when the knob
+  widget can carry its `Param_Ref` and a step name; until then a surface
+  sets the same values through `param_set` and the knobs show them.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,

@@ -35,6 +35,12 @@ MODULES = {
         (r"\bpm\.set_pad\([^)]*\.(Name|Color|Mode|Volume|Pan|Mute|Solo|Choke|Monitor)\b", "pad_set_name / color / mode / volume / pan / mute / solo / choke / monitor"),
         (r"\bpm\.(set_pad_kind|clear_pad|duplicate_pad|make_synth|make_slicer|make_sampler|empty_slicer|load_onto_pad|arm_track)\(", "pad_set_kind / clear / duplicate / load_sample / set_armed"),
     ],
+    "effects": [
+        (r"\bpm\.(set_target_slot|set_insert|swap_slots|hold_perf_fx|set_perf_intensity|set_send_pre)\(", "effect_set / set_plugin / clear / set_on / swap / hold / set_intensity / set_send_pre"),
+    ],
+    "devices": [
+        (r"\bpm\.(preset_apply|preset_apply_builtin|preset_save|make_plugin_pad)\(", "device_load_preset / load_preset_file / save_preset / load_plugin"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [

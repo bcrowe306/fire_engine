@@ -644,7 +644,7 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 	if im.BeginDragDropTarget() {
 		if pl := im.AcceptDragDropPayload("FX_SLOT"); pl != nil {
 			from := (^pm.Fx_Target)(pl.Data)^
-			pm.swap_slots(&a.m, from, target)
+			pa.effect_swap(&a.api, slot_ref(from), slot_ref(target))
 		}
 		im.EndDragDropTarget()
 	}
@@ -712,7 +712,7 @@ send_input :: proc(a: ^App, pad, bus: int, range: f32, horizontal: bool) {
 	if e.ended do app.seal(&m.history)
 	if im.BeginPopupContextItem(fmt.ctprintf("##sendmenu%d", bus)) {
 		knob_menu_items(a)
-		if im.MenuItem("Pre-fader", nil, s.pre) do pm.set_send_pre(m, pad, bus, !s.pre)
+		if im.MenuItem("Pre-fader", nil, s.pre) do pa.effect_set_send_pre(&a.api, i64(pad), i64(bus - 1), !s.pre)
 		if im.MenuItem("Off", nil, false, on) {
 			pm.set_send_db(m, pad, bus, pm.SEND_MIN_DB)
 			app.seal(&m.history)

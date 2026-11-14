@@ -169,6 +169,9 @@ param_set :: proc(api: ^Api, ref: Param_Ref, value: f64) -> Result {
 	if !(value >= info.min && value <= info.max) do return fail(api, .Invalid_Argument, fmt.tprintf("the value is %g..%g", info.min, info.max))
 	v := math.round(value) if info.stepped else value
 	m := &api.core.m
+	// The step is named after the parameter ("Set Cutoff").
+	step := "Set Sound"
+	if pname, pr := param_name(api, ref); pr == .Ok do step = fmt.tprintf("Set %s", pname)
 	i := int(ref.index)
 	switch ref.track {
 	case .None:
@@ -201,13 +204,13 @@ param_set :: proc(api: ^Api, ref: Param_Ref, value: f64) -> Result {
 				if !pm.voice_param_set(&pad, fc.Param_Id(ref.param), v) do return fail(api, .Not_Found, "no such sampler parameter")
 				// (Attack, release and transpose are the pad's own fields; the rest its voice's.)
 				switch {
-				case pad.attack != old.attack:   pm.set_pad(m, i, .Attack, "Set Attack", pad)
-				case pad.release != old.release: pm.set_pad(m, i, .Release, "Set Release", pad)
-				case pad.pitch != old.pitch:     pm.set_pad(m, i, .Pitch, "Set Pitch", pad)
-				case:                            pm.set_voice(m, i, int(ref.param), "Set Sound", pad.voice)
+				case pad.attack != old.attack:   pm.set_pad(m, i, .Attack, step, pad)
+				case pad.release != old.release: pm.set_pad(m, i, .Release, step, pad)
+				case pad.pitch != old.pitch:     pm.set_pad(m, i, .Pitch, step, pad)
+				case:                            pm.set_voice(m, i, int(ref.param), step, pad.voice)
 				}
 			case .Synth:
-				pm.set_synth_value(m, i, fc.Param_Id(ref.param), f32(v), "Set Sound")
+				pm.set_synth_value(m, i, fc.Param_Id(ref.param), f32(v), step)
 			case .Plugin:
 				pm.set_target_param(m, {kind = .Instrument, index = i}, fc.Param_Id(ref.param), f32(v))
 			case:
