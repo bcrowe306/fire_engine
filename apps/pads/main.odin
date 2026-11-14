@@ -308,7 +308,12 @@ main :: proc() {
 			else do pa.remote_disconnect(&a.api)
 		}
 		p.driver, p.control = &a.driver, &a.control
-		if headless do p.fixed_dt = 1.0 / 60
+		// Every frame 1/60 s, in a window too: a harness counts time in
+		// frames ("wait 25", a click's frames), and a window's frames come
+		// at the display's rate (120 a second on a ProMotion display, more
+		// without vsync), which made taps twice as fast and double-clicks
+		// out of time.
+		p.fixed_dt = 1.0 / 60
 		ui.probe_on(true)
 		fmt.printfln("control: listening on 127.0.0.1:%d", a.control.port)
 		os.flush(os.stdout)
