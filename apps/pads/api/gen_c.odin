@@ -23,6 +23,34 @@ Table_V1 :: struct {
 	history_group_end: proc "c" (api: ^Api) -> Result,
 	history_gesture_begin: proc "c" (api: ^Api) -> Result,
 	history_gesture_end: proc "c" (api: ^Api) -> Result,
+	pad_state: proc "c" (api: ^Api, pad: i64, out: ^Pad_State) -> Result,
+	pad_name: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	pad_label: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	pad_set_name: proc "c" (api: ^Api, pad: i64, name: cstring, name_len: i64) -> Result,
+	pad_set_color: proc "c" (api: ^Api, pad: i64, color: i64) -> Result,
+	pad_set_mode: proc "c" (api: ^Api, pad: i64, mode: Pad_Mode) -> Result,
+	pad_set_volume: proc "c" (api: ^Api, pad: i64, db: f32) -> Result,
+	pad_set_pan: proc "c" (api: ^Api, pad: i64, pan: f32) -> Result,
+	pad_set_pitch: proc "c" (api: ^Api, pad: i64, semitones: f32) -> Result,
+	pad_set_mute: proc "c" (api: ^Api, pad: i64, on: bool) -> Result,
+	pad_set_solo: proc "c" (api: ^Api, pad: i64, on: bool) -> Result,
+	pad_set_choke: proc "c" (api: ^Api, pad: i64, group: i64) -> Result,
+	pad_set_monitor: proc "c" (api: ^Api, pad: i64, monitor: Monitor) -> Result,
+	pad_set_kind: proc "c" (api: ^Api, pad: i64, kind: Pad_Kind) -> Result,
+	pad_load_sample: proc "c" (api: ^Api, pad: i64, path: cstring, path_len: i64) -> Result,
+	pad_clear: proc "c" (api: ^Api, pad: i64) -> Result,
+	pad_duplicate: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result,
+	pad_copy_to: proc "c" (api: ^Api, from: i64, to: i64) -> Result,
+	pad_play: proc "c" (api: ^Api, pad: i64, on: bool, velocity: f32) -> Result,
+	pad_set_armed: proc "c" (api: ^Api, pad: i64, on: bool) -> Result,
+	param_count: proc "c" (api: ^Api, ref: Param_Ref, out: ^i64) -> Result,
+	param_at: proc "c" (api: ^Api, ref: Param_Ref, index: i64, out: ^Param_Ref) -> Result,
+	param_info: proc "c" (api: ^Api, ref: Param_Ref, out: ^Param_Info) -> Result,
+	param_name: proc "c" (api: ^Api, ref: Param_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	param_get: proc "c" (api: ^Api, ref: Param_Ref, out: ^f64) -> Result,
+	param_set: proc "c" (api: ^Api, ref: Param_Ref, value: f64) -> Result,
+	param_text: proc "c" (api: ^Api, ref: Param_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	param_touch: proc "c" (api: ^Api, ref: Param_Ref, on: bool) -> Result,
 	project_state: proc "c" (api: ^Api, out: ^Project_State) -> Result,
 	project_dir: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	project_name: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -93,6 +121,34 @@ table_fill :: proc(api: ^Api) {
 	t.history_group_end = c_history_group_end
 	t.history_gesture_begin = c_history_gesture_begin
 	t.history_gesture_end = c_history_gesture_end
+	t.pad_state = c_pad_state
+	t.pad_name = c_pad_name
+	t.pad_label = c_pad_label
+	t.pad_set_name = c_pad_set_name
+	t.pad_set_color = c_pad_set_color
+	t.pad_set_mode = c_pad_set_mode
+	t.pad_set_volume = c_pad_set_volume
+	t.pad_set_pan = c_pad_set_pan
+	t.pad_set_pitch = c_pad_set_pitch
+	t.pad_set_mute = c_pad_set_mute
+	t.pad_set_solo = c_pad_set_solo
+	t.pad_set_choke = c_pad_set_choke
+	t.pad_set_monitor = c_pad_set_monitor
+	t.pad_set_kind = c_pad_set_kind
+	t.pad_load_sample = c_pad_load_sample
+	t.pad_clear = c_pad_clear
+	t.pad_duplicate = c_pad_duplicate
+	t.pad_copy_to = c_pad_copy_to
+	t.pad_play = c_pad_play
+	t.pad_set_armed = c_pad_set_armed
+	t.param_count = c_param_count
+	t.param_at = c_param_at
+	t.param_info = c_param_info
+	t.param_name = c_param_name
+	t.param_get = c_param_get
+	t.param_set = c_param_set
+	t.param_text = c_param_text
+	t.param_touch = c_param_touch
 	t.project_state = c_project_state
 	t.project_dir = c_project_dir
 	t.project_name = c_project_name
@@ -251,6 +307,212 @@ c_history_gesture_begin :: proc "c" (api: ^Api) -> Result {
 c_history_gesture_end :: proc "c" (api: ^Api) -> Result {
 	context = runtime.default_context()
 	return history_gesture_end(api)
+}
+
+@(private)
+c_pad_state :: proc "c" (api: ^Api, pad: i64, out: ^Pad_State) -> Result {
+	context = runtime.default_context()
+	v, r := pad_state(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_pad_name :: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := pad_name(api, pad)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_pad_label :: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := pad_label(api, pad)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_pad_set_name :: proc "c" (api: ^Api, pad: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return pad_set_name(api, pad, name_s)
+}
+
+@(private)
+c_pad_set_color :: proc "c" (api: ^Api, pad: i64, color: i64) -> Result {
+	context = runtime.default_context()
+	return pad_set_color(api, pad, color)
+}
+
+@(private)
+c_pad_set_mode :: proc "c" (api: ^Api, pad: i64, mode: Pad_Mode) -> Result {
+	context = runtime.default_context()
+	return pad_set_mode(api, pad, mode)
+}
+
+@(private)
+c_pad_set_volume :: proc "c" (api: ^Api, pad: i64, db: f32) -> Result {
+	context = runtime.default_context()
+	return pad_set_volume(api, pad, db)
+}
+
+@(private)
+c_pad_set_pan :: proc "c" (api: ^Api, pad: i64, pan: f32) -> Result {
+	context = runtime.default_context()
+	return pad_set_pan(api, pad, pan)
+}
+
+@(private)
+c_pad_set_pitch :: proc "c" (api: ^Api, pad: i64, semitones: f32) -> Result {
+	context = runtime.default_context()
+	return pad_set_pitch(api, pad, semitones)
+}
+
+@(private)
+c_pad_set_mute :: proc "c" (api: ^Api, pad: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return pad_set_mute(api, pad, on)
+}
+
+@(private)
+c_pad_set_solo :: proc "c" (api: ^Api, pad: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return pad_set_solo(api, pad, on)
+}
+
+@(private)
+c_pad_set_choke :: proc "c" (api: ^Api, pad: i64, group: i64) -> Result {
+	context = runtime.default_context()
+	return pad_set_choke(api, pad, group)
+}
+
+@(private)
+c_pad_set_monitor :: proc "c" (api: ^Api, pad: i64, monitor: Monitor) -> Result {
+	context = runtime.default_context()
+	return pad_set_monitor(api, pad, monitor)
+}
+
+@(private)
+c_pad_set_kind :: proc "c" (api: ^Api, pad: i64, kind: Pad_Kind) -> Result {
+	context = runtime.default_context()
+	return pad_set_kind(api, pad, kind)
+}
+
+@(private)
+c_pad_load_sample :: proc "c" (api: ^Api, pad: i64, path: cstring, path_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return pad_load_sample(api, pad, path_s)
+}
+
+@(private)
+c_pad_clear :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return pad_clear(api, pad)
+}
+
+@(private)
+c_pad_duplicate :: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := pad_duplicate(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_pad_copy_to :: proc "c" (api: ^Api, from: i64, to: i64) -> Result {
+	context = runtime.default_context()
+	return pad_copy_to(api, from, to)
+}
+
+@(private)
+c_pad_play :: proc "c" (api: ^Api, pad: i64, on: bool, velocity: f32) -> Result {
+	context = runtime.default_context()
+	return pad_play(api, pad, on, velocity)
+}
+
+@(private)
+c_pad_set_armed :: proc "c" (api: ^Api, pad: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return pad_set_armed(api, pad, on)
+}
+
+@(private)
+c_param_count :: proc "c" (api: ^Api, ref: Param_Ref, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := param_count(api, ref)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_param_at :: proc "c" (api: ^Api, ref: Param_Ref, index: i64, out: ^Param_Ref) -> Result {
+	context = runtime.default_context()
+	v, r := param_at(api, ref, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_param_info :: proc "c" (api: ^Api, ref: Param_Ref, out: ^Param_Info) -> Result {
+	context = runtime.default_context()
+	v, r := param_info(api, ref)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_param_name :: proc "c" (api: ^Api, ref: Param_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := param_name(api, ref)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_param_get :: proc "c" (api: ^Api, ref: Param_Ref, out: ^f64) -> Result {
+	context = runtime.default_context()
+	v, r := param_get(api, ref)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_param_set :: proc "c" (api: ^Api, ref: Param_Ref, value: f64) -> Result {
+	context = runtime.default_context()
+	return param_set(api, ref, value)
+}
+
+@(private)
+c_param_text :: proc "c" (api: ^Api, ref: Param_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := param_text(api, ref)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_param_touch :: proc "c" (api: ^Api, ref: Param_Ref, on: bool) -> Result {
+	context = runtime.default_context()
+	return param_touch(api, ref, on)
 }
 
 @(private)

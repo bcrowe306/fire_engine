@@ -856,6 +856,69 @@ voice_params :: proc(pad: Pad) -> (out: [len(sampler.sampler_params)]f64) {
 	return
 }
 
+// Puts sampler parameter `id`'s plain value `x` (as `voice_params` gives
+// it) into `pad`: the inverse of `voice_params`. False for an id it
+// doesn't set (a parameter the pad leaves at its default).
+voice_param_set :: proc(pad: ^Pad, id: fc.Param_Id, x: f64) -> bool {
+	v := &pad.voice
+	f := f32(x)
+	switch id {
+	case sampler.SAMPLER_PARAM_ATTACK:           pad.attack = f
+	case sampler.SAMPLER_PARAM_VELOCITY:         v.velocity = f / 100
+	case sampler.SAMPLER_PARAM_DECAY:            v.decay = f
+	case sampler.SAMPLER_PARAM_SUSTAIN:          v.sustain = f / 100
+	case sampler.SAMPLER_PARAM_RELEASE:          pad.release = f
+	case sampler.SAMPLER_PARAM_TRANSPOSE:        pad.pitch = f
+	case sampler.SAMPLER_PARAM_FILTER_TYPE:      v.filter = sampler.Voice_Filter(int(x))
+	case sampler.SAMPLER_PARAM_FILTER_SLOPE:     v.steep = x >= 0.5
+	case sampler.SAMPLER_PARAM_FILTER_CUTOFF:    v.cutoff = f
+	case sampler.SAMPLER_PARAM_FILTER_RESONANCE: v.resonance = f / 100
+	case sampler.SAMPLER_PARAM_FILTER_KEYTRACK:  v.key_track = f / 100
+	case sampler.SAMPLER_PARAM_FILTER_VELOCITY:  v.vel_cutoff = f / 100
+	case sampler.SAMPLER_PARAM_FILTER_ENV:       v.filter_env = f / 100
+	case sampler.SAMPLER_PARAM_FILTER_ATTACK:    v.filter_adsr[0] = f
+	case sampler.SAMPLER_PARAM_FILTER_DECAY:     v.filter_adsr[1] = f
+	case sampler.SAMPLER_PARAM_FILTER_SUSTAIN:   v.filter_adsr[2] = f / 100
+	case sampler.SAMPLER_PARAM_FILTER_RELEASE:   v.filter_adsr[3] = f
+	case sampler.SAMPLER_PARAM_PITCH_ENV:        v.pitch_env = f
+	case sampler.SAMPLER_PARAM_PITCH_ATTACK:     v.pitch_adsr[0] = f
+	case sampler.SAMPLER_PARAM_PITCH_DECAY:      v.pitch_adsr[1] = f
+	case sampler.SAMPLER_PARAM_PITCH_SUSTAIN:    v.pitch_adsr[2] = f / 100
+	case sampler.SAMPLER_PARAM_PITCH_RELEASE:    v.pitch_adsr[3] = f
+	case sampler.SAMPLER_PARAM_PITCH_VELOCITY:   v.vel_pitch = f
+	case sampler.SAMPLER_PARAM_PITCH_KEYTRACK:   v.pitch_track = f / 100
+	case sampler.SAMPLER_PARAM_FINE_TUNE:        v.fine = f
+	case sampler.SAMPLER_PARAM_VOICE_MODE:
+		if pad.kind == .Slicer do return false
+		v.mode = sampler.Voice_Mode(int(x))
+	case sampler.SAMPLER_PARAM_GLIDE:
+		if pad.kind == .Slicer do return false
+		v.glide = f
+	case sampler.SAMPLER_PARAM_GLIDE_ALWAYS:     v.glide_always = x >= 0.5
+	case sampler.SAMPLER_PARAM_GLIDE_OCTAVES:    v.glide_octaves = x >= 0.5
+	case:
+		for &l, k in v.lfos {
+			switch id {
+			case sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_SHAPE):     l.shape = sampler.Lfo_Shape(int(x)); return true
+			case sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_MODE):      l.mode = sampler.Lfo_Mode(int(x)); return true
+			case sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_RATE):      l.rate = f; return true
+			case sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_SYNC_RATE): l.sync = u8(x); return true
+			case sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_FADE):      l.fade = f; return true
+			case sampler.sampler_lfo_param(k, sampler.SAMPLER_PARAM_LFO_PHASE):     l.phase = f; return true
+			}
+		}
+		for &r, k in v.routes {
+			switch id {
+			case sampler.sampler_route_param(k, sampler.SAMPLER_PARAM_ROUTE_SOURCE): r.source = sampler.Mod_Source(int(x)); return true
+			case sampler.sampler_route_param(k, sampler.SAMPLER_PARAM_ROUTE_DEST):   r.dest = sampler.Mod_Dest(int(x)); return true
+			case sampler.sampler_route_param(k, sampler.SAMPLER_PARAM_ROUTE_AMOUNT): r.amount = f / 100; return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
 // What pad `index`'s sampler is doing now (its newest voice's envelopes,
 // its filter with modulation and automation, the LFOs), for the device
 // tabs' live drawings; false without a sampler.

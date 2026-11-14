@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -148,16 +149,16 @@ put_device :: proc(a: ^App, index: int, code: string) -> bool {
 	switch words[0] {
 	case "inst":
 		switch arg {
-		case "synth":   pm.make_synth(m, index)
-		case "sampler": pm.make_sampler(m, index)
-		case "slicer":  pm.make_slicer(m, index)
-		case "audio":   pm.set_pad_kind(m, index, .Audio); app.seal(&m.history)
+		case "synth":   pa.pad_set_kind(&a.api, i64(index), .Synth)
+		case "sampler": pa.pad_set_kind(&a.api, i64(index), .Sampler)
+		case "slicer":  pa.pad_set_kind(&a.api, i64(index), .Slicer)
+		case "audio":   pa.pad_set_kind(&a.api, i64(index), .Audio)
 		case:           return false
 		}
 	case "preset", "mine":
 		app.begin(&m.history, "Load Preset")
 		defer app.end(&m.history)
-		if m.project.pads[index].kind != .Synth do pm.make_synth(m, index)
+		if m.project.pads[index].kind != .Synth do pa.pad_set_kind(&a.api, i64(index), .Synth)
 		if words[0] == "preset" {
 			pm.preset_apply_builtin(m, index, n)
 		} else {

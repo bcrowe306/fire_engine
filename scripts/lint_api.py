@@ -31,6 +31,10 @@ MODULES = {
     "project": [
         (r"\bpm\.model_(new|new_from|load|save|save_as|save_copy|move|load_backup|discard_backup|save_backup)\(", "project_new / open / save / save_as / rename / recover"),
     ],
+    "pads": [
+        (r"\bpm\.set_pad\([^)]*\.(Name|Color|Mode|Volume|Pan|Mute|Solo|Choke|Monitor)\b", "pad_set_name / color / mode / volume / pan / mute / solo / choke / monitor"),
+        (r"\bpm\.(set_pad_kind|clear_pad|duplicate_pad|make_synth|make_slicer|make_sampler|empty_slicer|load_onto_pad|arm_track)\(", "pad_set_kind / clear / duplicate / load_sample / set_armed"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [

@@ -5,6 +5,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -125,7 +126,7 @@ register_commands :: proc(a: ^App) {
 
 	// Pads.
 	add(c, {id = "pad.play", label = "Play", icon = ui.ICON_PLAY, kinds = {.Pad}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.hit(&a.m.engine, t.index, true); a.release_at[t.index] = 12 }, enabled = pad_has})
+		run = proc(a: ^App, t: Target) { pa.pad_play(&a.api, i64(t.index), true); a.release_at[t.index] = 12 }, enabled = pad_has})
 	add(c, {id = "pad.select", label = "Select", icon = ui.ICON_MOUSE_POINTER, kinds = {.Pad}, group = 0,
 		run = proc(a: ^App, t: Target) { a.selected = t.index }})
 	add(c, {id = "pad.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Pad}, group = 0,
@@ -135,33 +136,28 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "pad.edit", label = "Edit Sound", icon = ui.ICON_SLIDERS_HORIZONTAL, kinds = {.Pad}, group = 0,
 		run = proc(a: ^App, t: Target) { a.selected = t.index; show_detail(a, .Sample) }})
 	add(c, {id = "pad.mute", label = "Mute", icon = ui.ICON_VOLUME_X, kinds = {.Pad}, group = 1,
-		run = proc(a: ^App, t: Target) { p := a.m.project.pads[t.index]; p.mute = !p.mute; pm.set_pad(&a.m, t.index, .Mute, "Mute", p); app.seal(&a.m.history) },
+		run = proc(a: ^App, t: Target) { pa.pad_set_mute(&a.api, i64(t.index), !a.m.project.pads[t.index].mute) },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].mute }})
 	add(c, {id = "pad.solo", label = "Solo", icon = ui.ICON_HEADPHONES, kinds = {.Pad}, group = 1,
-		run = proc(a: ^App, t: Target) { p := a.m.project.pads[t.index]; p.solo = !p.solo; pm.set_pad(&a.m, t.index, .Solo, "Solo", p); app.seal(&a.m.history) },
+		run = proc(a: ^App, t: Target) { pa.pad_set_solo(&a.api, i64(t.index), !a.m.project.pads[t.index].solo) },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].solo }})
 	add(c, {id = "pad.arm", label = "Arm to Record", icon = ui.ICON_CIRCLE_DOT, kinds = {.Pad}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.arm_track(&a.m, t.index, !pm.track_armed(&a.m, t.index)) },
+		run = proc(a: ^App, t: Target) { pa.pad_set_armed(&a.api, i64(t.index), !pm.track_armed(&a.m, t.index)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Audio },
 		checked = proc(a: ^App, t: Target) -> bool { return pm.track_armed(&a.m, t.index) }})
 	add(c, {id = "pad.audio", label = "Audio Track", icon = ui.ICON_MIC, kinds = {.Pad}, group = 1,
-		run = proc(a: ^App, t: Target) { k := a.m.project.pads[t.index].kind; pm.set_pad_kind(&a.m, t.index, .Sampler if k == .Audio else .Audio) },
+		run = proc(a: ^App, t: Target) { k := a.m.project.pads[t.index].kind; pa.pad_set_kind(&a.api, i64(t.index), .Sampler if k == .Audio else .Audio) },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Audio }})
 	add(c, {id = "pad.slicer", label = "Slicer", icon = ui.ICON_SCISSORS, kinds = {.Pad}, group = 1,
 		run = proc(a: ^App, t: Target) {
-			switch {
-			case a.m.project.pads[t.index].kind == .Slicer: pm.make_sampler(&a.m, t.index)
-			case pm.pad_used(&a.m.project, t.index): pm.make_slicer(&a.m, t.index)
-			case: pm.empty_slicer(&a.m, t.index)
-			}
+			pa.pad_set_kind(&a.api, i64(t.index), .Sampler if a.m.project.pads[t.index].kind == .Slicer else .Slicer)
 			a.selected = t.index
 		},
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind == .Slicer }})
 	add(c, {id = "pad.synth", label = "Synth", icon = ui.ICON_AUDIO_WAVEFORM, kinds = {.Pad}, group = 1,
 		run = proc(a: ^App, t: Target) {
-			if a.m.project.pads[t.index].kind == .Synth do pm.set_pad_kind(&a.m, t.index, .Sampler)
-			else do pm.make_synth(&a.m, t.index)
+			pa.pad_set_kind(&a.api, i64(t.index), .Sampler if a.m.project.pads[t.index].kind == .Synth else .Synth)
 			a.selected = t.index
 		},
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].kind != .Audio },
@@ -188,12 +184,12 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "pad.copy", label = "Copy Pad", icon = ui.ICON_COPY, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { a.pad_clip, a.has_pad_clip = a.m.project.pads[t.index], true }, enabled = pad_has})
 	add(c, {id = "pad.paste", label = "Paste Pad", icon = ui.ICON_CLIPBOARD_PASTE, kinds = {.Pad}, group = 2,
-		run = proc(a: ^App, t: Target) { pm.set_pad(&a.m, t.index, .Whole, "Paste Pad", a.pad_clip); app.seal(&a.m.history) },
+		run = proc(a: ^App, t: Target) { pm.set_pad(&a.m, t.index, .Whole, "Paste Pad", a.pad_clip); app.seal(&a.m.history) }, // api-lint: the pad as it was copied (the clipboard is the UI's)
 		enabled = proc(a: ^App, t: Target) -> bool { return a.has_pad_clip }})
 	add(c, {id = "pad.duplicate", label = "Duplicate to Next Empty Pad", icon = ui.ICON_COPY_PLUS, kinds = {.Pad}, group = 2,
-		run = proc(a: ^App, t: Target) { if to := pm.duplicate_pad(&a.m, t.index); to >= 0 do a.selected = to }, enabled = pad_has})
+		run = proc(a: ^App, t: Target) { if to, r := pa.pad_duplicate(&a.api, i64(t.index)); r == .Ok do a.selected = int(to) }, enabled = pad_has})
 	add(c, {id = "pad.clear", label = "Clear Pad", icon = ui.ICON_ERASER, kinds = {.Pad}, group = 2, keys = "Delete",
-		run = proc(a: ^App, t: Target) { pm.clear_pad(&a.m, t.index) }, enabled = pad_has})
+		run = proc(a: ^App, t: Target) { pa.pad_clear(&a.api, i64(t.index)) }, enabled = pad_has})
 
 	// Notes.
 	add(c, {id = "note.delete", label = "Delete Note", icon = ui.ICON_TRASH_2, kinds = {.Note}, group = 0,
@@ -315,11 +311,11 @@ register_commands :: proc(a: ^App) {
 
 	// Files in the browser.
 	add(c, {id = "file.load", label = "Load onto Selected Pad", icon = ui.ICON_DOWNLOAD, kinds = {.File}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.load_onto_pad(&a.m, a.selected, t.path) }})
+		run = proc(a: ^App, t: Target) { pa.pad_load_sample(&a.api, i64(a.selected), t.path) }})
 	add(c, {id = "file.load_empty", label = "Load onto Next Empty Pad", icon = ui.ICON_SQUARE_PLUS, kinds = {.File}, group = 0,
 		run = proc(a: ^App, t: Target) {
 			for i in 0 ..< pm.PADS do if !pm.pad_used(&a.m.project, i) {
-				if pm.load_onto_pad(&a.m, i, t.path) == .None do a.selected = i
+				if pa.pad_load_sample(&a.api, i64(i), t.path) == .Ok do a.selected = i
 				return
 			}
 		}})

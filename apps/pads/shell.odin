@@ -347,7 +347,7 @@ subscribe_imports :: proc(a: ^App) {
 	app.subscribe(&a.bus, Import_Chosen, proc(user: rawptr, e: ^Import_Chosen) {
 		a := (^App)(user)
 		defer delete(e.path)
-		if pm.load_onto_pad(&a.m, a.selected, e.path) != .None do ui.toast(&a.ws.toasts, .Error, "Could not load that file")
+		if pa.pad_load_sample(&a.api, i64(a.selected), e.path) != .Ok do ui.toast(&a.ws.toasts, .Error, "Could not load that file")
 	}, a)
 	app.subscribe(&a.bus, Plugin_Chosen, proc(user: rawptr, e: ^Plugin_Chosen) {
 		a := (^App)(user)
@@ -414,6 +414,7 @@ subscribe_imports :: proc(a: ^App) {
 //	expect level main|bus B|pad N above|below DB / expect fx KIND
 //	save / save_as DIR / rename_project NAME / open DIR / new / export PATH [song] [stems pads|buses] [rate HZ] [bits 16|24|32] [tail S]
 //	setting NAME VALUE   a setting, by its settings.ini name ("project.tempo 100", "midi.sync Midi_Clock")
+//	param pad|bus|main INDEX sound|insert|volume|pan|send|eq SLOT ID VALUE   any parameter, by reference (its plain units)
 //	resample / song add SLOT [REPEATS] | mode on|off | loop on|off | clear / switch end|bar|beat|now / export_dialog [off]
 //	expect file PATH / expect song K / expect dirty 0|1 / expect pads_loaded K
 //	theme light|dark, action ID
@@ -448,13 +449,13 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 	case "load":
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
-			if pm.load_onto_pad(&a.m, i, strings.join(w[2:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not load")
+			if pa.pad_load_sample(&a.api, i64(i), strings.join(w[2:], " ", context.temp_allocator)) != .Ok do return drive_fail(a, "could not load")
 			a.selected = i
 			return true
 		}
 	case "take": // take PAD FILE: FILE a take of audio track PAD in the current sequence (at its top)
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
-			if a.m.project.pads[i].kind != .Audio do pm.set_pad_kind(&a.m, i, .Audio)
+			if a.m.project.pads[i].kind != .Audio do pa.pad_set_kind(&a.api, i64(i), .Audio)
 			if pm.add_take_file(&a.m, a.m.project.slot, i, strings.join(w[2:], " ", context.temp_allocator)) != .None do return drive_fail(a, "could not add the take")
 			a.selected = i
 			return true
@@ -661,7 +662,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		i := num(w, 1)
 		if !pad_ok(i) do return false
 		on := len(w) < 3 || w[2] != "off"
-		pm.arm_track(&a.m, i, on)
+		pa.pad_set_armed(&a.api, i64(i), on)
 		if on do a.io.manual += {i}
 		else do a.io.manual -= {i}
 		return true
@@ -774,12 +775,11 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		i := num(w, 1)
 		if !pad_ok(i) do return false
 		if len(w) > 2 do return load_into_slicer(a, i, strings.join(w[2:], " ", context.temp_allocator))
-		pm.make_slicer(&a.m, i)
-		return true
+		return pa.pad_set_kind(&a.api, i64(i), .Slicer) == .Ok
 	case "empty_slicer": // empty_slicer PAD
 		i := num(w, 1)
 		if !pad_ok(i) do return false
-		pm.empty_slicer(&a.m, i)
+		pm.empty_slicer(&a.m, i) // api-lint: a slicer without its sample (the pad's sample left as it is)
 		return true
 	case "slice": // slice PAD transients|beats|equal: slices it again
 		i := num(w, 1)
@@ -794,13 +794,29 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "synth": // synth PAD: the pad a synth
 		i := num(w, 1)
 		if !pad_ok(i) do return false
-		pm.make_synth(&a.m, i)
-		return true
+		return pa.pad_set_kind(&a.api, i64(i), .Synth) == .Ok
 	case "synth_param": // synth_param PAD ID VALUE: a synth parameter's plain value
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 4 do return false
-		pm.set_synth_value(&a.m, i, fc.Param_Id(num(w, 2)), numf(w, 3), "Set")
-		app.seal(&a.m.history)
+		return pa.param_set(&a.api, {track = .Pad, index = i64(i), device = .Sound, param = i64(num(w, 2))}, f64(numf(w, 3))) == .Ok
+	case "param": // param pad|bus|main INDEX sound|insert|volume|pan|send|eq SLOT ID VALUE: any parameter (pa.Param_Ref)
+		if len(w) < 8 do return false
+		ref: pa.Param_Ref
+		switch w[1] {
+		case "pad":  ref.track = .Pad
+		case "bus":  ref.track = .Bus
+		case "main": ref.track = .Main
+		case: return false
+		}
+		ok := false
+		for d in pa.Device do if strings.to_lower(fmt.tprint(d), context.temp_allocator) == w[3] do ref.device, ok = d, true
+		if !ok do return false
+		ref.index, ref.slot, ref.param = i64(num(w, 2)), i64(num(w, 4)), i64(num(w, 5))
+		v, _ := strconv.parse_f64(w[6])
+		if r := pa.param_set(&a.api, ref, v); r != .Ok {
+			why, _ := pa.last_error(&a.api)
+			return drive_fail(a, why)
+		}
 		return true
 	case "synth_tab": // synth_tab osc|filter|env|lfo|mod|effects|macro|global
 		if len(w) < 2 do return false
@@ -853,8 +869,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "sampler": // sampler PAD: a slicer a sampler again
 		i := num(w, 1)
 		if !pad_ok(i) do return false
-		pm.make_sampler(&a.m, i)
-		return true
+		return pa.pad_set_kind(&a.api, i64(i), .Sampler) == .Ok
 	case "warp": // warp PAD on|off [beats|tones|complex|repitch] [BPM]
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 3 do return false
@@ -903,11 +918,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		i := num(w, 2)
 		if w[1] == "pad" && pad_ok(i) {
 			p := a.m.project.pads[i]
-			if w[0] == "mute" do p.mute = !p.mute
-			else do p.solo = !p.solo
-			pm.set_pad(&a.m, i, .Mute, "Mute", p)
-			app.seal(&a.m.history)
-			return true
+			if w[0] == "mute" do return pa.pad_set_mute(&a.api, i64(i), !p.mute) == .Ok
+			return pa.pad_set_solo(&a.api, i64(i), !p.solo) == .Ok
 		}
 		if w[1] == "bus" && i >= 0 && i <= pm.BUSES {
 			bus := pm.bus_of(&a.m, i)^

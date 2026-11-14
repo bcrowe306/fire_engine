@@ -414,7 +414,7 @@ draw_sequence :: proc(user: rawptr) {
 			at := math.max(st.view.beat0 + f64(im.GetIO().MousePos.x - top.x - ui.roll_rows_width(rows)) / (f64(avail.x - ui.roll_rows_width(rows)) / max(st.view.beats, 1e-6)), 0)
 			if pm.add_take_file(m, slot, pad, e.dropped, snap_down(at, snap)) == .None do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("A take on %s", pm.pad_label(pad)))
 			else do ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.dropped)))
-		} else if pm.load_onto_pad(m, pad, e.dropped) == .None {
+		} else if pa.pad_load_sample(&a.api, i64(pad), e.dropped) == .Ok {
 			a.selected = pad
 			show_pad_chain(a, pad)
 			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.dropped), pm.pad_label(pad)))

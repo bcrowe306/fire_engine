@@ -5,6 +5,7 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import "fire:dsp"
@@ -517,7 +518,7 @@ draw_global :: proc(a: ^App) {
 	im.PopFont()
 	im.SameLine(0, 12)
 	kind := int(pad.kind)
-	if ui.segmented("kind", {"Sampler", "Audio"}, &kind) do pm.set_pad_kind(m, i, pm.Pad_Kind(kind))
+	if ui.segmented("kind", {"Sampler", "Audio"}, &kind) do pa.pad_set_kind(&a.api, i64(i), pa.Pad_Kind(kind))
 	if im.IsItemHovered() do im.SetTooltip("A sampler plays its sample when hit; an audio pad records takes from an input and plays them with the sequence")
 	im.SameLine(0, 12)
 	im.AlignTextToFramePadding()
@@ -598,7 +599,7 @@ draw_global :: proc(a: ^App) {
 	}
 	im.Spacing()
 	im.Spacing()
-	if im.Button(ui.ICON_ERASER + "  Clear Pad") do pm.clear_pad(m, i)
+	if im.Button(ui.ICON_ERASER + "  Clear Pad") do pa.pad_clear(&a.api, i64(i))
 }
 
 // The selected pad's EQ, over the effect being edited.

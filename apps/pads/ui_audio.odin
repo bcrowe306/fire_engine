@@ -5,6 +5,7 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -383,7 +384,7 @@ draw_audio_view :: proc(a: ^App, length, snap: f64) {
 	if p.pads[pad].kind != .Audio {
 		im.TextDisabled("%s isn't an audio track. Select one, or:", fmt.ctprintf("%s", pm.pad_label(pad)))
 		im.SameLine()
-		if im.Button(fmt.ctprintf("Make %s an audio track", pm.pad_label(pad))) do pm.set_pad_kind(m, pad, .Audio)
+		if im.Button(fmt.ctprintf("Make %s an audio track", pm.pad_label(pad))) do pa.pad_set_kind(&a.api, i64(pad), .Audio)
 		ui.name("make audio track")
 		return
 	}

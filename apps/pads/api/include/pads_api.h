@@ -34,6 +34,65 @@ enum {
 	PADS_RESULT_IO_ERROR = 5,
 };
 
+// What a pad is.
+typedef int32_t Pads_Pad_Kind;
+enum {
+	PADS_PAD_KIND_SAMPLER = 0,
+	PADS_PAD_KIND_AUDIO = 1,
+	PADS_PAD_KIND_SLICER = 2,
+	PADS_PAD_KIND_SYNTH = 3,
+	PADS_PAD_KIND_PLUGIN = 4,
+};
+
+// How a pad's sample plays when hit.
+typedef int32_t Pads_Pad_Mode;
+enum {
+	PADS_PAD_MODE_ONE_SHOT = 0,
+	PADS_PAD_MODE_GATE = 1,
+	PADS_PAD_MODE_LOOP = 2,
+	PADS_PAD_MODE_HOLD = 3,
+};
+
+// When a pad's input is heard.
+typedef int32_t Pads_Monitor;
+enum {
+	PADS_MONITOR_AUTO = 0,
+	PADS_MONITOR_IN = 1,
+	PADS_MONITOR_OFF = 2,
+};
+
+// Whose parameter.
+typedef int32_t Pads_Track;
+enum {
+	PADS_TRACK_NONE = 0,
+	PADS_TRACK_PAD = 1,
+	PADS_TRACK_BUS = 2,
+	PADS_TRACK_MAIN = 3,
+};
+
+// Which of a track's devices.
+typedef int32_t Pads_Device;
+enum {
+	PADS_DEVICE_SOUND = 0,
+	PADS_DEVICE_INSERT = 1,
+	PADS_DEVICE_VOLUME = 2,
+	PADS_DEVICE_PAN = 3,
+	PADS_DEVICE_SEND = 4,
+	PADS_DEVICE_EQ = 5,
+};
+
+// What a parameter's values are in.
+typedef int32_t Pads_Param_Unit;
+enum {
+	PADS_PARAM_UNIT_NONE = 0,
+	PADS_PARAM_UNIT_DECIBELS = 1,
+	PADS_PARAM_UNIT_HERTZ = 2,
+	PADS_PARAM_UNIT_MILLISECONDS = 3,
+	PADS_PARAM_UNIT_PERCENT = 4,
+	PADS_PARAM_UNIT_SEMITONES = 5,
+	PADS_PARAM_UNIT_RATIO = 6,
+};
+
 // What a setting is (`settings_info`).
 typedef int32_t Pads_Setting_Kind;
 enum {
@@ -105,6 +164,47 @@ typedef struct Pads_History_State {
 	bool dirty; // changed since it was saved
 	bool grouping; // a group is open (history_group_begin)
 } Pads_History_State;
+
+// Pad `pad` now (its name: `pad_name`).
+typedef struct Pads_Pad_State {
+	bool used; // it has a sound (a sample, a synth, a plug-in, takes)
+	Pads_Pad_Kind kind;
+	Pads_Pad_Mode mode;
+	int64_t color; // 0xRRGGBB
+	float volume; // dB
+	float pan; // -1..1
+	float pitch; // semitones
+	bool mute;
+	bool solo;
+	int64_t choke; // its choke group (0: none; 1..6)
+	int64_t bus; // where it plays (0: main; 1..16: a bus)
+	bool armed; // to record (its input, or its MIDI)
+	Pads_Monitor monitor;
+	bool frozen; // it plays its rendering
+} Pads_Pad_State;
+
+// Any parameter: a device of a track, and its parameter's id (the
+// device's own; for Volume, Pan and Send, ignored). Stable: a caller may
+// keep it. The same thing automation points at.
+typedef struct Pads_Param_Ref {
+	Pads_Track track;
+	int64_t index; // the pad or the bus
+	Pads_Device device;
+	int64_t slot; // the insert, the effect, the send
+	int64_t param; // the parameter's id on its device
+} Pads_Param_Ref;
+
+// What a parameter is: its range in plain units, where it starts, how it
+// is drawn.
+typedef struct Pads_Param_Info {
+	double min;
+	double max;
+	double default_value; // where it starts
+	Pads_Param_Unit unit;
+	bool stepped; // whole values only (a choice)
+	bool log; // a frequency: drawn on a log scale
+	bool automatable;
+} Pads_Param_Info;
 
 // The project now: where it is, whether it changed, the lists beside it.
 typedef struct Pads_Project_State {
@@ -213,6 +313,79 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*history_gesture_begin)(Pads_Api* api);
 	// Ends the gesture: the next edit is a new step.
 	Pads_Result (*history_gesture_end)(Pads_Api* api);
+	// Pad `pad` now. Not_Found out of 0..PADS-1.
+	Pads_Result (*pad_state)(Pads_Api* api, int64_t pad, Pads_Pad_State* out);
+	// Pad `pad`'s name: its own, else its sound's ("" for an empty pad).
+	// Temporary.
+	Pads_Result (*pad_name)(Pads_Api* api, int64_t pad, char* out, int64_t out_cap, int64_t* out_len);
+	// Pad `pad`'s label as the pads show it ("A1"..."H16"). Temporary.
+	Pads_Result (*pad_label)(Pads_Api* api, int64_t pad, char* out, int64_t out_cap, int64_t* out_len);
+	// Names pad `pad` (up to 31 bytes; "": its sound's name again), undoably.
+	Pads_Result (*pad_set_name)(Pads_Api* api, int64_t pad, const char* name, int64_t name_len);
+	// Colours pad `pad` (0xRRGGBB), undoably.
+	Pads_Result (*pad_set_color)(Pads_Api* api, int64_t pad, int64_t color);
+	// How pad `pad`'s sample plays when hit, undoably.
+	Pads_Result (*pad_set_mode)(Pads_Api* api, int64_t pad, Pads_Pad_Mode mode);
+	// Pad `pad`'s fader (-60..6 dB), undoably (a gesture's moves merge).
+	Pads_Result (*pad_set_volume)(Pads_Api* api, int64_t pad, float db);
+	// Pad `pad`'s pan (-1 left .. 1 right), undoably.
+	Pads_Result (*pad_set_pan)(Pads_Api* api, int64_t pad, float pan);
+	// Pad `pad`'s transpose (-24..24 semitones), undoably.
+	Pads_Result (*pad_set_pitch)(Pads_Api* api, int64_t pad, float semitones);
+	// Mutes pad `pad` or not, undoably.
+	Pads_Result (*pad_set_mute)(Pads_Api* api, int64_t pad, bool on);
+	// Solos pad `pad` or not, undoably.
+	Pads_Result (*pad_set_solo)(Pads_Api* api, int64_t pad, bool on);
+	// Puts pad `pad` in choke group `group` (1..6; 0: none): a pad of the group
+	// hit silences the others. Undoably.
+	Pads_Result (*pad_set_choke)(Pads_Api* api, int64_t pad, int64_t group);
+	// When pad `pad`'s input is heard, undoably.
+	Pads_Result (*pad_set_monitor)(Pads_Api* api, int64_t pad, Pads_Monitor monitor);
+	// Makes pad `pad` a `kind`: a sampler (a slicer's slices kept), a slicer
+	// (of its sample, or empty), the synth, or an audio track. Undoably.
+	// Unsupported for Plugin (load one: devices).
+	Pads_Result (*pad_set_kind)(Pads_Api* api, int64_t pad, Pads_Pad_Kind kind);
+	// Loads the audio file at `path` onto pad `pad` (a sampler pad's sample),
+	// undoably. Io_Error if it can't be read.
+	Pads_Result (*pad_load_sample)(Pads_Api* api, int64_t pad, const char* path, int64_t path_len);
+	// Clears pad `pad` (its sound, its settings), undoably.
+	Pads_Result (*pad_clear)(Pads_Api* api, int64_t pad);
+	// Copies pad `pad` onto the next empty pad after it: which one. Not_Found
+	// if none is empty.
+	Pads_Result (*pad_duplicate)(Pads_Api* api, int64_t pad, int64_t* out);
+	// Copies pad `from` onto pad `to` (all of it: its sound and settings),
+	// undoably.
+	Pads_Result (*pad_copy_to)(Pads_Api* api, int64_t from, int64_t to);
+	// Plays pad `pad` (`on`) or lets it go, at `velocity` (0..1], as a hit
+	// on it does (its mode, its choke group).
+	Pads_Result (*pad_play)(Pads_Api* api, int64_t pad, bool on, float velocity);
+	// Arms pad `pad` to record (or not): an audio track records its input, any
+	// other pad what its MIDI input plays.
+	Pads_Result (*pad_set_armed)(Pads_Api* api, int64_t pad, bool on);
+	// Parameters device `ref` has now (`ref.param` ignored; `param_at` lists
+	// them). Not_Found if the device isn't there (an empty pad, an empty
+	// slot).
+	Pads_Result (*param_count)(Pads_Api* api, Pads_Param_Ref ref, int64_t* out);
+	// Device `ref`'s parameter `index` (in its order) as a reference.
+	Pads_Result (*param_at)(Pads_Api* api, Pads_Param_Ref ref, int64_t index, Pads_Param_Ref* out);
+	// What parameter `ref` is: its range, default, unit, steps.
+	Pads_Result (*param_info)(Pads_Api* api, Pads_Param_Ref ref, Pads_Param_Info* out);
+	// Parameter `ref`'s name ("Cutoff", "Volume"). Temporary.
+	Pads_Result (*param_name)(Pads_Api* api, Pads_Param_Ref ref, char* out, int64_t out_cap, int64_t* out_len);
+	// Parameter `ref`'s value now, in its plain units (as the project keeps
+	// it: not what automation moves it to while it plays).
+	Pads_Result (*param_get)(Pads_Api* api, Pads_Param_Ref ref, double* out);
+	// Sets parameter `ref` to `value` (plain units, in its range), undoably:
+	// each call a step, or one for a touch (`param_touch`) or a gesture.
+	Pads_Result (*param_set)(Pads_Api* api, Pads_Param_Ref ref, double value);
+	// Parameter `ref`'s value as the UI shows it ("-6.0 dB", "1.2 kHz").
+	// Temporary.
+	Pads_Result (*param_text)(Pads_Api* api, Pads_Param_Ref ref, char* out, int64_t out_cap, int64_t* out_len);
+	// Begins (`on`) or ends touching parameter `ref`, as a knob is held: its
+	// moves until let go are one undo step, and with automation recording
+	// armed, they are written while it plays. One parameter is touched at a
+	// time (touching another lets the first go).
+	Pads_Result (*param_touch)(Pads_Api* api, Pads_Param_Ref ref, bool on);
 	// The project now.
 	Pads_Result (*project_state)(Pads_Api* api, Pads_Project_State* out);
 	// The project's folder (an untitled one's is in the unsaved folder).

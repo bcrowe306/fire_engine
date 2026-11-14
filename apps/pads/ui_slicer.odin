@@ -7,6 +7,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import "fire:stretch"
@@ -108,7 +109,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 	if ui.icon_button(ui.ICON_GRID_2X2_PLUS, "The selected slice onto the next empty pad") do slice_out(a, i, st.selected)
 	ui.name("slice to pad")
 	ui.flow(fh, 2)
-	if ui.icon_button(ui.ICON_AUDIO_WAVEFORM, "Make it a sampler again (its slices kept)") do pm.make_sampler(m, i)
+	if ui.icon_button(ui.ICON_AUDIO_WAVEFORM, "Make it a sampler again (its slices kept)") do pa.pad_set_kind(&a.api, i64(i), .Sampler)
 	ui.name("to sampler")
 	ui.flow(fh, gap)
 	draw_tools_record(a, i, same_line = false)

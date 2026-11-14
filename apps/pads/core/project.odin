@@ -46,8 +46,10 @@ Folders :: struct {
 // What the app does around the core's actions: reset its view to a
 // project just opened (selection, banks, the view it was left in).
 Hooks :: struct {
-	user:   rawptr,
-	opened: proc(user: rawptr), // a project was opened, made or recovered (nil: nothing)
+	user:          rawptr,
+	opened:        proc(user: rawptr), // a project was opened, made or recovered (nil: nothing)
+	param_touched: proc(user: rawptr, t: pm.Auto_Target, on: bool), // a parameter touched or let go (automation recording)
+	param_moved:   proc(user: rawptr, t: pm.Auto_Target, value: f32), // the touched parameter moved (plain units)
 }
 
 // Frees the files' state.

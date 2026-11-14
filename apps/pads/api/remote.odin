@@ -56,6 +56,18 @@ remote_f32 :: proc(args: json.Object, name: string, ok: ^bool) -> f32 {
 }
 
 @(private)
+remote_f32_or :: proc(args: json.Object, name: string, dflt: f32, ok: ^bool) -> f32 {
+	if name not_in args do return dflt
+	return remote_f32(args, name, ok)
+}
+
+@(private)
+remote_enum_or :: proc(args: json.Object, name: string, names: []string, dflt: i32, ok: ^bool) -> i32 {
+	if name not_in args do return dflt
+	return remote_enum(args, name, names, ok)
+}
+
+@(private)
 remote_i64 :: proc(args: json.Object, name: string, ok: ^bool) -> i64 {
 	#partial switch x in args[name] {
 	case json.Integer: return i64(x)

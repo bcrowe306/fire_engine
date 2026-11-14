@@ -56,6 +56,8 @@ MODULE_TITLES = {
     "transport": "Transport",
     "project": "Project: new, open, save, templates, clean up",
     "settings": "Settings, by name",
+    "pads": "Pads",
+    "params": "Parameters, by reference",
 }
 
 
@@ -342,6 +344,8 @@ def gen_remote(procs, enums, structs):
         for name, typ, default in d.params:
             if typ in enums:
                 o.append(f"\t\t{name} := {typ}(remote_enum(args, \"{name}\", {typ}_NAMES[:], &ok))\n")
+            elif typ in structs:
+                o.append(f"\t\t{name} := remote_struct_{typ}(args, \"{name}\", &ok)\n")
             else:
                 fn = {"bool": "remote_bool", "i64": "remote_i64", "f64": "remote_f64", "f32": "remote_f32", "string": "remote_string", "Subscription": "remote_sub"}[typ]
                 dflt = ""
@@ -359,6 +363,21 @@ def gen_remote(procs, enums, structs):
     o.append("\tcase:\n\t\tremote_answer(out, .Not_Found, nil, \"no such method\")\n\t}\n}\n")
     for name, (_, members) in enums.items():
         o.append(f"\n@(private)\n{name}_NAMES := [?]string{{{', '.join(chr(34) + m + chr(34) for m in members)}}}\n")
+    # A struct argument: a JSON object of its fields (any left out: zero).
+    used = sorted({t for d in procs if remote_ok(d) for _, t, _ in d.params if t in structs})
+    for name in used:
+        _, fields = structs[name]
+        o.append(f"\n@(private)\nremote_struct_{name} :: proc(args: json.Object, name: string, ok: ^bool) -> {name} {{\n")
+        o.append("\tobj, is := args[name].(json.Object)\n\tif !is {\n\t\tok^ = false\n\t\treturn {}\n\t}\n")
+        o.append(f"\tv: {name}\n")
+        for fname, ftype, _ in fields:
+            if ftype in enums:
+                o.append(f"\tv.{fname} = {ftype}(remote_enum_or(obj, \"{fname}\", {ftype}_NAMES[:], 0, ok))\n")
+            else:
+                fn = {"bool": "remote_bool_or", "i64": "remote_i64_or", "f64": "remote_f64_or", "f32": "remote_f32_or"}[ftype]
+                zero = {"bool": "false"}.get(ftype, "0")
+                o.append(f"\tv.{fname} = {fn}(obj, \"{fname}\", {zero}, ok)\n")
+        o.append("\treturn v\n}\n")
     o.append("\n// The remote methods' names (pads_...), in the table's order.\n")
     o.append("REMOTE_METHODS := [?]string{\n")
     for d in procs:

@@ -627,7 +627,7 @@ handle_drops :: proc(a: ^App) {
 		index := pad_at(a, d.pos)
 		if drop_midi(a, d.path, index) do continue
 		if index < 0 do index = a.selected
-		if pm.load_onto_pad(&a.m, index, d.path) == .None {
+		if pa.pad_load_sample(&a.api, i64(index), d.path) == .Ok {
 			a.selected = index
 			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(d.path), pm.pad_label(index)))
 		} else {
@@ -659,7 +659,23 @@ files_init :: proc(a: ^App) {
 		if d := sdl.GetUserFolder(.MUSIC); d != nil do f.unsaved, _ = filepath.join({string(d), "Pads", "Unsaved"})
 		else do f.unsaved, _ = filepath.join({settings_folder(a), "Unsaved"})
 	}
-	a.hooks = {user = a, opened = project_opened}
+	a.hooks = {
+		user = a,
+		opened = project_opened,
+		// A parameter touched through the API: its moves recorded as a knob's are.
+		param_touched = proc(user: rawptr, t: pm.Auto_Target, on: bool) {
+			a := (^App)(user)
+			if on do record_touch(a, t)
+			else do record_release(a)
+		},
+		param_moved = proc(user: rawptr, t: pm.Auto_Target, value: f32) {
+			a := (^App)(user)
+			scale := a.knob_scale
+			a.knob_scale = 1 // (the API's values are the target's own units)
+			record_move(a, value)
+			a.knob_scale = scale
+		},
+	}
 }
 
 // Draws `frames` frames back to back and prints the CPU time per frame.

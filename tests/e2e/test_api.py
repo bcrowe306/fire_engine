@@ -70,3 +70,26 @@ def test_settings_through_the_api(app):
     assert app.api("settings_get_text", name="mixer.narrow") == "false"
     r = app.api("settings_set_text", check=False, name="midi.sync", value="Tape")
     assert r["result"] == "Invalid_Argument" and "Internal" in r["error"]
+
+
+def test_pads_and_params_through_the_api(app, fixtures):
+    import os
+    app.api("pad_load_sample", pad=2, path=os.path.join(fixtures, "kick.wav"))
+    app.api("pad_set_name", pad=2, name="Big Kick")
+    app.api("pad_set_volume", pad=2, db=-8)
+    assert app.api("pad_name", pad=2) == "Big Kick"
+    s = app.api("pad_state", pad=2)
+    assert s["used"] and s["volume"] == -8 and s["kind"] == "Sampler"
+    assert app.pad(2)["volume"] == -8  # (the app's own state says so)
+    # Any parameter, by reference: its fader, as the Mixer's.
+    ref = {"track": "Pad", "index": 2, "device": "Volume"}
+    app.api("param_set", ref=ref, value=-3)
+    assert app.api("param_get", ref=ref) == -3
+    assert app.api("param_text", ref=ref) == "-3.0 dB"
+    app.wait(2)
+    sound = {"track": "Pad", "index": 2, "device": "Sound"}
+    n = app.api("param_count", ref=sound)
+    names = [app.api("param_name", ref=app.api("param_at", ref=sound, index=k)) for k in range(n)]
+    assert "Cutoff" in names
+    r = app.api("pad_set_volume", check=False, pad=2, db=40)
+    assert r["result"] == "Invalid_Argument"

@@ -6,6 +6,7 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import "fire:sampler"
@@ -183,12 +184,7 @@ draw_sample_bar :: proc(a: ^App) {
 	im.SetNextItemWidth(116 if narrow else 120)
 	if ui.combo("##playmode", fmt.ctprintf("%s  %s", ui.ICON_PLAY, modes[int(pad.mode)])) {
 		for name, k in modes {
-			if im.Selectable(name, int(pad.mode) == k) {
-				p := pad
-				p.mode = pm.Pad_Mode(k)
-				pm.set_pad(m, i, .Mode, "Set Mode", p)
-				app.seal(&m.history)
-			}
+			if im.Selectable(name, int(pad.mode) == k) do pa.pad_set_mode(&a.api, i64(i), pa.Pad_Mode(k))
 		}
 		if pad.mode == .Loop || pad.mode == .Hold {
 			im.Separator()

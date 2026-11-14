@@ -114,6 +114,249 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := history_gesture_end(api)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_state":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_state(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_name":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_name(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_label":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_label(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_set_name":
+		pad := remote_i64(args, "pad", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_name(api, pad, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_color":
+		pad := remote_i64(args, "pad", &ok)
+		color := remote_i64(args, "color", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_color(api, pad, color)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_mode":
+		pad := remote_i64(args, "pad", &ok)
+		mode := Pad_Mode(remote_enum(args, "mode", Pad_Mode_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_mode(api, pad, mode)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_volume":
+		pad := remote_i64(args, "pad", &ok)
+		db := remote_f32(args, "db", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_volume(api, pad, db)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_pan":
+		pad := remote_i64(args, "pad", &ok)
+		pan := remote_f32(args, "pan", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_pan(api, pad, pan)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_pitch":
+		pad := remote_i64(args, "pad", &ok)
+		semitones := remote_f32(args, "semitones", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_pitch(api, pad, semitones)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_mute":
+		pad := remote_i64(args, "pad", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_mute(api, pad, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_solo":
+		pad := remote_i64(args, "pad", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_solo(api, pad, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_choke":
+		pad := remote_i64(args, "pad", &ok)
+		group := remote_i64(args, "group", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_choke(api, pad, group)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_monitor":
+		pad := remote_i64(args, "pad", &ok)
+		monitor := Monitor(remote_enum(args, "monitor", Monitor_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_monitor(api, pad, monitor)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_kind":
+		pad := remote_i64(args, "pad", &ok)
+		kind := Pad_Kind(remote_enum(args, "kind", Pad_Kind_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_kind(api, pad, kind)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_load_sample":
+		pad := remote_i64(args, "pad", &ok)
+		path := remote_string(args, "path", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_load_sample(api, pad, path)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_clear":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_clear(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_duplicate":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_duplicate(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_copy_to":
+		from := remote_i64(args, "from", &ok)
+		to := remote_i64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_copy_to(api, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_play":
+		pad := remote_i64(args, "pad", &ok)
+		on := remote_bool(args, "on", &ok)
+		velocity := remote_f32_or(args, "velocity", 1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_play(api, pad, on, velocity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_set_armed":
+		pad := remote_i64(args, "pad", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_armed(api, pad, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_param_count":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := param_count(api, ref)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_param_at":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := param_at(api, ref, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_param_info":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := param_info(api, ref)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_param_name":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := param_name(api, ref)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_param_get":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := param_get(api, ref)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_param_set":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		value := remote_f64(args, "value", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := param_set(api, ref, value)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_param_text":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := param_text(api, ref)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_param_touch":
+		ref := remote_struct_Param_Ref(args, "ref", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := param_touch(api, ref, on)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_project_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -473,6 +716,24 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 Result_NAMES := [?]string{"Ok", "Not_Found", "Invalid_Argument", "Busy", "Unsupported", "Io_Error"}
 
 @(private)
+Pad_Kind_NAMES := [?]string{"Sampler", "Audio", "Slicer", "Synth", "Plugin"}
+
+@(private)
+Pad_Mode_NAMES := [?]string{"One_Shot", "Gate", "Loop", "Hold"}
+
+@(private)
+Monitor_NAMES := [?]string{"Auto", "In", "Off"}
+
+@(private)
+Track_NAMES := [?]string{"None", "Pad", "Bus", "Main"}
+
+@(private)
+Device_NAMES := [?]string{"Sound", "Insert", "Volume", "Pan", "Send", "Eq"}
+
+@(private)
+Param_Unit_NAMES := [?]string{"None", "Decibels", "Hertz", "Milliseconds", "Percent", "Semitones", "Ratio"}
+
+@(private)
 Setting_Kind_NAMES := [?]string{"Bool", "Int", "Number", "Choice", "Text"}
 
 @(private)
@@ -486,6 +747,22 @@ Metronome_Sound_NAMES := [?]string{"Beep", "Wood", "Stick", "Cowbell"}
 
 @(private)
 Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
+
+@(private)
+remote_struct_Param_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> Param_Ref {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Param_Ref
+	v.track = Track(remote_enum_or(obj, "track", Track_NAMES[:], 0, ok))
+	v.index = remote_i64_or(obj, "index", 0, ok)
+	v.device = Device(remote_enum_or(obj, "device", Device_NAMES[:], 0, ok))
+	v.slot = remote_i64_or(obj, "slot", 0, ok)
+	v.param = remote_i64_or(obj, "param", 0, ok)
+	return v
+}
 
 // The remote methods' names (pads_...), in the table's order.
 REMOTE_METHODS := [?]string{
@@ -502,6 +779,34 @@ REMOTE_METHODS := [?]string{
 	"pads_history_group_end",
 	"pads_history_gesture_begin",
 	"pads_history_gesture_end",
+	"pads_pad_state",
+	"pads_pad_name",
+	"pads_pad_label",
+	"pads_pad_set_name",
+	"pads_pad_set_color",
+	"pads_pad_set_mode",
+	"pads_pad_set_volume",
+	"pads_pad_set_pan",
+	"pads_pad_set_pitch",
+	"pads_pad_set_mute",
+	"pads_pad_set_solo",
+	"pads_pad_set_choke",
+	"pads_pad_set_monitor",
+	"pads_pad_set_kind",
+	"pads_pad_load_sample",
+	"pads_pad_clear",
+	"pads_pad_duplicate",
+	"pads_pad_copy_to",
+	"pads_pad_play",
+	"pads_pad_set_armed",
+	"pads_param_count",
+	"pads_param_at",
+	"pads_param_info",
+	"pads_param_name",
+	"pads_param_get",
+	"pads_param_set",
+	"pads_param_text",
+	"pads_param_touch",
 	"pads_project_state",
 	"pads_project_dir",
 	"pads_project_name",

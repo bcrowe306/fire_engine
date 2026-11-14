@@ -4,6 +4,7 @@ import "core:fmt"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -123,13 +124,8 @@ draw_pads :: proc(user: rawptr) {
 			modes := [pm.Pad_Mode]string{.One_Shot = "one-shot", .Gate = "gate", .Loop = "loop", .Hold = "hold"}
 			im.SetTooltip("%s", fmt.ctprintf("%s · key %s%s", label, PAD_KEY_LABELS[k], fmt.tprintf(" · %s", modes[pad.mode]) if has else ""))
 		}
-		if hit.mute || hit.solo {
-			np := pad^
-			if hit.mute do np.mute = !np.mute
-			if hit.solo do np.solo = !np.solo
-			pm.set_pad(&a.m, index, .Mute if hit.mute else .Solo, "Mute" if hit.mute else "Solo", np)
-			app.seal(&a.m.history)
-		}
+		if hit.mute do pa.pad_set_mute(&a.api, i64(index), !pad.mute)
+		else if hit.solo do pa.pad_set_solo(&a.api, i64(index), !pad.solo)
 		// A file from the browser dropped on it: into a slicer (with Alt, on
 		// an empty pad's lower half, or onto a slicer), else a sampler.
 		if hit.dropped_device != "" do put_device(a, index, hit.dropped_device) // (from the Devices panel)
@@ -137,7 +133,7 @@ draw_pads :: proc(user: rawptr) {
 		if hit.dropped != "" {
 			if hit.drop_slicer || pad.kind == .Slicer {
 				load_into_slicer(a, index, hit.dropped)
-			} else if pm.load_onto_pad(&a.m, index, hit.dropped) == .None {
+			} else if pa.pad_load_sample(&a.api, i64(index), hit.dropped) == .Ok {
 				a.selected = index
 			}
 		}
@@ -178,15 +174,10 @@ pad_color_menu :: proc(a: ^App, index: int) {
 	pad := m.project.pads[index]
 	sel := selected_pads(a)
 	targets := sel if index in sel && card(sel) > 1 else Pad_Set{index}
-	set :: proc(m: ^pm.Model, targets: Pad_Set, c: u32) {
-		app.begin(&m.history, "Set Color")
-		for i in 0 ..< pm.PADS do if i in targets {
-			p := m.project.pads[i]
-			if p.color == c do continue
-			p.color = c
-			pm.set_pad(m, i, .Color, "Set Color", p)
-		}
-		app.end(&m.history)
+	set :: proc(a: ^App, targets: Pad_Set, c: u32) {
+		pa.history_group_begin(&a.api, "Set Color")
+		for i in 0 ..< pm.PADS do if i in targets && a.m.project.pads[i].color != c do pa.pad_set_color(&a.api, i64(i), i64(c))
+		pa.history_group_end(&a.api)
 	}
 	n := card(targets)
 	if n > 1 do im.TextDisabled("%s", fmt.ctprintf("%d pads' colour", n))
@@ -196,7 +187,7 @@ pad_color_menu :: proc(a: ^App, index: int) {
 		im.PushIDInt(i32(k))
 		cv := ui.rgb(c)
 		if im.ColorButton("##swatch", transmute(im.Vec4)cv, {.NoTooltip, .NoBorder}, {22, 22}) {
-			set(m, targets, c)
+			set(a, targets, c)
 			app.seal(&m.history)
 		}
 		ui.name(fmt.tprintf("colour %d", k + 1))
@@ -211,7 +202,7 @@ pad_color_menu :: proc(a: ^App, index: int) {
 	im.SetNextItemWidth(6 * 26)
 	if im.ColorPicker3("##picker", &rgb, {.NoSidePreview, .NoSmallPreview, .NoAlpha, .PickerHueBar}) {
 		c := u32(clamp(rgb[0], 0, 1) * 255 + 0.5) << 16 | u32(clamp(rgb[1], 0, 1) * 255 + 0.5) << 8 | u32(clamp(rgb[2], 0, 1) * 255 + 0.5)
-		set(m, targets, c)
+		set(a, targets, c)
 	}
 	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
 }
@@ -321,9 +312,9 @@ set_pads_flag :: proc(a: ^App, sel: Pad_Set, field: pm.Pad_Field, on: bool) {
 
 // Clears pads `sel`: one undo step.
 clear_pads :: proc(a: ^App, sel: Pad_Set) {
-	app.begin(&a.m.history, "Clear Pads")
-	defer app.end(&a.m.history)
-	for i in 0 ..< pm.PADS do if i in sel do pm.clear_pad(&a.m, i)
+	pa.history_group_begin(&a.api, "Clear Pads")
+	defer pa.history_group_end(&a.api)
+	for i in 0 ..< pm.PADS do if i in sel do pa.pad_clear(&a.api, i64(i))
 }
 
 // A "Choke Group" submenu for pads `sel`: none, or one of the groups (a
@@ -346,15 +337,9 @@ choke_menu :: proc(a: ^App, sel: Pad_Set) {
 
 // Puts pads `sel` in choke group `g` (0: none): one undo step.
 set_choke :: proc(a: ^App, sel: Pad_Set, g: int) {
-	m := &a.m
-	app.begin(&m.history, "Set Choke Group")
-	defer app.end(&m.history)
-	for i in 0 ..< pm.PADS do if i in sel {
-		p := m.project.pads[i]
-		p.choke = u8(clamp(g, 0, pm.CHOKE_GROUPS))
-		pm.set_pad(m, i, .Choke, "Set Choke Group", p)
-	}
-	app.seal(&m.history)
+	pa.history_group_begin(&a.api, "Set Choke Group")
+	defer pa.history_group_end(&a.api)
+	for i in 0 ..< pm.PADS do if i in sel do pa.pad_set_choke(&a.api, i64(i), i64(clamp(g, 0, pm.CHOKE_GROUPS)))
 }
 
 // Selects the track `d` steps on from the selected one (the pads with a

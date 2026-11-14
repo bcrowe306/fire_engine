@@ -5,6 +5,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import "fire:sampler"
@@ -21,12 +22,7 @@ draw_playback :: proc(a: ^App) {
 	s := pm.pad_sample(m, i)
 	if s == nil do return
 	mode := int(pad.mode)
-	if ui.segmented("mode", {"One-shot", "Gate", "Loop", "Hold"}, &mode) {
-		p := pad
-		p.mode = pm.Pad_Mode(mode)
-		pm.set_pad(m, i, .Mode, "Set Mode", p)
-		app.seal(&m.history)
-	}
+	if ui.segmented("mode", {"One-shot", "Gate", "Loop", "Hold"}, &mode) do pa.pad_set_mode(&a.api, i64(i), pa.Pad_Mode(mode))
 	im.SameLine(0, 16)
 	rev := pad.reverse
 	if ui.toggle("Reverse", &rev) {
@@ -183,11 +179,10 @@ pad_name_colour :: proc(a: ^App, i: int) {
 	}
 	im.SetNextItemWidth(-1)
 	if im.InputText("##name", cstring(&name_buf[0]), len(name_buf)) {
-		p := pad
-		p.name = name_buf
-		pm.set_pad(m, i, .Name, "Rename Pad", p)
+		pa.history_gesture_begin(&a.api) // (the keys typed: one step)
+		pa.pad_set_name(&a.api, i64(i), strings.truncate_to_byte(string(name_buf[:]), 0))
 	}
-	if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+	if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 	// Its colour: click for the swatches and a picker.
 	if im.ColorButton("##color", transmute(im.Vec4)ui.rgb(pad.color), {.NoTooltip, .NoBorder}, {44, 22}) do im.OpenPopup("##colormenu")
 	ui.name("colour")
@@ -231,12 +226,7 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 	im.SameLine(0, 16)
 	if pad.input.from == .Interface {
 		mon := int(pad.monitor)
-		if ui.segmented("monitor", {"Auto", "In", "Off"}, &mon) {
-			p := pad
-			p.monitor = pm.Monitor(mon)
-			pm.set_pad(m, i, .Monitor, "Monitor", p)
-			app.seal(&m.history)
-		}
+		if ui.segmented("monitor", {"Auto", "In", "Off"}, &mon) do pa.pad_set_monitor(&a.api, i64(i), pa.Monitor(mon))
 		if im.IsItemHovered() do im.SetTooltip("Monitoring, its input through its strip and effects: Auto while it is armed, In always, Off never (you hear it on the interface). Use headphones.")
 	} else {
 		im.TextDisabled("%s", cstring("No input: nothing to monitor") if pad.input.from == .None else cstring("Resampling: not monitored"))
@@ -262,7 +252,7 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 	if im.Button(ui.ICON_ERASER + "  Clear Take") do pm.clear_clip(m, i)
 	im.EndDisabled()
 	im.SameLine()
-	if im.Button(ui.ICON_TRASH + "  Clear Pad") do pm.clear_pad(m, i)
+	if im.Button(ui.ICON_TRASH + "  Clear Pad") do pa.pad_clear(&a.api, i64(i))
 }
 
 // A knob for one f32 field of the selected pad, as an undoable edit.

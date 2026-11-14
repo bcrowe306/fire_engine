@@ -5,6 +5,7 @@ import "core:path/filepath"
 import "core:strings"
 
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -457,7 +458,7 @@ load_next_empty :: proc(a: ^App, e: pm.Browser_Entry) {
 		return
 	}
 	if drop_midi(a, e.path, to) do return
-	if pm.load_onto_pad(&a.m, to, e.path) == .None {
+	if pa.pad_load_sample(&a.api, i64(to), e.path) == .Ok {
 		ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.path), pm.pad_label(to)))
 	} else {
 		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.path)))
@@ -477,7 +478,7 @@ next_empty_target :: proc(a: ^App) -> int {
 @(private)
 load_selected :: proc(a: ^App, e: pm.Browser_Entry) {
 	if drop_midi(a, e.path, a.selected) do return // (a MIDI file: its notes on the pad)
-	if pm.load_onto_pad(&a.m, a.selected, e.path) == .None {
+	if pa.pad_load_sample(&a.api, i64(a.selected), e.path) == .Ok {
 		ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Loaded %s onto %s", filepath.base(e.path), pm.pad_label(a.selected)))
 	} else {
 		ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Could not load %s", filepath.base(e.path)))

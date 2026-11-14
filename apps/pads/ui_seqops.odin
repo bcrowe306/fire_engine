@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -308,10 +309,7 @@ draw_pad_rename :: proc(a: ^App) {
 		done := im.InputText("##pad_rename", cstring(&o.pad_buf[0]), len(o.pad_buf), {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("pad rename")
 		if done || im.Button("Rename") {
-			p := a.m.project.pads[o.rename_pad]
-			pm.set_pad_name(&p, strings.truncate_to_byte(string(o.pad_buf[:]), 0))
-			pm.set_pad(&a.m, o.rename_pad, .Name, "Rename Pad", p)
-			app.seal(&a.m.history)
+			pa.pad_set_name(&a.api, i64(o.rename_pad), strings.truncate_to_byte(string(o.pad_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()

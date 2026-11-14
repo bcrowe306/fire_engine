@@ -5,6 +5,7 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -30,8 +31,8 @@ track_io_frame :: proc(a: ^App) {
 	io := &a.io
 	m := &a.m
 	if a.settings.arm_selected && a.selected != io.by_select {
-		if io.by_select >= 0 && io.by_select not_in io.manual do pm.arm_track(m, io.by_select, false)
-		pm.arm_track(m, a.selected, true)
+		if io.by_select >= 0 && io.by_select not_in io.manual do pa.pad_set_armed(&a.api, i64(io.by_select), false)
+		pa.pad_set_armed(&a.api, i64(a.selected), true)
 		io.by_select = a.selected
 	}
 	dt := im.GetIO().DeltaTime
@@ -60,10 +61,10 @@ arm_click :: proc(a: ^App, i: int) {
 	keep := im.GetIO().KeyCtrl || im.GetIO().KeyShift
 	on := !pm.track_armed(m, i)
 	if !keep do for k in 0 ..< pm.PADS do if k != i && pm.track_armed(m, k) {
-		pm.arm_track(m, k, false)
+		pa.pad_set_armed(&a.api, i64(k), false)
 		io.manual -= {k}
 	}
-	pm.arm_track(m, i, on)
+	pa.pad_set_armed(&a.api, i64(i), on)
 	if on do io.manual += {i}
 	else do io.manual -= {i}
 	// (Disarmed while selected: it stays off; `by_select` still names it,

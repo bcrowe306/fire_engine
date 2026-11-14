@@ -20,10 +20,10 @@ declarations (`python3 scripts/api.py`), so the three never differ. Every
 procedure is in the [reference](/reference/pads-api/).
 
 The API is being built a module at a time ([the design](/design/api/)).
-In this version: **history**, **transport**, **project** and
-**settings**, with results, errors, threading and changes. Pads' own
-toolbar, History and File menus, shortcuts, and script commands for these
-already go through it.
+In this version: **history**, **transport**, **project**,
+**settings**, **pads** and **params**, with results, errors, threading
+and changes. Pads' own toolbar, History and File menus, shortcuts, pad
+menus and script commands for these already go through it.
 
 ## Results and errors
 
@@ -138,6 +138,46 @@ Out of range is `Invalid_Argument`; an audio setting the device won't
 open with is `Io_Error`, and it is put back. `transport_set_sync` and
 `transport_set_clock_out` set the two the transport follows. In a drive
 script: `setting midi.sync Midi_Clock`.
+
+## Pads
+
+Pads are numbered 0..127 (eight banks of sixteen; `pad_label` gives
+"A1"..."H16"). `pad_state` is one pad as it is; each `pad_set_*` an undo
+step (a fader dragged: in a gesture, one):
+
+```odin
+pads_api.pad_load_sample(api, 0, "/Samples/kick.wav")
+pads_api.pad_set_name(api, 0, "Kick")
+pads_api.pad_set_choke(api, 0, 1)        // hits of group 1 silence each other
+pads_api.pad_set_kind(api, 1, .Synth)    // Sampler, Slicer, Synth, Audio
+pads_api.pad_play(api, 0, true, 0.8)     // as a hit at velocity 0.8
+pads_api.pad_play(api, 0, false)
+```
+
+## Parameters
+
+Anything that can be turned has a `Param_Ref`: a track (a pad, a bus,
+main), its device (its sound, an insert, its fader, pan, a send, its EQ),
+the slot and the parameter's id on the device. A surface can map any
+device without knowing it:
+
+```odin
+sound := pads_api.Param_Ref{track = .Pad, index = 0, device = .Sound}
+n, _ := pads_api.param_count(api, sound)
+for k in 0 ..< n {
+	ref, _ := pads_api.param_at(api, sound, k)
+	name, _ := pads_api.param_name(api, ref)    // "Cutoff"
+	info, _ := pads_api.param_info(api, ref)    // its range, unit, default, steps
+	text, _ := pads_api.param_text(api, ref)    // "1.20 kHz", as the UI shows it
+}
+```
+
+`param_set` takes the plain value (Hz, dB, %) in its range. A knob held
+is a touch: `param_touch(api, ref, true)`, the moves, then `false`. Its
+moves are one undo step, and with Pads' automation recording armed and
+playing, they are written into the sequence, as a knob's are. The value
+`param_get` reads is the project's (what automation moves it to while it
+plays is the playhead's business).
 
 ## From C
 

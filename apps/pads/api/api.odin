@@ -38,6 +38,8 @@ Api :: struct {
 	error:     [256]u8,
 	error_len: int,
 	gesture:   bool, // a gesture is open: edits merge (history_gesture_begin)
+	touched:   Param_Ref, // the parameter touched (param_touch), when `has_touch`
+	has_touch: bool,
 	subs:      [dynamic]Sub,
 	next_sub:  i64,
 	lock:      sync.Mutex, // guards `posted`

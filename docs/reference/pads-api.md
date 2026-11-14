@@ -125,6 +125,234 @@ history_gesture_end :: proc(api: ^Api) -> Result
 
 Ends the gesture: the next edit is a new step.
 
+## Pads
+
+### pad_state
+
+```odin
+pad_state :: proc(api: ^Api, pad: i64) -> (Pad_State, Result)
+```
+
+Pad `pad` now. Not_Found out of 0..PADS-1.
+
+### pad_name
+
+```odin
+pad_name :: proc(api: ^Api, pad: i64) -> (string, Result)
+```
+
+Pad `pad`'s name: its own, else its sound's ("" for an empty pad). Temporary.
+
+### pad_label
+
+```odin
+pad_label :: proc(api: ^Api, pad: i64) -> (string, Result)
+```
+
+Pad `pad`'s label as the pads show it ("A1"..."H16"). Temporary.
+
+### pad_set_name
+
+```odin
+pad_set_name :: proc(api: ^Api, pad: i64, name: string) -> Result
+```
+
+Names pad `pad` (up to 31 bytes; "": its sound's name again), undoably.
+
+### pad_set_color
+
+```odin
+pad_set_color :: proc(api: ^Api, pad: i64, color: i64) -> Result
+```
+
+Colours pad `pad` (0xRRGGBB), undoably.
+
+### pad_set_mode
+
+```odin
+pad_set_mode :: proc(api: ^Api, pad: i64, mode: Pad_Mode) -> Result
+```
+
+How pad `pad`'s sample plays when hit, undoably.
+
+### pad_set_volume
+
+```odin
+pad_set_volume :: proc(api: ^Api, pad: i64, db: f32) -> Result
+```
+
+Pad `pad`'s fader (-60..6 dB), undoably (a gesture's moves merge).
+
+### pad_set_pan
+
+```odin
+pad_set_pan :: proc(api: ^Api, pad: i64, pan: f32) -> Result
+```
+
+Pad `pad`'s pan (-1 left .. 1 right), undoably.
+
+### pad_set_pitch
+
+```odin
+pad_set_pitch :: proc(api: ^Api, pad: i64, semitones: f32) -> Result
+```
+
+Pad `pad`'s transpose (-24..24 semitones), undoably.
+
+### pad_set_mute
+
+```odin
+pad_set_mute :: proc(api: ^Api, pad: i64, on: bool) -> Result
+```
+
+Mutes pad `pad` or not, undoably.
+
+### pad_set_solo
+
+```odin
+pad_set_solo :: proc(api: ^Api, pad: i64, on: bool) -> Result
+```
+
+Solos pad `pad` or not, undoably.
+
+### pad_set_choke
+
+```odin
+pad_set_choke :: proc(api: ^Api, pad: i64, group: i64) -> Result
+```
+
+Puts pad `pad` in choke group `group` (1..6; 0: none): a pad of the group hit silences the others. Undoably.
+
+### pad_set_monitor
+
+```odin
+pad_set_monitor :: proc(api: ^Api, pad: i64, monitor: Monitor) -> Result
+```
+
+When pad `pad`'s input is heard, undoably.
+
+### pad_set_kind
+
+```odin
+pad_set_kind :: proc(api: ^Api, pad: i64, kind: Pad_Kind) -> Result
+```
+
+Makes pad `pad` a `kind`: a sampler (a slicer's slices kept), a slicer (of its sample, or empty), the synth, or an audio track. Undoably. Unsupported for Plugin (load one: devices).
+
+### pad_load_sample
+
+```odin
+pad_load_sample :: proc(api: ^Api, pad: i64, path: string) -> Result
+```
+
+Loads the audio file at `path` onto pad `pad` (a sampler pad's sample), undoably. Io_Error if it can't be read.
+
+### pad_clear
+
+```odin
+pad_clear :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Clears pad `pad` (its sound, its settings), undoably.
+
+### pad_duplicate
+
+```odin
+pad_duplicate :: proc(api: ^Api, pad: i64) -> (i64, Result)
+```
+
+Copies pad `pad` onto the next empty pad after it: which one. Not_Found if none is empty.
+
+### pad_copy_to
+
+```odin
+pad_copy_to :: proc(api: ^Api, from: i64, to: i64) -> Result
+```
+
+Copies pad `from` onto pad `to` (all of it: its sound and settings), undoably.
+
+### pad_play
+
+```odin
+pad_play :: proc(api: ^Api, pad: i64, on: bool, velocity: f32 = 1) -> Result
+```
+
+Plays pad `pad` (`on`) or lets it go, at `velocity` (0..1], as a hit on it does (its mode, its choke group).
+
+### pad_set_armed
+
+```odin
+pad_set_armed :: proc(api: ^Api, pad: i64, on: bool) -> Result
+```
+
+Arms pad `pad` to record (or not): an audio track records its input, any other pad what its MIDI input plays.
+
+## Parameters, by reference
+
+### param_count
+
+```odin
+param_count :: proc(api: ^Api, ref: Param_Ref) -> (i64, Result)
+```
+
+Parameters device `ref` has now (`ref.param` ignored; `param_at` lists them). Not_Found if the device isn't there (an empty pad, an empty slot).
+
+### param_at
+
+```odin
+param_at :: proc(api: ^Api, ref: Param_Ref, index: i64) -> (Param_Ref, Result)
+```
+
+Device `ref`'s parameter `index` (in its order) as a reference.
+
+### param_info
+
+```odin
+param_info :: proc(api: ^Api, ref: Param_Ref) -> (Param_Info, Result)
+```
+
+What parameter `ref` is: its range, default, unit, steps.
+
+### param_name
+
+```odin
+param_name :: proc(api: ^Api, ref: Param_Ref) -> (string, Result)
+```
+
+Parameter `ref`'s name ("Cutoff", "Volume"). Temporary.
+
+### param_get
+
+```odin
+param_get :: proc(api: ^Api, ref: Param_Ref) -> (f64, Result)
+```
+
+Parameter `ref`'s value now, in its plain units (as the project keeps it: not what automation moves it to while it plays).
+
+### param_set
+
+```odin
+param_set :: proc(api: ^Api, ref: Param_Ref, value: f64) -> Result
+```
+
+Sets parameter `ref` to `value` (plain units, in its range), undoably: each call a step, or one for a touch (`param_touch`) or a gesture.
+
+### param_text
+
+```odin
+param_text :: proc(api: ^Api, ref: Param_Ref) -> (string, Result)
+```
+
+Parameter `ref`'s value as the UI shows it ("-6.0 dB", "1.2 kHz"). Temporary.
+
+### param_touch
+
+```odin
+param_touch :: proc(api: ^Api, ref: Param_Ref, on: bool) -> Result
+```
+
+Begins (`on`) or ends touching parameter `ref`, as a knob is held: its moves until let go are one undo step, and with automation recording armed, they are written while it plays. One parameter is touched at a time (touching another lets the first go).
+
 ## Project: new, open, save, templates, clean up
 
 ### project_state
@@ -501,6 +729,42 @@ What a call came to. `last_error` says why it wasn't `Ok`.
 
 `Ok`, `Not_Found`, `Invalid_Argument`, `Busy`, `Unsupported`, `Io_Error`
 
+### Pad_Kind
+
+What a pad is.
+
+`Sampler`, `Audio`, `Slicer`, `Synth`, `Plugin`
+
+### Pad_Mode
+
+How a pad's sample plays when hit.
+
+`One_Shot`, `Gate`, `Loop`, `Hold`
+
+### Monitor
+
+When a pad's input is heard.
+
+`Auto`, `In`, `Off`
+
+### Track
+
+Whose parameter.
+
+`None`, `Pad`, `Bus`, `Main`
+
+### Device
+
+Which of a track's devices.
+
+`Sound`, `Insert`, `Volume`, `Pan`, `Send`, `Eq`
+
+### Param_Unit
+
+What a parameter's values are in.
+
+`None`, `Decibels`, `Hertz`, `Milliseconds`, `Percent`, `Semitones`, `Ratio`
+
 ### Setting_Kind
 
 What a setting is (`settings_info`).
@@ -541,6 +805,53 @@ The undo history now: steps that can be undone and redone, and whether the proje
 | `redo_steps` | `i64` | steps undone that can be redone |
 | `dirty` | `bool` | changed since it was saved |
 | `grouping` | `bool` | a group is open (history_group_begin) |
+
+### Pad_State
+
+Pad `pad` now (its name: `pad_name`).
+
+| Field | Type | |
+|---|---|---|
+| `used` | `bool` | it has a sound (a sample, a synth, a plug-in, takes) |
+| `kind` | `Pad_Kind` |  |
+| `mode` | `Pad_Mode` |  |
+| `color` | `i64` | 0xRRGGBB |
+| `volume` | `f32` | dB |
+| `pan` | `f32` | -1..1 |
+| `pitch` | `f32` | semitones |
+| `mute` | `bool` |  |
+| `solo` | `bool` |  |
+| `choke` | `i64` | its choke group (0: none; 1..6) |
+| `bus` | `i64` | where it plays (0: main; 1..16: a bus) |
+| `armed` | `bool` | to record (its input, or its MIDI) |
+| `monitor` | `Monitor` |  |
+| `frozen` | `bool` | it plays its rendering |
+
+### Param_Ref
+
+Any parameter: a device of a track, and its parameter's id (the device's own; for Volume, Pan and Send, ignored). Stable: a caller may keep it. The same thing automation points at.
+
+| Field | Type | |
+|---|---|---|
+| `track` | `Track` |  |
+| `index` | `i64` | the pad or the bus |
+| `device` | `Device` |  |
+| `slot` | `i64` | the insert, the effect, the send |
+| `param` | `i64` | the parameter's id on its device |
+
+### Param_Info
+
+What a parameter is: its range in plain units, where it starts, how it is drawn.
+
+| Field | Type | |
+|---|---|---|
+| `min` | `f64` |  |
+| `max` | `f64` |  |
+| `default_value` | `f64` | where it starts |
+| `unit` | `Param_Unit` |  |
+| `stepped` | `bool` | whole values only (a choice) |
+| `log` | `bool` | a frequency: drawn on a log scale |
+| `automatable` | `bool` |  |
 
 ### Project_State
 

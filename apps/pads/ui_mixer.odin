@@ -7,6 +7,7 @@ import "core:strings"
 import app "app:core"
 import "app:ui"
 import "fire:dsp"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -868,12 +869,7 @@ monitor_row :: proc(a: ^App, pad: int, h: f32) {
 	if clicked && !internal do im.OpenPopup("##monitormenu")
 	if im.BeginPopup("##monitormenu") {
 		for mo in pm.Monitor {
-			if im.MenuItem(fmt.ctprintf("%s###mon%d", NAMES[mo], int(mo)), nil, p.monitor == mo) {
-				x := m.project.pads[pad]
-				x.monitor = mo
-				pm.set_pad(m, pad, .Monitor, "Monitor", x)
-				app.seal(&m.history)
-			}
+			if im.MenuItem(fmt.ctprintf("%s###mon%d", NAMES[mo], int(mo)), nil, p.monitor == mo) do pa.pad_set_monitor(&a.api, i64(pad), pa.Monitor(mo))
 			ui.name(fmt.tprintf("monitor %s", NAMES[mo]))
 		}
 		im.EndPopup()
@@ -1344,13 +1340,15 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	pe := pan_knob(a, &pan)
 	knob_target(a, {})
 	multi_edit(a, card(targets), pe.changed, false)
-	if pe.changed do for j in 0 ..< pm.PADS do if j in targets {
-		p := m.project.pads[j]
-		p.pan = pan if j == i else clamp(p.pan + (pan - pad.pan), -1, 1)
-		pm.set_pad(m, j, .Pan, "Set Pan", p)
+	if pe.changed {
+		pa.history_gesture_begin(&a.api)
+		for j in 0 ..< pm.PADS do if j in targets {
+			p := m.project.pads[j]
+			pa.pad_set_pan(&a.api, i64(j), pan if j == i else clamp(p.pan + (pan - pad.pan), -1, 1))
+		}
 	}
 	multi_edit(a, card(targets), false, pe.ended)
-	if pe.ended do app.seal(&m.history)
+	if pe.ended do pa.history_gesture_end(&a.api)
 	gap()
 	vol := pad.volume
 	readouts(a, vol, &a.mixer.pads[i])
@@ -1358,13 +1356,15 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 	fe := fader_meter(a, &vol, &a.mixer.pads[i], fader_h(h, compact, 0 if compact else block_h(a, h)), strip_reduction(a, .Pad, i, pm.PAD_INSERTS))
 	knob_target(a, {})
 	multi_edit(a, card(targets), fe.changed, false)
-	if fe.changed do for j in 0 ..< pm.PADS do if j in targets {
-		p := m.project.pads[j]
-		p.volume = vol if j == i else clamp(p.volume + (vol - pad.volume), FADER_LO, FADER_HI)
-		pm.set_pad(m, j, .Volume, "Set Volume", p)
+	if fe.changed {
+		pa.history_gesture_begin(&a.api)
+		for j in 0 ..< pm.PADS do if j in targets {
+			p := m.project.pads[j]
+			pa.pad_set_volume(&a.api, i64(j), clamp(vol, FADER_LO, FADER_HI) if j == i else clamp(p.volume + (vol - pad.volume), FADER_LO, FADER_HI))
+		}
 	}
 	multi_edit(a, card(targets), false, fe.ended)
-	if fe.ended do app.seal(&m.history)
+	if fe.ended do pa.history_gesture_end(&a.api)
 	gap()
 	mute, solo := pad.mute, pad.solo
 	armed := pm.track_armed(m, i)

@@ -3,9 +3,9 @@ title: The Pads API design
 description: One Odin API for everything Pads does, a C ABI and remote methods generated from it, and the app a client of it; built a module at a time.
 ---
 
-Status: stages 1 (the foundation, history, transport) and 2 (project,
-settings) built 2026-11-14; the rest planned (decisions taken
-2026-11-13). Using it: the
+Status: stages 1 (the foundation, history, transport), 2 (project,
+settings) and 3a (pads, params) built 2026-11-14; 3b (devices, effects)
+and the rest planned (decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -64,6 +64,36 @@ settings) built 2026-11-14; the rest planned (decisions taken
   and `Settings` (a version the registry and Pads' own save bump).
 - Not yet: the Clean Up dialog keeps its per-file choice (it calls the
   model with the files ticked); the API cleans up by kind.
+
+### Stage 3a, as built (pads, params)
+
+Stage 3 lands in two commits: 3a the pads and the parameters, 3b the
+devices and effects (and the knobs moved onto `param_set`).
+
+- `pads`: a pad's state, name, label; set its name, colour, mode,
+  volume, pan, pitch, mute, solo, choke group, monitoring, kind
+  (sampler, slicer, synth, audio track); load a sample, clear,
+  duplicate, copy onto another, play, arm. The pads' menus, the
+  inspector, the Mixer's strip fader and pan (a gesture), the colour and
+  choke menus, the browser's and drops' loads and the shell's commands
+  use them. Exceptions (`api-lint:`): Paste Pad (the UI's clipboard),
+  `empty_slicer` in the shell.
+- `params`: `Param_Ref` is `pm.Auto_Target` (track, index, device,
+  slot, param) without its cached range. Info and the list come from the
+  device's node (`resolve_target`; the shown parameters); a fader, pan or
+  send is fixed (-60..6 dB, -1..1). Values are the project's, read and
+  written through the model's setters: a sampler's through
+  `pm.voice_param_set` (the inverse of `voice_params`: attack, release
+  and transpose the pad's own fields), a synth's `set_synth_value`, a
+  plug-in's and an insert's `set_target_param`, faders `set_pad` and
+  `set_bus`, sends `set_send_db`, EQ gains `set_pad`. `param_touch` is a
+  gesture plus the core's hooks `param_touched`/`param_moved`, which
+  Pads gives its automation recorder.
+- The generator takes a struct as an argument (C: by value; remote: a
+  JSON object of its fields, any left out zero). `Param_Info`'s default
+  is `default_value` (`default` is C's).
+- The knobs still write the model themselves (stage 3b moves them onto
+  `param_set`); the lint covers the pads' fields.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,
