@@ -160,3 +160,19 @@ def test_the_song_launcher_and_perform_through_the_api(app, fixtures):
     app.api("perform_set_play_mode", mode="Pads")
     app.api("perform_set_bank", bank=2)
     assert app.state()["bank"] == 2
+
+
+def test_export_browser_and_midi_through_the_api(app, fixtures, tmp_path):
+    import os
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.cmd("note 0 0 0.25 1")
+    n = app.api("export_now", settings={"source": "Sequence", "stems": "Mixdown", "format": "Int16", "rate": 48000, "tail": 0}, path=str(tmp_path / "mix.wav"))
+    assert n == 1 and (tmp_path / "mix.wav").exists()
+    app.api("browser_go", dir=fixtures)
+    assert app.api("browser_folder") == fixtures
+    rows = app.api("browser_state")["rows"]
+    names = [app.api("browser_row_name", index=k) for k in range(rows)]
+    assert "kick.wav" in names
+    assert app.state()["browser"]["root"] == fixtures
+    app.api("midi_learn", key=40, pad=3)
+    assert app.api("midi_key_of", pad=3) == 3 or app.api("midi_key_of", pad=3) == 40

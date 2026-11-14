@@ -27,6 +27,34 @@ Table_V1 :: struct {
 	audio_consolidate: proc "c" (api: ^Api, slot: i64, pad: i64) -> Result,
 	audio_set_warp: proc "c" (api: ^Api, slot: i64, pad: i64, warp: Audio_Warp, transpose: f32) -> Result,
 	audio_clear: proc "c" (api: ^Api, pad: i64) -> Result,
+	browser_state: proc "c" (api: ^Api, out: ^Browser_State) -> Result,
+	browser_folder: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_selected: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_go: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result,
+	browser_up: proc "c" (api: ^Api) -> Result,
+	browser_back: proc "c" (api: ^Api) -> Result,
+	browser_forward: proc "c" (api: ^Api) -> Result,
+	browser_refresh: proc "c" (api: ^Api) -> Result,
+	browser_row: proc "c" (api: ^Api, index: i64, out: ^Browser_Row) -> Result,
+	browser_row_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_row_path: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_expand: proc "c" (api: ^Api, dir: cstring, dir_len: i64, open: bool) -> Result,
+	browser_toggle: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result,
+	browser_select: proc "c" (api: ^Api, path: cstring, path_len: i64) -> Result,
+	browser_set_tab: proc "c" (api: ^Api, index: i64) -> Result,
+	browser_favorite_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_favorite_folder: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_add_favorite: proc "c" (api: ^Api, dir: cstring, dir_len: i64, name: cstring, name_len: i64, out: ^i64) -> Result,
+	browser_remove_favorite: proc "c" (api: ^Api, index: i64) -> Result,
+	browser_rename_favorite: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result,
+	browser_move_favorite: proc "c" (api: ^Api, from: i64, to: i64) -> Result,
+	browser_search: proc "c" (api: ^Api, query: cstring, query_len: i64) -> Result,
+	browser_result: proc "c" (api: ^Api, index: i64, out: ^Browser_Row) -> Result,
+	browser_result_path: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	browser_preview: proc "c" (api: ^Api, path: cstring, path_len: i64) -> Result,
+	browser_preview_stop: proc "c" (api: ^Api) -> Result,
+	browser_preview_settings: proc "c" (api: ^Api, out: ^Preview_Settings) -> Result,
+	browser_set_preview_settings: proc "c" (api: ^Api, s: Preview_Settings) -> Result,
 	device_preset_count: proc "c" (api: ^Api, out: ^i64) -> Result,
 	device_preset_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	device_preset_category: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -53,6 +81,19 @@ Table_V1 :: struct {
 	effect_set_key: proc "c" (api: ^Api, s: Slot_Ref, kind: Key_Kind, index: i64) -> Result,
 	effect_set_key_filter: proc "c" (api: ^Api, s: Slot_Ref, hz: f32) -> Result,
 	effect_set_key_listen: proc "c" (api: ^Api, s: Slot_Ref, on: bool) -> Result,
+	export_state: proc "c" (api: ^Api, out: ^Export_State) -> Result,
+	export_file: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	export_start: proc "c" (api: ^Api, settings: Export_Settings, path: cstring, path_len: i64) -> Result,
+	export_now: proc "c" (api: ^Api, settings: Export_Settings, path: cstring, path_len: i64, out: ^i64) -> Result,
+	export_resample: proc "c" (api: ^Api) -> Result,
+	export_bounce_pads: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64) -> Result,
+	export_bounce_bus: proc "c" (api: ^Api, bus: i64) -> Result,
+	export_bounce_in_place: proc "c" (api: ^Api, pad: i64) -> Result,
+	export_freeze: proc "c" (api: ^Api, pad: i64) -> Result,
+	export_unfreeze: proc "c" (api: ^Api, pad: i64) -> Result,
+	export_flatten: proc "c" (api: ^Api, pad: i64) -> Result,
+	export_midi: proc "c" (api: ^Api, path: cstring, path_len: i64, slot: i64, out: ^i64) -> Result,
+	export_import_midi: proc "c" (api: ^Api, path: cstring, path_len: i64, slot: i64, how: Midi_Import, pad: i64, out: ^i64) -> Result,
 	history_state: proc "c" (api: ^Api, out: ^History_State) -> Result,
 	history_undo: proc "c" (api: ^Api) -> Result,
 	history_redo: proc "c" (api: ^Api) -> Result,
@@ -83,6 +124,16 @@ Table_V1 :: struct {
 	launcher_color_lane: proc "c" (api: ^Api, lane: i64, color: i64) -> Result,
 	launcher_move_sequence: proc "c" (api: ^Api, slot: i64, lane: i64, row: i64) -> Result,
 	launcher_new_sequence: proc "c" (api: ^Api, lane: i64, out: ^i64) -> Result,
+	midi_port_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	midi_port: proc "c" (api: ^Api, index: i64, out: ^Midi_Port) -> Result,
+	midi_port_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	midi_port_id: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	midi_send: proc "c" (api: ^Api, status: i64, data1: i64, data2: i64, port: i64) -> Result,
+	midi_learn: proc "c" (api: ^Api, key: i64, pad: i64) -> Result,
+	midi_key_of: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result,
+	midi_pad: proc "c" (api: ^Api, pad: i64, out: ^Pad_Midi) -> Result,
+	midi_set_pad_input: proc "c" (api: ^Api, pad: i64, mode: Midi_In_Mode, port_id: cstring, port_id_len: i64, channel: i64) -> Result,
+	midi_set_pad_output: proc "c" (api: ^Api, pad: i64, on: bool, channel: i64, key: i64, port_id: cstring, port_id_len: i64) -> Result,
 	mixer_state: proc "c" (api: ^Api, out: ^Mixer_State) -> Result,
 	mixer_bus_state: proc "c" (api: ^Api, bus: i64, out: ^Bus_State) -> Result,
 	mixer_bus_name: proc "c" (api: ^Api, bus: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -128,6 +179,8 @@ Table_V1 :: struct {
 	pad_copy_to: proc "c" (api: ^Api, from: i64, to: i64) -> Result,
 	pad_play: proc "c" (api: ^Api, pad: i64, on: bool, velocity: f32) -> Result,
 	pad_set_armed: proc "c" (api: ^Api, pad: i64, on: bool) -> Result,
+	pad_input: proc "c" (api: ^Api, pad: i64, out: ^Pad_Input) -> Result,
+	pad_set_input: proc "c" (api: ^Api, pad: i64, input: Pad_Input) -> Result,
 	param_count: proc "c" (api: ^Api, ref: Param_Ref, out: ^i64) -> Result,
 	param_at: proc "c" (api: ^Api, ref: Param_Ref, index: i64, out: ^Param_Ref) -> Result,
 	param_info: proc "c" (api: ^Api, ref: Param_Ref, out: ^Param_Info) -> Result,
@@ -281,6 +334,34 @@ table_fill :: proc(api: ^Api) {
 	t.audio_consolidate = c_audio_consolidate
 	t.audio_set_warp = c_audio_set_warp
 	t.audio_clear = c_audio_clear
+	t.browser_state = c_browser_state
+	t.browser_folder = c_browser_folder
+	t.browser_selected = c_browser_selected
+	t.browser_go = c_browser_go
+	t.browser_up = c_browser_up
+	t.browser_back = c_browser_back
+	t.browser_forward = c_browser_forward
+	t.browser_refresh = c_browser_refresh
+	t.browser_row = c_browser_row
+	t.browser_row_name = c_browser_row_name
+	t.browser_row_path = c_browser_row_path
+	t.browser_expand = c_browser_expand
+	t.browser_toggle = c_browser_toggle
+	t.browser_select = c_browser_select
+	t.browser_set_tab = c_browser_set_tab
+	t.browser_favorite_name = c_browser_favorite_name
+	t.browser_favorite_folder = c_browser_favorite_folder
+	t.browser_add_favorite = c_browser_add_favorite
+	t.browser_remove_favorite = c_browser_remove_favorite
+	t.browser_rename_favorite = c_browser_rename_favorite
+	t.browser_move_favorite = c_browser_move_favorite
+	t.browser_search = c_browser_search
+	t.browser_result = c_browser_result
+	t.browser_result_path = c_browser_result_path
+	t.browser_preview = c_browser_preview
+	t.browser_preview_stop = c_browser_preview_stop
+	t.browser_preview_settings = c_browser_preview_settings
+	t.browser_set_preview_settings = c_browser_set_preview_settings
 	t.device_preset_count = c_device_preset_count
 	t.device_preset_name = c_device_preset_name
 	t.device_preset_category = c_device_preset_category
@@ -307,6 +388,19 @@ table_fill :: proc(api: ^Api) {
 	t.effect_set_key = c_effect_set_key
 	t.effect_set_key_filter = c_effect_set_key_filter
 	t.effect_set_key_listen = c_effect_set_key_listen
+	t.export_state = c_export_state
+	t.export_file = c_export_file
+	t.export_start = c_export_start
+	t.export_now = c_export_now
+	t.export_resample = c_export_resample
+	t.export_bounce_pads = c_export_bounce_pads
+	t.export_bounce_bus = c_export_bounce_bus
+	t.export_bounce_in_place = c_export_bounce_in_place
+	t.export_freeze = c_export_freeze
+	t.export_unfreeze = c_export_unfreeze
+	t.export_flatten = c_export_flatten
+	t.export_midi = c_export_midi
+	t.export_import_midi = c_export_import_midi
 	t.history_state = c_history_state
 	t.history_undo = c_history_undo
 	t.history_redo = c_history_redo
@@ -337,6 +431,16 @@ table_fill :: proc(api: ^Api) {
 	t.launcher_color_lane = c_launcher_color_lane
 	t.launcher_move_sequence = c_launcher_move_sequence
 	t.launcher_new_sequence = c_launcher_new_sequence
+	t.midi_port_count = c_midi_port_count
+	t.midi_port = c_midi_port
+	t.midi_port_name = c_midi_port_name
+	t.midi_port_id = c_midi_port_id
+	t.midi_send = c_midi_send
+	t.midi_learn = c_midi_learn
+	t.midi_key_of = c_midi_key_of
+	t.midi_pad = c_midi_pad
+	t.midi_set_pad_input = c_midi_set_pad_input
+	t.midi_set_pad_output = c_midi_set_pad_output
 	t.mixer_state = c_mixer_state
 	t.mixer_bus_state = c_mixer_bus_state
 	t.mixer_bus_name = c_mixer_bus_name
@@ -382,6 +486,8 @@ table_fill :: proc(api: ^Api) {
 	t.pad_copy_to = c_pad_copy_to
 	t.pad_play = c_pad_play
 	t.pad_set_armed = c_pad_set_armed
+	t.pad_input = c_pad_input
+	t.pad_set_input = c_pad_set_input
 	t.param_count = c_param_count
 	t.param_at = c_param_at
 	t.param_info = c_param_info
@@ -630,6 +736,235 @@ c_audio_clear :: proc "c" (api: ^Api, pad: i64) -> Result {
 }
 
 @(private)
+c_browser_state :: proc "c" (api: ^Api, out: ^Browser_State) -> Result {
+	context = runtime.default_context()
+	v, r := browser_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_browser_folder :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_folder(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_selected :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_selected(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_go :: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return browser_go(api, dir_s)
+}
+
+@(private)
+c_browser_up :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return browser_up(api)
+}
+
+@(private)
+c_browser_back :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return browser_back(api)
+}
+
+@(private)
+c_browser_forward :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return browser_forward(api)
+}
+
+@(private)
+c_browser_refresh :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return browser_refresh(api)
+}
+
+@(private)
+c_browser_row :: proc "c" (api: ^Api, index: i64, out: ^Browser_Row) -> Result {
+	context = runtime.default_context()
+	v, r := browser_row(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_browser_row_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_row_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_row_path :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_row_path(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_expand :: proc "c" (api: ^Api, dir: cstring, dir_len: i64, open: bool) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return browser_expand(api, dir_s, open)
+}
+
+@(private)
+c_browser_toggle :: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return browser_toggle(api, dir_s)
+}
+
+@(private)
+c_browser_select :: proc "c" (api: ^Api, path: cstring, path_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return browser_select(api, path_s)
+}
+
+@(private)
+c_browser_set_tab :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return browser_set_tab(api, index)
+}
+
+@(private)
+c_browser_favorite_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_favorite_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_favorite_folder :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_favorite_folder(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_add_favorite :: proc "c" (api: ^Api, dir: cstring, dir_len: i64, name: cstring, name_len: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	v, r := browser_add_favorite(api, dir_s, name_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_browser_remove_favorite :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return browser_remove_favorite(api, index)
+}
+
+@(private)
+c_browser_rename_favorite :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return browser_rename_favorite(api, index, name_s)
+}
+
+@(private)
+c_browser_move_favorite :: proc "c" (api: ^Api, from: i64, to: i64) -> Result {
+	context = runtime.default_context()
+	return browser_move_favorite(api, from, to)
+}
+
+@(private)
+c_browser_search :: proc "c" (api: ^Api, query: cstring, query_len: i64) -> Result {
+	context = runtime.default_context()
+	query_s := string(([^]u8)(query)[:max(query_len, 0)]) if query != nil else ""
+	return browser_search(api, query_s)
+}
+
+@(private)
+c_browser_result :: proc "c" (api: ^Api, index: i64, out: ^Browser_Row) -> Result {
+	context = runtime.default_context()
+	v, r := browser_result(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_browser_result_path :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := browser_result_path(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_browser_preview :: proc "c" (api: ^Api, path: cstring, path_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return browser_preview(api, path_s)
+}
+
+@(private)
+c_browser_preview_stop :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return browser_preview_stop(api)
+}
+
+@(private)
+c_browser_preview_settings :: proc "c" (api: ^Api, out: ^Preview_Settings) -> Result {
+	context = runtime.default_context()
+	v, r := browser_preview_settings(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_browser_set_preview_settings :: proc "c" (api: ^Api, s: Preview_Settings) -> Result {
+	context = runtime.default_context()
+	return browser_set_preview_settings(api, s)
+}
+
+@(private)
 c_device_preset_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
 	context = runtime.default_context()
 	v, r := device_preset_count(api)
@@ -838,6 +1173,103 @@ c_effect_set_key_filter :: proc "c" (api: ^Api, s: Slot_Ref, hz: f32) -> Result 
 c_effect_set_key_listen :: proc "c" (api: ^Api, s: Slot_Ref, on: bool) -> Result {
 	context = runtime.default_context()
 	return effect_set_key_listen(api, s, on)
+}
+
+@(private)
+c_export_state :: proc "c" (api: ^Api, out: ^Export_State) -> Result {
+	context = runtime.default_context()
+	v, r := export_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_export_file :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := export_file(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_export_start :: proc "c" (api: ^Api, settings: Export_Settings, path: cstring, path_len: i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	return export_start(api, settings, path_s)
+}
+
+@(private)
+c_export_now :: proc "c" (api: ^Api, settings: Export_Settings, path: cstring, path_len: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	v, r := export_now(api, settings, path_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_export_resample :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return export_resample(api)
+}
+
+@(private)
+c_export_bounce_pads :: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64) -> Result {
+	context = runtime.default_context()
+	pads_s := pads[:max(pads_len, 0)] if pads != nil else nil
+	return export_bounce_pads(api, pads_s)
+}
+
+@(private)
+c_export_bounce_bus :: proc "c" (api: ^Api, bus: i64) -> Result {
+	context = runtime.default_context()
+	return export_bounce_bus(api, bus)
+}
+
+@(private)
+c_export_bounce_in_place :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return export_bounce_in_place(api, pad)
+}
+
+@(private)
+c_export_freeze :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return export_freeze(api, pad)
+}
+
+@(private)
+c_export_unfreeze :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return export_unfreeze(api, pad)
+}
+
+@(private)
+c_export_flatten :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return export_flatten(api, pad)
+}
+
+@(private)
+c_export_midi :: proc "c" (api: ^Api, path: cstring, path_len: i64, slot: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	v, r := export_midi(api, path_s, slot)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_export_import_midi :: proc "c" (api: ^Api, path: cstring, path_len: i64, slot: i64, how: Midi_Import, pad: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	v, r := export_import_midi(api, path_s, slot, how, pad)
+	if out != nil do out^ = v
+	return r
 }
 
 @(private)
@@ -1058,6 +1490,88 @@ c_launcher_new_sequence :: proc "c" (api: ^Api, lane: i64, out: ^i64) -> Result 
 	v, r := launcher_new_sequence(api, lane)
 	if out != nil do out^ = v
 	return r
+}
+
+@(private)
+c_midi_port_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := midi_port_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_midi_port :: proc "c" (api: ^Api, index: i64, out: ^Midi_Port) -> Result {
+	context = runtime.default_context()
+	v, r := midi_port(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_midi_port_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := midi_port_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_midi_port_id :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := midi_port_id(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_midi_send :: proc "c" (api: ^Api, status: i64, data1: i64, data2: i64, port: i64) -> Result {
+	context = runtime.default_context()
+	return midi_send(api, status, data1, data2, port)
+}
+
+@(private)
+c_midi_learn :: proc "c" (api: ^Api, key: i64, pad: i64) -> Result {
+	context = runtime.default_context()
+	return midi_learn(api, key, pad)
+}
+
+@(private)
+c_midi_key_of :: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := midi_key_of(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_midi_pad :: proc "c" (api: ^Api, pad: i64, out: ^Pad_Midi) -> Result {
+	context = runtime.default_context()
+	v, r := midi_pad(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_midi_set_pad_input :: proc "c" (api: ^Api, pad: i64, mode: Midi_In_Mode, port_id: cstring, port_id_len: i64, channel: i64) -> Result {
+	context = runtime.default_context()
+	port_id_s := string(([^]u8)(port_id)[:max(port_id_len, 0)]) if port_id != nil else ""
+	return midi_set_pad_input(api, pad, mode, port_id_s, channel)
+}
+
+@(private)
+c_midi_set_pad_output :: proc "c" (api: ^Api, pad: i64, on: bool, channel: i64, key: i64, port_id: cstring, port_id_len: i64) -> Result {
+	context = runtime.default_context()
+	port_id_s := string(([^]u8)(port_id)[:max(port_id_len, 0)]) if port_id != nil else ""
+	return midi_set_pad_output(api, pad, on, channel, key, port_id_s)
 }
 
 @(private)
@@ -1377,6 +1891,20 @@ c_pad_play :: proc "c" (api: ^Api, pad: i64, on: bool, velocity: f32) -> Result 
 c_pad_set_armed :: proc "c" (api: ^Api, pad: i64, on: bool) -> Result {
 	context = runtime.default_context()
 	return pad_set_armed(api, pad, on)
+}
+
+@(private)
+c_pad_input :: proc "c" (api: ^Api, pad: i64, out: ^Pad_Input) -> Result {
+	context = runtime.default_context()
+	v, r := pad_input(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_pad_set_input :: proc "c" (api: ^Api, pad: i64, input: Pad_Input) -> Result {
+	context = runtime.default_context()
+	return pad_set_input(api, pad, input)
 }
 
 @(private)

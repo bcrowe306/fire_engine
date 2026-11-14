@@ -448,10 +448,10 @@ draw_frozen :: proc(a: ^App, i: int) {
 	im.TextColored(transmute(im.Vec4)t.accent, "%s", fmt.ctprintf("%s  Frozen", ui.ICON_SNOWFLAKE))
 	im.TextWrapped("%s", fmt.ctprintf("%s plays its renderings (one a sequence): its device and inserts are off, its fader, sends and output still work. Unfreeze it to edit its sound.", pm.pad_label(i)))
 	im.Spacing()
-	if im.Button(fmt.ctprintf("%s  Unfreeze###unfreeze", ui.ICON_SNOWFLAKE)) do pm.set_frozen(&a.m, i, false)
+	if im.Button(fmt.ctprintf("%s  Unfreeze###unfreeze", ui.ICON_SNOWFLAKE)) do pa.export_unfreeze(&a.api, i64(i))
 	ui.name("unfreeze")
 	im.SameLine()
-	if im.Button("Flatten to Audio") do pm.flatten(&a.m, i)
+	if im.Button("Flatten to Audio") do pa.export_flatten(&a.api, i64(i))
 	ui.name("flatten")
 	if im.IsItemHovered() do im.SetTooltip("An audio pad whose takes are its renderings (its device and inserts go)")
 }

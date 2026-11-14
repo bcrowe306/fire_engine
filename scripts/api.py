@@ -67,6 +67,9 @@ MODULE_TITLES = {
     "song": "Song: clips, lanes, tempo and meter lanes, markers, the loop, arrangements",
     "launcher": "Launcher: lanes, launching, stopping, Hold, Record to Song",
     "perform": "Perform: play modes, banks, the selected pad, keys",
+    "export": "Export: mixdowns, stems, resampling, bouncing, freezing, MIDI files",
+    "browser": "Browser: folders, favourites, search, preview",
+    "midi": "MIDI: ports, the MIDI map, pads' MIDI in and out",
 }
 
 

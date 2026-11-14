@@ -22,6 +22,8 @@ Core :: struct {
 	play_mode: pm.Play_Mode,
 	keys:      pm.Keys,      // Keyboard mode's scale, root, octave and chord
 	pads_bank: int,          // the bank the pads were on before Keyboard mode moved it
+	job:       Job,          // an export under way (export.odin)
+	browser:   pm.Browser,   // the Library's browser: favourites, the folder tree, the selection, the search
 	transport: Transport,    // the transport's own state (tap tempo, Stop pressed twice)
 	files:     Files,        // the project's place, the recent projects, Pads' folders
 	hooks:     Hooks,        // what the app does around the core's actions

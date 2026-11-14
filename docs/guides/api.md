@@ -23,8 +23,8 @@ The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
 **settings**, **pads**, **params**, **effects**, **devices**,
 **mixer**, **sequencer**, **audio**, **recording**, **song**,
-**launcher** and **perform**, with results, errors, threading and
-changes. Pads' own toolbar, History and File menus, shortcuts, pad
+**launcher**, **perform**, **export**, **browser** and **midi**, with
+results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
 menus and script commands for these already go through it.
 
 ## Results and errors
@@ -296,6 +296,27 @@ pads_api.perform_set_keys(api, .Dorian, 2, 0, .Triad)
 A song clip's step is named for what changed ("Mute Clip", "Clip
 Sequence", "Clip Part"). The `Song`, `Launcher` and `Selection` topics
 report their changes (what each lane plays and has queued included).
+
+## Export, the browser, MIDI
+
+An export renders a slice a frame: `export_start` begins it and
+`export_state` says how far it has got (`export_now` waits for it, as a
+script wants). A resample, a bounce, a bounce in place and a freeze are
+exports too; `export_state.made_pad` is where the result went.
+
+```odin
+pads_api.export_start(api, {source = .Song, stems = .Buses, format = .Int24, rate = 48_000, tail = 2}, "/Exports/Song")
+pads_api.export_bounce_pads(api, {0, 1, 2})       // onto the next empty pad
+pads_api.export_midi(api, "/Exports/verse.mid", 0)
+
+pads_api.browser_go(api, "/Samples/Drums")
+pads_api.browser_add_favorite(api, "/Samples/Drums", "Drums")
+pads_api.browser_search(api, "snare")             // results come as it goes: browser_state.results
+
+pads_api.midi_learn(api, 36, 0)                   // key 36 plays pad 0
+pads_api.midi_send(api, 0x90, 36, 100)            // as if it came in on a port
+pads_api.midi_set_pad_output(api, 0, true, 9, 36, "") // pad 0's hits out on channel 10
+```
 
 ## From C
 

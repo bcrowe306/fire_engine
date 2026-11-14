@@ -166,10 +166,10 @@ register_commands :: proc(a: ^App) {
 		run = proc(a: ^App, t: Target) { start_freeze(a, t.index) },
 		enabled = proc(a: ^App, t: Target) -> bool { return pm.can_freeze(&a.m.project, t.index) }})
 	add(c, {id = "pad.unfreeze", label = "Unfreeze", icon = ui.ICON_SNOWFLAKE, kinds = {.Pad}, group = 2,
-		run = proc(a: ^App, t: Target) { pm.set_frozen(&a.m, t.index, false) },
+		run = proc(a: ^App, t: Target) { pa.export_unfreeze(&a.api, i64(t.index)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].frozen }})
 	add(c, {id = "pad.flatten", label = "Flatten to Audio", icon = ui.ICON_SNOWFLAKE, kinds = {.Pad}, group = 2,
-		run = proc(a: ^App, t: Target) { pm.flatten(&a.m, t.index) },
+		run = proc(a: ^App, t: Target) { pa.export_flatten(&a.api, i64(t.index)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.pads[t.index].frozen }})
 	add(c, {id = "pad.bounce", label = "Bounce to Pad", icon = ui.ICON_COMBINE, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { start_bounce_pads(a, selected_pads(a) if t.index in selected_pads(a) else {t.index}) }, enabled = pad_has})
@@ -334,7 +334,7 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "file.slice", label = "Slice onto Selected Pad", icon = ui.ICON_SCISSORS, kinds = {.File}, group = 1, keys = "Cmd+Shift+Enter",
 		run = proc(a: ^App, t: Target) { load_into_slicer(a, a.selected, t.path) }})
 	add(c, {id = "file.preview", label = "Preview", icon = ui.ICON_PLAY, kinds = {.File}, group = 0,
-		run = proc(a: ^App, t: Target) { pm.preview_play(&a.m.engine, t.path) }})
+		run = proc(a: ^App, t: Target) { pa.browser_preview(&a.api, t.path) }})
 
 	// Automation points.
 	add(c, {id = "point.delete", label = "Delete Point", icon = ui.ICON_TRASH_2, kinds = {.Point}, group = 0,

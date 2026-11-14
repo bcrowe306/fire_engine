@@ -102,7 +102,7 @@ draw_browser :: proc(user: rawptr) {
 	im.SetNextItemWidth(-1)
 	if v.tab == 0 {
 		if im.InputTextWithHint("##search", fmt.ctprintf("%s  Search %s", ui.ICON_SEARCH, filepath.base(b.root) if b.root != "" else "sounds"), cstring(&v.query[0]), len(v.query)) {
-			pm.browser_search(b, string(cstring(&v.query[0])))
+			pa.browser_search(&a.api, string(cstring(&v.query[0])))
 		}
 	} else {
 		im.InputTextWithHint("##search", fmt.ctprintf("%s  Find a device", ui.ICON_SEARCH), cstring(&v.device_query[0]), len(v.device_query))
@@ -166,26 +166,25 @@ library_section :: proc(title: string) -> bool {
 draw_folder_bar :: proc(a: ^App) {
 	b := &a.browser
 	t := ui.theme()
-	if ui.icon_button(ui.ICON_ARROW_LEFT, "Back", disabled = len(b.back) == 0) do pm.browser_back(b)
+	if ui.icon_button(ui.ICON_ARROW_LEFT, "Back", disabled = len(b.back) == 0) do pa.browser_back(&a.api)
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_ARROW_RIGHT, "Forward", disabled = len(b.forward) == 0) do pm.browser_forward(b)
+	if ui.icon_button(ui.ICON_ARROW_RIGHT, "Forward", disabled = len(b.forward) == 0) do pa.browser_forward(&a.api)
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_ARROW_UP, "Up a folder (Backspace)", disabled = pm.parent_of(b.root) == "") do pm.browser_up(b)
+	if ui.icon_button(ui.ICON_ARROW_UP, "Up a folder (Backspace)", disabled = pm.parent_of(b.root) == "") do pa.browser_up(&a.api)
 	im.SameLine(0, 2)
 	fav := pm.is_favorite(b, b.root)
 	if ui.icon_button(ui.ICON_STAR, "Remove from favourites" if fav else "Add this folder to favourites", on = fav, color = t.warn, disabled = b.root == "") {
 		if fav {
 			for f, i in b.favorites do if !f.project && f.path == b.root {
-				pm.favorite_remove(b, i)
+				pa.browser_remove_favorite(&a.api, i64(i))
 				break
 			}
 		} else {
-			pm.favorite_add(b, b.root)
+			pa.browser_add_favorite(&a.api, b.root, "")
 		}
-		pm.favorites_save(b, favorites_path(a))
 	}
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_REFRESH_CW, "Read the folders again") do pm.browser_refresh(b)
+	if ui.icon_button(ui.ICON_REFRESH_CW, "Read the folders again") do pa.browser_refresh(&a.api)
 	draw_crumbs(a)
 }
 
@@ -215,7 +214,7 @@ draw_favorite_tabs :: proc(a: ^App) {
 			im.PushStyleColorVec4(.ButtonHovered, transmute(im.Vec4)ui.lighten(t.accent, 0.1))
 			im.PushStyleColorVec4(.Text, transmute(im.Vec4)t.accent_text)
 		}
-		if im.Button(label) && !on do pm.browser_set_tab(b, i)
+		if im.Button(label) && !on do pa.browser_set_tab(&a.api, i64(i))
 		if on do im.PopStyleColor(3)
 		ui.name(fmt.tprintf("tab %s", f.name)) // for a test: "tab Documents"
 		if narrow && !on && im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s: %s (right-click to rename, move or remove)", f.name, favorite_where(b, i)))
@@ -228,20 +227,20 @@ draw_favorite_tabs :: proc(a: ^App) {
 			}
 			im.SetNextItemWidth(160)
 			if im.InputText("##rename", cstring(&v.rename[0]), len(v.rename), {.EnterReturnsTrue}) {
-				pm.favorite_rename(b, i, string(cstring(&v.rename[0])))
+				pa.browser_rename_favorite(&a.api, i64(i), string(cstring(&v.rename[0])))
 				changed = true
 				im.CloseCurrentPopup()
 			}
 			if im.MenuItem("Move left", nil, false, i > 0) {
-				pm.favorite_move(b, i, i - 1)
+				pa.browser_move_favorite(&a.api, i64(i), i64(i - 1))
 				changed = true
 			}
 			if im.MenuItem("Move right", nil, false, i < len(b.favorites) - 1) {
-				pm.favorite_move(b, i, i + 1)
+				pa.browser_move_favorite(&a.api, i64(i), i64(i + 1))
 				changed = true
 			}
 			if im.MenuItem("Remove", nil, false, len(b.favorites) > 1) {
-				pm.favorite_remove(b, i)
+				pa.browser_remove_favorite(&a.api, i64(i))
 				changed = true
 			}
 			im.EndPopup()
@@ -252,10 +251,10 @@ draw_favorite_tabs :: proc(a: ^App) {
 	}
 	ui.flow(im.GetFrameHeight(), 4)
 	if ui.icon_button(ui.ICON_PLUS, "Add this folder as a favourite", disabled = b.root == "" || pm.is_favorite(b, b.root)) {
-		pm.favorite_add(b, b.root)
+		pa.browser_add_favorite(&a.api, b.root, "")
 		changed = true
 	}
-	if changed do pm.favorites_save(b, favorites_path(a))
+	_ = changed // (the API saved them)
 	im.Spacing()
 }
 
@@ -294,7 +293,7 @@ draw_crumbs :: proc(a: ^App) {
 		c := crumbs[i]
 		last := i == len(crumbs) - 1
 		if !last do im.PushStyleColorVec4(.Text, transmute(im.Vec4)t.text_dim)
-		if im.SmallButton(fmt.ctprintf("%s##crumb%d", c.name, i)) && !last do pm.browser_go(b, c.path)
+		if im.SmallButton(fmt.ctprintf("%s##crumb%d", c.name, i)) && !last do pa.browser_go(&a.api, c.path)
 		if !last do im.PopStyleColor()
 		if !last {
 			im.SameLine(0, 0)
@@ -343,7 +342,7 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			clicked_row := im.InvisibleButton("##row", {w, BROWSER_ROW})
 			ui.name(e.name)
 			if clicked_row {
-				pm.browser_select(b, e.path)
+				pa.browser_select(&a.api, e.path)
 				if e.is_dir do toggle = e.path
 				else do preview_selected(a, e, true)
 			}
@@ -362,8 +361,7 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 			if e.is_dir && im.BeginPopupContextItem("##rowmenu") {
 				if im.MenuItem("Open") do go_into = e.path
 				if im.MenuItem("Add to favourites", nil, false, !pm.is_favorite(b, e.path)) {
-					pm.favorite_add(b, e.path)
-					pm.favorites_save(b, favorites_path(a))
+					pa.browser_add_favorite(&a.api, e.path, "")
 				}
 				im.EndPopup()
 			}
@@ -397,9 +395,9 @@ draw_rows :: proc(a: ^App, rows: []pm.Browser_Entry) {
 		}
 	}
 	if go_into != "" {
-		pm.browser_go(b, strings.clone(go_into, context.temp_allocator))
+		pa.browser_go(&a.api, strings.clone(go_into, context.temp_allocator))
 	} else if toggle != "" {
-		pm.browser_toggle(b, strings.clone(toggle, context.temp_allocator))
+		pa.browser_toggle(&a.api, strings.clone(toggle, context.temp_allocator))
 	}
 	v.scroll_to = false
 }
@@ -424,20 +422,20 @@ browser_keys :: proc(a: ^App, rows: []pm.Browser_Entry) {
 		break
 	}
 	if has && current.is_dir {
-		if im.IsKeyPressed(.RightArrow) do pm.browser_expand(b, strings.clone(current.path, context.temp_allocator), true)
-		if im.IsKeyPressed(.LeftArrow) do pm.browser_expand(b, strings.clone(current.path, context.temp_allocator), false)
+		if im.IsKeyPressed(.RightArrow) do pa.browser_expand(&a.api, strings.clone(current.path, context.temp_allocator), true)
+		if im.IsKeyPressed(.LeftArrow) do pa.browser_expand(&a.api, strings.clone(current.path, context.temp_allocator), false)
 	}
 	if im.IsKeyPressed(.Enter) && has {
 		io := im.GetIO()
 		switch {
-		case current.is_dir: pm.browser_go(b, strings.clone(current.path, context.temp_allocator))
+		case current.is_dir: pa.browser_go(&a.api, strings.clone(current.path, context.temp_allocator))
 		case io.KeyShift && (io.KeySuper || io.KeyCtrl): load_into_slicer(a, a.selected, current.path) // a slicer, on the selected pad
 		case io.KeyAlt: slice_onto_next(a, current.path) // a slicer, on the next empty pad
 		case io.KeyShift: load_next_empty(a, current)
 		case: load_selected(a, current)
 		}
 	}
-	if im.IsKeyPressed(.Backspace) do pm.browser_up(b)
+	if im.IsKeyPressed(.Backspace) do pa.browser_up(&a.api)
 }
 
 // A file was selected: preview it (with auto-play, or when asked).
@@ -445,7 +443,7 @@ browser_keys :: proc(a: ^App, rows: []pm.Browser_Entry) {
 preview_selected :: proc(a: ^App, e: pm.Browser_Entry, auto: bool) {
 	if e.is_dir || pm.is_midi(e.path) do return // (a MIDI file isn't heard: drag it onto a pad)
 	if auto && !a.m.engine.preview.auto_play do return
-	pm.preview_play(&a.m.engine, e.path)
+	pa.browser_preview(&a.api, e.path)
 }
 
 // Loads file `e` onto the next empty pad: the selected one if it is
@@ -521,16 +519,16 @@ draw_preview :: proc(a: ^App) {
 
 	playing := pm.preview_playing(e)
 	if ui.icon_button(ui.ICON_SQUARE if playing else ui.ICON_PLAY, "Stop the preview" if playing else "Play the selected sample", on = playing, color = t.ok, disabled = !playing && !selected) {
-		if playing do pm.preview_stop(e)
-		else do pm.preview_play(e, b.selected)
+		if playing do pa.browser_preview_stop(&a.api)
+		else do pa.browser_preview(&a.api, b.selected)
 	}
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_ZAP if pv.auto_play else ui.ICON_ZAP_OFF, "Auto-play: on (selecting a sample plays it)" if pv.auto_play else "Auto-play: off", on = pv.auto_play) {
-		pv.auto_play = !pv.auto_play
-		if !pv.auto_play do pm.preview_stop(e)
+		pa.browser_set_preview_settings(&a.api, {auto_play = !pv.auto_play, sync = pv.sync, volume_db = pv.volume})
+		if !pv.auto_play do pa.browser_preview_stop(&a.api)
 	}
 	im.SameLine(0, 2)
-	if ui.icon_button(ui.ICON_METRONOME, "Sync: loops play at the project's tempo while the sequencer plays" if !pv.sync else "Sync: on", on = pv.sync) do pv.sync = !pv.sync
+	if ui.icon_button(ui.ICON_METRONOME, "Sync: loops play at the project's tempo while the sequencer plays" if !pv.sync else "Sync: on", on = pv.sync) do pa.browser_set_preview_settings(&a.api, {auto_play = pv.auto_play, sync = !pv.sync, volume_db = pv.volume})
 	if pv.beats > 0 && pv.path == b.selected {
 		im.SameLine(0, 6)
 		im.AlignTextToFramePadding()
@@ -538,7 +536,7 @@ draw_preview :: proc(a: ^App) {
 	}
 	im.SameLine(0, 8)
 	vol := f64(pv.volume)
-	if ui.value_bar("preview volume", ui.ICON_VOLUME_2, &vol, -48, 6, 1, 0.5, "%.0f dB", max(im.GetContentRegionAvail().x, 60)).changed do pv.volume = f32(vol)
+	if ui.value_bar("preview volume", ui.ICON_VOLUME_2, &vol, -48, 6, 1, 0.5, "%.0f dB", max(im.GetContentRegionAvail().x, 60)).changed do pa.browser_set_preview_settings(&a.api, {auto_play = pv.auto_play, sync = pv.sync, volume_db = clamp(f32(vol), -60, 6)})
 
 	// Where it goes without dragging: the selected pad (Enter, a
 	// double-click), or with Shift the next empty one.

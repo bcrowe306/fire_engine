@@ -157,6 +157,232 @@ audio_clear :: proc(api: ^Api, pad: i64) -> Result
 
 Clears audio track `pad`'s take in the current sequence, undoably.
 
+## Browser: folders, favourites, search, preview
+
+### browser_state
+
+```odin
+browser_state :: proc(api: ^Api) -> (Browser_State, Result)
+```
+
+The browser now.
+
+### browser_folder
+
+```odin
+browser_folder :: proc(api: ^Api) -> (string, Result)
+```
+
+The folder the tree shows. Temporary.
+
+### browser_selected
+
+```odin
+browser_selected :: proc(api: ^Api) -> (string, Result)
+```
+
+The selected file or folder ("" none). Temporary.
+
+### browser_go
+
+```odin
+browser_go :: proc(api: ^Api, dir: string) -> Result
+```
+
+Shows folder `dir` (the one before goes on the back list). Not_Found if it isn't a folder.
+
+### browser_up
+
+```odin
+browser_up :: proc(api: ^Api) -> Result
+```
+
+Up a folder. Not_Found at the top.
+
+### browser_back
+
+```odin
+browser_back :: proc(api: ^Api) -> Result
+```
+
+Back to the folder before. Not_Found with none.
+
+### browser_forward
+
+```odin
+browser_forward :: proc(api: ^Api) -> Result
+```
+
+Forward again. Not_Found with none.
+
+### browser_refresh
+
+```odin
+browser_refresh :: proc(api: ^Api) -> Result
+```
+
+Reads the folders again.
+
+### browser_row
+
+```odin
+browser_row :: proc(api: ^Api, index: i64) -> (Browser_Row, Result)
+```
+
+Row `index` of the tree as shown.
+
+### browser_row_name
+
+```odin
+browser_row_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Row `index`'s name. Temporary.
+
+### browser_row_path
+
+```odin
+browser_row_path :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Row `index`'s path. Temporary.
+
+### browser_expand
+
+```odin
+browser_expand :: proc(api: ^Api, dir: string, open: bool) -> Result
+```
+
+Opens (or closes) folder `dir` in the tree.
+
+### browser_toggle
+
+```odin
+browser_toggle :: proc(api: ^Api, dir: string) -> Result
+```
+
+Opens folder `dir` in the tree if closed, closes it if open.
+
+### browser_select
+
+```odin
+browser_select :: proc(api: ^Api, path: string) -> Result
+```
+
+Selects the file or folder at `path` (with auto preview on, a file plays).
+
+### browser_set_tab
+
+```odin
+browser_set_tab :: proc(api: ^Api, index: i64) -> Result
+```
+
+Shows favourite `index`'s folder (a fresh history).
+
+### browser_favorite_name
+
+```odin
+browser_favorite_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Favourite `index`'s name. Temporary.
+
+### browser_favorite_folder
+
+```odin
+browser_favorite_folder :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Favourite `index`'s folder. Temporary.
+
+### browser_add_favorite
+
+```odin
+browser_add_favorite :: proc(api: ^Api, dir: string, name: string) -> (i64, Result)
+```
+
+Adds folder `dir` to the favourites as `name` ("": the folder's): its index. Saved with the preferences.
+
+### browser_remove_favorite
+
+```odin
+browser_remove_favorite :: proc(api: ^Api, index: i64) -> Result
+```
+
+Removes favourite `index` (not the project's).
+
+### browser_rename_favorite
+
+```odin
+browser_rename_favorite :: proc(api: ^Api, index: i64, name: string) -> Result
+```
+
+Renames favourite `index`.
+
+### browser_move_favorite
+
+```odin
+browser_move_favorite :: proc(api: ^Api, from: i64, to: i64) -> Result
+```
+
+Moves favourite `from` to `to` (their order as shown).
+
+### browser_search
+
+```odin
+browser_search :: proc(api: ^Api, query: string) -> Result
+```
+
+Searches every folder under the one shown for names with `query` in them (on its own thread: results come as it goes; "" stops).
+
+### browser_result
+
+```odin
+browser_result :: proc(api: ^Api, index: i64) -> (Browser_Row, Result)
+```
+
+Search result `index`.
+
+### browser_result_path
+
+```odin
+browser_result_path :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Search result `index`'s path. Temporary.
+
+### browser_preview
+
+```odin
+browser_preview :: proc(api: ^Api, path: string) -> Result
+```
+
+Previews the audio file at `path` (as the browser does: with sync, at the tempo). Not a change to the project.
+
+### browser_preview_stop
+
+```odin
+browser_preview_stop :: proc(api: ^Api) -> Result
+```
+
+Stops the preview.
+
+### browser_preview_settings
+
+```odin
+browser_preview_settings :: proc(api: ^Api) -> (Preview_Settings, Result)
+```
+
+How the preview plays.
+
+### browser_set_preview_settings
+
+```odin
+browser_set_preview_settings :: proc(api: ^Api, s: Preview_Settings) -> Result
+```
+
+Sets how the preview plays.
+
 ## Devices: synth presets, plug-in instruments
 
 ### device_preset_count
@@ -368,6 +594,112 @@ effect_set_key_listen :: proc(api: ^Api, s: Slot_Ref, on: bool) -> Result
 ```
 
 Makes the track play the key of the effect in slot `s` (filtered) instead, to set it by, or not. Undoably.
+
+## Export: mixdowns, stems, resampling, bouncing, freezing, MIDI files
+
+### export_state
+
+```odin
+export_state :: proc(api: ^Api) -> (Export_State, Result)
+```
+
+The export under way, or the last one.
+
+### export_file
+
+```odin
+export_file :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+File `index` the last export wrote. Temporary.
+
+### export_start
+
+```odin
+export_start :: proc(api: ^Api, settings: Export_Settings, path: string) -> Result
+```
+
+Exports as `settings` say into `path` (a .wav file; with stems, a folder). It renders a slice a frame: export_state says how far. Busy while another is under way; Invalid_Argument with nothing to export.
+
+### export_now
+
+```odin
+export_now :: proc(api: ^Api, settings: Export_Settings, path: string) -> (i64, Result)
+```
+
+Exports as `settings` say into `path` at once, waiting for it (a script's export): the files written. Busy while another is under way.
+
+### export_resample
+
+```odin
+export_resample :: proc(api: ^Api) -> Result
+```
+
+Resamples the current sequence (as it sounds from main) onto the next empty pad.
+
+### export_bounce_pads
+
+```odin
+export_bounce_pads :: proc(api: ^Api, pads: []i64) -> Result
+```
+
+Bounces pads `pads` (what they play in the current sequence, after their faders) together onto the next empty pad.
+
+### export_bounce_bus
+
+```odin
+export_bounce_bus :: proc(api: ^Api, bus: i64) -> Result
+```
+
+Bounces bus `bus` onto the next empty pad.
+
+### export_bounce_in_place
+
+```odin
+export_bounce_in_place :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Bounces pad `pad` in place: an audio track of its sound, the pad muted.
+
+### export_freeze
+
+```odin
+export_freeze :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Freezes pad `pad`: its sound rendered in each sequence and played instead (its device and inserts rest).
+
+### export_unfreeze
+
+```odin
+export_unfreeze :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Unfreezes pad `pad` (its renderings kept, unused), undoably.
+
+### export_flatten
+
+```odin
+export_flatten :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Flattens frozen pad `pad`: an audio track whose takes are its renderings. One undo step.
+
+### export_midi
+
+```odin
+export_midi :: proc(api: ^Api, path: string, slot: i64) -> (i64, Result)
+```
+
+Writes sequence `slot` (-1: the song) as a Standard MIDI File at `path`: the notes it wrote. Io_Error if it can't be written.
+
+### export_import_midi
+
+```odin
+export_import_midi :: proc(api: ^Api, path: string, slot: i64, how: Midi_Import = .Drums, pad: i64 = 0) -> (i64, Result)
+```
+
+Reads the Standard MIDI File at `path` into sequence `slot` (replacing what is there), its notes onto pads as `how` says: the notes read. Undoably.
 
 ## History: undo, redo, groups, gestures
 
@@ -612,6 +944,88 @@ launcher_new_sequence :: proc(api: ^Api, lane: i64) -> (i64, Result)
 ```
 
 A new, empty sequence at the end of lane `lane`: its slot. Busy when every slot is used.
+
+## MIDI: ports, the MIDI map, pads' MIDI in and out
+
+### midi_port_count
+
+```odin
+midi_port_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+MIDI ports there are now (midi_port_name lists them; in the system's order: open ports may come and go).
+
+### midi_port
+
+```odin
+midi_port :: proc(api: ^Api, index: i64) -> (Midi_Port, Result)
+```
+
+MIDI port `index`: an input or an output, and whether it is open.
+
+### midi_port_name
+
+```odin
+midi_port_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+MIDI port `index`'s name. Temporary.
+
+### midi_port_id
+
+```odin
+midi_port_id :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+MIDI port `index`'s id (stable across runs where the system allows it: what pad inputs and outputs keep). Temporary.
+
+### midi_send
+
+```odin
+midi_send :: proc(api: ^Api, status: i64, data1: i64, data2: i64, port: i64 = 0) -> Result
+```
+
+Plays a MIDI message (`status`, `data1`, `data2`) into Pads as if it came in on input `port` (its index among the open inputs): a note-on plays what it is mapped to, recorded while recording. Any thread but the audio thread.
+
+### midi_learn
+
+```odin
+midi_learn :: proc(api: ^Api, key: i64, pad: i64) -> Result
+```
+
+Makes MIDI key `key` (0..127) play pad `pad` (-1: nothing) in the MIDI map, undoably.
+
+### midi_key_of
+
+```odin
+midi_key_of :: proc(api: ^Api, pad: i64) -> (i64, Result)
+```
+
+The MIDI key that plays pad `pad` (the lowest, if several), or -1.
+
+### midi_pad
+
+```odin
+midi_pad :: proc(api: ^Api, pad: i64) -> (Pad_Midi, Result)
+```
+
+Pad `pad`'s MIDI input and output.
+
+### midi_set_pad_input
+
+```odin
+midi_set_pad_input :: proc(api: ^Api, pad: i64, mode: Midi_In_Mode, port_id: string, channel: i64) -> Result
+```
+
+What MIDI plays pad `pad`: all ports (the map), none, or port `port_id` (its id: midi_port_id) on `channel` (0: any; 1..16). Undoably.
+
+### midi_set_pad_output
+
+```odin
+midi_set_pad_output :: proc(api: ^Api, pad: i64, on: bool, channel: i64, key: i64, port_id: string) -> Result
+```
+
+Pad `pad`'s hits also go out as MIDI (`on`): note `key` (0..127) on `channel` (0..15) of output port `port_id` ("": the default output). Undoably.
 
 ## Mixer: buses, outputs, groups, cue, meters, loudness, latency
 
@@ -976,6 +1390,22 @@ pad_set_armed :: proc(api: ^Api, pad: i64, on: bool) -> Result
 ```
 
 Arms pad `pad` to record (or not): an audio track records its input, any other pad what its MIDI input plays.
+
+### pad_input
+
+```odin
+pad_input :: proc(api: ^Api, pad: i64) -> (Pad_Input, Result)
+```
+
+Pad `pad`'s audio input.
+
+### pad_set_input
+
+```odin
+pad_set_input :: proc(api: ^Api, pad: i64, input: Pad_Input) -> Result
+```
+
+Sets pad `pad`'s audio input, undoably.
 
 ## Parameters, by reference
 
@@ -2013,11 +2443,41 @@ What a compressor's or gate's sidechain listens to.
 
 `None`, `Pad`, `Bus`
 
+### Export_Source
+
+What an export renders.
+
+`Sequence`, `Song`
+
+### Export_Stems
+
+A mixdown, or stems.
+
+`Mixdown`, `Pads`, `Buses`
+
+### Export_Format
+
+An export's file format.
+
+`Int16`, `Int24`, `Float32`
+
+### Midi_Import
+
+How a MIDI file's notes go onto pads.
+
+`Drums`, `By_Map`, `On_Pad`
+
 ### Launch_Quantize
 
 When a sequence launched while playing takes over.
 
 `End`, `Bar`, `Beat`, `Now`
+
+### Midi_In_Mode
+
+What MIDI plays a pad.
+
+`All`, `None`, `Port`
 
 ### Output_Kind
 
@@ -2042,6 +2502,12 @@ How a pad's sample plays when hit.
 When a pad's input is heard.
 
 `Auto`, `In`, `Off`
+
+### Input_From
+
+Where a pad's audio input comes from.
+
+`Interface`, `Pad`, `Bus`, `Main`, `None`
 
 ### Track
 
@@ -2162,6 +2628,40 @@ A region: part of a take, placed in the sequence.
 | `mute` | `bool` |  |
 | `reverse` | `bool` |  |
 
+### Browser_State
+
+The Library's browser now.
+
+| Field | Type | |
+|---|---|---|
+| `tab` | `i64` | the favourite shown (browser_favorite_name) |
+| `favorites` | `i64` | its favourites (the project's folder among them) |
+| `rows` | `i64` | the folder tree as shown (browser_row) |
+| `can_back` | `bool` |  |
+| `can_forward` | `bool` |  |
+| `results` | `i64` | a search's results so far (browser_result) |
+| `searching` | `bool` | a search is under way |
+| `previewing` | `bool` | a file is being previewed |
+
+### Browser_Row
+
+A row of the browser's tree, or a search result.
+
+| Field | Type | |
+|---|---|---|
+| `is_dir` | `bool` |  |
+| `depth` | `i64` | in the tree: 0 under the root |
+
+### Preview_Settings
+
+Preview settings: it plays a file chosen (auto), stretched to the tempo (sync), at `volume_db`.
+
+| Field | Type | |
+|---|---|---|
+| `auto_play` | `bool` |  |
+| `sync` | `bool` |  |
+| `volume_db` | `f32` | -60..6 |
+
 ### Slot_Ref
 
 An effect slot.
@@ -2192,6 +2692,30 @@ What the effect in slot `s` listens to (a compressor's, a gate's), and how.
 | `index` | `i64` | the pad or the bus |
 | `hpf_hz` | `f32` | the key's high-pass (0: none) |
 | `listen` | `bool` | the track plays the key instead (to set it by) |
+
+### Export_Settings
+
+How to export.
+
+| Field | Type | |
+|---|---|---|
+| `source` | `Export_Source` |  |
+| `stems` | `Export_Stems` |  |
+| `format` | `Export_Format` |  |
+| `rate` | `f64` | 44100, 48000 or 96000 (0: the engine's) |
+| `tail` | `f64` | seconds after the end, for reverb and echoes to ring out (0..10) |
+
+### Export_State
+
+The export under way, or the last one.
+
+| Field | Type | |
+|---|---|---|
+| `busy` | `bool` | under way (a slice a frame) |
+| `progress` | `f64` | 0..1 |
+| `failed` | `bool` | the last one failed (a file couldn't be written) |
+| `files` | `i64` | files the last one wrote (export_file) |
+| `made_pad` | `i64` | the pad the last bounce, resample or bounce in place made (-1: none) |
 
 ### History_State
 
@@ -2236,6 +2760,27 @@ Where a sequence is in the launcher.
 |---|---|---|
 | `lane` | `i64` |  |
 | `row` | `i64` |  |
+
+### Midi_Port
+
+A MIDI port the system has.
+
+| Field | Type | |
+|---|---|---|
+| `input` | `bool` | a source (else a destination) |
+| `open` | `bool` | an input Pads listens to |
+
+### Pad_Midi
+
+A pad's MIDI input and output.
+
+| Field | Type | |
+|---|---|---|
+| `in_mode` | `Midi_In_Mode` |  |
+| `in_channel` | `i64` | 0: any; 1..16 |
+| `out` | `bool` | its hits also go out as MIDI |
+| `out_channel` | `i64` | 0..15 |
+| `out_key` | `i64` | the note it sends |
 
 ### Output
 
@@ -2314,6 +2859,17 @@ Pad `pad` now (its name: `pad_name`).
 | `armed` | `bool` | to record (its input, or its MIDI) |
 | `monitor` | `Monitor` |  |
 | `frozen` | `bool` | it plays its rendering |
+
+### Pad_Input
+
+A pad's audio input: what an audio track records, and a sample is recorded from.
+
+| Field | Type | |
+|---|---|---|
+| `from` | `Input_From` |  |
+| `channel` | `i64` | Interface: its first channel (0: input 1) |
+| `stereo` | `bool` | Interface: it and the next (1/2, 3/4...) |
+| `source` | `i64` | Pad: the pad; Bus: the bus |
 
 ### Param_Ref
 

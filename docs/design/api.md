@@ -5,8 +5,9 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
 settings), 3 (pads, params, effects, devices), 4 (mixer), 5
-(sequencer, audio, recording) and 6 (song, launcher, perform) built
-2026-11-14; the rest planned (decisions taken 2026-11-13). Using it: the
+(sequencer, audio, recording), 6 (song, launcher, perform) and 7a
+(export, browser, midi) built 2026-11-14; 7b (ui) and 8 planned
+(decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -189,6 +190,28 @@ devices and effects (and the knobs moved onto `param_set`).
   menu, jumps; the launcher's lanes, launches, stops and settings; the
   sequence move commands; the play mode, bank and keys controls; the
   shell's song, lanes, launch, switch, bank, scale and chord commands.
+### Stage 7a, as built (export, browser, midi)
+
+- `export_*`: the export job (`Job`: the export, busy, progress) moved
+  into the core, stepped by `pc.export_frame` each frame; the UI's
+  toasts read `pc.job_result` when it finishes. Start a mixdown or
+  stems, export at once (`export_now`: scripts, the remote), resample,
+  bounce pads or a bus, bounce in place, freeze, unfreeze, flatten,
+  MIDI files out and in (by map, as drums, or on a pad).
+- `browser_*`: the browser (`pm.Browser`) moved into the core. Folders
+  (go, up, back, forward, refresh, rows, expand or toggle, select),
+  favourites (add, remove, rename, move: saved with the preferences by
+  the API), search (on its own thread), preview (play, stop, settings).
+- `midi_*`: ports (count, input or output, open, name, id), a message
+  played in as if from a port, the MIDI map (learn, a pad's key), a pad's
+  MIDI input and output. `pad_input`/`pad_set_input` (a pad's audio
+  input) joined the pads module.
+- Moved: the Export dialog and its progress, the bounce, freeze and
+  resample commands, MIDI file import and export, the browser's bar,
+  favourites, tree keys and preview controls, the MIDI learn button, the
+  strip's MIDI and audio input and MIDI output menus, the shell's
+  commands.
+
 - Not moved yet (the `ui` module): the Song view's drags (a clip's
   edges and moves, markers, tempo points, the loop range), Paste Clips
   (the UI's clipboard), and selecting a pad (it moves the bank along in

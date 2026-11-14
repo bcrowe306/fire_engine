@@ -18,9 +18,6 @@ import sdl "deps:sdl3"
 // What the File menu keeps between runs, and the export under way.
 Project_State :: struct {
 	title:      string, // the window's, as last set
-	export:     pm.Export,
-	exporting:  bool,
-	progress:   f64,
 	export_open: bool, // the Export dialog shows
 	settings:   pm.Export_Settings,
 	rename_open: bool, // the Rename Project dialog shows
@@ -55,7 +52,6 @@ prefs_file :: proc(a: ^App, name: string) -> string {
 // Frees the project state.
 project_state_destroy :: proc(st: ^Project_State) {
 	delete(st.title)
-	pm.export_destroy(&st.export)
 }
 
 // --- actions -------------------------------------------------------------------------------
@@ -160,94 +156,58 @@ subscribe_project :: proc(a: ^App) {
 	}, a)
 }
 
-// Starts an export (it runs a slice each frame).
+// Exports as the Export dialog says into `path`.
 start_export :: proc(a: ^App, path: string) {
 	st := &a.proj
-	pm.export_destroy(&st.export)
-	if !pm.export_begin(&a.m, &st.export, st.settings, path) {
-		ui.toast(&a.ws.toasts, .Warning, "Nothing to export")
-		return
-	}
-	st.exporting, st.progress = true, 0
+	s := st.settings
+	r := pa.export_start(&a.api, {source = pa.Export_Source(s.source), stems = pa.Export_Stems(s.stems), format = pa.Export_Format(s.encoding), rate = s.rate, tail = clamp(s.tail, 0, 10)}, path)
+	toast_failed(a, r, "Couldn't export")
 }
 
 // Resamples the current sequence onto the next empty pad.
 start_resample :: proc(a: ^App) {
-	st := &a.proj
-	pm.export_destroy(&st.export)
-	if !pm.export_to_pad(&a.m, &st.export) {
-		ui.toast(&a.ws.toasts, .Warning, "No empty pad to resample onto")
-		return
-	}
-	st.exporting, st.progress = true, 0
+	toast_failed(a, pa.export_resample(&a.api), "Couldn't resample")
 }
 
 // Bounces pads `pads` (what they play in the current sequence, after
 // their faders) onto the next empty pad.
 start_bounce_pads :: proc(a: ^App, pads: Pad_Set) {
-	st := &a.proj
-	if st.exporting do return
-	pm.export_destroy(&st.export)
-	if !pm.bounce_pads(&a.m, &st.export, pads) {
-		ui.toast(&a.ws.toasts, .Warning, "Nothing to bounce, or no empty pad")
-		return
-	}
-	st.exporting, st.progress = true, 0
+	ps := make([dynamic]i64, context.temp_allocator)
+	for i in 0 ..< pm.PADS do if i in pads do append(&ps, i64(i))
+	toast_failed(a, pa.export_bounce_pads(&a.api, ps[:]), "Couldn't bounce")
 }
 
 // Bounces bus `b` (0-based) onto the next empty pad.
 start_bounce_bus :: proc(a: ^App, b: int) {
-	st := &a.proj
-	if st.exporting do return
-	pm.export_destroy(&st.export)
-	if !pm.bounce_bus(&a.m, &st.export, b) {
-		ui.toast(&a.ws.toasts, .Warning, "Nothing on that bus to bounce, or no empty pad")
-		return
-	}
-	st.exporting, st.progress = true, 0
+	toast_failed(a, pa.export_bounce_bus(&a.api, i64(b)), "Couldn't bounce the bus")
 }
 
 // Bounces pad `i` in place: an audio track of its sound, the pad muted.
 start_bounce_in_place :: proc(a: ^App, i: int) {
-	st := &a.proj
-	if st.exporting do return
-	pm.export_destroy(&st.export)
-	if !pm.bounce_in_place_begin(&a.m, &st.export, i) {
-		ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("%s can't be bounced in place (no notes, an audio track, or no empty pad)", pm.pad_label(i)))
-		return
-	}
-	st.exporting, st.progress = true, 0
+	toast_failed(a, pa.export_bounce_in_place(&a.api, i64(i)), fmt.tprintf("Couldn't bounce %s in place", pm.pad_label(i)))
 }
 
 // Freezes pad `i` (its renderings made a slice a frame, as an export).
 start_freeze :: proc(a: ^App, i: int) {
-	st := &a.proj
-	if st.exporting do return
-	pm.export_destroy(&st.export)
-	if !pm.freeze_begin(&a.m, &st.export, i) {
-		ui.toast(&a.ws.toasts, .Warning, fmt.tprintf("%s has nothing to freeze (no notes, or an audio pad)", pm.pad_label(i)))
-		return
-	}
-	st.exporting, st.progress = true, 0
+	toast_failed(a, pa.export_freeze(&a.api, i64(i)), fmt.tprintf("Couldn't freeze %s", pm.pad_label(i)))
 }
 
 // Each frame: an export's next slice, autosave, the window's title.
 project_frame :: proc(a: ^App) {
 	st := &a.proj
-	if st.exporting {
-		st.progress = pm.export_step(&a.m, &st.export, 96_000)
-		if st.export.finished || st.export.failed {
-			files := pm.export_finish(&a.m, &st.export)
-			st.exporting = false
-			if st.export.failed do ui.toast(&a.ws.toasts, .Error, "The export failed")
-			else if st.export.made >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s bounced in place onto %s", pm.pad_label(st.export.in_place), pm.pad_label(st.export.made)))
-			else if st.export.to_pad >= 0 && st.export.bounce != "" do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Bounced onto %s", pm.pad_label(st.export.to_pad)))
-			else if st.export.to_pad >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Resampled onto %s", pm.pad_label(st.export.to_pad)))
-			else if st.export.freeze >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s frozen", pm.pad_label(st.export.freeze)))
+	if pc.export_frame(&a.core) {
+		{
+			x := pc.job_result(&a.core)
+			files := x.files[:]
+			if x.failed do ui.toast(&a.ws.toasts, .Error, "The export failed")
+			else if x.made >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s bounced in place onto %s", pm.pad_label(x.in_place), pm.pad_label(x.made)))
+			else if x.to_pad >= 0 && x.bounce != "" do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Bounced onto %s", pm.pad_label(x.to_pad)))
+			else if x.to_pad >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Resampled onto %s", pm.pad_label(x.to_pad)))
+			else if x.freeze >= 0 do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s frozen", pm.pad_label(x.freeze)))
 			else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d file%s", len(files), "" if len(files) == 1 else "s"))
 		}
 	}
-	pc.autosave(&a.core, time.Duration(a.settings.autosave_min) * time.Minute, st.exporting) // (backups: the project saves only when asked)
+	pc.autosave(&a.core, time.Duration(a.settings.autosave_min) * time.Minute, a.job.busy) // (backups: the project saves only when asked)
 	title := fmt.tprintf("%s%s — Pads", project_name(a), " •" if pm.model_dirty(&a.m) else "")
 	if title != st.title {
 		delete(st.title)
@@ -261,12 +221,13 @@ project_frame :: proc(a: ^App) {
 // The Export dialog (and the progress of one under way).
 draw_export :: proc(a: ^App) {
 	st := &a.proj
-	if st.exporting {
+	if a.job.busy {
+		x := pc.job_result(&a.core)
 		im.OpenPopup("Exporting")
 		if im.BeginPopupModal("Exporting", nil, {.AlwaysAutoResize, .NoMove}) {
-			im.Text("%s", fmt.ctprintf("Rendering %d of %d…", min(st.export.pass + 1, len(st.export.passes)), len(st.export.passes)))
-			im.ProgressBar(f32(st.progress), {320, 0})
-			if !st.exporting do im.CloseCurrentPopup()
+			im.Text("%s", fmt.ctprintf("Rendering %d of %d…", min(x.pass + 1, len(x.passes)), len(x.passes)))
+			im.ProgressBar(f32(a.job.progress), {320, 0})
+			if !a.job.busy do im.CloseCurrentPopup()
 			im.EndPopup()
 		}
 		return

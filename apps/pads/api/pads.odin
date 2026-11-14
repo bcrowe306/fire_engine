@@ -259,6 +259,45 @@ pad_set_armed :: proc(api: ^Api, pad: i64, on: bool) -> Result {
 	return .Ok
 }
 
+// Where a pad's audio input comes from.
+Input_From :: enum i32 {
+	Interface, // the interface's input channels
+	Pad,       // another track's output (after its fader)
+	Bus,       // a bus's output
+	Main,      // main's output (all that's heard, but the click)
+	None,      // nothing: it records and monitors nothing
+}
+
+// A pad's audio input: what an audio track records, and a sample is
+// recorded from.
+Pad_Input :: struct {
+	from:    Input_From,
+	channel: i64,  // Interface: its first channel (0: input 1)
+	stereo:  bool, // Interface: it and the next (1/2, 3/4...)
+	source:  i64,  // Pad: the pad; Bus: the bus
+}
+
+// Pad `pad`'s audio input.
+pad_input :: proc(api: ^Api, pad: i64) -> (Pad_Input, Result) {
+	p, r := pad_of(api, pad)
+	if r != .Ok do return {}, r
+	x := p.input
+	return {from = Input_From(x.from), channel = i64(x.channel), stereo = x.stereo, source = i64(x.source)}, .Ok
+}
+
+// Sets pad `pad`'s audio input, undoably.
+pad_set_input :: proc(api: ^Api, pad: i64, input: Pad_Input) -> Result {
+	p, r := pad_of(api, pad)
+	if r != .Ok do return r
+	x := input
+	if x.from < min(Input_From) || x.from > max(Input_From) || x.channel < 0 || x.channel > 63 do return fail(api, .Invalid_Argument, "no such input, or a channel 0..63")
+	if x.from == .Pad && (x.source < 0 || x.source >= PADS || x.source == pad) do return fail(api, .Invalid_Argument, "another pad 0..127")
+	if x.from == .Bus && (x.source < 0 || x.source >= pm.BUSES) do return fail(api, .Invalid_Argument, "a bus 0..15")
+	n := p^
+	n.input = {from = pm.Input_From(x.from), channel = u8(x.channel), stereo = x.stereo, source = u8(x.source)}
+	return set_pad(api, pad, .Input, "Set Input", n)
+}
+
 @(private)
 pad_of :: proc(api: ^Api, pad: i64) -> (^pm.Pad, Result) {
 	if pad < 0 || pad >= PADS do return nil, fail(api, .Not_Found, "a pad is 0..127")

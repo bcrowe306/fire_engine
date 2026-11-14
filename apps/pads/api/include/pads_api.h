@@ -58,6 +58,37 @@ enum {
 	PADS_KEY_KIND_BUS = 2,
 };
 
+// What an export renders.
+typedef int32_t Pads_Export_Source;
+enum {
+	PADS_EXPORT_SOURCE_SEQUENCE = 0,
+	PADS_EXPORT_SOURCE_SONG = 1,
+};
+
+// A mixdown, or stems.
+typedef int32_t Pads_Export_Stems;
+enum {
+	PADS_EXPORT_STEMS_MIXDOWN = 0,
+	PADS_EXPORT_STEMS_PADS = 1,
+	PADS_EXPORT_STEMS_BUSES = 2,
+};
+
+// An export's file format.
+typedef int32_t Pads_Export_Format;
+enum {
+	PADS_EXPORT_FORMAT_INT16 = 0,
+	PADS_EXPORT_FORMAT_INT24 = 1,
+	PADS_EXPORT_FORMAT_FLOAT32 = 2,
+};
+
+// How a MIDI file's notes go onto pads.
+typedef int32_t Pads_Midi_Import;
+enum {
+	PADS_MIDI_IMPORT_DRUMS = 0,
+	PADS_MIDI_IMPORT_BY_MAP = 1,
+	PADS_MIDI_IMPORT_ON_PAD = 2,
+};
+
 // When a sequence launched while playing takes over.
 typedef int32_t Pads_Launch_Quantize;
 enum {
@@ -65,6 +96,14 @@ enum {
 	PADS_LAUNCH_QUANTIZE_BAR = 1,
 	PADS_LAUNCH_QUANTIZE_BEAT = 2,
 	PADS_LAUNCH_QUANTIZE_NOW = 3,
+};
+
+// What MIDI plays a pad.
+typedef int32_t Pads_Midi_In_Mode;
+enum {
+	PADS_MIDI_IN_MODE_ALL = 0,
+	PADS_MIDI_IN_MODE_NONE = 1,
+	PADS_MIDI_IN_MODE_PORT = 2,
 };
 
 // Where a pad or a bus plays.
@@ -100,6 +139,16 @@ enum {
 	PADS_MONITOR_AUTO = 0,
 	PADS_MONITOR_IN = 1,
 	PADS_MONITOR_OFF = 2,
+};
+
+// Where a pad's audio input comes from.
+typedef int32_t Pads_Input_From;
+enum {
+	PADS_INPUT_FROM_INTERFACE = 0,
+	PADS_INPUT_FROM_PAD = 1,
+	PADS_INPUT_FROM_BUS = 2,
+	PADS_INPUT_FROM_MAIN = 3,
+	PADS_INPUT_FROM_NONE = 4,
 };
 
 // Whose parameter.
@@ -297,6 +346,32 @@ typedef struct Pads_Region {
 	bool reverse;
 } Pads_Region;
 
+// The Library's browser now.
+typedef struct Pads_Browser_State {
+	int64_t tab; // the favourite shown (browser_favorite_name)
+	int64_t favorites; // its favourites (the project's folder among them)
+	int64_t rows; // the folder tree as shown (browser_row)
+	bool can_back;
+	bool can_forward;
+	int64_t results; // a search's results so far (browser_result)
+	bool searching; // a search is under way
+	bool previewing; // a file is being previewed
+} Pads_Browser_State;
+
+// A row of the browser's tree, or a search result.
+typedef struct Pads_Browser_Row {
+	bool is_dir;
+	int64_t depth; // in the tree: 0 under the root
+} Pads_Browser_Row;
+
+// Preview settings: it plays a file chosen (auto), stretched to the tempo
+// (sync), at `volume_db`.
+typedef struct Pads_Preview_Settings {
+	bool auto_play;
+	bool sync;
+	float volume_db; // -60..6
+} Pads_Preview_Settings;
+
 // An effect slot.
 typedef struct Pads_Slot_Ref {
 	Pads_Effect_Place place;
@@ -319,6 +394,24 @@ typedef struct Pads_Key_State {
 	float hpf_hz; // the key's high-pass (0: none)
 	bool listen; // the track plays the key instead (to set it by)
 } Pads_Key_State;
+
+// How to export.
+typedef struct Pads_Export_Settings {
+	Pads_Export_Source source;
+	Pads_Export_Stems stems;
+	Pads_Export_Format format;
+	double rate; // 44100, 48000 or 96000 (0: the engine's)
+	double tail; // seconds after the end, for reverb and echoes to ring out (0..10)
+} Pads_Export_Settings;
+
+// The export under way, or the last one.
+typedef struct Pads_Export_State {
+	bool busy; // under way (a slice a frame)
+	double progress; // 0..1
+	bool failed; // the last one failed (a file couldn't be written)
+	int64_t files; // files the last one wrote (export_file)
+	int64_t made_pad; // the pad the last bounce, resample or bounce in place made (-1: none)
+} Pads_Export_State;
 
 // The undo history now: steps that can be undone and redone, and whether
 // the project has changed since it was saved.
@@ -352,6 +445,21 @@ typedef struct Pads_Place {
 	int64_t lane;
 	int64_t row;
 } Pads_Place;
+
+// A MIDI port the system has.
+typedef struct Pads_Midi_Port {
+	bool input; // a source (else a destination)
+	bool open; // an input Pads listens to
+} Pads_Midi_Port;
+
+// A pad's MIDI input and output.
+typedef struct Pads_Pad_Midi {
+	Pads_Midi_In_Mode in_mode;
+	int64_t in_channel; // 0: any; 1..16
+	bool out; // its hits also go out as MIDI
+	int64_t out_channel; // 0..15
+	int64_t out_key; // the note it sends
+} Pads_Pad_Midi;
 
 // Where a pad or a bus plays.
 typedef struct Pads_Output {
@@ -412,6 +520,15 @@ typedef struct Pads_Pad_State {
 	Pads_Monitor monitor;
 	bool frozen; // it plays its rendering
 } Pads_Pad_State;
+
+// A pad's audio input: what an audio track records, and a sample is
+// recorded from.
+typedef struct Pads_Pad_Input {
+	Pads_Input_From from;
+	int64_t channel; // Interface: its first channel (0: input 1)
+	bool stereo; // Interface: it and the next (1/2, 3/4...)
+	int64_t source; // Pad: the pad; Bus: the bus
+} Pads_Pad_Input;
 
 // Any parameter: a device of a track, and its parameter's id (the
 // device's own; for Volume, Pan and Send, ignored). Stable: a caller may
@@ -681,6 +798,66 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*audio_set_warp)(Pads_Api* api, int64_t slot, int64_t pad, Pads_Audio_Warp warp, float transpose);
 	// Clears audio track `pad`'s take in the current sequence, undoably.
 	Pads_Result (*audio_clear)(Pads_Api* api, int64_t pad);
+	// The browser now.
+	Pads_Result (*browser_state)(Pads_Api* api, Pads_Browser_State* out);
+	// The folder the tree shows. Temporary.
+	Pads_Result (*browser_folder)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// The selected file or folder ("" none). Temporary.
+	Pads_Result (*browser_selected)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Shows folder `dir` (the one before goes on the back list). Not_Found if
+	// it isn't a folder.
+	Pads_Result (*browser_go)(Pads_Api* api, const char* dir, int64_t dir_len);
+	// Up a folder. Not_Found at the top.
+	Pads_Result (*browser_up)(Pads_Api* api);
+	// Back to the folder before. Not_Found with none.
+	Pads_Result (*browser_back)(Pads_Api* api);
+	// Forward again. Not_Found with none.
+	Pads_Result (*browser_forward)(Pads_Api* api);
+	// Reads the folders again.
+	Pads_Result (*browser_refresh)(Pads_Api* api);
+	// Row `index` of the tree as shown.
+	Pads_Result (*browser_row)(Pads_Api* api, int64_t index, Pads_Browser_Row* out);
+	// Row `index`'s name. Temporary.
+	Pads_Result (*browser_row_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Row `index`'s path. Temporary.
+	Pads_Result (*browser_row_path)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Opens (or closes) folder `dir` in the tree.
+	Pads_Result (*browser_expand)(Pads_Api* api, const char* dir, int64_t dir_len, bool open);
+	// Opens folder `dir` in the tree if closed, closes it if open.
+	Pads_Result (*browser_toggle)(Pads_Api* api, const char* dir, int64_t dir_len);
+	// Selects the file or folder at `path` (with auto preview on, a file plays).
+	Pads_Result (*browser_select)(Pads_Api* api, const char* path, int64_t path_len);
+	// Shows favourite `index`'s folder (a fresh history).
+	Pads_Result (*browser_set_tab)(Pads_Api* api, int64_t index);
+	// Favourite `index`'s name. Temporary.
+	Pads_Result (*browser_favorite_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Favourite `index`'s folder. Temporary.
+	Pads_Result (*browser_favorite_folder)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Adds folder `dir` to the favourites as `name` ("": the folder's): its
+	// index. Saved with the preferences.
+	Pads_Result (*browser_add_favorite)(Pads_Api* api, const char* dir, int64_t dir_len, const char* name, int64_t name_len, int64_t* out);
+	// Removes favourite `index` (not the project's).
+	Pads_Result (*browser_remove_favorite)(Pads_Api* api, int64_t index);
+	// Renames favourite `index`.
+	Pads_Result (*browser_rename_favorite)(Pads_Api* api, int64_t index, const char* name, int64_t name_len);
+	// Moves favourite `from` to `to` (their order as shown).
+	Pads_Result (*browser_move_favorite)(Pads_Api* api, int64_t from, int64_t to);
+	// Searches every folder under the one shown for names with `query` in
+	// them (on its own thread: results come as it goes; "" stops).
+	Pads_Result (*browser_search)(Pads_Api* api, const char* query, int64_t query_len);
+	// Search result `index`.
+	Pads_Result (*browser_result)(Pads_Api* api, int64_t index, Pads_Browser_Row* out);
+	// Search result `index`'s path. Temporary.
+	Pads_Result (*browser_result_path)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Previews the audio file at `path` (as the browser does: with sync, at the
+	// tempo). Not a change to the project.
+	Pads_Result (*browser_preview)(Pads_Api* api, const char* path, int64_t path_len);
+	// Stops the preview.
+	Pads_Result (*browser_preview_stop)(Pads_Api* api);
+	// How the preview plays.
+	Pads_Result (*browser_preview_settings)(Pads_Api* api, Pads_Preview_Settings* out);
+	// Sets how the preview plays.
+	Pads_Result (*browser_set_preview_settings)(Pads_Api* api, Pads_Preview_Settings s);
 	// Built-in synth presets there are (device_preset_name lists them).
 	Pads_Result (*device_preset_count)(Pads_Api* api, int64_t* out);
 	// Built-in preset `index`'s name ("Warm Pad"). Temporary.
@@ -753,6 +930,42 @@ typedef struct Pads_Api_V1 {
 	// Makes the track play the key of the effect in slot `s` (filtered)
 	// instead, to set it by, or not. Undoably.
 	Pads_Result (*effect_set_key_listen)(Pads_Api* api, Pads_Slot_Ref s, bool on);
+	// The export under way, or the last one.
+	Pads_Result (*export_state)(Pads_Api* api, Pads_Export_State* out);
+	// File `index` the last export wrote. Temporary.
+	Pads_Result (*export_file)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Exports as `settings` say into `path` (a .wav file; with stems, a
+	// folder). It renders a slice a frame: export_state says how far. Busy
+	// while another is under way; Invalid_Argument with nothing to export.
+	Pads_Result (*export_start)(Pads_Api* api, Pads_Export_Settings settings, const char* path, int64_t path_len);
+	// Exports as `settings` say into `path` at once, waiting for it (a script's
+	// export): the files written. Busy while another is under way.
+	Pads_Result (*export_now)(Pads_Api* api, Pads_Export_Settings settings, const char* path, int64_t path_len, int64_t* out);
+	// Resamples the current sequence (as it sounds from main) onto the next
+	// empty pad.
+	Pads_Result (*export_resample)(Pads_Api* api);
+	// Bounces pads `pads` (what they play in the current sequence, after their
+	// faders) together onto the next empty pad.
+	Pads_Result (*export_bounce_pads)(Pads_Api* api, const int64_t* pads, int64_t pads_len);
+	// Bounces bus `bus` onto the next empty pad.
+	Pads_Result (*export_bounce_bus)(Pads_Api* api, int64_t bus);
+	// Bounces pad `pad` in place: an audio track of its sound, the pad muted.
+	Pads_Result (*export_bounce_in_place)(Pads_Api* api, int64_t pad);
+	// Freezes pad `pad`: its sound rendered in each sequence and played
+	// instead (its device and inserts rest).
+	Pads_Result (*export_freeze)(Pads_Api* api, int64_t pad);
+	// Unfreezes pad `pad` (its renderings kept, unused), undoably.
+	Pads_Result (*export_unfreeze)(Pads_Api* api, int64_t pad);
+	// Flattens frozen pad `pad`: an audio track whose takes are its
+	// renderings. One undo step.
+	Pads_Result (*export_flatten)(Pads_Api* api, int64_t pad);
+	// Writes sequence `slot` (-1: the song) as a Standard MIDI File at
+	// `path`: the notes it wrote. Io_Error if it can't be written.
+	Pads_Result (*export_midi)(Pads_Api* api, const char* path, int64_t path_len, int64_t slot, int64_t* out);
+	// Reads the Standard MIDI File at `path` into sequence `slot` (replacing
+	// what is there), its notes onto pads as `how` says: the notes read.
+	// Undoably.
+	Pads_Result (*export_import_midi)(Pads_Api* api, const char* path, int64_t path_len, int64_t slot, Pads_Midi_Import how, int64_t pad, int64_t* out);
 	// The history now.
 	Pads_Result (*history_state)(Pads_Api* api, Pads_History_State* out);
 	// Undoes the last step. Not_Found with nothing to undo; Busy while a
@@ -828,6 +1041,35 @@ typedef struct Pads_Api_V1 {
 	// A new, empty sequence at the end of lane `lane`: its slot. Busy when
 	// every slot is used.
 	Pads_Result (*launcher_new_sequence)(Pads_Api* api, int64_t lane, int64_t* out);
+	// MIDI ports there are now (midi_port_name lists them; in the system's
+	// order: open ports may come and go).
+	Pads_Result (*midi_port_count)(Pads_Api* api, int64_t* out);
+	// MIDI port `index`: an input or an output, and whether it is open.
+	Pads_Result (*midi_port)(Pads_Api* api, int64_t index, Pads_Midi_Port* out);
+	// MIDI port `index`'s name. Temporary.
+	Pads_Result (*midi_port_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// MIDI port `index`'s id (stable across runs where the system allows it:
+	// what pad inputs and outputs keep). Temporary.
+	Pads_Result (*midi_port_id)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Plays a MIDI message (`status`, `data1`, `data2`) into Pads as if it came
+	// in on input `port` (its index among the open inputs): a note-on plays
+	// what it is mapped to, recorded while recording. Any thread but the audio
+	// thread.
+	Pads_Result (*midi_send)(Pads_Api* api, int64_t status, int64_t data1, int64_t data2, int64_t port);
+	// Makes MIDI key `key` (0..127) play pad `pad` (-1: nothing) in the MIDI
+	// map, undoably.
+	Pads_Result (*midi_learn)(Pads_Api* api, int64_t key, int64_t pad);
+	// The MIDI key that plays pad `pad` (the lowest, if several), or -1.
+	Pads_Result (*midi_key_of)(Pads_Api* api, int64_t pad, int64_t* out);
+	// Pad `pad`'s MIDI input and output.
+	Pads_Result (*midi_pad)(Pads_Api* api, int64_t pad, Pads_Pad_Midi* out);
+	// What MIDI plays pad `pad`: all ports (the map), none, or port `port_id`
+	// (its id: midi_port_id) on `channel` (0: any; 1..16). Undoably.
+	Pads_Result (*midi_set_pad_input)(Pads_Api* api, int64_t pad, Pads_Midi_In_Mode mode, const char* port_id, int64_t port_id_len, int64_t channel);
+	// Pad `pad`'s hits also go out as MIDI (`on`): note `key` (0..127) on
+	// `channel` (0..15) of output port `port_id` ("": the default output).
+	// Undoably.
+	Pads_Result (*midi_set_pad_output)(Pads_Api* api, int64_t pad, bool on, int64_t channel, int64_t key, const char* port_id, int64_t port_id_len);
 	// The mixer now.
 	Pads_Result (*mixer_state)(Pads_Api* api, Pads_Mixer_State* out);
 	// Bus `bus` (or MAIN) now.
@@ -935,6 +1177,10 @@ typedef struct Pads_Api_V1 {
 	// Arms pad `pad` to record (or not): an audio track records its input, any
 	// other pad what its MIDI input plays.
 	Pads_Result (*pad_set_armed)(Pads_Api* api, int64_t pad, bool on);
+	// Pad `pad`'s audio input.
+	Pads_Result (*pad_input)(Pads_Api* api, int64_t pad, Pads_Pad_Input* out);
+	// Sets pad `pad`'s audio input, undoably.
+	Pads_Result (*pad_set_input)(Pads_Api* api, int64_t pad, Pads_Pad_Input input);
 	// Parameters device `ref` has now (`ref.param` ignored; `param_at` lists
 	// them). Not_Found if the device isn't there (an empty pad, an empty
 	// slot).

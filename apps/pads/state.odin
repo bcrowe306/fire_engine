@@ -447,7 +447,7 @@ state_json :: proc(a: ^App) -> string {
 	s.undo, _ = pa.history_undo_name(&a.api)
 	s.dirty = pm.model_dirty(m)
 	s.project = p.dir
-	s.exporting = a.proj.exporting
+	s.exporting = a.job.busy
 	s.sequences = make([dynamic]State_Sequence, context.temp_allocator)
 	for sq, k in p.sequences do if pm.slot_used(m, k) || k == p.slot {
 		append(&s.sequences, State_Sequence{slot = k + 1, name = pm.sequence_name(p, k), bpm = sq.bpm, bars = sq.bars, notes = len(sq.notes), color = pm.sequence_color(p, k)})

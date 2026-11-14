@@ -78,6 +78,17 @@ MODULES = {
         # scripts use perform_set_bank.)
         (r"\ba\.bank\s*=[^=]", "perform_set_bank", "shell.odin"),
     ],
+    "export": [
+        (r"\bpm\.(export_begin|export_to_pad|bounce_pads|bounce_bus|bounce_in_place_begin|freeze_begin|export_all|export_step|export_finish|set_frozen|flatten|export_midi|import_midi)\(", "export_*"),
+    ],
+    "browser": [
+        (r"\bpm\.(browser_go|browser_up|browser_back|browser_forward|browser_refresh|browser_toggle|browser_expand|browser_select|browser_set_tab|browser_search|favorite_add|favorite_remove|favorite_move|favorite_rename|favorites_save|preview_play|preview_stop)\(", "browser_*"),
+        (r"\.preview\.(auto_play|sync|volume)\s*=[^=]", "browser_set_preview_settings"),
+    ],
+    "midi": [
+        (r"\bpm\.learn_midi\(|\bapp\.host_midi_inject\(", "midi_learn / midi_send"),
+        (r"\bpm\.set_pad\([^)]*\.(Midi_In|Midi_Out|Input)\b", "midi_set_pad_input / output, pad_set_input"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [

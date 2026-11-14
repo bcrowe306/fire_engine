@@ -203,7 +203,7 @@ draw_pad_midi :: proc(a: ^App, i: int) {
 	im.SameLine()
 	if st.learning {
 		if a.capture.midi_count != st.learn_seen {
-			pm.learn_midi(m, a.capture.midi_key, i)
+			pa.midi_learn(&a.api, i64(a.capture.midi_key), i64(i))
 			st.learning = false
 			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Key %d plays %s", a.capture.midi_key, pm.pad_label(i)))
 		}

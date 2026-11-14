@@ -72,7 +72,6 @@ App :: struct {
 	release_at: [pm.PADS]int, // frames until a pad a command played lets go
 	audition_off: struct { pad, pitch, frames: int }, // a pitched audition to let go
 	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
-	browser:  pm.Browser,
 	bview:    Browser_View,
 	knob_target: pm.Auto_Target, // what the knob being drawn moves (see `knob_target`)
 	knob_scale:  f32,
@@ -234,6 +233,7 @@ main :: proc() {
 	defer pm.model_destroy(&a.m)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
+	defer pm.export_destroy(&a.job.export)
 	// A project folder with a project in it opens; otherwise it is a new one
 	// (with what the settings say a new one starts with).
 	a.proj.settings = {rate = 48_000, encoding = .Int24, tail = 1}

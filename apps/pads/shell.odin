@@ -331,8 +331,8 @@ drop_midi :: proc(a: ^App, path: string, pad: int) -> bool {
 	lower := strings.to_lower(path, context.temp_allocator)
 	if !strings.has_suffix(lower, ".mid") && !strings.has_suffix(lower, ".midi") do return false
 	slot := a.m.project.slot
-	n := pm.import_midi(&a.m, path, slot, .On_Pad if pad >= 0 else .By_Map, max(pad, 0))
-	if n < 0 do ui.toast(&a.ws.toasts, .Error, "Could not read that MIDI file")
+	n, r := pa.export_import_midi(&a.api, path, i64(slot), .On_Pad if pad >= 0 else .By_Map, i64(max(pad, 0)))
+	if r != .Ok do ui.toast(&a.ws.toasts, .Error, "Could not read that MIDI file")
 	else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%d notes into %s%s", n, pm.sequence_name(&a.m.project, slot), fmt.tprintf(", on %s", pm.pad_label(pad)) if pad >= 0 else ""))
 	return true
 }
@@ -358,15 +358,15 @@ subscribe_imports :: proc(a: ^App) {
 		a := (^App)(user)
 		defer delete(e.path)
 		path := e.path if strings.has_suffix(strings.to_lower(e.path, context.temp_allocator), ".mid") else strings.concatenate({e.path, ".mid"}, context.temp_allocator)
-		n := pm.export_midi(&a.m, path, e.slot)
-		if n < 0 do ui.toast(&a.ws.toasts, .Error, "Could not write that MIDI file")
+		n, r := pa.export_midi(&a.api, path, i64(e.slot))
+		if r != .Ok do ui.toast(&a.ws.toasts, .Error, "Could not write that MIDI file")
 		else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Exported %d notes to %s", n, filepath.base(path)))
 	}, a)
 	app.subscribe(&a.bus, Midi_Chosen, proc(user: rawptr, e: ^Midi_Chosen) {
 		a := (^App)(user)
 		defer delete(e.path)
-		n := pm.import_midi(&a.m, e.path, a.m.project.slot)
-		if n < 0 do ui.toast(&a.ws.toasts, .Error, "Could not read that MIDI file")
+		n, r := pa.export_import_midi(&a.api, e.path, i64(a.m.project.slot))
+		if r != .Ok do ui.toast(&a.ws.toasts, .Error, "Could not read that MIDI file")
 		else do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%d notes into sequence %d", n, a.m.project.slot + 1))
 	}, a)
 }
@@ -462,8 +462,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 	case "browse":
 		if len(w) > 1 {
-			pm.browser_go(&a.browser, absolute(strings.join(w[1:], " ", context.temp_allocator)))
-			return true
+			return pa.browser_go(&a.api, absolute(strings.join(w[1:], " ", context.temp_allocator))) == .Ok
 		}
 	case "browser":
 		// browser up|back|forward|open REL|toggle REL|select REL|down|tab N|refresh
@@ -472,17 +471,17 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		rel := strings.join(w[2:], " ", context.temp_allocator) if len(w) > 2 else ""
 		under, _ := filepath.join({b.root, rel}, context.temp_allocator)
 		switch w[1] {
-		case "up":      return pm.browser_up(b)
-		case "back":    return pm.browser_back(b)
-		case "forward": return pm.browser_forward(b)
-		case "open":    pm.browser_go(b, under)
-		case "toggle":  pm.browser_toggle(b, under)
+		case "up":      return pa.browser_up(&a.api) == .Ok
+		case "back":    return pa.browser_back(&a.api) == .Ok
+		case "forward": return pa.browser_forward(&a.api) == .Ok
+		case "open":    pa.browser_go(&a.api, under)
+		case "toggle":  pa.browser_toggle(&a.api, under)
 		case "select":
-			pm.browser_select(b, under)
+			pa.browser_select(&a.api, under)
 			if pm.is_audio(under) do preview_selected(a, {path = under}, true)
-		case "tab":     pm.browser_set_tab(b, num(w, 2))
-		case "refresh": pm.browser_refresh(b)
-		case "fav":     pm.favorite_add(b, b.root); pm.favorites_save(b, favorites_path(a))
+		case "tab":     pa.browser_set_tab(&a.api, i64(num(w, 2)))
+		case "refresh": pa.browser_refresh(&a.api)
+		case "fav":     pa.browser_add_favorite(&a.api, b.root, "")
 		case: return false
 		}
 		return true
@@ -506,18 +505,22 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		q := strings.join(w[1:], " ", context.temp_allocator) if len(w) > 1 else ""
 		a.bview.query = {}
 		copy(a.bview.query[:len(a.bview.query) - 1], q)
-		pm.browser_search(&a.browser, q)
+		pa.browser_search(&a.api, q)
 		return true
 	case "preview":
 		// preview stop|play|auto on|off|sync on|off|volume DB
-		e := &a.m.engine
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "stop":   pm.preview_stop(e)
-		case "play":   pm.preview_play(e, a.browser.selected)
-		case "auto":   e.preview.auto_play = len(w) > 2 && w[2] == "on"
-		case "sync":   e.preview.sync = len(w) > 2 && w[2] == "on"
-		case "volume": e.preview.volume = numf(w, 2)
+		case "stop":   pa.browser_preview_stop(&a.api)
+		case "play":   pa.browser_preview(&a.api, a.browser.selected)
+		case "auto", "sync", "volume":
+			ps, _ := pa.browser_preview_settings(&a.api)
+			switch w[1] {
+			case "auto":   ps.auto_play = len(w) > 2 && w[2] == "on"
+			case "sync":   ps.sync = len(w) > 2 && w[2] == "on"
+			case "volume": ps.volume_db = clamp(numf(w, 2), -60, 6)
+			}
+			pa.browser_set_preview_settings(&a.api, ps)
 		case: return false
 		}
 		return true
@@ -587,41 +590,37 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) < 3 do return false
 		key, vel := num(w, 1), num(w, 2)
 		if key < 0 || key > 127 do return false
-		port := u8(num(w, 3)) if len(w) > 3 else 0
-		app.host_midi_inject(&a.host, {0x90 if vel > 0 else 0x80, u8(key), u8(clamp(vel, 0, 127))}, port)
-		return true
+		port := i64(num(w, 3)) if len(w) > 3 else 0
+		return pa.midi_send(&a.api, 0x90 if vel > 0 else 0x80, i64(key), i64(clamp(vel, 0, 127)), port) == .Ok
 	case "midi_in":
 		// midi_in PAD all|none|INDEX [CHANNEL]: what MIDI plays it (INDEX: an
 		// input port's index, as `midi` sends; for scripts without ports)
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 3 do return false
-		p := a.m.project.pads[i]
+		r: pa.Result
 		switch w[2] {
-		case "all":  p.midi_in = {mode = .All}
-		case "none": p.midi_in = {mode = .None}
-		case:        p.midi_in = {mode = .Port, port = pm.intern(&a.m.project, w[2]), channel = u8(num(w, 3)) if len(w) > 3 else 0}
+		case "all":  r = pa.midi_set_pad_input(&a.api, i64(i), .All, "", 0)
+		case "none": r = pa.midi_set_pad_input(&a.api, i64(i), .None, "", 0)
+		case:        r = pa.midi_set_pad_input(&a.api, i64(i), .Port, w[2], i64(clamp(num(w, 3), 0, 16)) if len(w) > 3 else 0)
 		}
-		pm.set_pad(&a.m, i, .Midi_In, "MIDI In", p)
-		app.seal(&a.m.history)
+		if r != .Ok do return false
 		pm.sync(&a.m.engine)
-		if p.midi_in.mode == .Port do a.m.engine.router.in_port[i] = i16(num(w, 2)) // (no ports here: the index as given)
+		if a.m.project.pads[i].midi_in.mode == .Port do a.m.engine.router.in_port[i] = i16(num(w, 2)) // (no ports here: the index as given)
 		return true
 	case "input":
 		// input PAD main | pad K | bus B (1..) | in CH [stereo] (1..) | none: a pad's input
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 3 do return false
-		p := a.m.project.pads[i]
+		x: pa.Pad_Input
 		switch w[2] {
-		case "main": p.input = {from = .Main}
-		case "none": p.input = {from = .None}
-		case "pad":  p.input = {from = .Pad, source = u8(num(w, 3))}
-		case "bus":  p.input = {from = .Bus, source = u8(max(num(w, 3) - 1, 0))}
-		case "in":   p.input = {channel = u8(max(num(w, 3) - 1, 0)), stereo = len(w) > 4 && w[4] == "stereo"}
+		case "main": x = {from = .Main}
+		case "none": x = {from = .None}
+		case "pad":  x = {from = .Pad, source = i64(num(w, 3))}
+		case "bus":  x = {from = .Bus, source = i64(max(num(w, 3) - 1, 0))}
+		case "in":   x = {channel = i64(max(num(w, 3) - 1, 0)), stereo = len(w) > 4 && w[4] == "stereo"}
 		case:        return drive_fail(a, "input PAD main|pad K|bus B|in CH [stereo]")
 		}
-		pm.set_pad(&a.m, i, .Input, "Set Input", p)
-		app.seal(&a.m.history)
-		return true
+		return pa.pad_set_input(&a.api, i64(i), x) == .Ok
 	case "count_in": // count_in BARS (0..2): bars of click before recording (a new project's: 1)
 		if len(w) < 2 do return false
 		return pa.transport_set_count_in(&a.api, i64(clamp(num(w, 1), 0, 2))) == .Ok
@@ -664,8 +663,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "learn":
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
-			pm.learn_midi(&a.m, num(w, 2), i)
-			return true
+			return pa.midi_learn(&a.api, i64(num(w, 2)), i64(i)) == .Ok
 		}
 	case "point":
 		// point PAD PARAM BEAT VALUE (PARAM: volume, pitch, low, mid, high, cutoff, resonance)
@@ -708,10 +706,11 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "export_midi": // export_midi SLOT|song PATH: a sequence (1..) or the song as a MIDI file
 		if len(w) < 3 do return false
 		slot := -1 if w[1] == "song" else num(w, 1) - 1
-		return pm.export_midi(&a.m, strings.join(w[2:], " ", context.temp_allocator), slot) >= 0
+		_, r := pa.export_midi(&a.api, strings.join(w[2:], " ", context.temp_allocator), i64(slot))
+		return r == .Ok
 	case "import_midi":
 		if len(w) < 2 do return false
-		if pm.import_midi(&a.m, strings.join(w[1:], " ", context.temp_allocator), a.m.project.slot) < 0 do return drive_fail(a, "could not read the MIDI file")
+		if _, r := pa.export_import_midi(&a.api, strings.join(w[1:], " ", context.temp_allocator), i64(a.m.project.slot)); r != .Ok do return drive_fail(a, "could not read the MIDI file")
 		return true
 	case "insert", "busfx", "perf_fx":
 		// insert PAD SLOT KIND / busfx BUS SLOT KIND (BUS 0..3, 4 = main) / perf_fx N KIND
@@ -954,9 +953,10 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 				}
 			}
 		}
-		x: pm.Export
-		defer pm.export_destroy(&x)
-		if len(pm.export_all(&a.m, st, w[1], &x)) == 0 do return drive_fail(a, "nothing exported")
+		if _, r := pa.export_now(&a.api, {source = pa.Export_Source(st.source), stems = pa.Export_Stems(st.stems), format = pa.Export_Format(st.encoding), rate = st.rate, tail = st.tail}, w[1]); r != .Ok {
+			why, _ := pa.last_error(&a.api)
+			return drive_fail(a, why)
+		}
 		return true
 	case "resample":
 		start_resample(a)

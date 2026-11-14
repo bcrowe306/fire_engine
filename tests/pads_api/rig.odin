@@ -22,6 +22,7 @@ Rig :: struct {
 	core: pc.Core,
 	api:  pa.Api,
 	dir:  string,
+	browser_on: bool,
 }
 
 rig_make :: proc(t: ^testing.T, name: string) -> ^Rig {
@@ -48,6 +49,8 @@ rig_make :: proc(t: ^testing.T, name: string) -> ^Rig {
 
 rig_destroy :: proc(r: ^Rig) {
 	pa.api_destroy(&r.api)
+	if r.browser_on do pm.browser_destroy(&r.core.browser)
+	pm.export_destroy(&r.core.job.export)
 	pm.capture_destroy(&r.core.capture)
 	pc.files_destroy(&r.core.files)
 	pc.settings_destroy(&r.core)
@@ -73,4 +76,11 @@ render :: proc(r: ^Rig, frames: int) {
 	}
 	out := [2][]f32{make([]f32, frames, context.temp_allocator), make([]f32, frames, context.temp_allocator)}
 	app.host_render(&r.core.host, out[:], frames, nil)
+}
+
+// The browser on, as Pads starts it (its favourites in the test's folder).
+pc_browser_init :: proc(r: ^Rig) {
+	fav, _ := filepath.join({r.core.files.folders.prefs, "favorites.txt"}, context.temp_allocator)
+	pm.browser_init(&r.core.browser, fav)
+	r.browser_on = true
 }

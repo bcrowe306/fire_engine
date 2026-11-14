@@ -128,14 +128,11 @@ audio_in_text :: proc(a: ^App, i: int) -> string {
 midi_in_items :: proc(a: ^App, i: int) {
 	m := &a.m
 	pad := m.project.pads[i]
-	set :: proc(m: ^pm.Model, i: int, mi: pm.Midi_In) {
-		p := m.project.pads[i]
-		p.midi_in = mi
-		pm.set_pad(m, i, .Midi_In, "MIDI In", p)
-		app.seal(&m.history)
+	set :: proc(a: ^App, i: int, mi: pm.Midi_In) {
+		pa.midi_set_pad_input(&a.api, i64(i), pa.Midi_In_Mode(mi.mode), mi.port, i64(mi.channel))
 	}
-	if im.MenuItem("All MIDI (the drum map)", nil, pad.midi_in.mode == .All) do set(m, i, {mode = .All})
-	if im.MenuItem("No MIDI", nil, pad.midi_in.mode == .None) do set(m, i, {mode = .None})
+	if im.MenuItem("All MIDI (the drum map)", nil, pad.midi_in.mode == .All) do set(a, i, {mode = .All})
+	if im.MenuItem("No MIDI", nil, pad.midi_in.mode == .None) do set(a, i, {mode = .None})
 	ports := app.host_midi_ports(&a.host, context.temp_allocator)
 	any := false
 	for p in ports do if p.direction == .Input {
@@ -143,9 +140,9 @@ midi_in_items :: proc(a: ^App, i: int) {
 		any = true
 		here := pad.midi_in.mode == .Port && pad.midi_in.port == p.id
 		if im.BeginMenu(fmt.ctprintf("%s%s###mip%s", p.name, "  ✓" if here else "", p.id)) {
-			if im.MenuItem("Any channel", nil, here && pad.midi_in.channel == 0) do set(m, i, {mode = .Port, port = pm.intern(&m.project, p.id)})
+			if im.MenuItem("Any channel", nil, here && pad.midi_in.channel == 0) do set(a, i, {mode = .Port, port = pm.intern(&m.project, p.id)})
 			for ch in 1 ..= 16 do if im.MenuItem(fmt.ctprintf("Channel %d", ch), nil, here && int(pad.midi_in.channel) == ch) {
-				set(m, i, {mode = .Port, port = pm.intern(&m.project, p.id), channel = u8(ch)})
+				set(a, i, {mode = .Port, port = pm.intern(&m.project, p.id), channel = u8(ch)})
 			}
 			im.EndMenu()
 		}
@@ -164,25 +161,22 @@ audio_in_items :: proc(a: ^App, i: int) {
 	m := &a.m
 	p := &m.project
 	pad := p.pads[i]
-	set :: proc(m: ^pm.Model, i: int, in_: pm.Audio_Input) {
-		p := m.project.pads[i]
-		p.input = in_
-		pm.set_pad(m, i, .Input, "Set Input", p)
-		app.seal(&m.history)
+	set :: proc(a: ^App, i: int, in_: pm.Audio_Input) {
+		pa.pad_set_input(&a.api, i64(i), {from = pa.Input_From(in_.from), channel = i64(in_.channel), stereo = in_.stereo, source = i64(in_.source)})
 	}
 	open := a.host.open_inputs
 	here := pad.input.from == .Interface
 	// None: it records (and monitors) nothing.
-	if im.MenuItem("No input", nil, pad.input.from == .None) do set(m, i, {channel = pad.input.channel, stereo = pad.input.stereo, from = .None})
+	if im.MenuItem("No input", nil, pad.input.from == .None) do set(a, i, {channel = pad.input.channel, stereo = pad.input.stereo, from = .None})
 	im.Separator()
 	if open == {} {
 		im.TextDisabled("No inputs open (Settings > Audio)")
 	} else {
 		f := interface_find(&a.settings.audio, a.settings.audio.input)
 		dev := find_device(&a.settings, a.settings.audio.input, false)
-		for c in mask_pairs(open) do if im.MenuItem(fmt.ctprintf("%s (stereo)###ip%d", pair_label(f, dev, false, c), c), nil, here && pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c), stereo = true})
+		for c in mask_pairs(open) do if im.MenuItem(fmt.ctprintf("%s (stereo)###ip%d", pair_label(f, dev, false, c), c), nil, here && pad.input.stereo && int(pad.input.channel) == c) do set(a, i, {channel = u8(c), stereo = true})
 		im.Separator()
-		for c in open do if im.MenuItem(fmt.ctprintf("%s###ic%d", channel_label(f, dev, false, c), c), nil, here && !pad.input.stereo && int(pad.input.channel) == c) do set(m, i, {channel = u8(c)})
+		for c in open do if im.MenuItem(fmt.ctprintf("%s###ic%d", channel_label(f, dev, false, c), c), nil, here && !pad.input.stereo && int(pad.input.channel) == c) do set(a, i, {channel = u8(c)})
 		if here && !pm.input_open(&m.engine, i) {
 			im.Separator()
 			im.MenuItem(fmt.ctprintf("%s###icmissing", audio_in_text(a, i)), nil, true, false)
@@ -201,7 +195,7 @@ audio_in_items :: proc(a: ^App, i: int) {
 			label := fmt.ctprintf("%s###it%d", pm.pad_label(k) if name == "" else fmt.tprintf("%s · %s", pm.pad_label(k), name), k)
 			in_ := keep
 			in_.from, in_.source = .Pad, u8(k)
-			if im.MenuItem(label, nil, pad.input.from == .Pad && int(pad.input.source) == k) do set(m, i, in_)
+			if im.MenuItem(label, nil, pad.input.from == .Pad && int(pad.input.source) == k) do set(a, i, in_)
 		}
 		if !any do im.TextDisabled("No other tracks")
 		im.EndMenu()
@@ -210,13 +204,13 @@ audio_in_items :: proc(a: ^App, i: int) {
 		for b in 0 ..< p.bus_count {
 			in_ := keep
 			in_.from, in_.source = .Bus, u8(b)
-			if im.MenuItem(fmt.ctprintf("%s###ib%d", pm.bus_name(p, b + 1), b), nil, pad.input.from == .Bus && int(pad.input.source) == b) do set(m, i, in_)
+			if im.MenuItem(fmt.ctprintf("%s###ib%d", pm.bus_name(p, b + 1), b), nil, pad.input.from == .Bus && int(pad.input.source) == b) do set(a, i, in_)
 		}
 		im.EndMenu()
 	}
 	main := keep
 	main.from = .Main
-	if im.MenuItem("Main (resample)", nil, pad.input.from == .Main) do set(m, i, main)
+	if im.MenuItem("Main (resample)", nil, pad.input.from == .Main) do set(a, i, main)
 }
 
 // A horizontal input meter, `w` wide: the level of track `i`'s input
@@ -302,15 +296,13 @@ midi_out_port_combo :: proc(a: ^App, i: int, w: f32) {
 	name := "Default output" if pad.midi_out.port == "" else port_name(a, pad.midi_out.port, false)
 	im.SetNextItemWidth(w)
 	if ui.combo("##midioutport", fmt.ctprintf("%s", name)) {
-		set :: proc(m: ^pm.Model, i: int, port: string) {
-			p := m.project.pads[i]
-			p.midi_out.port = pm.intern(&m.project, port)
-			pm.set_pad(m, i, .Midi_Out, "MIDI Out Port", p)
-			app.seal(&m.history)
+		set :: proc(a: ^App, i: int, port: string) {
+			o := a.m.project.pads[i].midi_out
+			pa.midi_set_pad_output(&a.api, i64(i), o.on, i64(o.channel), i64(o.key), port)
 		}
-		if im.Selectable("Default output (Settings)", pad.midi_out.port == "") do set(m, i, "")
+		if im.Selectable("Default output (Settings)", pad.midi_out.port == "") do set(a, i, "")
 		for p in app.host_midi_ports(&a.host, context.temp_allocator) do if p.direction == .Output {
-			if im.Selectable(fmt.ctprintf("%s###mop%s", p.name, p.id), p.id == pad.midi_out.port) do set(m, i, p.id)
+			if im.Selectable(fmt.ctprintf("%s###mop%s", p.name, p.id), p.id == pad.midi_out.port) do set(a, i, p.id)
 		}
 		im.EndCombo()
 	}

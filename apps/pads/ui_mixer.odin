@@ -904,16 +904,13 @@ midi_out_row :: proc(a: ^App, pad: int) {
 	if im.IsItemHovered() && !clicked do im.SetTooltip("%s", fmt.ctprintf("MIDI out: %s (its hits also go out as a note; click to choose)", fmt.tprintf("%s, channel %d", port, out.channel + 1) if out.on else "off"))
 	if clicked do im.OpenPopup("##midioutmenu")
 	if im.BeginPopup("##midioutmenu") {
-		set :: proc(m: ^pm.Model, i: int, o: pm.Midi_Out) {
-			p := m.project.pads[i]
-			p.midi_out = o
-			pm.set_pad(m, i, .Midi_Out, "MIDI Out", p)
-			app.seal(&m.history)
+		set :: proc(a: ^App, i: int, o: pm.Midi_Out) {
+			pa.midi_set_pad_output(&a.api, i64(i), o.on, i64(o.channel), i64(o.key), o.port)
 		}
 		if im.Selectable("Off", !out.on) {
 			o := out
 			o.on = false
-			set(m, pad, o)
+			set(a, pad, o)
 		}
 		turn_on :: proc(o: pm.Midi_Out, pad: int, port: string) -> pm.Midi_Out {
 			x := o
@@ -921,15 +918,15 @@ midi_out_row :: proc(a: ^App, pad: int) {
 			if x.key == 0 do x.key = u8(pm.pad_key(pad))
 			return x
 		}
-		if im.Selectable("Default output (Settings)", out.on && out.port == "") do set(m, pad, turn_on(out, pad, ""))
+		if im.Selectable("Default output (Settings)", out.on && out.port == "") do set(a, pad, turn_on(out, pad, ""))
 		for p in app.host_midi_ports(&a.host, context.temp_allocator) do if p.direction == .Output {
-			if im.Selectable(fmt.ctprintf("%s###mo%s", p.name, p.id), out.on && p.id == out.port) do set(m, pad, turn_on(out, pad, pm.intern(&m.project, p.id)))
+			if im.Selectable(fmt.ctprintf("%s###mo%s", p.name, p.id), out.on && p.id == out.port) do set(a, pad, turn_on(out, pad, pm.intern(&m.project, p.id)))
 		}
 		if out.on && im.BeginMenu("Channel") {
 			for ch in 0 ..< 16 do if im.MenuItem(fmt.ctprintf("%d", ch + 1), nil, int(out.channel) == ch) {
 				o := out
 				o.channel = u8(ch)
-				set(m, pad, o)
+				set(a, pad, o)
 			}
 			im.EndMenu()
 		}

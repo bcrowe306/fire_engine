@@ -190,6 +190,225 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := audio_clear(api, pad)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_folder":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_folder(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_selected":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_selected(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_go":
+		dir := remote_string(args, "dir", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_go(api, dir)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_up":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_up(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_back":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_back(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_forward":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_forward(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_refresh":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_refresh(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_row":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_row(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_row_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_row_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_row_path":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_row_path(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_expand":
+		dir := remote_string(args, "dir", &ok)
+		open := remote_bool(args, "open", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_expand(api, dir, open)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_toggle":
+		dir := remote_string(args, "dir", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_toggle(api, dir)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_select":
+		path := remote_string(args, "path", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_select(api, path)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_set_tab":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_set_tab(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_favorite_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_favorite_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_favorite_folder":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_favorite_folder(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_add_favorite":
+		dir := remote_string(args, "dir", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_add_favorite(api, dir, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_remove_favorite":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_remove_favorite(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_rename_favorite":
+		index := remote_i64(args, "index", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_rename_favorite(api, index, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_move_favorite":
+		from := remote_i64(args, "from", &ok)
+		to := remote_i64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_move_favorite(api, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_search":
+		query := remote_string(args, "query", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_search(api, query)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_result":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_result(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_result_path":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_result_path(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_preview":
+		path := remote_string(args, "path", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_preview(api, path)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_preview_stop":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_preview_stop(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_browser_preview_settings":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := browser_preview_settings(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_browser_set_preview_settings":
+		s := remote_struct_Preview_Settings(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := browser_set_preview_settings(api, s)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_device_preset_count":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -421,6 +640,114 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := effect_set_key_listen(api, s, on)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := export_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_export_file":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := export_file(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_export_start":
+		settings := remote_struct_Export_Settings(args, "settings", &ok)
+		path := remote_string(args, "path", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_start(api, settings, path)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_now":
+		settings := remote_struct_Export_Settings(args, "settings", &ok)
+		path := remote_string(args, "path", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := export_now(api, settings, path)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_export_resample":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_resample(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_bounce_pads":
+		pads := remote_i64s(args, "pads", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_bounce_pads(api, pads)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_bounce_bus":
+		bus := remote_i64(args, "bus", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_bounce_bus(api, bus)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_bounce_in_place":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_bounce_in_place(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_freeze":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_freeze(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_unfreeze":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_unfreeze(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_flatten":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := export_flatten(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_export_midi":
+		path := remote_string(args, "path", &ok)
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := export_midi(api, path, slot)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_export_import_midi":
+		path := remote_string(args, "path", &ok)
+		slot := remote_i64(args, "slot", &ok)
+		how := Midi_Import(remote_enum(args, "how", Midi_Import_NAMES[:], &ok))
+		pad := remote_i64_or(args, "pad", 0, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := export_import_midi(api, path, slot, how, pad)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_history_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -656,6 +983,96 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := launcher_new_sequence(api, lane)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_port_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := midi_port_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_port":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := midi_port(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_port_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := midi_port_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_port_id":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := midi_port_id(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_send":
+		status := remote_i64(args, "status", &ok)
+		data1 := remote_i64(args, "data1", &ok)
+		data2 := remote_i64(args, "data2", &ok)
+		port := remote_i64_or(args, "port", 0, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := midi_send(api, status, data1, data2, port)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_midi_learn":
+		key := remote_i64(args, "key", &ok)
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := midi_learn(api, key, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_midi_key_of":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := midi_key_of(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_pad":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := midi_pad(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_midi_set_pad_input":
+		pad := remote_i64(args, "pad", &ok)
+		mode := Midi_In_Mode(remote_enum(args, "mode", Midi_In_Mode_NAMES[:], &ok))
+		port_id := remote_string(args, "port_id", &ok)
+		channel := remote_i64(args, "channel", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := midi_set_pad_input(api, pad, mode, port_id, channel)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_midi_set_pad_output":
+		pad := remote_i64(args, "pad", &ok)
+		on := remote_bool(args, "on", &ok)
+		channel := remote_i64(args, "channel", &ok)
+		key := remote_i64(args, "key", &ok)
+		port_id := remote_string(args, "port_id", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := midi_set_pad_output(api, pad, on, channel, key, port_id)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_mixer_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -1039,6 +1456,23 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := pad_set_armed(api, pad, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_input":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_input(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_set_input":
+		pad := remote_i64(args, "pad", &ok)
+		input := remote_struct_Pad_Input(args, "input", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_input(api, pad, input)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_param_count":
 		ref := remote_struct_Param_Ref(args, "ref", &ok)
@@ -2096,7 +2530,22 @@ Effect_Place_NAMES := [?]string{"Insert", "Bus", "Main", "Perf"}
 Key_Kind_NAMES := [?]string{"None", "Pad", "Bus"}
 
 @(private)
+Export_Source_NAMES := [?]string{"Sequence", "Song"}
+
+@(private)
+Export_Stems_NAMES := [?]string{"Mixdown", "Pads", "Buses"}
+
+@(private)
+Export_Format_NAMES := [?]string{"Int16", "Int24", "Float32"}
+
+@(private)
+Midi_Import_NAMES := [?]string{"Drums", "By_Map", "On_Pad"}
+
+@(private)
 Launch_Quantize_NAMES := [?]string{"End", "Bar", "Beat", "Now"}
+
+@(private)
+Midi_In_Mode_NAMES := [?]string{"All", "None", "Port"}
 
 @(private)
 Output_Kind_NAMES := [?]string{"Main", "Bus", "Pair"}
@@ -2109,6 +2558,9 @@ Pad_Mode_NAMES := [?]string{"One_Shot", "Gate", "Loop", "Hold"}
 
 @(private)
 Monitor_NAMES := [?]string{"Auto", "In", "Off"}
+
+@(private)
+Input_From_NAMES := [?]string{"Interface", "Pad", "Bus", "Main", "None"}
 
 @(private)
 Track_NAMES := [?]string{"None", "Pad", "Bus", "Main"}
@@ -2171,6 +2623,22 @@ remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
 }
 
 @(private)
+remote_struct_Export_Settings :: proc(args: json.Object, name: string, ok: ^bool) -> Export_Settings {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Export_Settings
+	v.source = Export_Source(remote_enum_or(obj, "source", Export_Source_NAMES[:], 0, ok))
+	v.stems = Export_Stems(remote_enum_or(obj, "stems", Export_Stems_NAMES[:], 0, ok))
+	v.format = Export_Format(remote_enum_or(obj, "format", Export_Format_NAMES[:], 0, ok))
+	v.rate = remote_f64_or(obj, "rate", 0, ok)
+	v.tail = remote_f64_or(obj, "tail", 0, ok)
+	return v
+}
+
+@(private)
 remote_struct_Midi_Fx :: proc(args: json.Object, name: string, ok: ^bool) -> Midi_Fx {
 	obj, is := args[name].(json.Object)
 	if !is {
@@ -2222,6 +2690,21 @@ remote_struct_Output :: proc(args: json.Object, name: string, ok: ^bool) -> Outp
 }
 
 @(private)
+remote_struct_Pad_Input :: proc(args: json.Object, name: string, ok: ^bool) -> Pad_Input {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Pad_Input
+	v.from = Input_From(remote_enum_or(obj, "from", Input_From_NAMES[:], 0, ok))
+	v.channel = remote_i64_or(obj, "channel", 0, ok)
+	v.stereo = remote_bool_or(obj, "stereo", false, ok)
+	v.source = remote_i64_or(obj, "source", 0, ok)
+	return v
+}
+
+@(private)
 remote_struct_Param_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> Param_Ref {
 	obj, is := args[name].(json.Object)
 	if !is {
@@ -2234,6 +2717,20 @@ remote_struct_Param_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> P
 	v.device = Device(remote_enum_or(obj, "device", Device_NAMES[:], 0, ok))
 	v.slot = remote_i64_or(obj, "slot", 0, ok)
 	v.param = remote_i64_or(obj, "param", 0, ok)
+	return v
+}
+
+@(private)
+remote_struct_Preview_Settings :: proc(args: json.Object, name: string, ok: ^bool) -> Preview_Settings {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Preview_Settings
+	v.auto_play = remote_bool_or(obj, "auto_play", false, ok)
+	v.sync = remote_bool_or(obj, "sync", false, ok)
+	v.volume_db = remote_f32_or(obj, "volume_db", 0, ok)
 	return v
 }
 
@@ -2338,6 +2835,34 @@ REMOTE_METHODS := [?]string{
 	"pads_audio_consolidate",
 	"pads_audio_set_warp",
 	"pads_audio_clear",
+	"pads_browser_state",
+	"pads_browser_folder",
+	"pads_browser_selected",
+	"pads_browser_go",
+	"pads_browser_up",
+	"pads_browser_back",
+	"pads_browser_forward",
+	"pads_browser_refresh",
+	"pads_browser_row",
+	"pads_browser_row_name",
+	"pads_browser_row_path",
+	"pads_browser_expand",
+	"pads_browser_toggle",
+	"pads_browser_select",
+	"pads_browser_set_tab",
+	"pads_browser_favorite_name",
+	"pads_browser_favorite_folder",
+	"pads_browser_add_favorite",
+	"pads_browser_remove_favorite",
+	"pads_browser_rename_favorite",
+	"pads_browser_move_favorite",
+	"pads_browser_search",
+	"pads_browser_result",
+	"pads_browser_result_path",
+	"pads_browser_preview",
+	"pads_browser_preview_stop",
+	"pads_browser_preview_settings",
+	"pads_browser_set_preview_settings",
 	"pads_device_preset_count",
 	"pads_device_preset_name",
 	"pads_device_preset_category",
@@ -2364,6 +2889,19 @@ REMOTE_METHODS := [?]string{
 	"pads_effect_set_key",
 	"pads_effect_set_key_filter",
 	"pads_effect_set_key_listen",
+	"pads_export_state",
+	"pads_export_file",
+	"pads_export_start",
+	"pads_export_now",
+	"pads_export_resample",
+	"pads_export_bounce_pads",
+	"pads_export_bounce_bus",
+	"pads_export_bounce_in_place",
+	"pads_export_freeze",
+	"pads_export_unfreeze",
+	"pads_export_flatten",
+	"pads_export_midi",
+	"pads_export_import_midi",
 	"pads_history_state",
 	"pads_history_undo",
 	"pads_history_redo",
@@ -2394,6 +2932,16 @@ REMOTE_METHODS := [?]string{
 	"pads_launcher_color_lane",
 	"pads_launcher_move_sequence",
 	"pads_launcher_new_sequence",
+	"pads_midi_port_count",
+	"pads_midi_port",
+	"pads_midi_port_name",
+	"pads_midi_port_id",
+	"pads_midi_send",
+	"pads_midi_learn",
+	"pads_midi_key_of",
+	"pads_midi_pad",
+	"pads_midi_set_pad_input",
+	"pads_midi_set_pad_output",
 	"pads_mixer_state",
 	"pads_mixer_bus_state",
 	"pads_mixer_bus_name",
@@ -2439,6 +2987,8 @@ REMOTE_METHODS := [?]string{
 	"pads_pad_copy_to",
 	"pads_pad_play",
 	"pads_pad_set_armed",
+	"pads_pad_input",
+	"pads_pad_set_input",
 	"pads_param_count",
 	"pads_param_at",
 	"pads_param_info",
