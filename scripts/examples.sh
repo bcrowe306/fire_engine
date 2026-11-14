@@ -13,6 +13,11 @@ names=("$@")
 [ ${#names[@]} -eq 0 ] && for d in examples/*/; do names+=("$(basename "$d")"); done
 failed=()
 for name in "${names[@]}"; do
+	# A C example (no Odin in it) is built by its own script (see its source).
+	if ! compgen -G "examples/$name/*.odin" > /dev/null; then
+		echo "=== examples/$name: C, built by its script (scripts/surface.sh)"
+		continue
+	fi
 	# An example with a REQUIRES file needs a separately built library (see
 	# the file): skipped until it is there.
 	req="examples/$name/REQUIRES"

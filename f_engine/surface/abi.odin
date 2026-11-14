@@ -26,8 +26,12 @@ See /guides/surfaces/.
 */
 package surface
 
-// The script ABI's version: a script with another version is refused.
-ABI_VERSION :: 1
+// The script ABI's version. Version 2 added `Host.get_extension`.
+ABI_VERSION :: 2
+
+// The oldest script ABI a manager still loads: a version-1 script gets the
+// same host and doesn't read past `log`.
+ABI_MIN :: 1
 
 // The symbol a script library exports: a `Entry_Proc`.
 ENTRY_SYMBOL :: "fire_surface_entry"
@@ -116,4 +120,8 @@ Host :: struct {
 	node_find:     proc "c" (h: ^Host, name: cstring) -> u64, // 0 = no such node
 	param_set:     proc "c" (h: ^Host, node: u64, param: u32, value: f64) -> bool,
 	log:           proc "c" (h: ^Host, level: i32, message: cstring),
+	// An app's own API by name and major version ("fire.pads", 1), as a
+	// CLAP plug-in asks for an extension: what the app documents for it
+	// (a function table), or nil if it has none. ABI version 2.
+	get_extension: proc "c" (h: ^Host, name: cstring, version: u32) -> rawptr,
 }

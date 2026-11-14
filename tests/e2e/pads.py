@@ -96,6 +96,7 @@ class Pads:
         self.file = self.sock.makefile("rw", encoding="utf-8", newline="\n")
         self.closed = False
         self.crashed = False
+        self._events = []  # pushed by the app between answers (subscriptions)
         self.wait(10)  # the docked layout settles over the first frames
 
     def _read(self, stream, is_stdout):
@@ -129,7 +130,7 @@ class Pads:
         try:
             self.file.write(line + "\n")
             self.file.flush()
-            answer = self.file.readline()
+            answer = self._answer()
         except (OSError, ValueError):
             answer = ""
         if not answer:
@@ -144,6 +145,22 @@ class Pads:
             raise PadsError(f"{line}: {r.get('error', '')}")
         return r["output"]
 
+    def _answer(self):
+        """The next line that answers (events, lines with "event", set aside)."""
+        while True:
+            line = self.file.readline()
+            if line and line.startswith('{"event"'):
+                self._events.append(json.loads(line))
+                continue
+            return line
+
+    def events(self):
+        """The events the app pushed (a subscribed topic changed) since the
+        last call: [{"event": "Transport", "index": -1, "subscription": 3}, ...].
+        They arrive with the answers: run a command (`wait 2`) to collect more."""
+        out, self._events = self._events, []
+        return out
+
     def api(self, method, check=True, **args):
         """Calls the Pads API (`pads_` + method) as another process does: a
         JSON line over the socket. Returns its value (None for none); raises
@@ -154,7 +171,7 @@ class Pads:
         try:
             self.file.write(line + "\n")
             self.file.flush()
-            answer = self.file.readline()
+            answer = self._answer()
         except (OSError, ValueError):
             answer = ""
         if not answer:

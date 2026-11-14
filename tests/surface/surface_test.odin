@@ -38,6 +38,7 @@ odin_layouts := [?]Layout {
 	{"fire_surface_host.get_transport", offset_of(surface.Host, get_transport)},
 	{"fire_surface_host.control_touch", offset_of(surface.Host, control_touch)},
 	{"fire_surface_host.log", offset_of(surface.Host, log)},
+	{"fire_surface_host.get_extension", offset_of(surface.Host, get_extension)},
 	{"fire_surface", size_of(surface.Surface)},
 	{"fire_surface.on_idle", offset_of(surface.Surface, on_idle)},
 	{"fire_surface_descriptor", size_of(surface.Descriptor)},
@@ -229,4 +230,25 @@ a_surface_drives_the_app_and_follows_it :: proc(t: ^testing.T) {
 	surface.surface_stop(r.m, s)
 	t0 := r.seen.touches[len(r.seen.touches) - 1]
 	testing.expect(t, t0.id == 1 && !t0.touched)
+}
+
+@(test)
+a_surface_asks_for_the_apps_own_api :: proc(t: ^testing.T) {
+	r := rig_make(t)
+	defer rig_destroy(r)
+	// The app gives "dev.fire-engine.test.echo" version 1 (a string, here);
+	// another name or version gets nil.
+	r.m.settings.extension = proc(user: rawptr, name: string, version: u32) -> rawptr {
+		if name == "dev.fire-engine.test.echo" && version == 1 do return transmute(rawptr)cstring("echo 1")
+		return nil
+	}
+	lib, err := surface.library_open(r.m, script())
+	if !testing.expect_value(t, err, core.Error.None) do return
+	defer surface.library_close(r.m, lib)
+	s, serr := surface.surface_start(r.m, lib, 0, {})
+	if !testing.expect_value(t, serr, core.Error.None) do return
+	defer surface.surface_stop(r.m, s)
+	testing.expect(t, len(r.seen.logs) == 2 && r.seen.logs[1] == "echo 1", "the surface got the extension")
+	h := &s.host
+	testing.expect(t, h.abi_version == surface.ABI_VERSION && h.get_extension(h, "dev.fire-engine.test.echo", 2) == nil && h.get_extension(h, "other", 1) == nil)
 }

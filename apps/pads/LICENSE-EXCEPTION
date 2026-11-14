@@ -1,0 +1,27 @@
+Pads API Plug-in Exception
+
+Additional permission under GNU GPL version 3 section 7
+
+Pads is free software under the GNU General Public License, version 3 or
+(at your option) any later version (LICENSE in this folder). As its
+copyright holders, we give you this additional permission:
+
+If you modify Pads, or any covered work, by combining it with an
+Independent Module, the resulting work's licence need not cover the
+Independent Module, and you may convey that Independent Module (in
+source or object form) under terms of your choice, provided you comply
+with the terms of the GPL for the rest of the covered work.
+
+An "Independent Module" is a control surface, script or other program
+that talks to Pads only through the Pads API: the function table it gets
+as the extension "fire.pads" (declared in apps/pads/api/include/pads_api.h),
+the fire:surface host ABI (f_engine/surface/fire_surface.h), or the JSON
+methods over Pads' control socket. It may include those headers, and the
+Pads API's declarations, which are MIT licensed. It must not otherwise
+contain, link to, or be derived from Pads' own code.
+
+This permission doesn't cover Pads itself, any of its parts other than
+the API's declarations, or anything built into it (such as Ableton Link),
+which stay under their own licences. If you modify Pads, you may extend
+this exception to your version, but you are not obliged to; if you don't
+want to, delete this exception statement from your version.

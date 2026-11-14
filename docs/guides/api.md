@@ -23,9 +23,10 @@ The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
 **settings**, **pads**, **params**, **effects**, **devices**,
 **mixer**, **sequencer**, **audio**, **recording**, **song**,
-**launcher**, **perform**, **export**, **browser**, **midi** and **ui**,
-with results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
-menus and script commands for these already go through it.
+**launcher**, **perform**, **export**, **browser**, **midi**, **ui** and
+**surface**, with results, errors, threading and changes, over the socket
+too. Pads' own toolbar, menus, shortcuts, knobs and script commands go
+through it.
 
 ## Results and errors
 
@@ -349,9 +350,44 @@ void tempo_up(const Pads_Api_V1* t) {
 ```
 
 The table only grows within a version: `size` says how much of it the host
-has, so check it before calling a function added later. A breaking change
-is version 2. (Surfaces get the table from fire:surface by asking for the
-extension `"fire.pads"` version 1: that comes with the surfaces stage.)
+has, so check it before calling a function added later. Its order is
+frozen in `apps/pads/api/table_v1.txt` (the generator appends new
+functions and refuses to drop one). A breaking change is version 2.
+
+## Control surfaces
+
+A surface library (see [Control surfaces](/guides/surfaces/)) asks its
+host for the table by name and version, as a CLAP plug-in asks for an
+extension, and drives Pads through it:
+
+```c
+#include "fire_surface.h"
+#include "pads_api.h"
+
+static fire_surface *create(fire_surface_host *host) {
+	if (host->abi_version < 2) return NULL; // get_extension came with version 2
+	const Pads_Api_V1 *pads = host->get_extension(host, PADS_API_NAME, PADS_API_VERSION);
+	if (!pads) return NULL;                 // not Pads, or not this version
+	pads->transport_set_tempo(pads->api, 96);
+	...
+}
+```
+
+`examples/pads_surface/pads_mini.c` is a whole one: notes play pads,
+buttons play and stop, CCs set the tempo and a fader, and a subscription
+to the transport lights its play LED. `./scripts/surface.sh` builds it
+(`.build/surface/pads_mini.*`); load it with
+
+```bash
+.build/app/pads --surface .build/surface/pads_mini.dylib
+```
+
+or `surface_load(api, path)` (the script command `surface load PATH`).
+Settings → MIDI lists the surfaces running. Everything a surface does
+happens on the control thread, in `api_frame`. What it subscribed while
+starting goes when it unloads; anything later it unsubscribes in its
+`destroy`. Giving a surface MIDI ports of its own isn't done yet:
+`tests/pads_api_c` stands in for a controller.
 
 ## From another process
 
@@ -376,11 +412,25 @@ call("transport_state")["value"]["playing"]  # False
 call("transport_set_tempo", bpm=5)           # {"result": "Invalid_Argument", "error": "the tempo is 40..300 BPM"}
 ```
 
-Calls that take a callback or a pointer (`subscribe`, `api_post`) aren't
-offered over the socket yet.
+`pads_methods` lists the methods. Subscriptions work over the socket too:
+`pads_subscribe` (`topic`, and `index`, -1 if left out) answers the
+subscription's id, and from then on, in a frame the topic changed in, the
+app pushes an event line between its answers:
+
+```json
+{"method": "pads_subscribe", "args": {"topic": "Transport"}}
+{"result": "Ok", "value": 3}
+{"event": "Transport", "index": -1, "subscription": 3}
+```
+
+A client tells answers from events by the `event` key. `pads_unsubscribe`
+stops one; leaving drops them all. `api_post` isn't offered: calls over
+the socket already run on the control thread, a frame at a time.
 
 ## Licence
 
-The API's declarations and `pads_api.h` are MIT. Pads is GPL-3.0-or-later;
-a surface or script that only uses the API is meant to be free to have any
-licence (the exception's text comes with the surfaces stage).
+The API's declarations and `pads_api.h` are MIT. Pads is GPL-3.0-or-later
+with an exception (`apps/pads/LICENSE-EXCEPTION`): a surface, script or
+program that talks to Pads only through the API (the `"fire.pads"`
+table, the fire:surface host, or the socket's methods) may have any
+licence.

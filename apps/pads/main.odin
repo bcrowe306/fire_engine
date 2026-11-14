@@ -128,6 +128,8 @@ main :: proc() {
 	fake_interface := false
 	control_size := Control_Size.Auto
 	control := -1
+	surfaces: [dynamic]string // --surface PATH: control-surface libraries to load
+	defer delete(surfaces)
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
 			if i^ + 1 < len(os.args) {
@@ -145,6 +147,7 @@ main :: proc() {
 		case "--profile":  profile = strconv.parse_int(next(&i)) or_else 300
 		case "--prefs":    prefs = next(&i)
 		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
+		case "--surface":  append(&surfaces, next(&i))
 		case "--control-size": control_size = control_size_parse(next(&i)) // (tests: the size their positions were written for)
 		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
@@ -231,6 +234,13 @@ main :: proc() {
 	// without saving.)
 	defer if a.files.discard != "" && pc.is_unsaved(&a.core, a.files.discard) do os.remove_all(a.files.discard)
 	defer pm.model_destroy(&a.m)
+	// Control surfaces: loaded through the API (each gets it as "fire.pads"
+	// 1), stopped before the model goes.
+	for path in surfaces do if _, r := pa.surface_load(&a.api, path); r != .Ok {
+		why, _ := pa.last_error(&a.api)
+		fmt.eprintfln("pads: --surface %s: %s", path, why)
+	}
+	defer for n, _ := pa.surface_count(&a.api); n > 0; n, _ = pa.surface_count(&a.api) do pa.surface_unload(&a.api, n - 1)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
 	defer pm.export_destroy(&a.job.export)
@@ -291,6 +301,12 @@ main :: proc() {
 		a.driver.command = drive_command
 		a.driver.user = a
 		a.control.json, a.control.json_user = proc(user: rawptr, line: string, out: ^strings.Builder) { pa.remote_call(&(^App)(user).api, line, out) }, a
+		// (A client's subscriptions: its events pushed between answers, dropped when it leaves.)
+		a.control.connected = proc(user: rawptr, on: bool) {
+			a := (^App)(user)
+			if on do pa.remote_connect(&a.api, proc(user: rawptr, line: string) { ui.control_push(&(^App)(user).control, line) }, a)
+			else do pa.remote_disconnect(&a.api)
+		}
 		p.driver, p.control = &a.driver, &a.control
 		if headless do p.fixed_dt = 1.0 / 60
 		ui.probe_on(true)

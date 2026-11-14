@@ -1583,4 +1583,7 @@ task app:ctl -- --headless 'click_item "  Mixer"' 'items fader'   # some command
 Pads is free software under the GNU General Public License, version 3 or
 later (`apps/pads/LICENSE`), so that it can include Ableton Link
 (GPL-2.0-or-later). Fire Engine itself — the engine and the application
-layer Pads is built on — stays under the MIT licence.
+layer Pads is built on — stays under the MIT licence, as do the Pads
+API's declarations and `pads_api.h`. An exception
+(`apps/pads/LICENSE-EXCEPTION`) lets a control surface, script or program
+that only talks to Pads through its [API](/guides/api/) have any licence.

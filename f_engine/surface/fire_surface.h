@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define FIRE_SURFACE_ABI_VERSION 1
+#define FIRE_SURFACE_ABI_VERSION 2 /* 2 added get_extension; a host loads 1 and 2 */
 
 #if defined(_WIN32)
 #define FIRE_SURFACE_EXPORT __declspec(dllexport)
@@ -81,6 +81,9 @@ struct fire_surface_host {
 	uint64_t (*node_find)(fire_surface_host *h, const char *name); /* 0 = none */
 	bool (*param_set)(fire_surface_host *h, uint64_t node, uint32_t param, double value);
 	void (*log)(fire_surface_host *h, int32_t level, const char *message);
+	/* An app's own API by name and major version ("fire.pads", 1): what the
+	   app documents for it (a function table), or NULL. ABI version 2. */
+	void *(*get_extension)(fire_surface_host *h, const char *name, uint32_t version);
 };
 
 /* A running surface, made by a descriptor's create. Any callback may be NULL. */

@@ -1,0 +1,2 @@
+# The C surface (examples/pads_surface): build it with ./scripts/surface.sh
+.build/surface/pads_mini.*

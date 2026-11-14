@@ -1104,6 +1104,29 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "wide":   return pa.settings_set_number(&a.api, "mixer.narrow", 0) == .Ok
 		}
 		return false
+	case "surface":
+		// surface load PATH [INDEX] / surface unload N / surface list: control-surface libraries (through the API)
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "load":
+			if len(w) < 3 do return false
+			if _, r := pa.surface_load(&a.api, w[2], i64(num(w, 3)) if len(w) > 3 else 0); r != .Ok {
+				why, _ := pa.last_error(&a.api)
+				return drive_fail(a, why)
+			}
+		case "unload":
+			if len(w) < 3 do return false
+			if pa.surface_unload(&a.api, i64(num(w, 2))) != .Ok do return drive_fail(a, "no such surface")
+		case "list":
+			n, _ := pa.surface_count(&a.api)
+			for k in 0 ..< n {
+				name, _ := pa.surface_name(&a.api, k)
+				ui.driver_say(&a.driver, fmt.tprintf("%d %s", k, name))
+			}
+		case:
+			return false
+		}
+		return true
 	case "setting": // setting NAME VALUE: a setting by its settings.ini name ("project.tempo 100", "midi.sync Midi_Clock")
 		if len(w) < 3 do return false
 		if r := pa.settings_set_text(&a.api, w[1], strings.join(w[2:], " ", context.temp_allocator)); r != .Ok {

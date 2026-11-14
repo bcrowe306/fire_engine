@@ -288,6 +288,11 @@ Table_V1 :: struct {
 	song_delete_arrangement: proc "c" (api: ^Api, index: i64) -> Result,
 	subscribe: proc "c" (api: ^Api, topic: Topic, index: i64, callback: Change_Proc, user: rawptr, out: ^Subscription) -> Result,
 	unsubscribe: proc "c" (api: ^Api, sub: Subscription) -> Result,
+	surface_load: proc "c" (api: ^Api, path: cstring, path_len: i64, index: i64, out: ^i64) -> Result,
+	surface_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	surface_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_path: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_unload: proc "c" (api: ^Api, index: i64) -> Result,
 	transport_state: proc "c" (api: ^Api, out: ^Transport_State) -> Result,
 	transport_play: proc "c" (api: ^Api, from_beat: f64, count_in: bool) -> Result,
 	transport_stop: proc "c" (api: ^Api) -> Result,
@@ -603,6 +608,11 @@ table_fill :: proc(api: ^Api) {
 	t.song_delete_arrangement = c_song_delete_arrangement
 	t.subscribe = c_subscribe
 	t.unsubscribe = c_unsubscribe
+	t.surface_load = c_surface_load
+	t.surface_count = c_surface_count
+	t.surface_name = c_surface_name
+	t.surface_path = c_surface_path
+	t.surface_unload = c_surface_unload
 	t.transport_state = c_transport_state
 	t.transport_play = c_transport_play
 	t.transport_stop = c_transport_stop
@@ -2744,6 +2754,53 @@ c_subscribe :: proc "c" (api: ^Api, topic: Topic, index: i64, callback: Change_P
 c_unsubscribe :: proc "c" (api: ^Api, sub: Subscription) -> Result {
 	context = runtime.default_context()
 	return unsubscribe(api, sub)
+}
+
+@(private)
+c_surface_load :: proc "c" (api: ^Api, path: cstring, path_len: i64, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	path_s := string(([^]u8)(path)[:max(path_len, 0)]) if path != nil else ""
+	v, r := surface_load(api, path_s, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := surface_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_path :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_path(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_unload :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return surface_unload(api, index)
 }
 
 @(private)

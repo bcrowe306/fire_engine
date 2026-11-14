@@ -15,7 +15,10 @@ import "core:strings"
 // One client at a time; the next connects when it leaves. Commands run
 // through the app's `Driver` (live), so everything a script can do, a
 // connection can. A line that starts with `{` goes to the app's `json`
-// handler instead (an API call, say), answered with what it writes.
+// handler instead (an API call, say), answered with what it writes. The
+// app may also send the client lines of its own between answers
+// (`control_push`: events it subscribed to), told when one connects and
+// leaves (`connected`).
 Control :: struct {
 	listener: net.TCP_Socket,
 	client:   net.TCP_Socket,
@@ -25,6 +28,7 @@ Control :: struct {
 	port:     int,
 	json:      proc(user: rawptr, line: string, out: ^strings.Builder), // answers a line that starts with `{` (one line of JSON), or nil
 	json_user: rawptr,
+	connected: proc(user: rawptr, on: bool), // a client connected (on) or left, or nil; with `json_user`
 }
 
 // Starts listening on 127.0.0.1:`port` (0: any free port; `c.port` says
@@ -46,7 +50,7 @@ control_open :: proc(c: ^Control, port: int) -> bool {
 
 // Stops listening (and drops the client).
 control_close :: proc(c: ^Control) {
-	if c.has_client do net.close(c.client)
+	if c.has_client do control_drop(c)
 	net.close(c.listener)
 	delete(c.inbuf)
 	c^ = {}
@@ -64,6 +68,7 @@ control_poll :: proc(c: ^Control, d: ^Driver) {
 		c.client, c.has_client = client, true
 		clear(&c.inbuf)
 		c.busy = false
+		if c.connected != nil do c.connected(c.json_user, true)
 	}
 	// The answer to the line that has run.
 	if c.busy && driver_idle(d) {
@@ -115,6 +120,15 @@ control_drop :: proc(c: ^Control) {
 	net.close(c.client)
 	c.has_client, c.busy = false, false
 	clear(&c.inbuf)
+	if c.connected != nil do c.connected(c.json_user, false)
+}
+
+// Sends the client a line of the app's own (`line` without its newline),
+// if one is connected: an event between answers. Control thread.
+control_push :: proc(c: ^Control, line: string) {
+	if !c.has_client do return
+	control_send(c, transmute([]u8)line)
+	if c.has_client do control_send(c, {'\n'})
 }
 
 // One line of JSON: whether the line worked, what it said, and why not.

@@ -2379,6 +2379,46 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := unsubscribe(api, sub)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_load":
+		path := remote_string(args, "path", &ok)
+		index := remote_i64_or(args, "index", 0, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_load(api, path, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_path":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_path(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_unload":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_unload(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_transport_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -2577,7 +2617,7 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		val, r := ui_selected_pad(api, index)
 		remote_answer(out, r, val, remote_error(api, r))
 	case:
-		remote_answer(out, .Not_Found, nil, "no such method")
+		if !remote_by_hand(api, method, args, out) do remote_answer(out, .Not_Found, nil, "no such method")
 	}
 }
 
@@ -3162,6 +3202,11 @@ REMOTE_METHODS := [?]string{
 	"pads_song_rename_arrangement",
 	"pads_song_delete_arrangement",
 	"pads_unsubscribe",
+	"pads_surface_load",
+	"pads_surface_count",
+	"pads_surface_name",
+	"pads_surface_path",
+	"pads_surface_unload",
 	"pads_transport_state",
 	"pads_transport_play",
 	"pads_transport_stop",

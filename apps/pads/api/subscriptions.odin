@@ -40,6 +40,7 @@ Sub :: struct {
 	index:    i64,
 	callback: Change_Proc,
 	user:     rawptr,
+	owner:    i64, // what made it (a surface while it started, the remote client), dropped with it; 0: the caller
 }
 
 // What the subscribers were last told.
@@ -65,7 +66,7 @@ subscribe :: proc(api: ^Api, topic: Topic, index: i64, callback: Change_Proc, us
 	if topic not_in TOPICS do return 0, failf(api, .Unsupported, "no changes reported for this topic yet")
 	id := Subscription(api.next_sub)
 	api.next_sub += 1
-	append(&api.subs, Sub{id, topic, index, callback, user})
+	append(&api.subs, Sub{id, topic, index, callback, user, api.owner})
 	return id, .Ok
 }
 

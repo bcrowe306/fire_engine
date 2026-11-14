@@ -8,6 +8,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pc "core"
 import pm "model"
 import pf "fire:perform"
@@ -1224,7 +1225,21 @@ page_midi :: proc(a: ^App) -> (changed: bool) {
 	}
 	hint("24 ticks a beat, with Start, Stop and Song Position, for drum machines and sequencers to follow.")
 	im.SeparatorText("Control surfaces")
-	im.TextDisabled("Coming: loading a surface script and giving it MIDI ports (see TODO.md).")
+	// (The surfaces running, through the API; each drives Pads through it.)
+	n, _ := pa.surface_count(&a.api)
+	if n == 0 do im.TextDisabled("None running.")
+	for k in 0 ..< n {
+		name, _ := pa.surface_name(&a.api, k)
+		path, _ := pa.surface_path(&a.api, k)
+		im.PushIDInt(i32(k))
+		im.Text(strings.clone_to_cstring(name, context.temp_allocator))
+		im.SameLine()
+		im.TextDisabled(strings.clone_to_cstring(path, context.temp_allocator))
+		im.SameLine()
+		if im.SmallButton("Unload") do pa.surface_unload(&a.api, k)
+		im.PopID()
+	}
+	hint("A surface is a library that drives Pads through its API (\"fire.pads\" 1): start Pads with --surface PATH. Giving it MIDI ports of its own is still to come.")
 	return
 }
 

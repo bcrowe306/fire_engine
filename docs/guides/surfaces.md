@@ -17,6 +17,7 @@ to act through.
 | The transport | play, stop, locate, loop, set the tempo, and read the transport's state |
 | Controls | read and move the controls the app publishes (track volume, mute, a device's macro, a clip slot), with touch gestures |
 | Graph parameters | set any parameter of a graph node the app has named |
+| The app's own API | ask for it by name and version (`get_extension`): Pads gives its whole API as `"fire.pads"` 1 |
 
 The engine has no tracks or mixers of its own, so controls are the app's
 to define: it publishes what a surface may move, and decides what moving
@@ -65,6 +66,10 @@ surface.manager_update(m)
 - **Graph parameters.** `node_publish(m, "filter", id)` names a node;
   scripts find it with `node_find` and set parameters with `param_set`
   (which goes through `graph.set_param`).
+- **The app's own API.** `Manager_Settings.extension` answers a
+  script's `get_extension(name, version)` with whatever the app documents
+  for that name (a function table), or nil. Pads answers `"fire.pads"`
+  version 1 with its [API](/guides/api/#control-surfaces).
 - **Threads.** Everything happens in `manager_update`, on the thread that
   calls it, so scripts never race the app.
 
@@ -116,6 +121,10 @@ build with `-build-mode:shared`.
   again (`control_count`, `control_info`), for example to re-bank faders.
 - A gesture (`control_touch`) around a fader's moves lets the app record
   automation in touch mode.
+- **ABI versions.** `get_extension` came with version 2. A manager loads
+  scripts built for versions 1 and 2 (the host's `abi_version` is the
+  manager's); a script that uses `get_extension` checks
+  `host->abi_version >= 2` first.
 
 `tests/surface` runs a C script like this one, checking that
 `fire_surface.h` lays out every struct as `fire:surface` does, on macOS,

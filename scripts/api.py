@@ -11,6 +11,7 @@ Generated:
     apps/pads/api/include/pads_api.h   the C header (MIT)
     apps/pads/api/gen_c.odin           the C shims and the function table
     apps/pads/api/gen_remote.odin      the remote methods (JSON lines over --control)
+    apps/pads/api/table_v1.txt         the table's order (new procs appended)
     docs/reference/pads-api.md         the reference
 
 An API proc is an exported `name :: proc(api: ^Api, ...)` in the package,
@@ -27,14 +28,17 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(ROOT, "apps", "pads", "api")
-TESTS = [os.path.join(ROOT, "tests", "pads_api")]
+TESTS = [os.path.join(ROOT, "tests", "pads_api"), os.path.join(ROOT, "tests", "pads_api_c")]
 OUT_H = os.path.join(PKG, "include", "pads_api.h")
 OUT_C = os.path.join(PKG, "gen_c.odin")
 OUT_R = os.path.join(PKG, "gen_remote.odin")
 OUT_DOC = os.path.join(ROOT, "docs", "reference", "pads-api.md")
+# The function table's order, frozen: version 1 only grows (a new proc is
+# appended here when generated; one may not be taken out).
+ORDER = os.path.join(PKG, "table_v1.txt")
 
 # The host's procs: not in the table (the app calls them).
-HOST_ONLY = {"api_init", "api_destroy", "api_frame"}
+HOST_ONLY = {"api_init", "api_destroy", "api_frame", "remote_connect", "remote_disconnect"}
 # Not over the socket: they take a callback or a pointer of this process.
 NOT_REMOTE_TYPES = {"Change_Proc", "Post_Proc", "rawptr"}
 
@@ -71,6 +75,7 @@ MODULE_TITLES = {
     "browser": "Browser: folders, favourites, search, preview",
     "midi": "MIDI: ports, the MIDI map, pads' MIDI in and out",
     "ui": "The window: views, the theme, messages, the pads selected",
+    "surface": "Control surfaces: loading libraries that drive Pads through this API",
 }
 
 
@@ -383,7 +388,7 @@ def gen_remote(procs, enums, structs):
             o.append(f"\t\tr := {call}\n\t\tremote_answer(out, r, nil, remote_error(api, r))\n")
         else:
             o.append(f"\t\tval, r := {call}\n\t\tremote_answer(out, r, val, remote_error(api, r))\n")
-    o.append("\tcase:\n\t\tremote_answer(out, .Not_Found, nil, \"no such method\")\n\t}\n}\n")
+    o.append("\tcase:\n\t\tif !remote_by_hand(api, method, args, out) do remote_answer(out, .Not_Found, nil, \"no such method\")\n\t}\n}\n")
     for name, (_, members) in enums.items():
         o.append(f"\n@(private)\n{name}_NAMES := [?]string{{{', '.join(chr(34) + m + chr(34) for m in members)}}}\n")
     # A struct argument: a JSON object of its fields (any left out: zero).
@@ -444,11 +449,30 @@ def gen_doc(procs, enums, structs):
     return "".join(o)
 
 
+def table_order(procs):
+    """The procs in the table's frozen order (new ones at the end), and the
+    order file's text."""
+    old = []
+    if os.path.exists(ORDER):
+        with open(ORDER, encoding="utf-8") as fh:
+            old = [l.strip() for l in fh if l.strip() and not l.startswith("#")]
+    names = {d.name for d in procs}
+    gone = [n for n in old if n not in names]
+    if gone:
+        sys.exit(f"api.py: {', '.join(gone)}: in the version 1 table (table_v1.txt) but gone; a function leaves only in a new major version")
+    order = old + [d.name for d in procs if d.name not in old]
+    by = {d.name: d for d in procs}
+    text = "# The Pads_Api_V1 table's order (scripts/api.py appends new procs; never reorder or remove).\n" + "".join(n + "\n" for n in order)
+    return [by[n] for n in order], text
+
+
 def outputs():
     procs, enums, structs = parse()
+    table, order_text = table_order(procs)
     return procs, {
-        OUT_H: gen_header(procs, enums, structs),
-        OUT_C: gen_c(procs, enums, structs),
+        ORDER: order_text,
+        OUT_H: gen_header(table, enums, structs),
+        OUT_C: gen_c(table, enums, structs),
         OUT_R: gen_remote(procs, enums, structs),
         OUT_DOC: gen_doc(procs, enums, structs),
     }

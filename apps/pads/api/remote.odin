@@ -1,5 +1,6 @@
 package pads_api
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
@@ -140,4 +141,77 @@ remote_enum :: proc(args: json.Object, name: string, names: []string, ok: ^bool)
 	}
 	ok^ = false
 	return 0
+}
+
+// The remote client's link: where its subscriptions' changes go.
+@(private)
+Remote_Link :: struct {
+	push:  proc(user: rawptr, line: string), // sends a line (no newline) to the client, or nil: none connected
+	user:  rawptr,
+	owner: i64, // its subscriptions' owner
+}
+
+// A remote client connected: `push` sends it a line (an event: a
+// subscribed topic changed). Control thread.
+remote_connect :: proc(api: ^Api, push: proc(user: rawptr, line: string), user: rawptr) {
+	remote_disconnect(api)
+	api.next_owner += 1
+	api.remote = {push = push, user = user, owner = api.next_owner}
+}
+
+// The remote client left: its subscriptions go. Control thread.
+remote_disconnect :: proc(api: ^Api) {
+	drop_owned(api, api.remote.owner)
+	api.remote = {}
+}
+
+// The remote methods written by hand (not one proc each): `pads_subscribe`
+// (a topic's changes pushed to the client as events), `pads_methods`.
+@(private)
+REMOTE_BY_HAND := [?]string{"pads_subscribe", "pads_methods"}
+
+// Runs a method the generator doesn't make; false if `method` isn't one.
+@(private)
+remote_by_hand :: proc(api: ^Api, method: string, args: json.Object, out: ^strings.Builder) -> bool {
+	switch method {
+	case "pads_subscribe":
+		// {"method": "pads_subscribe", "args": {"topic": "Transport", "index": -1}}:
+		// {"result": "Ok", "value": 3}; then, a frame it changed in,
+		// {"event": "Transport", "index": -1, "subscription": 3}.
+		ok := true
+		topic := Topic(remote_enum(args, "topic", Topic_NAMES[:], &ok))
+		index := remote_i64_or(args, "index", -1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return true
+		}
+		if api.remote.push == nil {
+			remote_answer(out, .Unsupported, nil, "no client to send events to")
+			return true
+		}
+		api.owner = api.remote.owner
+		// (Its user: the id it gets, for the event to name.)
+		sub, r := subscribe(api, topic, index, remote_event, rawptr(uintptr(api.next_sub)))
+		api.owner = 0
+		if r == .Ok do remote_answer(out, r, i64(sub), "")
+		else do remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_methods":
+		names := make([dynamic]string, context.temp_allocator)
+		append(&names, ..REMOTE_METHODS[:])
+		append(&names, ..REMOTE_BY_HAND[:])
+		remote_answer(out, .Ok, names[:], "")
+	case:
+		return false
+	}
+	return true
+}
+
+// A remote subscription's change: an event line to the client.
+@(private)
+remote_event :: proc "c" (api: ^Api, topic: Topic, index: i64, user: rawptr) {
+	context = runtime.default_context()
+	if api.remote.push == nil do return
+	sub := i64(uintptr(user))
+	line := fmt.tprintf(`{{"event": "%v", "index": %d, "subscription": %d}}`, topic, index, sub)
+	api.remote.push(api.remote.user, line)
 }

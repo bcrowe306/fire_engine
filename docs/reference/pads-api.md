@@ -2279,6 +2279,48 @@ unsubscribe :: proc(api: ^Api, sub: Subscription) -> Result
 
 Stops subscription `sub`. Not_Found if there is none. Control thread (a callback may unsubscribe itself).
 
+## Control surfaces: loading libraries that drive Pads through this API
+
+### surface_load
+
+```odin
+surface_load :: proc(api: ^Api, path: string, index: i64 = 0) -> (i64, Result)
+```
+
+Loads the control-surface library at `path` (a .dylib, .so or .dll exporting `fire_surface_entry`) and starts its surface `index`, which gets this API by asking for "fire.pads" version 1: its place among the surfaces running. Io_Error if the library won't load; Not_Found if it has no surface `index` (of an ABI this Pads loads); Unsupported if the surface won't start. MIDI ports of its own aren't given yet.
+
+### surface_count
+
+```odin
+surface_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+The surfaces running.
+
+### surface_name
+
+```odin
+surface_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Surface `index`'s name, as its library gives it ("Fire Mini"). Temporary.
+
+### surface_path
+
+```odin
+surface_path :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+The library surface `index` came from. Temporary.
+
+### surface_unload
+
+```odin
+surface_unload :: proc(api: ^Api, index: i64) -> Result
+```
+
+Stops surface `index` (the ones after it move down one); its library unloads when nothing else uses it. What it subscribed while it started goes with it; a surface unsubscribes the rest in its `destroy`.
+
 ## Transport
 
 ### transport_state

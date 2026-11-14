@@ -23,6 +23,9 @@ Manager_Settings :: struct {
 	// A surface started or ended a gesture on a control.
 	on_touch: proc(user: rawptr, id: u32, touched: bool),
 	log:      proc(user: rawptr, level: i32, message: string),
+	// A surface asked for the app's API `name`, major version `version`
+	// (`Host.get_extension`): what the app gives for it, or nil.
+	extension: proc(user: rawptr, name: string, version: u32) -> rawptr,
 	user:     rawptr,
 	midi:     midi.Input_Config, // the controllers' MIDI input; zero = defaults
 }
@@ -137,8 +140,9 @@ manager_midi_input :: proc(m: ^Manager) -> ^midi.Midi_Input {
 // --- libraries -----------------------------------------------------------------------------
 
 // Control thread. Loads a script library (or returns the one already
-// loaded from `path`). `.Device_Error` if it won't load, doesn't export
-// `fire_surface_entry`, or has another ABI version.
+// loaded from `path`). `.Device_Error` if it won't load or doesn't export
+// `fire_surface_entry`; surfaces of an ABI version outside
+// `ABI_MIN`..`ABI_VERSION` are left out of its list.
 library_open :: proc(m: ^Manager, path: string) -> (l: ^Library, err: core.Error) {
 	for x in m.libraries do if x.path == path {
 		x.refs += 1
@@ -155,7 +159,7 @@ library_open :: proc(m: ^Manager, path: string) -> (l: ^Library, err: core.Error
 	for i: u32 = 0; i < 1024; i += 1 {
 		d := entry(i)
 		if d == nil do break
-		if d.abi_version == ABI_VERSION && d.create != nil do append(&list, d)
+		if d.abi_version >= ABI_MIN && d.abi_version <= ABI_VERSION && d.create != nil do append(&list, d)
 	}
 	l = new(Library, m.allocator)
 	l^ = {path = strings.clone(path, m.allocator), surfaces = list[:], lib = lib, refs = 1}
@@ -448,5 +452,11 @@ host_template := Host {
 		context = runtime.default_context()
 		m := instance_of(h).manager
 		if m.settings.log != nil && message != nil do m.settings.log(m.settings.user, level, string(message))
+	},
+	get_extension = proc "c" (h: ^Host, name: cstring, version: u32) -> rawptr {
+		context = runtime.default_context()
+		m := instance_of(h).manager
+		if m.settings.extension == nil || name == nil do return nil
+		return m.settings.extension(m.settings.user, string(name), version)
 	},
 }

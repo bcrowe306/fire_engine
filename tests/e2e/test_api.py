@@ -1,6 +1,10 @@
 """The Pads API from another process: JSON lines over the control socket
 (see docs/guides/api.md). What it does shows in the app (its state, the
 toolbar), and what the app does shows through it."""
+import glob
+import os
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def test_transport_and_history_through_the_api(app):
@@ -191,3 +195,36 @@ def test_the_window_through_the_api(app):
     assert app.state()["pad_sel"] == [1, 2] and app.state()["selected"] == 1
     r = app.api("ui_show", check=False, name="nowhere")
     assert r["result"] == "Not_Found"
+
+
+def test_subscriptions_over_the_socket(app):
+    """A remote client's subscription: events pushed between answers."""
+    assert "pads_subscribe" in app.api("methods")
+    sub = app.api("subscribe", topic="Transport")
+    assert isinstance(sub, int) and sub > 0
+    app.wait(2)
+    app.events()
+    app.api("transport_set_tempo", bpm=97)
+    app.wait(3)
+    assert {"event": "Transport", "index": -1, "subscription": sub} in app.events()
+    app.api("unsubscribe", sub=sub)
+    app.api("transport_set_tempo", bpm=98)
+    app.wait(3)
+    assert app.events() == []
+    r = app.api("subscribe", check=False, topic="Recording")  # (not reported yet)
+    assert r["result"] == "Unsupported"
+
+
+def test_a_surface_loaded_through_the_api(app):
+    """The example C surface (scripts/surface.sh builds it), loaded by a
+    remote client, and listed by the app."""
+    libs = glob.glob(os.path.join(ROOT, ".build", "surface", "pads_mini.*"))
+    if not libs:
+        import pytest
+        pytest.skip("the example surface isn't built (./scripts/surface.sh)")
+    assert app.api("surface_load", check=False, path="no/such.dylib")["result"] == "Io_Error"
+    assert app.api("surface_load", path=libs[0]) == 0
+    assert app.api("surface_count") == 1 and app.api("surface_name", index=0) == "Pads Mini"
+    assert "0 Pads Mini" in app.cmd("surface list")
+    app.api("surface_unload", index=0)
+    assert app.api("surface_count") == 0

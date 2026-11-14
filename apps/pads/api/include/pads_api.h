@@ -1479,6 +1479,23 @@ typedef struct Pads_Api_V1 {
 	// Stops subscription `sub`. Not_Found if there is none. Control thread
 	// (a callback may unsubscribe itself).
 	Pads_Result (*unsubscribe)(Pads_Api* api, Pads_Subscription sub);
+	// Loads the control-surface library at `path` (a .dylib, .so or .dll
+	// exporting `fire_surface_entry`) and starts its surface `index`, which
+	// gets this API by asking for "fire.pads" version 1: its place among the
+	// surfaces running. Io_Error if the library won't load; Not_Found if it
+	// has no surface `index` (of an ABI this Pads loads); Unsupported if the
+	// surface won't start. MIDI ports of its own aren't given yet.
+	Pads_Result (*surface_load)(Pads_Api* api, const char* path, int64_t path_len, int64_t index, int64_t* out);
+	// The surfaces running.
+	Pads_Result (*surface_count)(Pads_Api* api, int64_t* out);
+	// Surface `index`'s name, as its library gives it ("Fire Mini"). Temporary.
+	Pads_Result (*surface_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// The library surface `index` came from. Temporary.
+	Pads_Result (*surface_path)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Stops surface `index` (the ones after it move down one); its library
+	// unloads when nothing else uses it. What it subscribed while it started
+	// goes with it; a surface unsubscribes the rest in its `destroy`.
+	Pads_Result (*surface_unload)(Pads_Api* api, int64_t index);
 	// The transport now.
 	Pads_Result (*transport_state)(Pads_Api* api, Pads_Transport_State* out);
 	// Starts playing from beat `from_beat` of what plays (the sequence shown,

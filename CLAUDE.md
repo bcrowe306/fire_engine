@@ -38,7 +38,8 @@ Look at the screenshots after UI changes (layout, spacing, padding).
 
 Licences: Fire Engine (f_engine/, app/) is MIT; Pads (apps/pads) is
 GPL-3.0-or-later so it can build Ableton Link in (whenever `third_party/link`
-is built: `task deps` / `./scripts/link.sh`; `LINK=0` leaves it out).
+is built: `task deps` / `./scripts/link.sh`; `LINK=0` leaves it out), with an
+exception for surfaces and scripts that only use its API (apps/pads/LICENSE-EXCEPTION).
 See docs/guides/building.md, docs/guides/app-layer.md and docs/guides/pads.md.
 
 ### The Pads API
@@ -48,6 +49,7 @@ python3 scripts/api.py           # regenerate pads_api.h, gen_c.odin, gen_remote
 python3 scripts/api.py --check   # generated files current, every API proc documented and tested
 python3 scripts/lint_api.py      # the UI and shell go through the API for the built modules
 ./scripts/test.sh pads_api       # the API, headless
+./scripts/surface.sh && ./scripts/test.sh pads_api_c   # the example C surface (examples/pads_surface) through the table
 ```
 
 See docs/design/api.md (stages) and docs/guides/api.md.

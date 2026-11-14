@@ -17,6 +17,8 @@ package pads_api
 import "core:strings"
 import "core:sync"
 
+import "fire:surface"
+
 import pc "../core"
 
 // The API's major version: a function table of this version only grows.
@@ -50,6 +52,11 @@ Api :: struct {
 	last:      Seen, // what subscribers were last told about
 	primed:    bool,
 	table:     Table_V1, // the C function table (gen_c.odin)
+	manager:   ^surface.Manager, // the control surfaces' (surface.odin), once one loads
+	surfaces:  [dynamic]Loaded_Surface,
+	owner:     i64, // a subscription made now belongs to this (a surface starting, the remote client)
+	next_owner: i64,
+	remote:    Remote_Link, // the remote client's (remote.odin)
 }
 
 // A call posted from another thread: run on the control thread at the
@@ -68,11 +75,13 @@ api_init :: proc(api: ^Api, core: ^pc.Core) {
 	api.subs = make([dynamic]Sub)
 	api.posted = make([dynamic]Posted)
 	api.next_sub = 1
+	api.surfaces = make([dynamic]Loaded_Surface)
 	table_fill(api)
 }
 
 // Frees what the API holds (its subscriptions go). Control thread.
 api_destroy :: proc(api: ^Api) {
+	surfaces_destroy(api)
 	delete(api.subs)
 	delete(api.posted)
 	api^ = {}
@@ -80,8 +89,9 @@ api_destroy :: proc(api: ^Api) {
 
 // Runs once a frame on the control thread: the app's clock goes on by
 // `dt` seconds (what is due on it happens: a tap tempo's start), the
-// calls posted from other threads run, and subscribers hear what changed
-// since the last frame (once each, coalesced).
+// calls posted from other threads run, subscribers hear what changed
+// since the last frame (once each, coalesced), and the control surfaces
+// get their MIDI and their idle.
 api_frame :: proc(api: ^Api, dt: f64) {
 	pc.tick(api.core, dt)
 	posted: [dynamic]Posted
@@ -92,6 +102,7 @@ api_frame :: proc(api: ^Api, dt: f64) {
 	for p in posted do p.call(api, p.user)
 	delete(posted)
 	deliver_changes(api)
+	if api.manager != nil do surface.manager_update(api.manager)
 }
 
 // Queues `call` to run on the control thread at the next frame, with

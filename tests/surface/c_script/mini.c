@@ -56,12 +56,15 @@ static void on_idle(fire_surface *s) { ((mini_t *)s->data)->idles++; }
 static void destroy(fire_surface *s) { free(s->data); }
 
 static fire_surface *create(fire_surface_host *host) {
-	if (host->abi_version != FIRE_SURFACE_ABI_VERSION) return NULL;
+	if (host->abi_version < FIRE_SURFACE_ABI_VERSION) return NULL;
 	mini_t *m = calloc(1, sizeof(mini_t));
 	m->host = host;
 	m->surface = (fire_surface){.data = m, .destroy = destroy, .on_midi = on_midi, .on_control = on_control,
 		.on_transport = on_transport, .on_idle = on_idle};
 	host->log(host, 1, "Fire Mini started");
+	// An app's own API, by name and version (the tests' app gives a string).
+	const char *ext = host->get_extension(host, "dev.fire-engine.test.echo", 1);
+	if (ext) host->log(host, 1, ext);
 	return &m->surface;
 }
 
@@ -79,7 +82,7 @@ typedef struct { const char *name; int is_offset; size_t value; } layout_t;
 static const layout_t layouts[] = {
 	S(fire_transport_state), F(fire_transport_state, position), F(fire_transport_state, bar), F(fire_transport_state, denominator),
 	S(fire_control_info), F(fire_control_info, name), F(fire_control_info, default_value), F(fire_control_info, steps),
-	S(fire_surface_host), F(fire_surface_host, send_midi), F(fire_surface_host, get_transport), F(fire_surface_host, control_touch), F(fire_surface_host, log),
+	S(fire_surface_host), F(fire_surface_host, send_midi), F(fire_surface_host, get_transport), F(fire_surface_host, control_touch), F(fire_surface_host, log), F(fire_surface_host, get_extension),
 	S(fire_surface), F(fire_surface, on_idle), S(fire_surface_descriptor), F(fire_surface_descriptor, input_hints), F(fire_surface_descriptor, create),
 };
 FIRE_SURFACE_EXPORT int fire_surface_layout(int i, const char **name, int *is_offset, uint64_t *value) {

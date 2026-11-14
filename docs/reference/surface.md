@@ -41,10 +41,19 @@ See /guides/surfaces/.
 ### ABI_VERSION
 
 ```odin
-ABI_VERSION :: 1
+ABI_VERSION :: 2
 ```
 
-The script ABI's version: a script with another version is refused.
+The script ABI's version. Version 2 added `Host.get_extension`.
+
+### ABI_MIN
+
+```odin
+ABI_MIN :: 1
+```
+
+The oldest script ABI a manager still loads: a version-1 script gets the
+same host and doesn't read past `log`.
 
 ### ENTRY_SYMBOL
 
@@ -217,6 +226,7 @@ Host :: struct {
 	node_find: proc "cdecl"(h: ^Host, name: cstring) -> u64,
 	param_set: proc "cdecl"(h: ^Host, node: u64, param: u32, value: f64) -> bool,
 	log: proc "cdecl"(h: ^Host, level: i32, message: cstring),
+	get_extension: proc "cdecl"(h: ^Host, name: cstring, version: u32) -> rawptr,
 }
 ```
 
@@ -242,6 +252,7 @@ the surface's callbacks.
 | `node_find` | Graph nodes the app names, and their parameters. 0 = no such node |
 | `param_set` |  |
 | `log` |  |
+| `get_extension` | An app's own API by name and major version ("fire.pads", 1), as a CLAP plug-in asks for an extension: what the app documents for it (a function table), or nil if it has none. ABI version 2. |
 
 ### Manager_Settings
 
@@ -254,6 +265,7 @@ Manager_Settings :: struct {
 	on_set: proc(user: rawptr, id: u32, value: f64),
 	on_touch: proc(user: rawptr, id: u32, touched: bool),
 	log: proc(user: rawptr, level: i32, message: string),
+	extension: proc(user: rawptr, name: string, version: u32) -> rawptr,
 	user: rawptr,
 	midi: midi.Input_Config,
 }
@@ -270,6 +282,7 @@ Settings for `manager_create`.
 | `on_set` | A surface moved a control: apply it (then report it with `control_changed`). |
 | `on_touch` | A surface started or ended a gesture on a control. |
 | `log` |  |
+| `extension` | A surface asked for the app's API `name`, major version `version` (`Host.get_extension`): what the app gives for it, or nil. |
 | `user` |  |
 | `midi` | the controllers' MIDI input; zero = defaults |
 
@@ -352,8 +365,9 @@ library_open :: proc(m: ^Manager, path: string) -> (l: ^Library, err: core.Error
 ```
 
 Control thread. Loads a script library (or returns the one already
-loaded from `path`). `.Device_Error` if it won't load, doesn't export
-`fire_surface_entry`, or has another ABI version.
+loaded from `path`). `.Device_Error` if it won't load or doesn't export
+`fire_surface_entry`; surfaces of an ABI version outside
+`ABI_MIN`..`ABI_VERSION` are left out of its list.
 
 ### library_close
 

@@ -5,8 +5,8 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
 settings), 3 (pads, params, effects, devices), 4 (mixer), 5
-(sequencer, audio, recording), 6 (song, launcher, perform) and 7
-(export, browser, midi, ui) built 2026-11-14; 8 (surfaces) planned
+(sequencer, audio, recording), 6 (song, launcher, perform), 7
+(export, browser, midi, ui) and 8 (surfaces) built 2026-11-14
 (decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
@@ -239,6 +239,39 @@ devices and effects (and the knobs moved onto `param_set`).
 - Selecting a pad by the mouse or keys still sets the app's selection
   itself (it moves the bank along in several places);
   `perform_select_pad` and `ui_select_pads` do it through the API.
+
+### Stage 8, as built (surfaces)
+
+- fire:surface: `Host.get_extension(name, version)` (ABI version 2; a
+  manager still loads version-1 scripts, which don't read past `log`),
+  answered by `Manager_Settings.extension`. tests/surface checks it and
+  the header's layout of it.
+- `surface_*` (apps/pads/api/surface.odin): load a library's surface,
+  list, name, path, unload. The API owns the surface manager (made at the
+  first load, updated in `api_frame`, stopped in `api_destroy`); a
+  surface asking for `"fire.pads"` 1 gets `&api.table`. Subscriptions a
+  surface makes while it starts are tagged with it and dropped when it
+  unloads (later ones: its `destroy` unsubscribes them; a callback into
+  an unloaded library would crash). Pads: `--surface PATH`, the script
+  command `surface load|unload|list`, Settings → MIDI lists them.
+- **Not yet:** a surface's own MIDI ports (finding the controller by its
+  hints, opening them on a driver of the manager's). The host's
+  transport, controls and named nodes are empty in Pads: the table does
+  all of that.
+- `examples/pads_surface/pads_mini.c`: a C surface through the table
+  (notes play pads, play/stop, tempo and fader CCs, a transport
+  subscription lighting an LED). `scripts/surface.sh` builds it;
+  `tests/pads_api_c` loads it headless, standing in for its controller.
+- The remote protocol: `pads_subscribe` pushes events
+  (`{"event": "Transport", "index": -1, "subscription": 3}`) between
+  answers (the control socket's `control_push`; its `connected` hook
+  ends a client's subscriptions when it leaves); `pads_methods` lists the
+  methods. `api_post` isn't remote (socket calls already run on the
+  control thread).
+- The table's order is frozen in `table_v1.txt`: new procs are appended,
+  a proc can't be dropped (the generator stops).
+- The licence exception: `apps/pads/LICENSE-EXCEPTION` (GPL-3.0 section
+  7 additional permission for modules that only use the API).
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,
