@@ -91,6 +91,36 @@ perf report --no-children --sort symbol
 Virtual machines may not pass the hardware counters through (perf then
 reports them `<not supported>`); `perf record` still samples by time.
 
+## What it has found
+
+Measured 2026-11-14, the heavy project's audio alone (`heavy-audio`) on the
+ARM machine (AWS t4g.small: 2 Graviton2 cores), as a share of a 256-frame
+block:
+
+| | median | p99 |
+|---|---|---|
+| before | 43.3% | 47.2% |
+| after the changes below | 32.5% | 37.9% |
+
+- **The reverb** (Synth 1's, and the inserts' and buses', which are the
+  same): its delays' wander called `sin` or `cos` sixteen times a sample;
+  now a point turned a step each sample gives the four phases it needs.
+  Its sixteen lines run as four `#simd[4]f32` rows of the 4 × 4 grid it
+  mixes them in. 71 → 40 µs a block on an M-series core.
+- **The chorus**: its eight delays (a pair a voice) ran one at a time,
+  each working out the same filter and mix; now they share those
+  (`delay_shared`), and run four at a time, a lane a delay. 67 → 33 µs.
+- **The loudness meter** (the master's): its true-peak interpolator ran
+  four 12-tap filters a sample in f64, each tap's index taken modulo the
+  history; now the four phases are one `#simd[4]f32` sum over a history
+  written twice (so the last 12 samples are always in a row). 106 → 12 µs a
+  block on ARM; the readings are the same.
+
+Synth effects went from 45% of the graph workers' time to 30%. What is
+left, largest first: the synth's effects, its voices (oscillators,
+filters: SIMD unison already), the inserts, and many small nodes a pad
+(gain, pan, meter, EQ).
+
 ## Smaller pieces
 
 - `tools/synth_bench`: Synth 1's voices against their budget, with one

@@ -3,6 +3,7 @@ package dsp
 import "base:intrinsics"
 import "core:math"
 import "core:mem"
+import "core:simd"
 
 import "fire:core"
 
@@ -45,6 +46,7 @@ Loudness_Meter :: struct {
 	shelf, highpass: K_Stage,
 	block_len:       int, // frames in 100 ms
 	tp:              [4][TP_TAPS]f64, // the interpolator's taps, a phase each
+	tp4:             [TP_TAPS]#simd[4]f32, // the same by tap: the four phases' j-th taps together
 	// The audio thread's.
 	sum:         [METER_CHANNELS]f64, // the K-weighted Σ x² of this block so far
 	frames:      int,
@@ -53,7 +55,7 @@ Loudness_Meter :: struct {
 	filled:      int,
 	hist_power:  [LOUDNESS_BINS]f64, // the gated blocks' power, by loudness
 	hist_count:  [LOUDNESS_BINS]u32,
-	history:     [METER_CHANNELS][TP_TAPS]f32, // the last samples, for the interpolator
+	history:     [METER_CHANNELS][2 * TP_TAPS]f32, // the last samples, for the interpolator, written twice (at `hist_at` and TP_TAPS on) so the last TP_TAPS are always in a row
 	hist_at:     int,
 	tp_max:      f32,
 	reset_seen:  u32,
@@ -143,6 +145,7 @@ loudness_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocato
 		for v in ph do sum += v
 		if sum != 0 do for &v in ph do v /= sum
 	}
+	for j in 0 ..< TP_TAPS do m.tp4[j] = {f32(m.tp[0][j]), f32(m.tp[1][j]), f32(m.tp[2][j]), f32(m.tp[3][j])}
 	loudness_clear(m)
 	return .None
 }
@@ -178,27 +181,30 @@ loudness_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		else do for &v in out[:ctx.frames] do v = 0
 	}
 	chans := min(len(ctx.outputs), METER_CHANNELS)
+	peak4: #simd[4]f32 // the largest |point| of each phase this block
 	for i in 0 ..< ctx.frames {
 		for c in 0 ..< chans {
-			x := f64(ctx.outputs[c][i])
+			x := ctx.outputs[c][i]
 			// K-weighted.
-			y := k_stage(&m.shelf, c, x)
+			y := k_stage(&m.shelf, c, f64(x))
 			y = k_stage(&m.highpass, c, y)
 			m.sum[c] += y * y
-			// True peak: the sample's four interpolated points.
-			m.history[c][m.hist_at] = f32(x)
-		}
-		for c in 0 ..< chans {
-			for ph in 0 ..< 4 {
-				acc := 0.0
-				for j in 0 ..< TP_TAPS do acc += m.tp[ph][j] * f64(m.history[c][(m.hist_at - j + TP_TAPS) % TP_TAPS])
-				m.tp_max = max(m.tp_max, f32(abs(acc)))
-			}
+			// True peak: the sample's four interpolated points, the four
+			// phases at once (the newest sample at TP_TAPS + hist_at, the
+			// oldest of the last TP_TAPS just after `hist_at`).
+			h := &m.history[c]
+			h[m.hist_at] = x
+			h[m.hist_at + TP_TAPS] = x
+			acc: #simd[4]f32
+			newest := m.hist_at + TP_TAPS
+			#unroll for j in 0 ..< TP_TAPS do acc += m.tp4[j] * h[newest - j]
+			peak4 = simd.max(peak4, simd.abs(acc))
 		}
 		m.hist_at = (m.hist_at + 1) % TP_TAPS
 		m.frames += 1
 		if m.frames >= m.block_len do loudness_block(m, chans)
 	}
+	m.tp_max = max(m.tp_max, simd.reduce_max(peak4))
 	intrinsics.atomic_store(&m.true_peak, transmute(u32)m.tp_max)
 }
 

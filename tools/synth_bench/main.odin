@@ -2,7 +2,7 @@
 // budget (docs/design/synth.md): eight voices, each with three oscillators
 // of four unison voices and two filters, under 25% of one core at 48 kHz,
 // 1× oversampling. Other rows take one thing away or change it, to show
-// where the time goes.
+// where the time goes; the last add effects (the synth's chain) to it.
 //
 //	odin run tools/synth_bench -collection:fire=f_engine -o:speed -- [block]
 //
@@ -16,6 +16,7 @@ import "core:strconv"
 import "core:time"
 
 import "fire:core"
+import "fire:fx"
 import "fire:rt"
 import "fire:synth"
 
@@ -51,6 +52,12 @@ main :: proc() {
 		}},
 		{"no oscillators", proc(s: ^synth.Synth) {for n in 1 ..= 3 do set(s, synth.osc_param(n, .On), 0)}},
 		{"2x oversampling", proc(s: ^synth.Synth) {set(s, synth.global_param(.Oversampling), 1)}},
+		{"+ chorus", proc(s: ^synth.Synth) {set(s, synth.effect_param(fx.Effect.Chorus, synth.Chorus_Field.On), 1)}},
+		{"+ reverb", proc(s: ^synth.Synth) {set(s, synth.effect_param(fx.Effect.Reverb, synth.Reverb_Field.On), 1)}},
+		{"+ chorus, reverb", proc(s: ^synth.Synth) {
+			set(s, synth.effect_param(fx.Effect.Chorus, synth.Chorus_Field.On), 1)
+			set(s, synth.effect_param(fx.Effect.Reverb, synth.Reverb_Field.On), 1)
+		}},
 	}
 
 	budget := f64(block) / SR * 1e9

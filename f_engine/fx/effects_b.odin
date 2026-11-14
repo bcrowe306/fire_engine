@@ -1,6 +1,7 @@
 package fx
 
 import "core:math"
+import "core:simd"
 
 import "fire:core"
 
@@ -371,13 +372,41 @@ reverb_render :: proc "contextless" (rv: ^Reverb, p: ^Reverb_Params, l, r: []f32
 		rv.decays = decays
 	}
 	chorus_inc := clamp(p.chorus_hz, 0, 16) / sr
+	// The wander's phase as a turning point (cos, sin): set from the phase
+	// at the block's start and turned a step each sample, so no sample
+	// calls sin or cos. Each line's wander is that point turned a sixteenth
+	// of a cycle times k % 4 (cos for the first two rows of the grid, sin
+	// for the others).
+	start := f64(rv.chorus_phase) * math.TAU
+	pc, ps := f32(math.cos(start)), f32(math.sin(start))
+	step := f64(chorus_inc) * math.TAU
+	sc, ss := f32(math.cos(step)), f32(math.sin(step))
+	@(static, rodata) TURN_COS := [4]f32{1, 0.92387953251, 0.70710678119, 0.38268343236} // cos(j × τ/16)
+	@(static, rodata) TURN_SIN := [4]f32{0, 0.38268343236, 0.70710678119, 0.92387953251} // sin(j × τ/16)
+	// The lines a row at a time (see below), and what each row's lanes need.
+	fb_lines, ap_lines: [4][4]^Line
+	lengths4, ap_len4, decay_from, decay_to: [4]V4
+	shelf: [4][4]V4 // a row's shelves: their four states, a lane a line
+	for g in 0 ..< 4 do for j in 0 ..< 4 {
+		k := g * 4 + j
+		fb_lines[g][j], ap_lines[g][j] = &rv.feedback[k], &rv.allpass[k]
+		(^[4]f32)(&lengths4[g])[j] = lengths[k]
+		(^[4]f32)(&ap_len4[g])[j] = f32(ap[k]) * ratio
+		(^[4]f32)(&decay_from[g])[j] = rv.decays[k]
+		(^[4]f32)(&decay_to[g])[j] = decays[k]
+		for q in 0 ..< 4 do (^[4]f32)(&shelf[g][q])[j] = rv.shelves[k][q]
+	}
 	x := [2][]f32{l, r}
 	for i in 0 ..< n {
 		u := f32(i + 1) / f32(n)
 		v: [8]f32
 		for k in 0 ..< 8 do v[k] = rv.last[k] + (now[k] - rv.last[k]) * u
-		rv.chorus_phase += chorus_inc
-		rv.chorus_phase -= math.floor(rv.chorus_phase)
+		pc, ps = pc * sc - ps * ss, ps * sc + pc * ss
+		wc, ws: [4]f32 // cos and sin of the phase turned by j × τ/16
+		for j in 0 ..< 4 {
+			wc[j] = pc * TURN_COS[j] - ps * TURN_SIN[j]
+			ws[j] = ps * TURN_COS[j] + pc * TURN_SIN[j]
+		}
 		// The input, a side each: band-passed, a quarter of it into every
 		// other line (the even lines the left's, the odd the right's).
 		inputs: [2]f32
@@ -387,45 +416,53 @@ reverb_render :: proc "contextless" (rv: ^Reverb, p: ^Reverb_Params, l, r: []f32
 			lp := pole_tick(&pf[2], &pf[3], x[ch][i], phi)
 			inputs[ch] = (lp - below) * 0.25
 		}
+		// The sixteen lines as a 4 × 4 grid, a row (four lines) a vector.
 		// Each line's delay out, through its diffuser.
-		outs: [16]f32
-		for k in 0 ..< 16 {
-			ph := rv.chorus_phase * math.TAU + f32(k % 4) * math.TAU / 16
-			wander := (math.cos(ph) if k / 4 < 2 else math.sin(ph)) * v[2] * (1 if k / 4 % 2 == 0 else -1)
-			read := line_read(&rv.feedback[k], lengths[k] + wander)
-			a := line_read(&rv.allpass[k], f32(ap[k]) * ratio)
-			d := read - a * REVERB_ALLPASS_FEEDBACK
-			line_push(&rv.allpass[k], inputs[k % 2] + d)
-			outs[k] = a + d * REVERB_ALLPASS_FEEDBACK
-		}
-		// The mix between lines (sixteen as a 4 × 4 grid): each takes a
-		// quarter of the total less half its row and half its column, an
-		// orthogonal mix, so the tail neither grows nor dies but by its decay.
+		wcv, wsv := V4{wc[0], wc[1], wc[2], wc[3]}, V4{ws[0], ws[1], ws[2], ws[3]}
+		depth := V4{v[2], v[2], v[2], v[2]}
+		ins := V4{inputs[0], inputs[1], inputs[0], inputs[1]} // (even lines the left's)
+		outs: [4]V4
+		cols: V4
 		total: f32 = 0
-		rows, cols: [4]f32
-		for k in 0 ..< 16 {
-			total += outs[k]
-			rows[k / 4] += outs[k]
-			cols[k % 4] += outs[k]
+		rows: [4]f32
+		#unroll for g in 0 ..< 4 {
+			wander := (wcv if g < 2 else wsv) * depth * (1 if g % 2 == 0 else -1)
+			read := line_read4(&fb_lines[g], 4, lengths4[g] + wander)
+			a := line_read4(&ap_lines[g], 4, ap_len4[g])
+			d := read - a * REVERB_ALLPASS_FEEDBACK
+			push := simd.to_array(ins + d)
+			for j in 0 ..< 4 do line_push(ap_lines[g][j], push[j])
+			outs[g] = a + d * REVERB_ALLPASS_FEEDBACK
+			rows[g] = simd.reduce_add_ordered(outs[g])
+			cols += outs[g]
+			total += rows[g]
 		}
-		sum_l, sum_r: f32
-		for k in 0 ..< 16 {
-			w := outs[k] + total * 0.25 - rows[k / 4] * 0.5 - cols[k % 4] * 0.5
+		// The mix between lines: each takes a quarter of the total less half
+		// its row and half its column, an orthogonal mix, so the tail
+		// neither grows nor dies but by its decay.
+		sides: V4 // lanes 0 and 2 the left's, 1 and 3 the right's
+		uv := V4{u, u, u, u}
+		#unroll for g in 0 ..< 4 {
+			w := outs[g] + total * 0.25 - rows[g] * 0.5 - cols * 0.5
 			// The shelves: the high one turned down, the low one taken away.
-			st := &rv.shelves[k]
-			hf := pole_tick(&st[0], &st[1], w, v[7])
+			hf := pole_tick4(&shelf[g][0], &shelf[g][1], w, v[7])
 			w = hf + v[5] * (w - hf)
-			lf := pole_tick(&st[2], &st[3], w, v[6])
+			lf := pole_tick4(&shelf[g][2], &shelf[g][3], w, v[6])
 			w -= lf * v[4]
-			dk := rv.decays[k] + (decays[k] - rv.decays[k]) * u
-			line_push(&rv.feedback[k], dk * w)
-			if k % 2 == 0 do sum_l += w
-			else do sum_r += w
+			dk := simd.to_array(decay_from[g] + (decay_to[g] - decay_from[g]) * uv)
+			pw := simd.to_array(w)
+			for j in 0 ..< 4 do line_push(fb_lines[g][j], dk[j] * pw[j])
+			sides += w
 		}
+		sd := simd.to_array(sides)
+		sum_l, sum_r := sd[0] + sd[2], sd[1] + sd[3]
 		line_push(&rv.pre, sum_l * 0.5)
 		line_push(&rv.pre_r, sum_r * 0.5)
 		x[0][i] = v[1] * x[0][i] + v[0] * line_read(&rv.pre, v[3])
 		x[1][i] = v[1] * x[1][i] + v[0] * line_read(&rv.pre_r, v[3])
 	}
+	for g in 0 ..< 4 do for j in 0 ..< 4 do for q in 0 ..< 4 do rv.shelves[g * 4 + j][q] = (^[4]f32)(&shelf[g][q])[j]
+	rv.chorus_phase += chorus_inc * f32(n)
+	rv.chorus_phase -= math.floor(rv.chorus_phase)
 	rv.last, rv.decays, rv.set = now, decays, true
 }

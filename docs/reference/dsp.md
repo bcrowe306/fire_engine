@@ -1646,6 +1646,7 @@ Loudness_Meter :: struct {
 	highpass: K_Stage,
 	block_len: int,
 	tp: [4][12]f64,
+	tp4: [12]#simd[4]f32,
 	sum: [2]f64,
 	frames: int,
 	blocks: [30]f64,
@@ -1653,7 +1654,7 @@ Loudness_Meter :: struct {
 	filled: int,
 	hist_power: [800]f64,
 	hist_count: [800]u32,
-	history: [2][12]f32,
+	history: [2][24]f32,
 	hist_at: int,
 	tp_max: f32,
 	reset_seen: u32,
@@ -1675,6 +1676,7 @@ loudness and the true peak's maximum with `loudness_reset`.
 | `highpass` |  |
 | `block_len` | frames in 100 ms |
 | `tp` | the interpolator's taps, a phase each |
+| `tp4` | the same by tap: the four phases' j-th taps together |
 | `sum` | The audio thread's. the K-weighted Σ x² of this block so far |
 | `frames` |  |
 | `blocks` | each block's mean power (channels summed), newest at `at` |
@@ -1682,7 +1684,7 @@ loudness and the true peak's maximum with `loudness_reset`.
 | `filled` |  |
 | `hist_power` | the gated blocks' power, by loudness |
 | `hist_count` |  |
-| `history` | the last samples, for the interpolator |
+| `history` | the last samples, for the interpolator, written twice (at `hist_at` and TP_TAPS on) so the last TP_TAPS are always in a row |
 | `hist_at` |  |
 | `tp_max` |  |
 | `reset_seen` |  |
