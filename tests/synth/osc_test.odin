@@ -140,6 +140,38 @@ any_block_size_sounds_the_same :: proc(t: ^testing.T) {
 	testing.expectf(t, worst < 1e-4, "512 and 37 at a time (off by %v)", worst)
 }
 
+// Every warp at every kind of unison count (one voice; pairs that fill
+// the four voices rendered at once, and pairs that don't) sounds the same
+// whatever the render size (37: a few samples past each four), and one
+// voice is heard the same on both sides.
+@(test)
+every_warp_and_unison_count_at_any_block_size :: proc(t: ^testing.T) {
+	r := rig_osc(.Basic_Shapes)
+	defer rig_osc_free(r)
+	src := make([]f32, 6000, context.temp_allocator)
+	for &v, i in src do v = f32(math.sin(math.TAU * 170 * f64(i) / SR))
+	mod := [2][]f32{src, src}
+	for w in synth.Osc_Warp {
+		for unison in ([]int{1, 2, 3, 5, 8, 16}) {
+			r.p.warp = w
+			r.p.warp_amount = 0.7
+			r.p.unison = unison
+			r.p.frame = 0.4
+			al, ar := play(r, 330, 6000, 512, mod = &mod)
+			bl, br := play(r, 330, 6000, 37, mod = &mod)
+			worst: f32 = 0
+			for i in 0 ..< len(al) do worst = max(worst, abs(al[i] - bl[i]), abs(ar[i] - br[i]))
+			testing.expectf(t, worst < 1e-4, "%v, %d voices: 512 and 37 at a time (off by %v)", w, unison, worst)
+			testing.expectf(t, kit.peak(al) > 0.01, "%v, %d voices: it plays (peak %v)", w, unison, kit.peak(al))
+			if unison == 1 {
+				same := true
+				for i in 0 ..< len(al) do if al[i] != ar[i] do same = false
+				testing.expectf(t, same, "%v: one voice, both sides the same", w)
+			}
+		}
+	}
+}
+
 // Every warp: finite and in range; sync and formant brighten it; pulse
 // width leaves part of each cycle silent; quantize steps it; RM and FM
 // follow their source.

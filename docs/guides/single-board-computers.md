@@ -89,6 +89,18 @@ take several times as long. Graviton2 cores (Neoverse N1) are faster than a
 Raspberry Pi 4's Cortex-A72 and slower than a Pi 5's Cortex-A76, so run the
 benchmark on your board before you size a project.
 
+The "synth" above is `fire:dsp`'s simple one. Pads' wavetable synth
+(`fire:synth`) costs far more a note; `tools/synth_bench` measures it,
+eight notes of a patch with three oscillators of four unison voices and
+two filters, and the same with one thing taken away at a time:
+
+```bash
+odin run tools/synth_bench -collection:fire=f_engine -o:speed -- 128
+```
+
+On the Graviton2 that patch is 14% of a core (Apple M-series: 7%); 16
+unison voices an oscillator, 26%.
+
 Ways to fit more:
 
 - **Larger blocks.** Per-block overhead (event handling, waking workers)

@@ -20,10 +20,11 @@ plan before it is built.
   Env, LFO, Mod, Effects, Macro, Global.
   1. A playable voice — done: 3 wavetable oscs + sample osc, unison, warp
      modes, 2 filters (8 models), 6 envelopes, 8 LFOs, matrix (drag to
-     assign), macros, voices, glide, oversampling, live visuals. Still to
-     do: get the 8-voice budget under 25% of the ARM core (SIMD unison,
-     cached per-voice values); lanes for every synth parameter (today the
-     Pitch, Cutoff and Resonance lanes reach its transpose and filter 1).
+     assign), macros, voices, glide, oversampling, live visuals. The
+     8-voice budget is met: 14% of the ARM core (SIMD unison; under 25%,
+     `tools/synth_bench`). Still to do: the filters, now the larger share
+     on ARM; lanes for every synth parameter (today the Pitch, Cutoff and
+     Resonance lanes reach its transpose and filter 1).
   2. The nine effects (chorus, compressor, delay, distortion, EQ, filter,
      flanger, phaser, reverb) in `fire:fx` — done: a reorderable chain,
      every setting modulatable, the Effects tab with a picture each.

@@ -88,9 +88,13 @@ spectrum before it is turned back into a wave. All of this is done off the
 audio thread; the audio thread only reads tables.
 
 **SIMD.** Unison voices are the inner loop: up to 16 per oscillator, with
-`#simd[4]f32` lanes, so four unison voices are rendered at once. That
-works on NEON (ARM) and SSE (x86) alike. We profile on the ARM machine
-(our slowest) from the first milestone, against a budget (below).
+`#simd[4]f32` lanes, so four unison voices are rendered at once (two
+pairs, each one's left and right voice). One voice alone renders four
+samples at once instead: the phase steps summed along the lanes. The
+loop is compiled once a warp, so no sample asks which warp it has; a
+wave read loads each lane's four samples and turns them into one vector
+each. That works on NEON (ARM) and SSE (x86) alike. We profile on the ARM
+machine (our slowest) from the first milestone, against a budget (below).
 
 **Oversampling.** With 2×, 4× or 8× set, the voices (oscillators, filters,
 distortion) run at that rate and are brought down by a half-band filter
@@ -220,7 +224,21 @@ microtuning (.scl/.kbm/.tun files).
   drag-to-assign, the project round-trip, and undo.
 - **CPU budget** on the ARM machine (t4g.small): eight voices, each with
   three oscillators of four unison voices and two filters, under 25% of
-  one core at 48 kHz, 1× oversampling. This is profiled every milestone.
+  one core at 48 kHz, 1× oversampling. This is profiled every milestone
+  with `tools/synth_bench` (`odin run tools/synth_bench
+  -collection:fire=f_engine -o:speed -- [block]`), which also takes one
+  thing away at a time to show where the time goes. Measured 2026-11-14
+  (128-frame blocks; one voice at a time, then with SIMD unison):
+
+  | | t4g.small (ARM) | M-series |
+  |---|---|---|
+  | the budget patch | 20.9% → 14.1% | 8.9% → 6.9% |
+  | 1 unison voice | 12.8% → 11.5% | 6.6% → 6.2% |
+  | 16 unison voices | 52.6% → 25.8% | 17.7% → 9.6% |
+  | 2× oversampling | 42.0% → 28.6% | 18.0% → 13.9% |
+
+  The two filters are now the larger share on ARM (about 3% of the core
+  each, across eight voices); the envelopes, LFOs and matrix under 2%.
 
 ## What to watch
 

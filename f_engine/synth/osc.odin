@@ -1,6 +1,8 @@
 package synth
 
+import "base:intrinsics"
 import "core:math"
+import "core:simd"
 
 import "fire:dsp"
 
@@ -323,45 +325,33 @@ osc_build :: proc "contextless" (sh: ^Osc_Shared, s: ^Osc_State, p: ^Osc_Params,
 // pairs folded toward the middle by the stereo spread.
 @(private)
 osc_chunk :: proc "contextless" (s: ^Osc_State, p: ^Osc_Params, w: Osc_Warp, pairs, unison: int, inc: []f32, mod: ^[2][]f32, out_l, out_r: []f32, a, b, n: int) #no_bounds_check {
-	from, to := s.bufs[s.from][:], s.bufs[s.to][:]
-	fading := s.from != s.to
-	inv_n := 1 / f32(max(n, 1))
-	inv_fade := 1 / f32(s.fade_len)
-	for pi in 0 ..< pairs {
-		amp0 := s.last_center if pi == 0 else s.last_detuned
-		amp1 := s.center if pi == 0 else s.detuned
-		for ch in 0 ..< 2 {
-			if pi == 0 && unison == 1 && ch == 1 { // one voice: its left is its right
-				for i in a ..< b do out_r[i] += out_l[i]
-				s.phases[0][1] = s.phases[0][0]
-				continue
-			}
-			out := out_l if ch == 0 else out_r
-			ph := s.phases[pi][ch]
-			m0, m1 := s.last_mult[pi][ch], s.inc_mult[pi][ch]
-			w0, w1 := s.last_warp[pi], s.warp[pi]
-			d0, d1 := s.last_warp_phase, s.warp_phase
-			src: []f32
-			if mod != nil do src = mod[ch]
-			for i in a ..< b {
-				u := f32(i + 1) * inv_n
-				ph += u32(i64(f64(inc[i] * (m0 + (m1 - m0) * u)) * 4294967296.0))
-				x := f32(ph) / 4294967296.0 + p.phase - 0.5
-				wv := w0 + (w1 - w0) * u
-				dp := d0 + (d1 - d0) * u
-				m: f32 = 0
-				if src != nil do m = src[i]
-				y, win := warp_phase(w, x, wv, dp, m)
-				t := f32(s.fade + (i - a) + 1) * inv_fade
-				v := wave_read(to, y)
-				if fading do v = wave_read(from, y) + (v - wave_read(from, y)) * t
-				out[i] += win * v * (amp0 + (amp1 - amp0) * u)
-			}
-			s.phases[pi][ch] = ph
+	// One copy of the voice loop a warp, so none of them asks which a sample.
+	if unison == 1 {
+		switch w {
+		case .None:        osc_voice1(s, p, .None, inc, mod, out_l, out_r, a, b, n)
+		case .Sync:        osc_voice1(s, p, .Sync, inc, mod, out_l, out_r, a, b, n)
+		case .Formant:     osc_voice1(s, p, .Formant, inc, mod, out_l, out_r, a, b, n)
+		case .Quantize:    osc_voice1(s, p, .Quantize, inc, mod, out_l, out_r, a, b, n)
+		case .Bend:        osc_voice1(s, p, .Bend, inc, mod, out_l, out_r, a, b, n)
+		case .Squeeze:     osc_voice1(s, p, .Squeeze, inc, mod, out_l, out_r, a, b, n)
+		case .Pulse_Width: osc_voice1(s, p, .Pulse_Width, inc, mod, out_l, out_r, a, b, n)
+		case .Fm_A, .Fm_B, .Fm_Sample: osc_voice1(s, p, .Fm_A, inc, mod, out_l, out_r, a, b, n)
+		case .Rm_A, .Rm_B, .Rm_Sample: osc_voice1(s, p, .Rm_A, inc, mod, out_l, out_r, a, b, n)
 		}
+	} else do switch w {
+	case .None:        osc_voices(s, p, .None, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Sync:        osc_voices(s, p, .Sync, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Formant:     osc_voices(s, p, .Formant, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Quantize:    osc_voices(s, p, .Quantize, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Bend:        osc_voices(s, p, .Bend, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Squeeze:     osc_voices(s, p, .Squeeze, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Pulse_Width: osc_voices(s, p, .Pulse_Width, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Fm_A, .Fm_B, .Fm_Sample: osc_voices(s, p, .Fm_A, pairs, unison, inc, mod, out_l, out_r, a, b, n)
+	case .Rm_A, .Rm_B, .Rm_Sample: osc_voices(s, p, .Rm_A, pairs, unison, inc, mod, out_l, out_r, a, b, n)
 	}
 	// The stereo fold: each side keeps `stereo` of itself and takes
 	// `mono_mix` of the other.
+	inv_n := 1 / f32(max(n, 1))
 	for i in a ..< b {
 		u := f32(i + 1) * inv_n
 		st := s.last_stereo + (s.stereo - s.last_stereo) * u
@@ -372,33 +362,198 @@ osc_chunk :: proc "contextless" (s: ^Osc_State, p: ^Osc_Params, w: Osc_Warp, pai
 	}
 }
 
-// [rt] Phase `x` (cycles, any value) warped by `w` at value `v` with its
-// centre moved by `dp` (cycles), and the window to multiply the read by.
-// `m` is the FM or RM source's sample now. Returns the phase to read at
-// (0..1).
+@(private) V4 :: #simd[4]f32
+@(private) U4 :: #simd[4]u32
+@(private) I4 :: #simd[4]i32
+
 @(private)
-warp_phase :: #force_inline proc "contextless" (w: Osc_Warp, x, v, dp, m: f32) -> (phase: f32, window: f32) {
-	wrap :: #force_inline proc "contextless" (x: f32) -> f32 { return x - math.floor(x) }
-	signed :: #force_inline proc "contextless" (x: f32) -> f32 { return wrap(x + 0.5) - 0.5 } // -0.5..0.5
+splat :: #force_inline proc "contextless" (x: f32) -> V4 { return V4{x, x, x, x} }
+
+// [rt] The unison voices of `osc_chunk`, four at a time: each vector holds
+// two pairs, their left and right voices (lanes 0 and 2 heard left, 1 and
+// 3 right). A lane past the last pair plays at no level and keeps no phase.
+@(private)
+osc_voices :: proc "contextless" (s: ^Osc_State, p: ^Osc_Params, $W: Osc_Warp, pairs, unison: int, inc: []f32, mod: ^[2][]f32, out_l, out_r: []f32, a, b, n: int) #no_bounds_check {
+	from, to := s.bufs[s.from][:], s.bufs[s.to][:]
+	fading := s.from != s.to
+	inv_n := 1 / f32(max(n, 1))
+	inv_fade := 1 / f32(s.fade_len)
+	offset := splat(p.phase - 0.5)
+	d0, d1 := s.last_warp_phase, s.warp_phase
+	when W == .Fm_A || W == .Rm_A {
+		src_l, src_r: []f32
+		if mod != nil do src_l, src_r = mod[0], mod[1]
+	}
+	for g in 0 ..< (pairs + 1) / 2 {
+		q0, q1 := 2 * g, 2 * g + 1 // (q1 < OSC_PAIRS: pairs is at most OSC_PAIRS)
+		ph := U4{s.phases[q0][0], s.phases[q0][1], s.phases[q1][0], s.phases[q1][1]}
+		m0 := V4{s.last_mult[q0][0], s.last_mult[q0][1], s.last_mult[q1][0], s.last_mult[q1][1]}
+		m1 := V4{s.inc_mult[q0][0], s.inc_mult[q0][1], s.inc_mult[q1][0], s.inc_mult[q1][1]}
+		w0 := V4{s.last_warp[q0], s.last_warp[q0], s.last_warp[q1], s.last_warp[q1]}
+		w1 := V4{s.warp[q0], s.warp[q0], s.warp[q1], s.warp[q1]}
+		// Levels: the centre pair's, the detuned ones', none past the last.
+		c0, c1 := s.last_detuned, s.detuned
+		if g == 0 do c0, c1 = s.last_center, s.center
+		amp0 := V4{c0, c0, s.last_detuned, s.last_detuned}
+		amp1 := V4{c1, c1, s.detuned, s.detuned}
+		if q1 >= pairs {
+			amp0 = V4{c0, c0, 0, 0}
+			amp1 = V4{c1, c1, 0, 0}
+		}
+		if unison == 1 { // one voice: its right is its left (below)
+			amp0 = V4{c0, 0, 0, 0}
+			amp1 = V4{c1, 0, 0, 0}
+		}
+		damp := amp1 - amp0
+		dm := m1 - m0
+		dw := w1 - w0
+		for i in a ..< b {
+			u := f32(i + 1) * inv_n
+			uv := splat(u)
+			// The phase step, in cycles; its whole cycles change nothing.
+			x := splat(inc[i]) * (m0 + dm * uv)
+			ph += cast(U4)((x - simd.floor(x)) * 4294967296.0)
+			at := cast(V4)ph * (1.0 / 4294967296.0) + offset
+			m: V4
+			when W == .Fm_A || W == .Rm_A {
+				if src_l != nil do m = V4{src_l[i], src_r[i], src_l[i], src_r[i]}
+			}
+			y, win := warp_phase4(W, at, w0 + dw * uv, splat(d0 + (d1 - d0) * u), m)
+			v := wave_read4(to, y)
+			if fading {
+				f := wave_read4(from, y)
+				v = f + (v - f) * splat(f32(s.fade + (i - a) + 1) * inv_fade)
+			}
+			o := simd.to_array(win * v * (amp0 + damp * uv))
+			out_l[i] += o[0] + o[2]
+			out_r[i] += o[1] + o[3]
+		}
+		phs := simd.to_array(ph)
+		s.phases[q0] = {phs[0], phs[1]}
+		if q1 < pairs do s.phases[q1] = {phs[2], phs[3]}
+	}
+	if unison == 1 {
+		for i in a ..< b do out_r[i] += out_l[i]
+		s.phases[0][1] = s.phases[0][0]
+	}
+}
+
+// [rt] One unison voice (heard both sides), four samples at a time: the
+// phase steps summed along the four, then each sample warped and read on
+// its own lane. The last few samples of a chunk go one at a time.
+@(private)
+osc_voice1 :: proc "contextless" (s: ^Osc_State, p: ^Osc_Params, $W: Osc_Warp, inc: []f32, mod: ^[2][]f32, out_l, out_r: []f32, a, b, n: int) #no_bounds_check {
+	from, to := s.bufs[s.from][:], s.bufs[s.to][:]
+	fading := s.from != s.to
+	inv_n := 1 / f32(max(n, 1))
+	inv_fade := 1 / f32(s.fade_len)
+	offset := splat(p.phase - 0.5)
+	m0, dm := s.last_mult[0][0], s.inc_mult[0][0] - s.last_mult[0][0]
+	w0, dw := s.last_warp[0], s.warp[0] - s.last_warp[0]
+	d0, dd := s.last_warp_phase, s.warp_phase - s.last_warp_phase
+	c0, dc := s.last_center, s.center - s.last_center
+	when W == .Fm_A || W == .Rm_A {
+		src: []f32
+		if mod != nil do src = mod[0]
+	}
+	STEPS :: V4{0, 1, 2, 3}
+	ph := s.phases[0][0]
+	i := a
+	for ; i < b; i += 4 {
+		k := min(b - i, 4) // (fewer at the end: the lanes past it are not kept)
+		uv := (splat(f32(i + 1)) + STEPS) * inv_n
+		iv: V4
+		if k == 4 {
+			iv = intrinsics.unaligned_load((^V4)(&inc[i]))
+		} else {
+			for j in 0 ..< k do (^[4]f32)(&iv)[j] = inc[i + j]
+		}
+		x := iv * (m0 + dm * uv)
+		step := cast(U4)((x - simd.floor(x)) * 4294967296.0)
+		// The phase after each: the steps summed along the lanes.
+		sum := step + simd.shuffle(U4(0), step, 0, 4, 5, 6)
+		sum += simd.shuffle(U4(0), sum, 0, 1, 4, 5)
+		phs := U4{ph, ph, ph, ph} + sum
+		at := cast(V4)phs * (1.0 / 4294967296.0) + offset
+		m: V4
+		when W == .Fm_A || W == .Rm_A {
+			if src != nil {
+				if k == 4 {
+					m = intrinsics.unaligned_load((^V4)(&src[i]))
+				} else {
+					for j in 0 ..< k do (^[4]f32)(&m)[j] = src[i + j]
+				}
+			}
+		}
+		y, win := warp_phase4(W, at, w0 + dw * uv, d0 + dd * uv, m)
+		v := wave_read4(to, y)
+		if fading {
+			f := wave_read4(from, y)
+			v = f + (v - f) * ((splat(f32(s.fade + (i - a) + 1)) + STEPS) * inv_fade)
+		}
+		o := simd.to_array(win * v * (c0 + dc * uv))
+		all := simd.to_array(phs)
+		for j in 0 ..< k {
+			out_l[i + j] += o[j]
+			out_r[i + j] += o[j]
+		}
+		ph = all[k - 1]
+	}
+	s.phases[0] = {ph, ph}
+}
+
+// [rt] `wave_read` for four phases at once.
+@(private)
+wave_read4 :: #force_inline proc "contextless" (buf: []f32, phase: V4) -> V4 #no_bounds_check {
+	x := phase * WAVE_SIZE
+	xi := cast(I4)x
+	t := x - cast(V4)xi
+	idx := simd.to_array(xi & (WAVE_SIZE - 1))
+	base := raw_data(buf)
+	// Each lane's four samples, then turned so each vector is one of them.
+	r0 := intrinsics.unaligned_load((^V4)(&base[idx[0]]))
+	r1 := intrinsics.unaligned_load((^V4)(&base[idx[1]]))
+	r2 := intrinsics.unaligned_load((^V4)(&base[idx[2]]))
+	r3 := intrinsics.unaligned_load((^V4)(&base[idx[3]]))
+	t0 := simd.shuffle(r0, r1, 0, 4, 1, 5)
+	t1 := simd.shuffle(r2, r3, 0, 4, 1, 5)
+	t2 := simd.shuffle(r0, r1, 2, 6, 3, 7)
+	t3 := simd.shuffle(r2, r3, 2, 6, 3, 7)
+	p0 := simd.shuffle(t0, t1, 0, 1, 4, 5)
+	p1 := simd.shuffle(t0, t1, 2, 3, 6, 7)
+	p2 := simd.shuffle(t2, t3, 0, 1, 4, 5)
+	p3 := simd.shuffle(t2, t3, 2, 3, 6, 7)
+	return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
+}
+
+// [rt] Four phases `x` (cycles, any value) warped by `W` at values `v`
+// with their centres moved by `dp` (cycles), and the windows to multiply
+// the reads by. `m` is the FM or RM source's samples now. Returns the
+// phases to read at (0..1). The warp is chosen when it is compiled (FM and
+// RM: `.Fm_A` and `.Rm_A` stand for their kinds).
+@(private)
+warp_phase4 :: #force_inline proc "contextless" ($W: Osc_Warp, x, v, dp, m: V4) -> (phase: V4, window: V4) {
+	wrap :: #force_inline proc "contextless" (x: V4) -> V4 { return x - simd.floor(x) }
+	signed :: #force_inline proc "contextless" (x: V4) -> V4 { return wrap(x + 0.5) - 0.5 }
 	window = 1
-	switch w {
-	case .None:
+	when W == .None {
 		phase = wrap(x)
-	case .Rm_A, .Rm_B, .Rm_Sample:
+	} else when W == .Rm_A {
 		phase = wrap(x)
 		window = 1 + (m - 1) * v
-	case .Fm_A, .Fm_B, .Fm_Sample:
-		phase = wrap(x + m * v * 6) // (a full-scale source at full amount: ±6 cycles)
-	case .Sync: // v cycles of the wave per cycle, centred on the middle of the cycle
+	} else when W == .Fm_A { // (a full-scale source at full amount: ±6 cycles)
+		phase = wrap(x + m * v * 6)
+	} else when W == .Sync { // v cycles of the wave per cycle, centred on the middle of the cycle
 		phase = wrap(signed(x + 0.5) * v + 0.5 + dp)
-	case .Formant: // sync, windowed by a half sine across the cycle
+	} else when W == .Formant { // sync, windowed by a half sine across the cycle
 		c := signed(x + 0.5)
 		phase = wrap(c * v + 0.5 + dp)
-		window = math.cos(math.PI * c)
-	case .Quantize: // v steps a cycle, their edges moved by dp
-		q := (math.trunc(signed(x) * v + dp) - dp) / v
+		k := simd.to_array(c * math.PI)
+		window = V4{math.cos(k[0]), math.cos(k[1]), math.cos(k[2]), math.cos(k[3])}
+	} else when W == .Quantize { // v steps a cycle, their edges moved by dp
+		q := (simd.trunc(signed(x) * v + dp) - dp) / v
 		phase = wrap(q)
-	case .Bend: // a cubic through the cycle: v 0.5 leaves it straight
+	} else when W == .Bend { // a cubic through the cycle: v 0.5 leaves it straight
 		u := signed(x - dp) + 0.5
 		off := (v - v * v) * 2
 		sc := v * 3
@@ -406,15 +561,17 @@ warp_phase :: #force_inline proc "contextless" (w: Osc_Warp, x, v, dp, m: f32) -
 		u3 := u2 * u
 		nu := u3 + (sc + off) * (u2 - u3) + (sc - off) * (u - 2 * u2 + u3)
 		phase = wrap(nu - 0.5 + dp)
-	case .Squeeze: // up to the pivot squeezed by v, the rest stretched (v 1: straight)
+	} else when W == .Squeeze { // up to the pivot squeezed by v, the rest stretched (v 1: straight)
 		c := signed(x - dp)
-		a := abs(c)
-		y := a / v if a <= v * 0.25 else 0.5 - (0.5 - a) / (2 - v)
-		phase = wrap((y if c >= 0 else -y) + dp)
-	case .Pulse_Width: // the cycle played v times as fast, silent once it has ended
+		a := simd.abs(c)
+		y := simd.select(simd.lanes_le(a, v * 0.25), a / v, 0.5 - (0.5 - a) / (2 - v))
+		phase = wrap(simd.select(simd.lanes_ge(c, 0), y, -y) + dp)
+	} else when W == .Pulse_Width { // the cycle played v times as fast, silent once it has ended
 		c := signed(x) * v
-		if c <= -0.5 do window = 0
-		phase = wrap(clamp(c, -0.5, 0.5) + dp)
+		window = simd.select(simd.lanes_le(c, -0.5), V4(0), V4(1))
+		phase = wrap(simd.clamp(c, -0.5, 0.5) + dp)
+	} else {
+		#panic("a warp warp_phase4 has no case for")
 	}
 	return
 }
