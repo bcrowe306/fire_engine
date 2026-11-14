@@ -61,6 +61,23 @@ MODULES = {
     "recording": [
         (r"\bpm\.(capture_arm|record_start|record_stop)\(", "recording_record / sample_start / sample_stop"),
     ],
+    "song": [
+        (r"\bpm\.(set_song|set_song_clip|song_add|song_remove|song_remove_clips|song_insert_clips|song_duplicate_clips|lane_add|lane_set|lane_rename|merge_sequences|select_arrangement|add_arrangement|rename_arrangement|delete_arrangement|tempo_point_add|tempo_point_remove|meter_set|meter_remove|marker_add|marker_rename|marker_remove|song_jump)\(", "song_*"),
+        # (The Song view's drags (a clip's edges and moves, markers, tempo
+        # points, the loop range) stay its own until the ui module.)
+        (r"\bpm\.(set_song_drag|set_song_clip_drag|song_move_clips|marker_move|tempo_point_set|set_song_loop)\(", "song_set_clip / move_clips / set_loop", None, ("ui_song.odin", "ui_song_time.odin")),
+    ],
+    "launcher": [
+        (r"\bpm\.(add_lane|delete_lane|rename_lane|color_lane|move_sequence|new_sequence_in|set_lanes|launch_slot|launch_scene|stop_column|stop_all_columns|set_launch_record|set_launch_hold|set_launch_continue)\(", "launcher_*"),
+        (r"\.switch_at\s*=[^=]", "launcher_set_quantize"),
+    ],
+    "perform": [
+        (r"\ba\.(play_mode|keys)\s*=[^=]|\ba\.keys\.\w+\s*=[^=]", "perform_set_play_mode / set_keys"),
+        # (Selecting a pad moves its bank along in several places: the
+        # selection moves with the ui module; the bank control and the
+        # scripts use perform_set_bank.)
+        (r"\ba\.bank\s*=[^=]", "perform_set_bank", "shell.odin"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [

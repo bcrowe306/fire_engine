@@ -16,6 +16,12 @@ Core :: struct {
 	capture:   pm.Capture,   // recording into the sequence (Rec)
 	rec:       pm.Recording, // recording a sample into a pad
 	sample_holding: int,     // the pad recording while it is held (-1: none); letting it go stops it
+	// How the pads play (see perform.odin).
+	selected:  int,          // the selected pad: what the keys, Keyboard and Velocity modes play, and the editors show
+	bank:      int,          // the bank the pads show (Keyboard mode: a range of notes)
+	play_mode: pm.Play_Mode,
+	keys:      pm.Keys,      // Keyboard mode's scale, root, octave and chord
+	pads_bank: int,          // the bank the pads were on before Keyboard mode moved it
 	transport: Transport,    // the transport's own state (tap tempo, Stop pressed twice)
 	files:     Files,        // the project's place, the recent projects, Pads' folders
 	hooks:     Hooks,        // what the app does around the core's actions

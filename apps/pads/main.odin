@@ -55,8 +55,6 @@ App :: struct {
 	actions:  ui.Actions,
 	ws:       ui.Workspace,
 	dark:     bool,
-	bank:     int,
-	selected: int,
 	lit:      [pm.PADS]f32, // seconds a pad stays lit after a hit
 	held:     [pm.PADS]bool,
 	sample_armed:   bool, // the Sample control is on: the next pad pressed records (Arm, Threshold, Bars)
@@ -103,9 +101,6 @@ App :: struct {
 	pad_sel:  Pad_Set, // pads selected together (Shift: a range, Cmd: one more); see `selected_pads`
 	pad_anchor: int,   // where a Shift-click range starts
 	frame:    int,
-	play_mode: pm.Play_Mode,
-	keys:     pm.Keys,
-	pads_bank: int, // the bank the pads were on before Keyboard mode moved it
 	browser_has_keys: bool, // the browser's list had the keyboard last frame (its arrows)
 	grid_held: [pm.PADS_PER_BANK]Grid_Held,
 	perf:     Perf_State,
@@ -511,14 +506,12 @@ keyboard_notes :: proc(a: ^App, k: int, out: ^[4]int) -> []int {
 // starts at: the root five octaves down (the bottom of the MIDI range,
 // whatever the octave set). A slicer's keys start at its first slice.
 keyboard_bottom :: proc(a: ^App) -> int {
-	if a.m.project.pads[a.selected].kind == .Slicer do return 0
-	n := pm.scale_size(a.keys.scale)
-	return n * (5 + a.keys.octave)
+	return pc.keyboard_bottom(&a.core)
 }
 
 // The bank Keyboard mode opens on: the one holding the pad's own note.
 keyboard_home_bank :: proc(a: ^App) -> int {
-	return clamp(keyboard_bottom(a) / pm.PADS_PER_BANK, 0, pm.PADS / pm.PADS_PER_BANK - 1)
+	return pc.keyboard_home_bank(&a.core)
 }
 
 // Whether every pitch can be played: the MIDI range (the pad's own note
@@ -665,6 +658,10 @@ files_init :: proc(a: ^App) {
 			a := (^App)(user)
 			if on do record_touch(a, t)
 			else do record_release(a)
+		},
+		release_held = proc(user: rawptr) {
+			a := (^App)(user)
+			for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
 		},
 		param_moved = proc(user: rawptr, t: pm.Auto_Target, value: f32) {
 			a := (^App)(user)

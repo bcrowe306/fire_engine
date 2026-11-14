@@ -38,7 +38,7 @@ draw_pads :: proc(user: rawptr) {
 		// (A row of its own: the bank tabs keep the width.)
 	}
 	bank := a.bank
-	if ui.segmented("banks", {"A", "B", "C", "D", "E", "F", "G", "H"}, &bank) do a.bank = bank
+	if ui.segmented("banks", {"A", "B", "C", "D", "E", "F", "G", "H"}, &bank) do pa.perform_set_bank(&a.api, i64(bank))
 	if im.IsItemHovered() && a.play_mode == .Keyboard do im.SetTooltip("In Keyboard mode each bank plays the next 16 notes of the scale")
 	im.Spacing()
 

@@ -79,13 +79,12 @@ draw_song_markers :: proc(a: ^App, v: Song_View) {
 	}
 	if !active && tm.marker_drag >= 0 {
 		if tm.marker_moved do app.seal(&m.history)
-		else do pm.song_jump(&m.engine, p.song.markers[tm.marker_drag].beat)
+		else do pa.song_jump(&a.api, p.song.markers[tm.marker_drag].beat)
 		tm.marker_drag = -1
 	}
 	if hot && over < 0 && im.IsMouseDoubleClicked(.Left) {
 		_, b := pm.song_bar_at(p, max(x_beat(v, mx), 0))
-		k := pm.marker_add(m, b, fmt.tprintf("Marker %d", p.song.marker_count + 1))
-		if k >= 0 do tm.rename, tm.rename_open = k, true
+		if k, r := pa.song_add_marker(&a.api, b, fmt.tprintf("Marker %d", p.song.marker_count + 1)); r == .Ok do tm.rename, tm.rename_open = int(k), true
 	}
 	if hot && over >= 0 && im.IsMouseClicked(.Right) {
 		tm.rename = over
@@ -93,8 +92,8 @@ draw_song_markers :: proc(a: ^App, v: Song_View) {
 	}
 	if im.BeginPopup("##markermenu") {
 		if im.MenuItem("Rename…") do tm.rename_open = true
-		if im.MenuItem("Go there") do pm.song_jump(&m.engine, p.song.markers[tm.rename].beat)
-		if im.MenuItem("Remove") do pm.marker_remove(m, tm.rename)
+		if im.MenuItem("Go there") do pa.song_jump(&a.api, p.song.markers[tm.rename].beat)
+		if im.MenuItem("Remove") do pa.song_remove_marker(&a.api, i64(tm.rename))
 		im.EndPopup()
 	}
 	draw_marker_rename(a)
@@ -179,14 +178,13 @@ draw_song_ruler :: proc(a: ^App, v: Song_View) {
 		if tm.menu_x == 0 do tm.menu_x = mx
 		b := at_bar(p, v, tm.menu_x)
 		if im.MenuItem(fmt.ctprintf("Add a marker at bar %d", bar_of(p, b))) {
-			k := pm.marker_add(m, b, fmt.tprintf("Marker %d", p.song.marker_count + 1))
-			if k >= 0 do tm.rename, tm.rename_open = k, true
+			if k, r := pa.song_add_marker(&a.api, b, fmt.tprintf("Marker %d", p.song.marker_count + 1)); r == .Ok do tm.rename, tm.rename_open = int(k), true
 		}
-		if im.MenuItem(fmt.ctprintf("Loop bar %d", bar_of(p, b))) do pm.set_song_loop(m, true, b, bar_after(p, b))
-		if im.MenuItem("Loop the whole song", nil, false, p.song.loop_on) do pm.set_song_loop(m, false, 0, 0)
+		if im.MenuItem(fmt.ctprintf("Loop bar %d", bar_of(p, b))) do pa.song_set_loop(&a.api, true, b, bar_after(p, b))
+		if im.MenuItem("Loop the whole song", nil, false, p.song.loop_on) do pa.song_set_loop(&a.api, false, 0, 0)
 		im.Separator()
 		if im.BeginMenu(fmt.ctprintf("Time signature from bar %d", bar_of(p, b))) {
-			for ts in SONG_METERS do if im.MenuItem(fmt.ctprintf("%d/%d", ts.num, ts.den)) do pm.meter_set(m, b, ts)
+			for ts in SONG_METERS do if im.MenuItem(fmt.ctprintf("%d/%d", ts.num, ts.den)) do pa.song_set_meter(&a.api, b, i64(ts.num), i64(ts.den))
 			im.EndMenu()
 		}
 		im.EndPopup()
@@ -248,11 +246,11 @@ draw_meter_lane :: proc(a: ^App, v: Song_View) {
 		tm.meter_at = b
 		im.OpenPopup("##meterpick")
 	}
-	if hot && over >= 0 && im.IsMouseClicked(.Right) do pm.meter_remove(m, over)
+	if hot && over >= 0 && im.IsMouseClicked(.Right) do pa.song_remove_meter(&a.api, i64(over))
 	if im.BeginPopup("##meterpick") {
 		im.TextDisabled("%s", fmt.ctprintf("From bar %d", bar_of(p, tm.meter_at)))
 		cur := pm.song_meter_at(p, tm.meter_at)
-		for ts in SONG_METERS do if im.Selectable(fmt.ctprintf("%d/%d", ts.num, ts.den), ts == cur) do pm.meter_set(m, tm.meter_at, ts)
+		for ts in SONG_METERS do if im.Selectable(fmt.ctprintf("%d/%d", ts.num, ts.den), ts == cur) do pa.song_set_meter(&a.api, tm.meter_at, i64(ts.num), i64(ts.den))
 		im.EndPopup()
 	}
 }
@@ -277,7 +275,7 @@ draw_marker_rename :: proc(a: ^App) {
 		done := im.InputText("##mkname", cstring(&tm.rename_buf[0]), len(tm.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("marker name")
 		if done || im.Button("Rename") {
-			pm.marker_rename(m, tm.rename, strings.truncate_to_byte(string(tm.rename_buf[:]), 0))
+			pa.song_rename_marker(&a.api, i64(tm.rename), strings.truncate_to_byte(string(tm.rename_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
@@ -348,7 +346,7 @@ draw_tempo_lane :: proc(a: ^App, v: Song_View) {
 	beat_at :: proc(v: Song_View, mx: f32) -> f64 { return max(math.round(x_beat(v, mx)), 0) }
 	bpm_at :: proc(my, top, bottom: f32, lo, hi: f64) -> f64 { return math.round(lo + (hi - lo) * f64((bottom - my) / (bottom - top))) }
 	if hot && over < 0 && im.IsMouseDoubleClicked(.Left) {
-		pm.tempo_point_add(m, {beat_at(v, mx), bpm_at(my, top, bottom, tm.lo, tm.hi), false})
+		pa.song_add_tempo_point(&a.api, {beat = max(beat_at(v, mx), 0), bpm = clamp(bpm_at(my, top, bottom, tm.lo, tm.hi), 40, 300)})
 	}
 	if down && over >= 0 do tm.point_drag = over
 	if active && tm.point_drag >= 0 {
@@ -373,7 +371,7 @@ draw_tempo_lane :: proc(a: ^App, v: Song_View) {
 				pm.tempo_point_set(m, i, pt)
 				app.seal(&m.history)
 			}
-			if im.MenuItem("Remove", nil, false, i > 0 || p.song.tempo_count == 1) do pm.tempo_point_remove(m, i)
+			if im.MenuItem("Remove", nil, false, i > 0 || p.song.tempo_count == 1) do pa.song_remove_tempo_point(&a.api, i64(i))
 		}
 		im.EndPopup()
 	}
@@ -398,8 +396,8 @@ marker_step :: proc(a: ^App, back: bool) {
 	if back && beat >= 0 do at -= 0.5
 	k := pm.marker_next(p, at, back)
 	if k >= 0 {
-		pm.song_jump(&m.engine, p.song.markers[k].beat)
+		pa.song_jump(&a.api, p.song.markers[k].beat)
 	} else if back {
-		pm.song_jump(&m.engine, 0)
+		pa.song_jump(&a.api, 0)
 	}
 }

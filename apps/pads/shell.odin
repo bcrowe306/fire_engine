@@ -522,10 +522,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		return true
 	case "bank":
-		if b := num(w, 1); b >= 0 && b < pm.BANKS {
-			a.bank = b
-			return true
-		}
+		if b := num(w, 1); b >= 0 && b < pm.BANKS do return pa.perform_set_bank(&a.api, i64(b)) == .Ok
 	case "set":
 		i := num(w, 1)
 		if !pad_ok(i) || len(w) < 4 do return false
@@ -563,20 +560,22 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "scale":
 		if len(w) < 2 do return false
 		for sc in pm.Scale do if strings.equal_fold(string(pm.SCALE_NAMES[sc]), strings.join(w[1:], " ", context.temp_allocator)) {
-			a.keys.scale = sc
-			return true
+			k := a.keys
+			return pa.perform_set_keys(&a.api, pa.Scale(sc), i64(k.root), i64(k.octave), pa.Chord(k.chord)) == .Ok
 		}
 		return false
 	case "chord":
 		if len(w) < 2 do return false
+		ch: pa.Chord
 		switch w[1] {
-		case "off":     a.keys.chord = .Off
-		case "triad":   a.keys.chord = .Triad
-		case "seventh": a.keys.chord = .Seventh
-		case "power":   a.keys.chord = .Power
+		case "off":     ch = .Off
+		case "triad":   ch = .Triad
+		case "seventh": ch = .Seventh
+		case "power":   ch = .Power
 		case: return false
 		}
-		return true
+		k := a.keys
+		return pa.perform_set_keys(&a.api, pa.Scale(k.scale), i64(k.root), i64(k.octave), ch) == .Ok
 	case "arp", "repeat": // arp|repeat [off]: the selected pad's
 		fx, _ := pa.sequence_midi_fx(&a.api, i64(a.selected))
 		on := len(w) < 2 || w[1] != "off"
@@ -640,10 +639,10 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// lanes add / delete N / name N NAME / move SLOT LANE ROW (all 1-based)
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "add":    pm.add_lane(&a.m)
-		case "delete": pm.delete_lane(&a.m, num(w, 2) - 1)
-		case "name":   if len(w) > 3 do pm.rename_lane(&a.m, num(w, 2) - 1, strings.join(w[3:], " ", context.temp_allocator))
-		case "move":   if len(w) > 4 do pm.move_sequence(&a.m, num(w, 2) - 1, num(w, 3) - 1, num(w, 4) - 1)
+		case "add":    pa.launcher_add_lane(&a.api)
+		case "delete": pa.launcher_delete_lane(&a.api, i64(num(w, 2) - 1))
+		case "name":   if len(w) > 3 do pa.launcher_rename_lane(&a.api, i64(num(w, 2) - 1), strings.join(w[3:], " ", context.temp_allocator))
+		case "move":   if len(w) > 4 do pa.launcher_move_sequence(&a.api, i64(num(w, 2) - 1), i64(num(w, 3) - 1), i64(num(w, 4) - 1))
 		case: return false
 		}
 		return true
@@ -988,33 +987,32 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 				}
 				k += 2
 			}
-			i := pm.song_add(&a.m, num(w, 2) - 1, repeats = reps, lane = lane, at = at, length = length)
-			if i < 0 do return false
+			if _, r := pa.song_add(&a.api, i64(num(w, 2) - 1), i64(lane), at, max(length, 0), i64(clamp(reps, 1, 64))); r != .Ok do return false
 		case "mode":
 			pa.transport_set_song_mode(&a.api, len(w) < 3 || w[2] != "off")
 		case "loop": // the transport's loop (the song's, a sequence's)
 			pa.transport_set_loop(&a.api, len(w) < 3 || w[2] != "off")
 		case "clear":
-			pm.set_song(&a.m, "Clear Song", {})
+			pa.song_clear(&a.api)
 		case "tempo": // song tempo BEAT BPM [ramp]: a tempo point
 			if len(w) < 4 do return false
 			b, _ := strconv.parse_f64(w[2])
 			bpm, _ := strconv.parse_f64(w[3])
-			pm.tempo_point_add(&a.m, {b, bpm, len(w) > 4 && w[4] == "ramp"})
+			if pa.song_add_tempo_point(&a.api, {beat = max(b, 0), bpm = clamp(bpm, 40, 300), ramp = len(w) > 4 && w[4] == "ramp"}) != .Ok do return false
 		case "meter": // song meter BEAT NUM DEN: the time signature from BEAT's bar on
 			if len(w) < 5 do return false
-			pm.meter_set(&a.m, f64(numf(w, 2)), {num(w, 3), num(w, 4)})
+			pa.song_set_meter(&a.api, max(f64(numf(w, 2)), 0), i64(num(w, 3)), i64(num(w, 4)))
 		case "marker": // song marker BEAT NAME
 			if len(w) < 4 do return false
 			b, _ := strconv.parse_f64(w[2])
-			pm.marker_add(&a.m, b, strings.join(w[3:], " ", context.temp_allocator))
+			if _, r := pa.song_add_marker(&a.api, max(b, 0), strings.join(w[3:], " ", context.temp_allocator)); r != .Ok do return false
 		case "range": // song range START END (beats) | song range off: the loop range
 			if len(w) > 2 && w[2] == "off" {
-				pm.set_song_loop(&a.m, false, 0, 0)
+				pa.song_set_loop(&a.api, false, 0, 0)
 			} else if len(w) > 3 {
 				x, _ := strconv.parse_f64(w[2])
 				y, _ := strconv.parse_f64(w[3])
-				pm.set_song_loop(&a.m, true, x, y)
+				if pa.song_set_loop(&a.api, true, x, y) != .Ok do return false
 			} else {
 				return false
 			}
@@ -1024,19 +1022,19 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			a.song_ui.sel = {} if i < 0 else {i}
 		case "lane": // song lane add / song lane L name NAME|mute|solo
 			if len(w) > 2 && w[2] == "add" {
-				pm.lane_add(&a.m)
+				pa.song_add_lane(&a.api)
 			} else if len(w) > 3 {
 				i := num(w, 2) - 1
 				if i < 0 || i >= pm.SONG_LANES do return false
-				l := a.m.project.song.lanes[i]
+				l, _ := pa.song_lane(&a.api, i64(i))
 				switch w[3] {
-				case "name": pm.lane_rename(&a.m, i, strings.join(w[4:], " ", context.temp_allocator))
+				case "name": pa.song_rename_lane(&a.api, i64(i), strings.join(w[4:], " ", context.temp_allocator))
 				case "mute":
 					l.mute = !l.mute
-					pm.lane_set(&a.m, i, l, "Mute Lane")
+					pa.song_set_lane(&a.api, i64(i), l)
 				case "solo":
 					l.solo = !l.solo
-					pm.lane_set(&a.m, i, l, "Solo Lane")
+					pa.song_set_lane(&a.api, i64(i), l)
 				case: return false
 				}
 			} else {
@@ -1051,17 +1049,17 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		case "jump": // song jump MARKER: go to marker MARKER (1..)
 			k := num(w, 2) - 1
 			if k < 0 || k >= a.m.project.song.marker_count do return false
-			pm.song_jump(&a.m.engine, a.m.project.song.markers[k].beat)
+			pa.song_jump(&a.api, a.m.project.song.markers[k].beat)
 		case: return false
 		}
 		return true
 	case "switch":
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "end":  a.m.project.switch_at = .End
-		case "bar":  a.m.project.switch_at = .Bar
-		case "beat": a.m.project.switch_at = .Beat
-		case "now":  a.m.project.switch_at = .Now
+		case "end":  pa.launcher_set_quantize(&a.api, .End)
+		case "bar":  pa.launcher_set_quantize(&a.api, .Bar)
+		case "beat": pa.launcher_set_quantize(&a.api, .Beat)
+		case "now":  pa.launcher_set_quantize(&a.api, .Now)
 		case: return false
 		}
 		return true
@@ -1118,17 +1116,17 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		switch w[1] {
 		case "row":
 			if len(w) < 3 do return false
-			pm.launch_scene(&a.m, (num(w, 3) - 1) * 4 + num(w, 2) - 1 if len(w) > 3 else a.perf.win_row + num(w, 2) - 1)
+			pa.launcher_launch_row(&a.api, i64((num(w, 3) - 1) * 4 + num(w, 2) - 1 if len(w) > 3 else a.perf.win_row + num(w, 2) - 1))
 		case "stop":
-			if len(w) > 2 && w[2] == "all" do pm.stop_all_columns(&a.m.engine)
-			else if len(w) > 2 do pm.stop_column(&a.m.engine, num(w, 2) - 1)
+			if len(w) > 2 && w[2] == "all" do pa.launcher_stop_all(&a.api)
+			else if len(w) > 2 do pa.launcher_stop_lane(&a.api, i64(num(w, 2)) - 1)
 			else do return false
 		case "record":
-			pm.set_launch_record(&a.m, len(w) < 3 || w[2] != "off")
+			pa.launcher_set_recording(&a.api, len(w) < 3 || w[2] != "off")
 		case:
 			k := num(w, 1) - 1
 			if k < 0 || k >= pm.SLOTS do return false
-			pm.launch_slot(&a.m, k)
+			pa.launcher_launch(&a.api, i64(k))
 		}
 		return true
 	case "slot":

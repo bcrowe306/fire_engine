@@ -227,21 +227,21 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "seq.select", label = "Edit", icon = ui.ICON_LIST_MUSIC, kinds = {.Sequence}, group = 0, run = proc(a: ^App, t: Target) { pa.sequence_select(&a.api, i64(t.slot)) }})
 	add(c, {id = "seq.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Sequence}, group = 0, keys = "F2", run = proc(a: ^App, t: Target) { begin_rename_sequence(a, t.slot) }})
 	add(c, {id = "seq.lane_left", label = "Move to the Lane Before", icon = ui.ICON_CHEVRON_LEFT, kinds = {.Sequence}, group = 2,
-		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot) - 1, pm.lane_rows(p, pm.seq_lane(p, t.slot) - 1)) },
+		run = proc(a: ^App, t: Target) { p := &a.m.project; l := pm.seq_lane(p, t.slot) - 1; pa.launcher_move_sequence(&a.api, i64(t.slot), i64(l), i64(pm.lane_rows(p, l))) },
 		enabled = proc(a: ^App, t: Target) -> bool { return pm.seq_lane(&a.m.project, t.slot) > 0 }})
 	add(c, {id = "seq.lane_right", label = "Move to the Lane After", icon = ui.ICON_CHEVRON_RIGHT, kinds = {.Sequence}, group = 2,
-		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot) + 1, pm.lane_rows(p, pm.seq_lane(p, t.slot) + 1)) },
+		run = proc(a: ^App, t: Target) { p := &a.m.project; l := pm.seq_lane(p, t.slot) + 1; pa.launcher_move_sequence(&a.api, i64(t.slot), i64(l), i64(pm.lane_rows(p, l))) },
 		enabled = proc(a: ^App, t: Target) -> bool { return pm.seq_lane(&a.m.project, t.slot) < a.m.project.lanes.count - 1 }})
 	add(c, {id = "seq.row_up", label = "Move Up a Row", icon = ui.ICON_CHEVRON_UP, kinds = {.Sequence}, group = 2,
-		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot), int(p.lanes.place[t.slot].row) + 1) },
+		run = proc(a: ^App, t: Target) { p := &a.m.project; pa.launcher_move_sequence(&a.api, i64(t.slot), i64(pm.seq_lane(p, t.slot)), i64(p.lanes.place[t.slot].row) + 1) },
 		enabled = proc(a: ^App, t: Target) -> bool { p := &a.m.project; return int(p.lanes.place[t.slot].row) < pm.lane_rows(p, pm.seq_lane(p, t.slot)) - 1 }})
 	add(c, {id = "seq.row_down", label = "Move Down a Row", icon = ui.ICON_CHEVRON_DOWN, kinds = {.Sequence}, group = 2,
-		run = proc(a: ^App, t: Target) { p := &a.m.project; pm.move_sequence(&a.m, t.slot, pm.seq_lane(p, t.slot), int(p.lanes.place[t.slot].row) - 1) },
+		run = proc(a: ^App, t: Target) { p := &a.m.project; pa.launcher_move_sequence(&a.api, i64(t.slot), i64(pm.seq_lane(p, t.slot)), i64(p.lanes.place[t.slot].row) - 1) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.lanes.place[t.slot].row > 0 }})
 	add(c, {id = "seq.duplicate", label = "Duplicate", icon = ui.ICON_COPY_PLUS, kinds = {.Sequence}, group = 1, keys = "Cmd+D", run = proc(a: ^App, t: Target) { pa.sequence_duplicate(&a.api, i64(t.slot)) }})
 	add(c, {id = "seq.copy_bars", label = "Copy Bars to…", icon = ui.ICON_COPY, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { begin_copy_bars(a, t.slot) }})
 	add(c, {id = "seq.double", label = "Double", icon = ui.ICON_MERGE, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pa.sequence_double(&a.api, i64(t.slot)) }})
-	add(c, {id = "seq.to_song", label = "Add to Song", icon = ui.ICON_LIST_ORDERED, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pm.song_add(&a.m, t.slot) }})
+	add(c, {id = "seq.to_song", label = "Add to Song", icon = ui.ICON_LIST_ORDERED, kinds = {.Sequence}, group = 1, run = proc(a: ^App, t: Target) { pa.song_add(&a.api, i64(t.slot)) }})
 	add(c, {id = "seq.tempo", label = "Own Tempo", icon = ui.ICON_GAUGE, kinds = {.Sequence}, group = 2,
 		run = proc(a: ^App, t: Target) {
 			own := a.m.project.sequences[t.slot].bpm > 0
@@ -258,20 +258,23 @@ register_commands :: proc(a: ^App) {
 		}})
 	add(c, {id = "clip.mute", label = "Mute", icon = ui.ICON_VOLUME_X, kinds = {.Song_Clip}, group = 1,
 		run = proc(a: ^App, t: Target) {
-			s := a.m.project.song
-			on := !s.clips[t.index].mute
-			for k in clip_targets(a, t.index) do s.clips[k].mute = on
-			pm.set_song(&a.m, "Mute Clips" if on else "Unmute Clips", s)
+			on := !a.m.project.song.clips[t.index].mute
+			pa.history_group_begin(&a.api, "Mute Clips" if on else "Unmute Clips")
+			for k in clip_targets(a, t.index) {
+				c, _ := pa.song_clip(&a.api, i64(k))
+				c.mute = on
+				pa.song_set_clip(&a.api, i64(k), c)
+			}
+			pa.history_group_end(&a.api)
 		},
 		checked = proc(a: ^App, t: Target) -> bool { return a.m.project.song.clips[t.index].mute }})
 	add(c, {id = "clip.duplicate", label = "Duplicate", icon = ui.ICON_COPY_PLUS, kinds = {.Song_Clip}, group = 2,
 		run = proc(a: ^App, t: Target) {
-			added := pm.song_duplicate_clips(&a.m, clip_targets(a, t.index))
-			if added != {} do a.song_ui.sel = added
+			if added := song_duplicate_set(a, clip_targets(a, t.index)); added != {} do a.song_ui.sel = added
 		}})
 	add(c, {id = "clip.remove", label = "Remove from Song", icon = ui.ICON_X, kinds = {.Song_Clip}, group = 2,
 		run = proc(a: ^App, t: Target) {
-			pm.song_remove_clips(&a.m, clip_targets(a, t.index))
+			pa.song_remove_clips(&a.api, clip_ids(clip_targets(a, t.index)))
 			a.song_ui.sel, a.song_ui.cur = {}, -1
 		}})
 

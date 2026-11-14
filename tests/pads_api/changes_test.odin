@@ -67,7 +67,7 @@ changes_arrive_once_a_frame_coalesced :: proc(t: ^testing.T) {
 	testing.expect_value(t, h.history, 3)
 	pa.unsubscribe(api, hsub)
 	// Topics not reported yet, and no callback.
-	_, res = pa.subscribe(api, .Song, -1, heard, &h)
+	_, res = pa.subscribe(api, .Pad, -1, heard, &h)
 	testing.expect_value(t, res, pa.Result.Unsupported)
 	_, res = pa.subscribe(api, .Transport, -1, nil, nil)
 	testing.expect_value(t, res, pa.Result.Invalid_Argument)

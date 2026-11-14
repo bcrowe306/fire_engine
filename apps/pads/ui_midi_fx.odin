@@ -52,24 +52,37 @@ draw_play_as :: proc(a: ^App, i: int) {
 		im.TextDisabled("%s", fmt.ctprintf("Playing %s %s", pm.pad_label(a.selected), pm.pad_name(&m.project.pads[a.selected])))
 	}
 	if a.play_mode == .Keyboard {
-		k := &a.keys
+		k := a.keys // (set through the API: perform_set_keys)
+		set :: proc(a: ^App, k: pm.Keys) { pa.perform_set_keys(&a.api, pa.Scale(k.scale), i64(k.root), i64(k.octave), pa.Chord(k.chord)) }
 		im.SetNextItemWidth(170)
 		if ui.combo("##scale", pm.SCALE_NAMES[k.scale]) {
-			for sc in pm.Scale do if im.Selectable(pm.SCALE_NAMES[sc], sc == k.scale) do k.scale = sc
+			for sc in pm.Scale do if im.Selectable(pm.SCALE_NAMES[sc], sc == k.scale) {
+				k.scale = sc
+				set(a, k)
+			}
 			im.EndCombo()
 		}
 		ui.flow(70)
 		im.SetNextItemWidth(70)
 		if ui.combo("##root", ROOT_NAMES[k.root]) {
-			for r, n in ROOT_NAMES do if im.Selectable(r, n == k.root) do k.root = n
+			for r, n in ROOT_NAMES do if im.Selectable(r, n == k.root) {
+				k.root = n
+				set(a, k)
+			}
 			im.EndCombo()
 		}
 		oct := f64(k.octave)
-		if e := ui.number_drag("octave", &oct, -3, 3, 1, 1, "Octave %+.0f", 110); e.changed do k.octave = int(oct)
+		if e := ui.number_drag("octave", &oct, -3, 3, 1, 1, "Octave %+.0f", 110); e.changed {
+			k.octave = clamp(int(oct), -3, 3)
+			set(a, k)
+		}
 		ui.flow(170)
 		im.SetNextItemWidth(170)
 		if ui.combo("##chord", pm.CHORD_NAMES[k.chord]) {
-			for c in pm.Chord do if im.Selectable(pm.CHORD_NAMES[c], c == k.chord) do k.chord = c
+			for c in pm.Chord do if im.Selectable(pm.CHORD_NAMES[c], c == k.chord) {
+				k.chord = c
+				set(a, k)
+			}
 			im.EndCombo()
 		}
 	}

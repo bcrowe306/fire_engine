@@ -138,3 +138,25 @@ def test_the_sequencer_through_the_api(app):
     app.api("sequence_select", slot=3)
     app.wait(2)
     assert app.api("sequence_current") == 3 and app.state()["slot"] == 4
+
+
+def test_the_song_launcher_and_perform_through_the_api(app, fixtures):
+    import os
+    app.cmd(f"load 0 {os.path.join(fixtures, 'kick.wav')}")
+    app.cmd("note 0 0 0.25 1")
+    i = app.api("song_add", slot=0, repeats=2)
+    assert app.state()["song"] == [1]
+    app.api("song_add_marker", beat=4, name="Drop")
+    assert app.state()["markers"] == ["Drop"]
+    c = app.api("song_clip", index=i)
+    c["mute"] = True
+    app.api("song_set_clip", index=i, c=c)
+    assert app.state()["undo"] == "Mute Clip"
+    lane = app.api("launcher_add_lane")
+    app.api("launcher_rename_lane", lane=lane, name="Hats")
+    assert app.state()["lanes"][lane] == "Hats"
+    app.api("perform_set_play_mode", mode="Keyboard")
+    assert app.state()["play_mode"] == "Keyboard"
+    app.api("perform_set_play_mode", mode="Pads")
+    app.api("perform_set_bank", bank=2)
+    assert app.state()["bank"] == 2

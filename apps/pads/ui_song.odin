@@ -178,22 +178,22 @@ draw_arrangement_bar :: proc(a: ^App) {
 	im.SetNextItemWidth(170)
 	if ui.combo("##arrangement", fmt.ctprintf("%s  %s", ui.ICON_LIST_ORDERED, pm.arrangement_name(p, p.arrangement))) {
 		for k in 0 ..< p.arrangement_count {
-			if im.Selectable(fmt.ctprintf("%s###arr%d", pm.arrangement_name(p, k), k), k == p.arrangement) do pm.select_arrangement(m, k)
+			if im.Selectable(fmt.ctprintf("%s###arr%d", pm.arrangement_name(p, k), k), k == p.arrangement) do pa.song_select_arrangement(&a.api, i64(k))
 		}
 		im.Separator()
-		if im.Selectable(ui.ICON_PLUS + "  New Arrangement") do pm.add_arrangement(m)
+		if im.Selectable(ui.ICON_PLUS + "  New Arrangement") do pa.song_add_arrangement(&a.api)
 		im.EndCombo()
 	}
 	if im.IsItemHovered() do im.SetTooltip("Arrangements: each a song of its own (Song mode and export play the current one); right-click for more")
 	if im.BeginPopupContextItem("##arrmenu") {
-		if im.MenuItem(ui.ICON_PLUS + "  New Arrangement") do pm.add_arrangement(m)
-		if im.MenuItem(ui.ICON_COPY_PLUS + "  Duplicate") do pm.add_arrangement(m, copy_of = p.arrangement)
+		if im.MenuItem(ui.ICON_PLUS + "  New Arrangement") do pa.song_add_arrangement(&a.api)
+		if im.MenuItem(ui.ICON_COPY_PLUS + "  Duplicate") do pa.song_add_arrangement(&a.api, i64(p.arrangement))
 		if im.MenuItem(ui.ICON_PENCIL + "  Rename…") {
 			ss.rename_buf = {}
 			copy(ss.rename_buf[:len(ss.rename_buf) - 1], pm.arrangement_name(p, p.arrangement))
 			ss.rename_open = true
 		}
-		if im.MenuItem(ui.ICON_TRASH_2 + "  Delete", nil, false, p.arrangement_count > 1) do pm.delete_arrangement(m, p.arrangement)
+		if im.MenuItem(ui.ICON_TRASH_2 + "  Delete", nil, false, p.arrangement_count > 1) do pa.song_delete_arrangement(&a.api, i64(p.arrangement))
 		im.EndPopup()
 	}
 	if ss.rename_open {
@@ -206,7 +206,7 @@ draw_arrangement_bar :: proc(a: ^App) {
 		done := im.InputText("##arr_rename", cstring(&ss.rename_buf[0]), len(ss.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("arrangement rename")
 		if done || im.Button("Rename") {
-			pm.rename_arrangement(m, p.arrangement, strings.truncate_to_byte(string(ss.rename_buf[:]), 0))
+			pa.song_rename_arrangement(&a.api, i64(p.arrangement), strings.truncate_to_byte(string(ss.rename_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
@@ -233,14 +233,14 @@ draw_arrangement_bar :: proc(a: ^App) {
 	}
 	ui.name("song snap")
 	im.SameLine(0, 10)
-	if im.Button(ui.ICON_PLUS + "  Lane") do pm.lane_add(m)
+	if im.Button(ui.ICON_PLUS + "  Lane") do pa.song_add_lane(&a.api)
 	ui.name("add lane")
 	if im.IsItemHovered() do im.SetTooltip("A new lane at the bottom")
 	im.SameLine(0, 6)
 	im.SetNextItemWidth(150)
 	if ui.combo("##merge", "Merge into this…") {
 		for k in 0 ..< pm.SLOTS do if k != p.slot && pm.slot_used(m, k) {
-			if im.Selectable(fmt.ctprintf("%s###m%d", pm.sequence_name(p, k), k)) do pm.merge_sequences(m, k, p.slot)
+			if im.Selectable(fmt.ctprintf("%s###m%d", pm.sequence_name(p, k), k)) do pa.song_merge_sequence(&a.api, i64(k), i64(p.slot))
 		}
 		im.EndCombo()
 	}
@@ -500,8 +500,7 @@ draw_lanes_body :: proc(a: ^App, v: Song_View, total: f64) {
 	}
 	if space_hot && ss.tool == .Select && im.IsMouseDoubleClicked(.Left) && ss.drag == .None {
 		b := song_snap(a, x_beat(v, mx))
-		k := pm.song_add(m, p.slot, lane = lane_at, at = max(b, 0))
-		if k >= 0 do ss.sel, ss.cur = {k}, k
+		if k, r := pa.song_add(&a.api, i64(p.slot), i64(lane_at), max(b, 0)); r == .Ok do ss.sel, ss.cur = {int(k)}, int(k)
 	} else if space_down && !clicked_clip {
 		ss.drag_x, ss.drag_y = mx, my
 		ss.drag_from = s^
@@ -520,8 +519,7 @@ draw_lanes_body :: proc(a: ^App, v: Song_View, total: f64) {
 		b := song_snap(a, max(x_beat(v, mx), 0))
 		ss.drop_lane, ss.drop_beat = lane_at, b
 		if pl := im.AcceptDragDropPayload("SEQUENCE"); pl != nil {
-			k := pm.song_add(m, int((^i32)(pl.Data)^), lane = lane_at, at = b)
-			if k >= 0 do ss.sel, ss.cur = {k}, k
+			if k, r := pa.song_add(&a.api, i64((^i32)(pl.Data)^), i64(lane_at), b); r == .Ok do ss.sel, ss.cur = {int(k)}, int(k)
 		}
 		im.EndDragDropTarget()
 	}
@@ -538,7 +536,7 @@ draw_lanes_body :: proc(a: ^App, v: Song_View, total: f64) {
 	// The lane under the last one: a new lane.
 	im.SetCursorScreenPos({origin.x, origin.y + body_h + 4})
 	if n_lanes < pm.SONG_LANES {
-		if im.Button(ui.ICON_PLUS + "  Lane##below") do pm.lane_add(m)
+		if im.Button(ui.ICON_PLUS + "  Lane##below") do pa.song_add_lane(&a.api)
 		ui.name("add lane below")
 	}
 	if s.count == 0 {
@@ -773,13 +771,11 @@ draw_lane_header :: proc(a: ^App, i: int, pos: im.Vec2) {
 	bs := im.GetFrameHeight() * 0.8
 	im.SetCursorScreenPos({pos.x + 4, pos.y + h - bs - 4})
 	if ui.icon_button("M", fmt.ctprintf("Mute %s", name), on = l.mute, size = bs, color = t.warn) {
-		l.mute = !l.mute
-		pm.lane_set(m, i, l, "Mute Lane")
+		pa.song_set_lane(&a.api, i64(i), {mute = !l.mute, solo = l.solo})
 	}
 	im.SetCursorScreenPos({pos.x + 6 + bs, pos.y + h - bs - 4})
 	if ui.icon_button("S", fmt.ctprintf("Solo %s", name), on = l.solo, size = bs) {
-		l.solo = !l.solo
-		pm.lane_set(m, i, l, "Solo Lane")
+		pa.song_set_lane(&a.api, i64(i), {mute = l.mute, solo = !l.solo})
 	}
 }
 
@@ -802,7 +798,7 @@ draw_lane_rename :: proc(a: ^App) {
 		done := im.InputText("##lanerename", cstring(&ss.lane_buf[0]), len(ss.lane_buf), {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("lane name")
 		if done || im.Button("Rename") {
-			pm.lane_rename(m, ss.lane_rename, strings.trim_space(strings.truncate_to_byte(string(ss.lane_buf[:]), 0)))
+			pa.song_rename_lane(&a.api, i64(ss.lane_rename), strings.trim_space(strings.truncate_to_byte(string(ss.lane_buf[:]), 0)))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
@@ -871,7 +867,7 @@ song_paste :: proc(a: ^App) {
 		b := beat if beat >= 0 else m.engine.cue
 		_, to = pm.song_bar_at(p, max(b, 0))
 	}
-	added := pm.song_insert_clips(m, ss.copied[:ss.copied_n], to - lo)
+	added := pm.song_insert_clips(m, ss.copied[:ss.copied_n], to - lo) // api-lint: the clips as they were copied (the clipboard is the UI's)
 	if added == {} do return
 	ss.sel = added
 	for k in 0 ..< pm.SONG_CLIPS do if k in added {
@@ -885,7 +881,7 @@ song_duplicate :: proc(a: ^App) {
 	ss := &a.song_ui
 	sel := song_targets(a)
 	if sel == {} do return
-	added := pm.song_duplicate_clips(&a.m, sel)
+	added := song_duplicate_set(a, sel)
 	if added == {} do return
 	ss.sel = added
 	for k in 0 ..< pm.SONG_CLIPS do if k in added {
@@ -899,7 +895,7 @@ song_delete :: proc(a: ^App) {
 	ss := &a.song_ui
 	sel := song_targets(a)
 	if sel == {} do return
-	pm.song_remove_clips(&a.m, sel)
+	pa.song_remove_clips(&a.api, clip_ids(sel))
 	ss.sel, ss.cur = {}, -1
 }
 
@@ -966,7 +962,7 @@ draw_song_side :: proc(a: ^App) {
 		clicked := im.InvisibleButton("##seq", {w - (btn + 4 if used else 0), h})
 		ui.name(fmt.tprintf("song seq %d", k + 1))
 		hovered := im.IsItemHovered()
-		if hovered && im.IsMouseDoubleClicked(.Left) && used do pm.song_add(m, k)
+		if hovered && im.IsMouseDoubleClicked(.Left) && used do pa.song_add(&a.api, i64(k))
 		else if clicked do pa.sequence_select(&a.api, i64(k))
 		item_menu(a, seq_target(k), "##sidemenu")
 		if used && im.BeginDragDropSource() {
@@ -989,7 +985,7 @@ draw_song_side :: proc(a: ^App) {
 			im.DrawList_AddText(dl, {pos.x + 10, pos.y + 4 + im.GetTextLineHeightWithSpacing() - 2}, ui.col(t.text_dim), fmt.ctprintf("%s", info))
 			im.SameLine(0, 4)
 			im.SetCursorScreenPos({pos.x + w - btn, pos.y + (h - btn) / 2})
-			if ui.icon_button(ui.ICON_PLUS, fmt.ctprintf("Add %s at the end of the first lane", pm.sequence_name(p, k))) do pm.song_add(m, k)
+			if ui.icon_button(ui.ICON_PLUS, fmt.ctprintf("Add %s at the end of the first lane", pm.sequence_name(p, k))) do pa.song_add(&a.api, i64(k))
 		}
 		im.SetCursorScreenPos({pos.x, pos.y + h + 3})
 		im.Dummy({1, 0})
@@ -1028,9 +1024,9 @@ draw_clip_strip :: proc(a: ^App) {
 	if ui.combo("##clipseq", fmt.ctprintf("%s", pm.sequence_name(p, int(c.slot)))) {
 		for k in 0 ..< pm.SLOTS do if pm.slot_used(m, k) || k == int(c.slot) {
 			if im.Selectable(fmt.ctprintf("%s###cs%d", pm.sequence_name(p, k), k), k == int(c.slot)) {
-				x := c
-				x.slot, x.start, x.part, x.phase = u8(k), 0, 0, 0
-				pm.set_song_clip(m, i, x, "Clip Sequence")
+				x := song_clip_api(c)
+				x.slot, x.start, x.part, x.phase = i64(k), 0, 0, 0
+				pa.song_set_clip(&a.api, i64(i), x)
 			}
 		}
 		im.EndCombo()
@@ -1072,9 +1068,9 @@ draw_clip_strip :: proc(a: ^App) {
 	im.SameLine(0, 6)
 	mute := c.mute
 	if ui.toggle("Mute", &mute) {
-		x = c
-		x.mute = mute
-		pm.set_song_clip(m, i, x, "Mute Clip")
+		y := song_clip_api(c)
+		y.mute = mute
+		pa.song_set_clip(&a.api, i64(i), y)
 	}
 	ui.name("clip mute")
 	im.SameLine(0, 6)
@@ -1095,9 +1091,9 @@ draw_clip_strip :: proc(a: ^App) {
 		x.part = 0 if part >= full - c.start - 1e-9 else part
 		edit(m, i, x, "Clip Part", e)
 		if im.Button("Whole sequence") {
-			x = c
-			x.start, x.part, x.phase = 0, 0, 0
-			pm.set_song_clip(m, i, x, "Clip Part")
+			y := song_clip_api(c)
+			y.start, y.part, y.phase = 0, 0, 0
+			pa.song_set_clip(&a.api, i64(i), y)
 		}
 		im.EndPopup()
 	}
@@ -1109,4 +1105,26 @@ draw_clip_strip :: proc(a: ^App) {
 	im.AlignTextToFramePadding()
 	secs := pm.song_seconds_between(p, c.at, pm.clip_end(c))
 	im.TextDisabled("%s", fmt.ctprintf("%s%s", clock_text(secs), fmt.tprintf(" · %d selected", n_sel) if n_sel > 1 else ""))
+}
+
+// The API's form of song clip `c`.
+song_clip_api :: proc(c: pm.Song_Clip) -> pa.Song_Clip {
+	return {slot = i64(c.slot), lane = i64(c.lane), at = c.at, length = c.length, start = c.start, part = c.part, phase = c.phase, transpose = i64(c.transpose), mute = c.mute}
+}
+
+// The indices in `sel` (temporary).
+clip_ids :: proc(sel: pm.Clip_Set) -> []i64 {
+	out := make([dynamic]i64, context.temp_allocator)
+	for k in 0 ..< pm.SONG_CLIPS do if k in sel do append(&out, i64(k))
+	return out[:]
+}
+
+// Duplicates the clips `sel` (the API's song_duplicate_clips): the copies,
+// the song's last clips.
+song_duplicate_set :: proc(a: ^App, sel: pm.Clip_Set) -> (added: pm.Clip_Set) {
+	n, r := pa.song_duplicate_clips(&a.api, clip_ids(sel))
+	if r != .Ok do return
+	count := a.m.project.song.count
+	for k in count - int(n) ..< count do added += {k}
+	return
 }

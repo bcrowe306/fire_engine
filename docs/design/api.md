@@ -4,9 +4,9 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 ---
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
-settings), 3 (pads, params, effects, devices), 4 (mixer) and 5
-(sequencer, audio, recording) built 2026-11-14; the rest planned
-(decisions taken 2026-11-13). Using it: the
+settings), 3 (pads, params, effects, devices), 4 (mixer), 5
+(sequencer, audio, recording) and 6 (song, launcher, perform) built
+2026-11-14; the rest planned (decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -166,6 +166,33 @@ devices and effects (and the knobs moved onto `param_set`).
   (`api-lint:`): an audio Cut and a region's Reverse.
 - The generator refuses a parameter named as its own code's variables
   (`r`, `v`, `ok`...): `audio_set_region`'s `r` collided.
+
+### Stage 6, as built (song, launcher, perform)
+
+- `song_*`: its state (where it plays included); clips (get, label, add,
+  set: a step named for what changed, remove, duplicate, move), lanes
+  (add, name, mute, solo), the tempo lane, time signature changes,
+  markers, the loop range, jump, clear, merge two sequences,
+  arrangements (name, select, add or copy, rename, delete).
+- `launcher_*`: its state and a lane's (what it plays and has queued);
+  a lane's name; where a sequence is, which is where; launch, a row (a
+  scene), stop a lane or all; the launch quantize, Hold, Continue,
+  Record to Song; lanes (add, delete, rename, colour); move a sequence;
+  a new sequence in a lane.
+- `perform_*`: the play mode, the bank, the selected pad, the keys. The
+  selected pad, the bank, the play mode, the keys and the pads' bank
+  moved into the core with Keyboard mode's bank logic; letting go of the
+  pads held on the grid is the app's hook `release_held`.
+- Topics `Song`, `Launcher`, `Selection`: digests each frame.
+- Moved: the Song view's add, lanes, arrangements, clip inspector,
+  markers' and meters' menus, tempo points added and removed, the loop
+  menu, jumps; the launcher's lanes, launches, stops and settings; the
+  sequence move commands; the play mode, bank and keys controls; the
+  shell's song, lanes, launch, switch, bank, scale and chord commands.
+- Not moved yet (the `ui` module): the Song view's drags (a clip's
+  edges and moves, markers, tempo points, the loop range), Paste Clips
+  (the UI's clipboard), and selecting a pad (it moves the bank along in
+  several places; `perform_select_pad` does both).
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,

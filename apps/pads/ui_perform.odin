@@ -105,7 +105,7 @@ draw_perform_bar :: proc(a: ^App) {
 	ui.name("launcher window")
 	im.SameLine(0, 4)
 	if ui.icon_button(ui.ICON_PLUS, "Add a lane (up to 16)", disabled = p.lanes.count >= pm.MAX_LANES) {
-		if pm.add_lane(m) do st.win_lane = p.lanes.count - LAUNCH_GRID // (shown)
+		if _, r := pa.launcher_add_lane(&a.api); r == .Ok do st.win_lane = p.lanes.count - LAUNCH_GRID // (shown)
 	}
 	ui.name("add a lane")
 	im.SameLine(0, 10)
@@ -113,7 +113,7 @@ draw_perform_bar :: proc(a: ^App) {
 	ui.name("sequence keys")
 	im.SameLine(0, 14)
 	hold := 1 if p.launch_hold else 0
-	if ui.segmented("launch_mode", {"Launch", "Hold"}, &hold) do pm.set_launch_hold(m, hold == 1)
+	if ui.segmented("launch_mode", {"Launch", "Hold"}, &hold) do pa.launcher_set_hold(&a.api, hold == 1)
 	ui.name("launch mode")
 	if im.IsItemHovered() do im.SetTooltip("Launch: a press starts it in its column; Hold: it plays while held, then what was there")
 	im.SameLine(0, 10)
@@ -121,17 +121,17 @@ draw_perform_bar :: proc(a: ^App) {
 	im.TextDisabled("at")
 	im.SameLine()
 	at := int(p.switch_at)
-	if ui.segmented("launch_quantize", {"End", "Bar", "Beat", "Now"}, &at) do p.switch_at = pm.Switch_At(at)
+	if ui.segmented("launch_quantize", {"End", "Bar", "Beat", "Now"}, &at) do pa.launcher_set_quantize(&a.api, pa.Launch_Quantize(at))
 	if im.IsItemHovered() do im.SetTooltip("When a launch happens: when its column's sequence comes round, the next bar or beat, or now")
 	ui.name("launch quantize")
 	im.SameLine(0, 10)
 	cont := p.launch_continue
-	if ui.toggle("Continue", &cont) do pm.set_launch_continue(m, cont)
+	if ui.toggle("Continue", &cont) do pa.launcher_set_continue(&a.api, cont)
 	ui.name("launch continue")
 	if im.IsItemHovered() do im.SetTooltip("Continue: a launched sequence carries on where the playhead is in what played (that pass so far, modulo its length), for seamless changes; off, it starts from its top")
 	im.SameLine(0, 14)
 	rec := pm.launch_recording(m)
-	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record to Song: what you launch is written into the Song (launcher lane 1 into song lane 1...)", on = rec, color = ui.theme().danger) do pm.set_launch_record(m, !rec)
+	if ui.icon_button(ui.ICON_CIRCLE_DOT, "Record to Song: what you launch is written into the Song (launcher lane 1 into song lane 1...)", on = rec, color = ui.theme().danger) do pa.launcher_set_recording(&a.api, !rec)
 	ui.name("record to song")
 	im.SameLine(0, 2)
 	im.AlignTextToFramePadding()
@@ -210,7 +210,7 @@ draw_launcher :: proc(a: ^App) {
 		if lane >= p.lanes.count {
 			if lane == p.lanes.count && p.lanes.count < pm.MAX_LANES {
 				im.SetCursorScreenPos({origin.x + f32(col) * (size + gap), origin.y})
-				if im.Button(ui.ICON_PLUS + "  Lane", {size, 0}) do pm.add_lane(m)
+				if im.Button(ui.ICON_PLUS + "  Lane", {size, 0}) do pa.launcher_add_lane(&a.api)
 				ui.name("add lane")
 				if im.IsItemHovered() do im.SetTooltip("A new lane (up to 16)")
 			}
@@ -257,7 +257,7 @@ draw_launcher :: proc(a: ^App) {
 			im.DrawList_AddText(dl, {pos.x + (size - ts.x) / 2, pos.y + (size - ts.y) / 2}, ui.col(t.text_dim if hot else ui.with_alpha(t.text_dim, 0.4)), "+")
 			if hot do im.SetTooltip("%s", fmt.ctprintf("A new sequence at the end of %s", pm.launch_lane_name(p, lane)))
 			if clicked {
-				if n := pm.new_sequence_in(m, lane); n >= 0 do pa.sequence_select(&a.api, i64(n))
+				if n, r := pa.launcher_new_sequence(&a.api, i64(lane)); r == .Ok do pa.sequence_select(&a.api, n)
 				else do ui.toast(&a.ws.toasts, .Warning, "Every sequence is in use (64)")
 			}
 			seq_drop(a, lane, lrow)
@@ -315,7 +315,7 @@ draw_launcher :: proc(a: ^App) {
 		if hit.menu do im.OpenPopup("##cellmenu")
 		item_menu(a, seq_target(slot), "##cellmenu")
 		if hit.pressed do seq_pad_press(a, slot, false)
-		if hit.selected && !hit.menu && im.GetIO().KeyShift do pm.launch_slot(m, slot, alone = true) // (Shift-click: alone)
+		if hit.selected && !hit.menu && im.GetIO().KeyShift do pa.launcher_launch(&a.api, i64(slot), alone = true) // (Shift-click: alone)
 		if hit.released do seq_pad_release(a, slot)
 		// Playing: a bar filling across as it goes round.
 		if playing_here do im.DrawList_AddRectFilled(dl, {pos.x + 6, pos.y + size - 7}, {pos.x + 6 + (size - 12) * f32(clamp(frac, 0, 1)), pos.y + size - 4}, ui.col(t.text), 2)
@@ -329,7 +329,7 @@ draw_launcher :: proc(a: ^App) {
 		im.SetCursorScreenPos(pos)
 		im.PushIDInt(i32(9500 + r))
 		scene := st.win_row + r
-		if ui.icon_button(ui.ICON_PLAY, fmt.ctprintf("Launch scene %d: row %d of every lane together", scene + 1, scene + 1), size = arrow) do pm.launch_scene(m, scene)
+		if ui.icon_button(ui.ICON_PLAY, fmt.ctprintf("Launch scene %d: row %d of every lane together", scene + 1, scene + 1), size = arrow) do pa.launcher_launch_row(&a.api, i64(scene))
 		ui.name(fmt.tprintf("scene %d", scene + 1))
 		im.PopID()
 	}
@@ -343,7 +343,7 @@ draw_launcher :: proc(a: ^App) {
 		im.PushIDInt(i32(9600 + lane))
 		on := cs >= 0 && playing
 		stopping := queued && next < 0
-		if im.Button(ui.ICON_SQUARE, {size, 0}) do pm.stop_column(&m.engine, lane)
+		if im.Button(ui.ICON_SQUARE, {size, 0}) do pa.launcher_stop_lane(&a.api, i64(lane))
 		ui.name(fmt.tprintf("stop lane %d", lane + 1))
 		if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Stop %s%s", pm.launch_lane_name(p, lane), fmt.tprintf(" (%s)", pm.sequence_name(p, cs)) if on else ""))
 		if on || stopping {
@@ -353,7 +353,7 @@ draw_launcher :: proc(a: ^App) {
 		im.PopID()
 	}
 	im.SetCursorScreenPos({grid.x + f32(G) * (size + gap), y})
-	if ui.icon_button(ui.ICON_SQUARE_X, "Stop every lane", size = arrow) do pm.stop_all_columns(&m.engine)
+	if ui.icon_button(ui.ICON_SQUARE_X, "Stop every lane", size = arrow) do pa.launcher_stop_all(&a.api)
 	ui.name("stop all")
 	// The overview: every lane, its sequences, the window outlined (click
 	// to move it there).
@@ -369,7 +369,7 @@ seq_drop :: proc(a: ^App, lane, row: int) {
 	defer im.EndDragDropTarget()
 	if pl := im.AcceptDragDropPayload("PADS_SEQ"); pl != nil && pl.DataSize == size_of(int) {
 		slot := (^int)(pl.Data)^
-		pm.move_sequence(&a.m, slot, lane, row)
+		pa.launcher_move_sequence(&a.api, i64(slot), i64(lane), i64(row))
 	}
 }
 
@@ -440,26 +440,26 @@ launch_lane_menu :: proc(a: ^App) {
 	}
 	im.SetNextItemWidth(160)
 	if im.InputText("##lanename", cstring(raw_data(st.lane_name[:])), len(st.lane_name), {.EnterReturnsTrue, .AutoSelectAll}) {
-		pm.rename_lane(m, lane, string(cstring(raw_data(st.lane_name[:]))))
+		pa.launcher_rename_lane(&a.api, i64(lane), string(cstring(raw_data(st.lane_name[:]))))
 		im.CloseCurrentPopup()
 	}
 	ui.name("lane name")
-	if im.IsItemDeactivatedAfterEdit() do pm.rename_lane(m, lane, string(cstring(raw_data(st.lane_name[:]))))
+	if im.IsItemDeactivatedAfterEdit() do pa.launcher_rename_lane(&a.api, i64(lane), string(cstring(raw_data(st.lane_name[:]))))
 	// Colours: none (its sequences') and the palette.
 	for c, i in pm.SEQ_PALETTE {
 		if i > 0 do im.SameLine(0, 4)
 		im.PushIDInt(i32(i))
-		if im.ColorButton("##lanecol", transmute(im.Vec4)ui.rgb(c), {.NoTooltip}, {18, 18}) do pm.color_lane(m, lane, c)
+		if im.ColorButton("##lanecol", transmute(im.Vec4)ui.rgb(c), {.NoTooltip}, {18, 18}) do pa.launcher_color_lane(&a.api, i64(lane), i64(c))
 		ui.name(fmt.tprintf("lane colour %d", i + 1))
 		im.PopID()
 	}
 	im.Separator()
-	if im.MenuItem(ui.ICON_SQUARE + "  Stop") do pm.stop_column(&m.engine, lane)
+	if im.MenuItem(ui.ICON_SQUARE + "  Stop") do pa.launcher_stop_lane(&a.api, i64(lane))
 	if im.MenuItem(ui.ICON_PLUS + "  New Sequence Here") {
-		if n := pm.new_sequence_in(m, lane); n >= 0 do pa.sequence_select(&a.api, i64(n))
+		if n, r := pa.launcher_new_sequence(&a.api, i64(lane)); r == .Ok do pa.sequence_select(&a.api, n)
 	}
 	if im.MenuItem(ui.ICON_TRASH_2 + "  Delete Lane", nil, false, p.lanes.count > 1) {
-		pm.delete_lane(m, lane)
+		pa.launcher_delete_lane(&a.api, i64(lane))
 		ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Deleted; its sequences went to %s", pm.launch_lane_name(p, max(lane - 1, 0))))
 	}
 	ui.name("delete lane")
@@ -685,7 +685,7 @@ seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
 		st.hold_order += 1
 		append(&st.holds, Seq_Hold{slot = slot, col = col, order = st.hold_order})
 	}
-	pm.launch_slot(m, slot)
+	pa.launcher_launch(&a.api, i64(slot))
 }
 
 // A sequence pad let go: in Hold, it goes when its launch has come (see
@@ -721,28 +721,16 @@ hold_frame :: proc(a: ^App) {
 		at: u64
 		for o in st.holds do if o.col == h.col && o.order > at do latest, at = o.slot, o.order
 		if latest >= 0 {
-			if latest != h.slot do pm.launch_slot(m, latest) // (back to the one held before it)
+			if latest != h.slot do pa.launcher_launch(&a.api, i64(latest)) // (back to the one held before it)
 		} else if st.hold_from[h.col] >= 0 && st.hold_from[h.col] != h.slot {
-			pm.launch_slot(m, st.hold_from[h.col])
+			pa.launcher_launch(&a.api, i64(st.hold_from[h.col]))
 		} else if st.hold_from[h.col] < 0 {
-			pm.stop_column(&m.engine, h.col)
+			pa.launcher_stop_lane(&a.api, i64(h.col))
 		}
 	}
 }
 
-// How the pads play: each its sound, a keyboard of the selected one, or
-// it at 16 velocities. Held pads let go first.
+// How the pads play (the API's perform_set_play_mode).
 set_play_mode :: proc(a: ^App, mode: pm.Play_Mode) {
-	if a.play_mode == mode do return
-	for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
-	// Keyboard mode's banks run up the scale from the lowest note: it opens
-	// on the one holding the pad's own; leaving it, the pads' bank again.
-	if mode == .Keyboard {
-		a.pads_bank = a.bank
-		a.play_mode = mode
-		a.bank = keyboard_home_bank(a)
-		return
-	}
-	if a.play_mode == .Keyboard do a.bank = a.pads_bank
-	a.play_mode = mode
+	pa.perform_set_play_mode(&a.api, pa.Play_Mode(mode))
 }

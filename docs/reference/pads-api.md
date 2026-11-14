@@ -459,6 +459,160 @@ history_gesture_end :: proc(api: ^Api) -> Result
 
 Ends the gesture: the next edit is a new step.
 
+## Launcher: lanes, launching, stopping, Hold, Record to Song
+
+### launcher_state
+
+```odin
+launcher_state :: proc(api: ^Api) -> (Launcher_State, Result)
+```
+
+The launcher now.
+
+### launcher_lane
+
+```odin
+launcher_lane :: proc(api: ^Api, lane: i64) -> (Lane_State, Result)
+```
+
+Lane `lane` now.
+
+### launcher_lane_name
+
+```odin
+launcher_lane_name :: proc(api: ^Api, lane: i64) -> (string, Result)
+```
+
+Lane `lane`'s name (its own, else its letter's). Temporary.
+
+### launcher_place
+
+```odin
+launcher_place :: proc(api: ^Api, slot: i64) -> (Place, Result)
+```
+
+Where sequence `slot` is.
+
+### launcher_slot_at
+
+```odin
+launcher_slot_at :: proc(api: ^Api, lane: i64, row: i64) -> (i64, Result)
+```
+
+The sequence at `lane`, `row` (-1: none).
+
+### launcher_launch
+
+```odin
+launcher_launch :: proc(api: ^Api, slot: i64, alone: bool = false) -> Result
+```
+
+Launches sequence `slot` in its lane (`alone`: the other lanes stop), when the launch quantize says; stopped, it starts playing.
+
+### launcher_launch_row
+
+```odin
+launcher_launch_row :: proc(api: ^Api, row: i64) -> Result
+```
+
+Launches row `row` of every lane (a scene).
+
+### launcher_stop_lane
+
+```odin
+launcher_stop_lane :: proc(api: ^Api, lane: i64) -> Result
+```
+
+Stops lane `lane` (when the launch quantize says).
+
+### launcher_stop_all
+
+```odin
+launcher_stop_all :: proc(api: ^Api) -> Result
+```
+
+Stops every lane.
+
+### launcher_set_quantize
+
+```odin
+launcher_set_quantize :: proc(api: ^Api, q: Launch_Quantize) -> Result
+```
+
+When a sequence launched while playing takes over (saved with the project).
+
+### launcher_set_hold
+
+```odin
+launcher_set_hold :: proc(api: ^Api, on: bool) -> Result
+```
+
+Sequence pads play while held (`on`), or launch on a press. Undoably.
+
+### launcher_set_continue
+
+```odin
+launcher_set_continue :: proc(api: ^Api, on: bool) -> Result
+```
+
+A launch carries on where the playhead is in its lane (`on`), or starts its sequence from the top. Undoably.
+
+### launcher_set_recording
+
+```odin
+launcher_set_recording :: proc(api: ^Api, on: bool) -> Result
+```
+
+Records what is launched into the song (Record to Song), or stops: stopped while playing, the take so far goes into the song.
+
+### launcher_add_lane
+
+```odin
+launcher_add_lane :: proc(api: ^Api) -> (i64, Result)
+```
+
+Adds a lane (after the others): its number. Busy at 16.
+
+### launcher_delete_lane
+
+```odin
+launcher_delete_lane :: proc(api: ^Api, lane: i64) -> Result
+```
+
+Deletes lane `lane` (its sequences go to the others). Busy for the last.
+
+### launcher_rename_lane
+
+```odin
+launcher_rename_lane :: proc(api: ^Api, lane: i64, name: string) -> Result
+```
+
+Names lane `lane` (up to 15 bytes; "": its letter again), undoably.
+
+### launcher_color_lane
+
+```odin
+launcher_color_lane :: proc(api: ^Api, lane: i64, color: i64) -> Result
+```
+
+Colours lane `lane` (0xRRGGBB; 0: its default), undoably.
+
+### launcher_move_sequence
+
+```odin
+launcher_move_sequence :: proc(api: ^Api, slot: i64, lane: i64, row: i64) -> Result
+```
+
+Moves sequence `slot` to `lane`, `row` (the rows close up behind it), undoably.
+
+### launcher_new_sequence
+
+```odin
+launcher_new_sequence :: proc(api: ^Api, lane: i64) -> (i64, Result)
+```
+
+A new, empty sequence at the end of lane `lane`: its slot. Busy when every slot is used.
+
 ## Mixer: buses, outputs, groups, cue, meters, loudness, latency
 
 ### mixer_state
@@ -888,6 +1042,48 @@ param_touch :: proc(api: ^Api, ref: Param_Ref, on: bool) -> Result
 ```
 
 Begins (`on`) or ends touching parameter `ref`, as a knob is held: its moves until let go are one undo step, and with automation recording armed, they are written while it plays. One parameter is touched at a time (touching another lets the first go).
+
+## Perform: play modes, banks, the selected pad, keys
+
+### perform_state
+
+```odin
+perform_state :: proc(api: ^Api) -> (Perform_State, Result)
+```
+
+How the pads play now.
+
+### perform_set_play_mode
+
+```odin
+perform_set_play_mode :: proc(api: ^Api, mode: Play_Mode) -> Result
+```
+
+Plays the pads as `mode` (the pads held let go first; Keyboard opens on the bank holding the pad's own note).
+
+### perform_set_bank
+
+```odin
+perform_set_bank :: proc(api: ^Api, bank: i64) -> Result
+```
+
+Shows bank `bank` (0..7) of the pads.
+
+### perform_select_pad
+
+```odin
+perform_select_pad :: proc(api: ^Api, pad: i64) -> Result
+```
+
+Selects pad `pad` (in Pads mode, its bank shown).
+
+### perform_set_keys
+
+```odin
+perform_set_keys :: proc(api: ^Api, scale: Scale, root: i64, octave: i64, chord: Chord) -> Result
+```
+
+Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with the project (not an edit).
 
 ## Project: new, open, save, templates, clean up
 
@@ -1361,6 +1557,272 @@ settings_set_text :: proc(api: ^Api, name: string, value: string) -> Result
 
 Sets setting `name` from text (a Text's words, a Choice's name, "true" or "false", a number), applies it and saves the settings.
 
+## Song: clips, lanes, tempo and meter lanes, markers, the loop, arrangements
+
+### song_state
+
+```odin
+song_state :: proc(api: ^Api) -> (Song_State, Result)
+```
+
+The song now.
+
+### song_clip
+
+```odin
+song_clip :: proc(api: ^Api, index: i64) -> (Song_Clip, Result)
+```
+
+Clip `index` of the song.
+
+### song_clip_label
+
+```odin
+song_clip_label :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Clip `index`'s label ("Verse"; "" none). Temporary.
+
+### song_add
+
+```odin
+song_add :: proc(api: ^Api, slot: i64, lane: i64 = 0, at: f64 = -1, length: f64 = 0, repeats: i64 = 1) -> (i64, Result)
+```
+
+Adds sequence `slot` to the song on lane `lane`: at beat `at` (-1: after the lane's last clip), `length` beats long (0: the sequence `repeats` times). Its index. Undoably; Busy when the song is full.
+
+### song_set_clip
+
+```odin
+song_set_clip :: proc(api: ^Api, index: i64, c: Song_Clip) -> Result
+```
+
+Sets clip `index` (its sequence, place, length, part, transpose, mute), undoably (a gesture's moves merge).
+
+### song_remove_clips
+
+```odin
+song_remove_clips :: proc(api: ^Api, indices: []i64) -> Result
+```
+
+Removes the clips `indices`: one undo step.
+
+### song_duplicate_clips
+
+```odin
+song_duplicate_clips :: proc(api: ^Api, indices: []i64) -> (i64, Result)
+```
+
+Copies the clips `indices` right after themselves (the selection's span later): one undo step. How many were copied (as many as fit): they are the song's last clips now.
+
+### song_clear
+
+```odin
+song_clear :: proc(api: ^Api) -> Result
+```
+
+Empties the song (its clips; its lanes, tempo, meters and markers too), undoably.
+
+### song_merge_sequence
+
+```odin
+song_merge_sequence :: proc(api: ^Api, from: i64, to: i64) -> Result
+```
+
+Merges sequence `from`'s notes and automation into sequence `to` (as long as the longer), undoably.
+
+### song_move_clips
+
+```odin
+song_move_clips :: proc(api: ^Api, indices: []i64, beats: f64, lanes: i64) -> Result
+```
+
+Moves the clips `indices` by `beats` and `lanes`: one undo step (the earliest stays at 0 or later, the top lane at 0 or lower).
+
+### song_lane
+
+```odin
+song_lane :: proc(api: ^Api, lane: i64) -> (Song_Lane, Result)
+```
+
+Song lane `lane`.
+
+### song_lane_name
+
+```odin
+song_lane_name :: proc(api: ^Api, lane: i64) -> (string, Result)
+```
+
+Song lane `lane`'s name (its own, else "Lane N"). Temporary.
+
+### song_add_lane
+
+```odin
+song_add_lane :: proc(api: ^Api) -> (i64, Result)
+```
+
+Adds a song lane at the bottom: its number. Busy at 16.
+
+### song_set_lane
+
+```odin
+song_set_lane :: proc(api: ^Api, lane: i64, l: Song_Lane) -> Result
+```
+
+Mutes or solos song lane `lane`, undoably.
+
+### song_rename_lane
+
+```odin
+song_rename_lane :: proc(api: ^Api, lane: i64, name: string) -> Result
+```
+
+Names song lane `lane` (up to 15 bytes), undoably.
+
+### song_tempo_point
+
+```odin
+song_tempo_point :: proc(api: ^Api, index: i64) -> (Tempo_Point, Result)
+```
+
+Tempo point `index` of the song's tempo lane.
+
+### song_add_tempo_point
+
+```odin
+song_add_tempo_point :: proc(api: ^Api, t: Tempo_Point) -> Result
+```
+
+Adds a point to the song's tempo lane (one at its beat replaced), undoably.
+
+### song_remove_tempo_point
+
+```odin
+song_remove_tempo_point :: proc(api: ^Api, index: i64) -> Result
+```
+
+Removes tempo point `index` (the first only when it is the last left), undoably.
+
+### song_meter
+
+```odin
+song_meter :: proc(api: ^Api, index: i64) -> (Time_Signature, Result)
+```
+
+Time signature change `index` of the song.
+
+### song_set_meter
+
+```odin
+song_set_meter :: proc(api: ^Api, beat: f64, num: i64, den: i64) -> Result
+```
+
+Changes the song's time signature from `beat` on, undoably.
+
+### song_remove_meter
+
+```odin
+song_remove_meter :: proc(api: ^Api, index: i64) -> Result
+```
+
+Removes time signature change `index`, undoably.
+
+### song_marker
+
+```odin
+song_marker :: proc(api: ^Api, index: i64) -> (f64, Result)
+```
+
+Marker `index`'s beat.
+
+### song_marker_name
+
+```odin
+song_marker_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Marker `index`'s name. Temporary.
+
+### song_add_marker
+
+```odin
+song_add_marker :: proc(api: ^Api, beat: f64, name: string) -> (i64, Result)
+```
+
+Adds a marker named `name` at `beat`: its index (markers are in order). Undoably; Busy when there are 32.
+
+### song_rename_marker
+
+```odin
+song_rename_marker :: proc(api: ^Api, index: i64, name: string) -> Result
+```
+
+Renames marker `index`, undoably.
+
+### song_remove_marker
+
+```odin
+song_remove_marker :: proc(api: ^Api, index: i64) -> Result
+```
+
+Removes marker `index`, undoably.
+
+### song_set_loop
+
+```odin
+song_set_loop :: proc(api: ^Api, on: bool, start: f64, end: f64) -> Result
+```
+
+Loops beats `start`..`end` of the song (`on`), or the whole song, undoably.
+
+### song_jump
+
+```odin
+song_jump :: proc(api: ^Api, beat: f64) -> Result
+```
+
+Song mode: plays from song beat `beat` (playing), or makes it where play starts (stopped).
+
+### song_arrangement_name
+
+```odin
+song_arrangement_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Arrangement `index`'s name. Temporary.
+
+### song_select_arrangement
+
+```odin
+song_select_arrangement :: proc(api: ^Api, index: i64) -> Result
+```
+
+Makes arrangement `index` the song, undoably.
+
+### song_add_arrangement
+
+```odin
+song_add_arrangement :: proc(api: ^Api, copy_of: i64 = -1) -> (i64, Result)
+```
+
+A new arrangement (empty, or a copy of `copy_of`), made the song: its index. Busy when there are as many as can be.
+
+### song_rename_arrangement
+
+```odin
+song_rename_arrangement :: proc(api: ^Api, index: i64, name: string) -> Result
+```
+
+Renames arrangement `index`, undoably.
+
+### song_delete_arrangement
+
+```odin
+song_delete_arrangement :: proc(api: ^Api, index: i64) -> Result
+```
+
+Deletes arrangement `index`, undoably. Busy for the last one left.
+
 ## Changes
 
 ### subscribe
@@ -1551,6 +2013,12 @@ What a compressor's or gate's sidechain listens to.
 
 `None`, `Pad`, `Bus`
 
+### Launch_Quantize
+
+When a sequence launched while playing takes over.
+
+`End`, `Bar`, `Beat`, `Now`
+
 ### Output_Kind
 
 Where a pad or a bus plays.
@@ -1592,6 +2060,24 @@ Which of a track's devices.
 What a parameter's values are in.
 
 `None`, `Decibels`, `Hertz`, `Milliseconds`, `Percent`, `Semitones`, `Ratio`
+
+### Play_Mode
+
+How the pads play.
+
+`Pads`, `Keyboard`, `Velocity`
+
+### Scale
+
+Keyboard mode's scales.
+
+`Chromatic`, `Major`, `Minor`, `Dorian`, `Mixolydian`, `Harmonic_Minor`, `Major_Pentatonic`, `Minor_Pentatonic`, `Blues`
+
+### Chord
+
+Keyboard mode's chords (one pad, several notes).
+
+`Off`, `Triad`, `Seventh`, `Power`
 
 ### Sampling
 
@@ -1718,6 +2204,39 @@ The undo history now: steps that can be undone and redone, and whether the proje
 | `dirty` | `bool` | changed since it was saved |
 | `grouping` | `bool` | a group is open (history_group_begin) |
 
+### Launcher_State
+
+The launcher now.
+
+| Field | Type | |
+|---|---|---|
+| `lanes` | `i64` | lanes 0..lanes-1 |
+| `quantize` | `Launch_Quantize` |  |
+| `hold` | `bool` | sequence pads play while held (else a press launches) |
+| `continue_` | `bool` | a launch carries on where the playhead is in its lane |
+| `recording` | `bool` | launches are recorded into the song |
+
+### Lane_State
+
+Lane `lane` now.
+
+| Field | Type | |
+|---|---|---|
+| `rows` | `i64` | its sequences (rows 0..rows-1) |
+| `color` | `i64` | 0xRRGGBB (0: its default) |
+| `playing` | `i64` | the sequence it plays (-1: none) |
+| `queued` | `i64` | the sequence about to take over (-1: none) |
+| `beats_to_switch` | `f64` | until the queued one takes over |
+
+### Place
+
+Where a sequence is in the launcher.
+
+| Field | Type | |
+|---|---|---|
+| `lane` | `i64` |  |
+| `row` | `i64` |  |
+
 ### Output
 
 Where a pad or a bus plays.
@@ -1821,6 +2340,20 @@ What a parameter is: its range in plain units, where it starts, how it is drawn.
 | `stepped` | `bool` | whole values only (a choice) |
 | `log` | `bool` | a frequency: drawn on a log scale |
 | `automatable` | `bool` |  |
+
+### Perform_State
+
+How the pads play now.
+
+| Field | Type | |
+|---|---|---|
+| `play_mode` | `Play_Mode` |  |
+| `bank` | `i64` | 0..7 (A..H; Keyboard mode: a range of notes) |
+| `selected` | `i64` | the selected pad: what Keyboard and Velocity play, the keys play, the editors show |
+| `scale` | `Scale` |  |
+| `root` | `i64` | 0..11, semitones above C |
+| `octave` | `i64` | -3..3 |
+| `chord` | `Chord` |  |
 
 ### Project_State
 
@@ -1951,6 +2484,73 @@ What setting `name` is.
 | `min` | `f64` | Int and Number |
 | `max` | `f64` |  |
 | `choices` | `i64` | Choice: how many (settings_choice) |
+
+### Song_State
+
+The song now (the current arrangement's).
+
+| Field | Type | |
+|---|---|---|
+| `clips` | `i64` | song_clip 0..clips-1 |
+| `lanes` | `i64` | its lanes |
+| `tempo_points` | `i64` | its tempo lane (none: the project's tempo) |
+| `meters` | `i64` | its time signature lane |
+| `markers` | `i64` |  |
+| `loop_on` | `bool` | the loop goes round loop_start..loop_end, not the whole song |
+| `loop_start` | `f64` |  |
+| `loop_end` | `f64` |  |
+| `beats` | `f64` | how long it is |
+| `seconds` | `f64` |  |
+| `cue` | `f64` | where it starts playing (song beats) |
+| `arrangements` | `i64` |  |
+| `arrangement` | `i64` | the current one |
+| `playing_clip` | `i64` | the clip leading where it plays (-1: none, or the song isn't playing) |
+| `beat` | `f64` | where it plays (-1: the song isn't playing) |
+
+### Song_Clip
+
+A clip of the song: sequence `slot` on lane `lane` from beat `at` for `length` beats, going round its part of the sequence.
+
+| Field | Type | |
+|---|---|---|
+| `slot` | `i64` |  |
+| `lane` | `i64` |  |
+| `at` | `f64` | song beat it starts at |
+| `length` | `f64` | beats it plays |
+| `start` | `f64` | beats into the sequence its part starts at |
+| `part` | `f64` | its part's beats (0: from start to the sequence's end) |
+| `phase` | `f64` | beats into its part it begins at |
+| `transpose` | `i64` | -24..24 semitones on its notes |
+| `mute` | `bool` |  |
+
+### Song_Lane
+
+A song lane.
+
+| Field | Type | |
+|---|---|---|
+| `mute` | `bool` |  |
+| `solo` | `bool` |  |
+
+### Tempo_Point
+
+A point of the song's tempo lane.
+
+| Field | Type | |
+|---|---|---|
+| `beat` | `f64` |  |
+| `bpm` | `f64` | 40..300 |
+| `ramp` | `bool` | it ramps to the next point (else it steps) |
+
+### Time_Signature
+
+A time signature from `beat` on.
+
+| Field | Type | |
+|---|---|---|
+| `beat` | `f64` |  |
+| `num` | `i64` |  |
+| `den` | `i64` |  |
 
 ### Transport_State
 

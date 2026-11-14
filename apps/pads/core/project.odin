@@ -50,6 +50,7 @@ Hooks :: struct {
 	opened:        proc(user: rawptr), // a project was opened, made or recovered (nil: nothing)
 	param_touched: proc(user: rawptr, t: pm.Auto_Target, on: bool), // a parameter touched or let go (automation recording)
 	param_moved:   proc(user: rawptr, t: pm.Auto_Target, value: f32), // the touched parameter moved (plain units)
+	release_held:  proc(user: rawptr), // the pads held on the grid let go (the play mode changes)
 }
 
 // Frees the files' state.

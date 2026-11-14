@@ -22,8 +22,9 @@ procedure is in the [reference](/reference/pads-api/).
 The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
 **settings**, **pads**, **params**, **effects**, **devices**,
-**mixer**, **sequencer**, **audio** and **recording**, with results,
-errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
+**mixer**, **sequencer**, **audio**, **recording**, **song**,
+**launcher** and **perform**, with results, errors, threading and
+changes. Pads' own toolbar, History and File menus, shortcuts, pad
 menus and script commands for these already go through it.
 
 ## Results and errors
@@ -273,6 +274,28 @@ pads_api.audio_set_warp(api, 0, 3, .Stretch, -2)
 pads_api.recording_record(api, true)                  // Rec: from a stop it plays, after the count-in
 pads_api.recording_sample_start(api, 5, .Bars, -40, 2) // the next two bars into pad 5
 ```
+
+## The song, the launcher, performing
+
+```odin
+i, _ := pads_api.song_add(api, 0, lane = 0, repeats = 4)   // sequence 0 four times, after the lane's last
+pads_api.song_add_marker(api, 16, "Chorus")
+pads_api.song_set_loop(api, true, 16, 32)
+pads_api.song_add_arrangement(api, copy_of = 0)          // an alternative arrangement
+
+lane, _ := pads_api.launcher_add_lane(api)
+slot, _ := pads_api.launcher_new_sequence(api, lane)
+pads_api.launcher_set_quantize(api, .Bar)
+pads_api.launcher_launch(api, slot)                      // in its lane, at the next bar
+pads_api.launcher_stop_all(api)
+
+pads_api.perform_set_play_mode(api, .Keyboard)           // the pads a scale of the selected pad
+pads_api.perform_set_keys(api, .Dorian, 2, 0, .Triad)
+```
+
+A song clip's step is named for what changed ("Mute Clip", "Clip
+Sequence", "Clip Part"). The `Song`, `Launcher` and `Selection` topics
+report their changes (what each lane plays and has queued included).
 
 ## From C
 

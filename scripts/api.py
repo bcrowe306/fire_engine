@@ -64,6 +64,9 @@ MODULE_TITLES = {
     "sequencer": "Sequencer: sequences, notes, CC, automation, quantize, note repeat, the arpeggiator",
     "audio": "Audio tracks: takes, regions, comping, consolidating, warp",
     "recording": "Recording: Rec, sampling into pads",
+    "song": "Song: clips, lanes, tempo and meter lanes, markers, the loop, arrangements",
+    "launcher": "Launcher: lanes, launching, stopping, Hold, Record to Song",
+    "perform": "Perform: play modes, banks, the selected pad, keys",
 }
 
 

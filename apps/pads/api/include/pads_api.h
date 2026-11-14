@@ -58,6 +58,15 @@ enum {
 	PADS_KEY_KIND_BUS = 2,
 };
 
+// When a sequence launched while playing takes over.
+typedef int32_t Pads_Launch_Quantize;
+enum {
+	PADS_LAUNCH_QUANTIZE_END = 0,
+	PADS_LAUNCH_QUANTIZE_BAR = 1,
+	PADS_LAUNCH_QUANTIZE_BEAT = 2,
+	PADS_LAUNCH_QUANTIZE_NOW = 3,
+};
+
 // Where a pad or a bus plays.
 typedef int32_t Pads_Output_Kind;
 enum {
@@ -123,6 +132,37 @@ enum {
 	PADS_PARAM_UNIT_PERCENT = 4,
 	PADS_PARAM_UNIT_SEMITONES = 5,
 	PADS_PARAM_UNIT_RATIO = 6,
+};
+
+// How the pads play.
+typedef int32_t Pads_Play_Mode;
+enum {
+	PADS_PLAY_MODE_PADS = 0,
+	PADS_PLAY_MODE_KEYBOARD = 1,
+	PADS_PLAY_MODE_VELOCITY = 2,
+};
+
+// Keyboard mode's scales.
+typedef int32_t Pads_Scale;
+enum {
+	PADS_SCALE_CHROMATIC = 0,
+	PADS_SCALE_MAJOR = 1,
+	PADS_SCALE_MINOR = 2,
+	PADS_SCALE_DORIAN = 3,
+	PADS_SCALE_MIXOLYDIAN = 4,
+	PADS_SCALE_HARMONIC_MINOR = 5,
+	PADS_SCALE_MAJOR_PENTATONIC = 6,
+	PADS_SCALE_MINOR_PENTATONIC = 7,
+	PADS_SCALE_BLUES = 8,
+};
+
+// Keyboard mode's chords (one pad, several notes).
+typedef int32_t Pads_Chord;
+enum {
+	PADS_CHORD_OFF = 0,
+	PADS_CHORD_TRIAD = 1,
+	PADS_CHORD_SEVENTH = 2,
+	PADS_CHORD_POWER = 3,
 };
 
 // How a sample is recorded into a pad.
@@ -289,6 +329,30 @@ typedef struct Pads_History_State {
 	bool grouping; // a group is open (history_group_begin)
 } Pads_History_State;
 
+// The launcher now.
+typedef struct Pads_Launcher_State {
+	int64_t lanes; // lanes 0..lanes-1
+	Pads_Launch_Quantize quantize;
+	bool hold; // sequence pads play while held (else a press launches)
+	bool continue_; // a launch carries on where the playhead is in its lane
+	bool recording; // launches are recorded into the song
+} Pads_Launcher_State;
+
+// Lane `lane` now.
+typedef struct Pads_Lane_State {
+	int64_t rows; // its sequences (rows 0..rows-1)
+	int64_t color; // 0xRRGGBB (0: its default)
+	int64_t playing; // the sequence it plays (-1: none)
+	int64_t queued; // the sequence about to take over (-1: none)
+	double beats_to_switch; // until the queued one takes over
+} Pads_Lane_State;
+
+// Where a sequence is in the launcher.
+typedef struct Pads_Place {
+	int64_t lane;
+	int64_t row;
+} Pads_Place;
+
 // Where a pad or a bus plays.
 typedef struct Pads_Output {
 	Pads_Output_Kind kind;
@@ -371,6 +435,17 @@ typedef struct Pads_Param_Info {
 	bool log; // a frequency: drawn on a log scale
 	bool automatable;
 } Pads_Param_Info;
+
+// How the pads play now.
+typedef struct Pads_Perform_State {
+	Pads_Play_Mode play_mode;
+	int64_t bank; // 0..7 (A..H; Keyboard mode: a range of notes)
+	int64_t selected; // the selected pad: what Keyboard and Velocity play, the keys play, the editors show
+	Pads_Scale scale;
+	int64_t root; // 0..11, semitones above C
+	int64_t octave; // -3..3
+	Pads_Chord chord;
+} Pads_Perform_State;
 
 // The project now: where it is, whether it changed, the lists beside it.
 typedef struct Pads_Project_State {
@@ -472,6 +547,59 @@ typedef struct Pads_Setting_Info {
 	double max;
 	int64_t choices; // Choice: how many (settings_choice)
 } Pads_Setting_Info;
+
+// The song now (the current arrangement's).
+typedef struct Pads_Song_State {
+	int64_t clips; // song_clip 0..clips-1
+	int64_t lanes; // its lanes
+	int64_t tempo_points; // its tempo lane (none: the project's tempo)
+	int64_t meters; // its time signature lane
+	int64_t markers;
+	bool loop_on; // the loop goes round loop_start..loop_end, not the whole song
+	double loop_start;
+	double loop_end;
+	double beats; // how long it is
+	double seconds;
+	double cue; // where it starts playing (song beats)
+	int64_t arrangements;
+	int64_t arrangement; // the current one
+	int64_t playing_clip; // the clip leading where it plays (-1: none, or the song isn't playing)
+	double beat; // where it plays (-1: the song isn't playing)
+} Pads_Song_State;
+
+// A clip of the song: sequence `slot` on lane `lane` from beat `at` for
+// `length` beats, going round its part of the sequence.
+typedef struct Pads_Song_Clip {
+	int64_t slot;
+	int64_t lane;
+	double at; // song beat it starts at
+	double length; // beats it plays
+	double start; // beats into the sequence its part starts at
+	double part; // its part's beats (0: from start to the sequence's end)
+	double phase; // beats into its part it begins at
+	int64_t transpose; // -24..24 semitones on its notes
+	bool mute;
+} Pads_Song_Clip;
+
+// A song lane.
+typedef struct Pads_Song_Lane {
+	bool mute;
+	bool solo;
+} Pads_Song_Lane;
+
+// A point of the song's tempo lane.
+typedef struct Pads_Tempo_Point {
+	double beat;
+	double bpm; // 40..300
+	bool ramp; // it ramps to the next point (else it steps)
+} Pads_Tempo_Point;
+
+// A time signature from `beat` on.
+typedef struct Pads_Time_Signature {
+	double beat;
+	int64_t num;
+	int64_t den;
+} Pads_Time_Signature;
 
 // The transport now. The playhead (`beat`, `timeline_beat`, the position)
 // moves without a change being reported: poll it.
@@ -657,6 +785,49 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*history_gesture_begin)(Pads_Api* api);
 	// Ends the gesture: the next edit is a new step.
 	Pads_Result (*history_gesture_end)(Pads_Api* api);
+	// The launcher now.
+	Pads_Result (*launcher_state)(Pads_Api* api, Pads_Launcher_State* out);
+	// Lane `lane` now.
+	Pads_Result (*launcher_lane)(Pads_Api* api, int64_t lane, Pads_Lane_State* out);
+	// Lane `lane`'s name (its own, else its letter's). Temporary.
+	Pads_Result (*launcher_lane_name)(Pads_Api* api, int64_t lane, char* out, int64_t out_cap, int64_t* out_len);
+	// Where sequence `slot` is.
+	Pads_Result (*launcher_place)(Pads_Api* api, int64_t slot, Pads_Place* out);
+	// The sequence at `lane`, `row` (-1: none).
+	Pads_Result (*launcher_slot_at)(Pads_Api* api, int64_t lane, int64_t row, int64_t* out);
+	// Launches sequence `slot` in its lane (`alone`: the other lanes stop),
+	// when the launch quantize says; stopped, it starts playing.
+	Pads_Result (*launcher_launch)(Pads_Api* api, int64_t slot, bool alone);
+	// Launches row `row` of every lane (a scene).
+	Pads_Result (*launcher_launch_row)(Pads_Api* api, int64_t row);
+	// Stops lane `lane` (when the launch quantize says).
+	Pads_Result (*launcher_stop_lane)(Pads_Api* api, int64_t lane);
+	// Stops every lane.
+	Pads_Result (*launcher_stop_all)(Pads_Api* api);
+	// When a sequence launched while playing takes over (saved with the project).
+	Pads_Result (*launcher_set_quantize)(Pads_Api* api, Pads_Launch_Quantize q);
+	// Sequence pads play while held (`on`), or launch on a press. Undoably.
+	Pads_Result (*launcher_set_hold)(Pads_Api* api, bool on);
+	// A launch carries on where the playhead is in its lane (`on`), or starts
+	// its sequence from the top. Undoably.
+	Pads_Result (*launcher_set_continue)(Pads_Api* api, bool on);
+	// Records what is launched into the song (Record to Song), or stops:
+	// stopped while playing, the take so far goes into the song.
+	Pads_Result (*launcher_set_recording)(Pads_Api* api, bool on);
+	// Adds a lane (after the others): its number. Busy at 16.
+	Pads_Result (*launcher_add_lane)(Pads_Api* api, int64_t* out);
+	// Deletes lane `lane` (its sequences go to the others). Busy for the last.
+	Pads_Result (*launcher_delete_lane)(Pads_Api* api, int64_t lane);
+	// Names lane `lane` (up to 15 bytes; "": its letter again), undoably.
+	Pads_Result (*launcher_rename_lane)(Pads_Api* api, int64_t lane, const char* name, int64_t name_len);
+	// Colours lane `lane` (0xRRGGBB; 0: its default), undoably.
+	Pads_Result (*launcher_color_lane)(Pads_Api* api, int64_t lane, int64_t color);
+	// Moves sequence `slot` to `lane`, `row` (the rows close up behind it),
+	// undoably.
+	Pads_Result (*launcher_move_sequence)(Pads_Api* api, int64_t slot, int64_t lane, int64_t row);
+	// A new, empty sequence at the end of lane `lane`: its slot. Busy when
+	// every slot is used.
+	Pads_Result (*launcher_new_sequence)(Pads_Api* api, int64_t lane, int64_t* out);
 	// The mixer now.
 	Pads_Result (*mixer_state)(Pads_Api* api, Pads_Mixer_State* out);
 	// Bus `bus` (or MAIN) now.
@@ -788,6 +959,18 @@ typedef struct Pads_Api_V1 {
 	// armed, they are written while it plays. One parameter is touched at a
 	// time (touching another lets the first go).
 	Pads_Result (*param_touch)(Pads_Api* api, Pads_Param_Ref ref, bool on);
+	// How the pads play now.
+	Pads_Result (*perform_state)(Pads_Api* api, Pads_Perform_State* out);
+	// Plays the pads as `mode` (the pads held let go first; Keyboard opens on
+	// the bank holding the pad's own note).
+	Pads_Result (*perform_set_play_mode)(Pads_Api* api, Pads_Play_Mode mode);
+	// Shows bank `bank` (0..7) of the pads.
+	Pads_Result (*perform_set_bank)(Pads_Api* api, int64_t bank);
+	// Selects pad `pad` (in Pads mode, its bank shown).
+	Pads_Result (*perform_select_pad)(Pads_Api* api, int64_t pad);
+	// Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with
+	// the project (not an edit).
+	Pads_Result (*perform_set_keys)(Pads_Api* api, Pads_Scale scale, int64_t root, int64_t octave, Pads_Chord chord);
 	// The project now.
 	Pads_Result (*project_state)(Pads_Api* api, Pads_Project_State* out);
 	// The project's folder (an untitled one's is in the unsaved folder).
@@ -944,6 +1127,86 @@ typedef struct Pads_Api_V1 {
 	// Sets setting `name` from text (a Text's words, a Choice's name, "true"
 	// or "false", a number), applies it and saves the settings.
 	Pads_Result (*settings_set_text)(Pads_Api* api, const char* name, int64_t name_len, const char* value, int64_t value_len);
+	// The song now.
+	Pads_Result (*song_state)(Pads_Api* api, Pads_Song_State* out);
+	// Clip `index` of the song.
+	Pads_Result (*song_clip)(Pads_Api* api, int64_t index, Pads_Song_Clip* out);
+	// Clip `index`'s label ("Verse"; "" none). Temporary.
+	Pads_Result (*song_clip_label)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Adds sequence `slot` to the song on lane `lane`: at beat `at` (-1: after
+	// the lane's last clip), `length` beats long (0: the sequence `repeats`
+	// times). Its index. Undoably; Busy when the song is full.
+	Pads_Result (*song_add)(Pads_Api* api, int64_t slot, int64_t lane, double at, double length, int64_t repeats, int64_t* out);
+	// Sets clip `index` (its sequence, place, length, part, transpose, mute),
+	// undoably (a gesture's moves merge).
+	Pads_Result (*song_set_clip)(Pads_Api* api, int64_t index, Pads_Song_Clip c);
+	// Removes the clips `indices`: one undo step.
+	Pads_Result (*song_remove_clips)(Pads_Api* api, const int64_t* indices, int64_t indices_len);
+	// Copies the clips `indices` right after themselves (the selection's span
+	// later): one undo step. How many were copied (as many as fit): they are
+	// the song's last clips now.
+	Pads_Result (*song_duplicate_clips)(Pads_Api* api, const int64_t* indices, int64_t indices_len, int64_t* out);
+	// Empties the song (its clips; its lanes, tempo, meters and markers too),
+	// undoably.
+	Pads_Result (*song_clear)(Pads_Api* api);
+	// Merges sequence `from`'s notes and automation into sequence `to` (as
+	// long as the longer), undoably.
+	Pads_Result (*song_merge_sequence)(Pads_Api* api, int64_t from, int64_t to);
+	// Moves the clips `indices` by `beats` and `lanes`: one undo step (the
+	// earliest stays at 0 or later, the top lane at 0 or lower).
+	Pads_Result (*song_move_clips)(Pads_Api* api, const int64_t* indices, int64_t indices_len, double beats, int64_t lanes);
+	// Song lane `lane`.
+	Pads_Result (*song_lane)(Pads_Api* api, int64_t lane, Pads_Song_Lane* out);
+	// Song lane `lane`'s name (its own, else "Lane N"). Temporary.
+	Pads_Result (*song_lane_name)(Pads_Api* api, int64_t lane, char* out, int64_t out_cap, int64_t* out_len);
+	// Adds a song lane at the bottom: its number. Busy at 16.
+	Pads_Result (*song_add_lane)(Pads_Api* api, int64_t* out);
+	// Mutes or solos song lane `lane`, undoably.
+	Pads_Result (*song_set_lane)(Pads_Api* api, int64_t lane, Pads_Song_Lane l);
+	// Names song lane `lane` (up to 15 bytes), undoably.
+	Pads_Result (*song_rename_lane)(Pads_Api* api, int64_t lane, const char* name, int64_t name_len);
+	// Tempo point `index` of the song's tempo lane.
+	Pads_Result (*song_tempo_point)(Pads_Api* api, int64_t index, Pads_Tempo_Point* out);
+	// Adds a point to the song's tempo lane (one at its beat replaced),
+	// undoably.
+	Pads_Result (*song_add_tempo_point)(Pads_Api* api, Pads_Tempo_Point t);
+	// Removes tempo point `index` (the first only when it is the last left),
+	// undoably.
+	Pads_Result (*song_remove_tempo_point)(Pads_Api* api, int64_t index);
+	// Time signature change `index` of the song.
+	Pads_Result (*song_meter)(Pads_Api* api, int64_t index, Pads_Time_Signature* out);
+	// Changes the song's time signature from `beat` on, undoably.
+	Pads_Result (*song_set_meter)(Pads_Api* api, double beat, int64_t num, int64_t den);
+	// Removes time signature change `index`, undoably.
+	Pads_Result (*song_remove_meter)(Pads_Api* api, int64_t index);
+	// Marker `index`'s beat.
+	Pads_Result (*song_marker)(Pads_Api* api, int64_t index, double* out);
+	// Marker `index`'s name. Temporary.
+	Pads_Result (*song_marker_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Adds a marker named `name` at `beat`: its index (markers are in order).
+	// Undoably; Busy when there are 32.
+	Pads_Result (*song_add_marker)(Pads_Api* api, double beat, const char* name, int64_t name_len, int64_t* out);
+	// Renames marker `index`, undoably.
+	Pads_Result (*song_rename_marker)(Pads_Api* api, int64_t index, const char* name, int64_t name_len);
+	// Removes marker `index`, undoably.
+	Pads_Result (*song_remove_marker)(Pads_Api* api, int64_t index);
+	// Loops beats `start`..`end` of the song (`on`), or the whole song,
+	// undoably.
+	Pads_Result (*song_set_loop)(Pads_Api* api, bool on, double start, double end);
+	// Song mode: plays from song beat `beat` (playing), or makes it where
+	// play starts (stopped).
+	Pads_Result (*song_jump)(Pads_Api* api, double beat);
+	// Arrangement `index`'s name. Temporary.
+	Pads_Result (*song_arrangement_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Makes arrangement `index` the song, undoably.
+	Pads_Result (*song_select_arrangement)(Pads_Api* api, int64_t index);
+	// A new arrangement (empty, or a copy of `copy_of`), made the song: its
+	// index. Busy when there are as many as can be.
+	Pads_Result (*song_add_arrangement)(Pads_Api* api, int64_t copy_of, int64_t* out);
+	// Renames arrangement `index`, undoably.
+	Pads_Result (*song_rename_arrangement)(Pads_Api* api, int64_t index, const char* name, int64_t name_len);
+	// Deletes arrangement `index`, undoably. Busy for the last one left.
+	Pads_Result (*song_delete_arrangement)(Pads_Api* api, int64_t index);
 	// Calls `callback` with `user` when `topic` changes (`index`: only for
 	// that pad, bus...; -1: all). Control thread. Unsupported for a topic
 	// this version doesn't report (see `TOPICS`).

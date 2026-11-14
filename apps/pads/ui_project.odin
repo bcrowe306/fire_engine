@@ -285,7 +285,7 @@ draw_export :: proc(a: ^App) {
 			im.SetNextItemWidth(170)
 			if ui.combo("##exparr", fmt.ctprintf("%s", pm.arrangement_name(&m.project, m.project.arrangement))) {
 				for k in 0 ..< m.project.arrangement_count {
-					if im.Selectable(fmt.ctprintf("%s###ea%d", pm.arrangement_name(&m.project, k), k), k == m.project.arrangement) do pm.select_arrangement(m, k)
+					if im.Selectable(fmt.ctprintf("%s###ea%d", pm.arrangement_name(&m.project, k), k), k == m.project.arrangement) do pa.song_select_arrangement(&a.api, i64(k))
 				}
 				im.EndCombo()
 			}

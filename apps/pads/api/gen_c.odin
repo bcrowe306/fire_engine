@@ -64,6 +64,25 @@ Table_V1 :: struct {
 	history_group_end: proc "c" (api: ^Api) -> Result,
 	history_gesture_begin: proc "c" (api: ^Api) -> Result,
 	history_gesture_end: proc "c" (api: ^Api) -> Result,
+	launcher_state: proc "c" (api: ^Api, out: ^Launcher_State) -> Result,
+	launcher_lane: proc "c" (api: ^Api, lane: i64, out: ^Lane_State) -> Result,
+	launcher_lane_name: proc "c" (api: ^Api, lane: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	launcher_place: proc "c" (api: ^Api, slot: i64, out: ^Place) -> Result,
+	launcher_slot_at: proc "c" (api: ^Api, lane: i64, row: i64, out: ^i64) -> Result,
+	launcher_launch: proc "c" (api: ^Api, slot: i64, alone: bool) -> Result,
+	launcher_launch_row: proc "c" (api: ^Api, row: i64) -> Result,
+	launcher_stop_lane: proc "c" (api: ^Api, lane: i64) -> Result,
+	launcher_stop_all: proc "c" (api: ^Api) -> Result,
+	launcher_set_quantize: proc "c" (api: ^Api, q: Launch_Quantize) -> Result,
+	launcher_set_hold: proc "c" (api: ^Api, on: bool) -> Result,
+	launcher_set_continue: proc "c" (api: ^Api, on: bool) -> Result,
+	launcher_set_recording: proc "c" (api: ^Api, on: bool) -> Result,
+	launcher_add_lane: proc "c" (api: ^Api, out: ^i64) -> Result,
+	launcher_delete_lane: proc "c" (api: ^Api, lane: i64) -> Result,
+	launcher_rename_lane: proc "c" (api: ^Api, lane: i64, name: cstring, name_len: i64) -> Result,
+	launcher_color_lane: proc "c" (api: ^Api, lane: i64, color: i64) -> Result,
+	launcher_move_sequence: proc "c" (api: ^Api, slot: i64, lane: i64, row: i64) -> Result,
+	launcher_new_sequence: proc "c" (api: ^Api, lane: i64, out: ^i64) -> Result,
 	mixer_state: proc "c" (api: ^Api, out: ^Mixer_State) -> Result,
 	mixer_bus_state: proc "c" (api: ^Api, bus: i64, out: ^Bus_State) -> Result,
 	mixer_bus_name: proc "c" (api: ^Api, bus: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -117,6 +136,11 @@ Table_V1 :: struct {
 	param_set: proc "c" (api: ^Api, ref: Param_Ref, value: f64) -> Result,
 	param_text: proc "c" (api: ^Api, ref: Param_Ref, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	param_touch: proc "c" (api: ^Api, ref: Param_Ref, on: bool) -> Result,
+	perform_state: proc "c" (api: ^Api, out: ^Perform_State) -> Result,
+	perform_set_play_mode: proc "c" (api: ^Api, mode: Play_Mode) -> Result,
+	perform_set_bank: proc "c" (api: ^Api, bank: i64) -> Result,
+	perform_select_pad: proc "c" (api: ^Api, pad: i64) -> Result,
+	perform_set_keys: proc "c" (api: ^Api, scale: Scale, root: i64, octave: i64, chord: Chord) -> Result,
 	project_state: proc "c" (api: ^Api, out: ^Project_State) -> Result,
 	project_dir: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	project_name: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -175,6 +199,39 @@ Table_V1 :: struct {
 	settings_get_text: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	settings_set_number: proc "c" (api: ^Api, name: cstring, name_len: i64, value: f64) -> Result,
 	settings_set_text: proc "c" (api: ^Api, name: cstring, name_len: i64, value: cstring, value_len: i64) -> Result,
+	song_state: proc "c" (api: ^Api, out: ^Song_State) -> Result,
+	song_clip: proc "c" (api: ^Api, index: i64, out: ^Song_Clip) -> Result,
+	song_clip_label: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	song_add: proc "c" (api: ^Api, slot: i64, lane: i64, at: f64, length: f64, repeats: i64, out: ^i64) -> Result,
+	song_set_clip: proc "c" (api: ^Api, index: i64, c: Song_Clip) -> Result,
+	song_remove_clips: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64) -> Result,
+	song_duplicate_clips: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64, out: ^i64) -> Result,
+	song_clear: proc "c" (api: ^Api) -> Result,
+	song_merge_sequence: proc "c" (api: ^Api, from: i64, to: i64) -> Result,
+	song_move_clips: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64, beats: f64, lanes: i64) -> Result,
+	song_lane: proc "c" (api: ^Api, lane: i64, out: ^Song_Lane) -> Result,
+	song_lane_name: proc "c" (api: ^Api, lane: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	song_add_lane: proc "c" (api: ^Api, out: ^i64) -> Result,
+	song_set_lane: proc "c" (api: ^Api, lane: i64, l: Song_Lane) -> Result,
+	song_rename_lane: proc "c" (api: ^Api, lane: i64, name: cstring, name_len: i64) -> Result,
+	song_tempo_point: proc "c" (api: ^Api, index: i64, out: ^Tempo_Point) -> Result,
+	song_add_tempo_point: proc "c" (api: ^Api, t: Tempo_Point) -> Result,
+	song_remove_tempo_point: proc "c" (api: ^Api, index: i64) -> Result,
+	song_meter: proc "c" (api: ^Api, index: i64, out: ^Time_Signature) -> Result,
+	song_set_meter: proc "c" (api: ^Api, beat: f64, num: i64, den: i64) -> Result,
+	song_remove_meter: proc "c" (api: ^Api, index: i64) -> Result,
+	song_marker: proc "c" (api: ^Api, index: i64, out: ^f64) -> Result,
+	song_marker_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	song_add_marker: proc "c" (api: ^Api, beat: f64, name: cstring, name_len: i64, out: ^i64) -> Result,
+	song_rename_marker: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result,
+	song_remove_marker: proc "c" (api: ^Api, index: i64) -> Result,
+	song_set_loop: proc "c" (api: ^Api, on: bool, start: f64, end: f64) -> Result,
+	song_jump: proc "c" (api: ^Api, beat: f64) -> Result,
+	song_arrangement_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	song_select_arrangement: proc "c" (api: ^Api, index: i64) -> Result,
+	song_add_arrangement: proc "c" (api: ^Api, copy_of: i64, out: ^i64) -> Result,
+	song_rename_arrangement: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result,
+	song_delete_arrangement: proc "c" (api: ^Api, index: i64) -> Result,
 	subscribe: proc "c" (api: ^Api, topic: Topic, index: i64, callback: Change_Proc, user: rawptr, out: ^Subscription) -> Result,
 	unsubscribe: proc "c" (api: ^Api, sub: Subscription) -> Result,
 	transport_state: proc "c" (api: ^Api, out: ^Transport_State) -> Result,
@@ -261,6 +318,25 @@ table_fill :: proc(api: ^Api) {
 	t.history_group_end = c_history_group_end
 	t.history_gesture_begin = c_history_gesture_begin
 	t.history_gesture_end = c_history_gesture_end
+	t.launcher_state = c_launcher_state
+	t.launcher_lane = c_launcher_lane
+	t.launcher_lane_name = c_launcher_lane_name
+	t.launcher_place = c_launcher_place
+	t.launcher_slot_at = c_launcher_slot_at
+	t.launcher_launch = c_launcher_launch
+	t.launcher_launch_row = c_launcher_launch_row
+	t.launcher_stop_lane = c_launcher_stop_lane
+	t.launcher_stop_all = c_launcher_stop_all
+	t.launcher_set_quantize = c_launcher_set_quantize
+	t.launcher_set_hold = c_launcher_set_hold
+	t.launcher_set_continue = c_launcher_set_continue
+	t.launcher_set_recording = c_launcher_set_recording
+	t.launcher_add_lane = c_launcher_add_lane
+	t.launcher_delete_lane = c_launcher_delete_lane
+	t.launcher_rename_lane = c_launcher_rename_lane
+	t.launcher_color_lane = c_launcher_color_lane
+	t.launcher_move_sequence = c_launcher_move_sequence
+	t.launcher_new_sequence = c_launcher_new_sequence
 	t.mixer_state = c_mixer_state
 	t.mixer_bus_state = c_mixer_bus_state
 	t.mixer_bus_name = c_mixer_bus_name
@@ -314,6 +390,11 @@ table_fill :: proc(api: ^Api) {
 	t.param_set = c_param_set
 	t.param_text = c_param_text
 	t.param_touch = c_param_touch
+	t.perform_state = c_perform_state
+	t.perform_set_play_mode = c_perform_set_play_mode
+	t.perform_set_bank = c_perform_set_bank
+	t.perform_select_pad = c_perform_select_pad
+	t.perform_set_keys = c_perform_set_keys
 	t.project_state = c_project_state
 	t.project_dir = c_project_dir
 	t.project_name = c_project_name
@@ -372,6 +453,39 @@ table_fill :: proc(api: ^Api) {
 	t.settings_get_text = c_settings_get_text
 	t.settings_set_number = c_settings_set_number
 	t.settings_set_text = c_settings_set_text
+	t.song_state = c_song_state
+	t.song_clip = c_song_clip
+	t.song_clip_label = c_song_clip_label
+	t.song_add = c_song_add
+	t.song_set_clip = c_song_set_clip
+	t.song_remove_clips = c_song_remove_clips
+	t.song_duplicate_clips = c_song_duplicate_clips
+	t.song_clear = c_song_clear
+	t.song_merge_sequence = c_song_merge_sequence
+	t.song_move_clips = c_song_move_clips
+	t.song_lane = c_song_lane
+	t.song_lane_name = c_song_lane_name
+	t.song_add_lane = c_song_add_lane
+	t.song_set_lane = c_song_set_lane
+	t.song_rename_lane = c_song_rename_lane
+	t.song_tempo_point = c_song_tempo_point
+	t.song_add_tempo_point = c_song_add_tempo_point
+	t.song_remove_tempo_point = c_song_remove_tempo_point
+	t.song_meter = c_song_meter
+	t.song_set_meter = c_song_set_meter
+	t.song_remove_meter = c_song_remove_meter
+	t.song_marker = c_song_marker
+	t.song_marker_name = c_song_marker_name
+	t.song_add_marker = c_song_add_marker
+	t.song_rename_marker = c_song_rename_marker
+	t.song_remove_marker = c_song_remove_marker
+	t.song_set_loop = c_song_set_loop
+	t.song_jump = c_song_jump
+	t.song_arrangement_name = c_song_arrangement_name
+	t.song_select_arrangement = c_song_select_arrangement
+	t.song_add_arrangement = c_song_add_arrangement
+	t.song_rename_arrangement = c_song_rename_arrangement
+	t.song_delete_arrangement = c_song_delete_arrangement
 	t.subscribe = c_subscribe
 	t.unsubscribe = c_unsubscribe
 	t.transport_state = c_transport_state
@@ -814,6 +928,139 @@ c_history_gesture_end :: proc "c" (api: ^Api) -> Result {
 }
 
 @(private)
+c_launcher_state :: proc "c" (api: ^Api, out: ^Launcher_State) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_lane :: proc "c" (api: ^Api, lane: i64, out: ^Lane_State) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_lane(api, lane)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_lane_name :: proc "c" (api: ^Api, lane: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := launcher_lane_name(api, lane)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_launcher_place :: proc "c" (api: ^Api, slot: i64, out: ^Place) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_place(api, slot)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_slot_at :: proc "c" (api: ^Api, lane: i64, row: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_slot_at(api, lane, row)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_launch :: proc "c" (api: ^Api, slot: i64, alone: bool) -> Result {
+	context = runtime.default_context()
+	return launcher_launch(api, slot, alone)
+}
+
+@(private)
+c_launcher_launch_row :: proc "c" (api: ^Api, row: i64) -> Result {
+	context = runtime.default_context()
+	return launcher_launch_row(api, row)
+}
+
+@(private)
+c_launcher_stop_lane :: proc "c" (api: ^Api, lane: i64) -> Result {
+	context = runtime.default_context()
+	return launcher_stop_lane(api, lane)
+}
+
+@(private)
+c_launcher_stop_all :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return launcher_stop_all(api)
+}
+
+@(private)
+c_launcher_set_quantize :: proc "c" (api: ^Api, q: Launch_Quantize) -> Result {
+	context = runtime.default_context()
+	return launcher_set_quantize(api, q)
+}
+
+@(private)
+c_launcher_set_hold :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return launcher_set_hold(api, on)
+}
+
+@(private)
+c_launcher_set_continue :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return launcher_set_continue(api, on)
+}
+
+@(private)
+c_launcher_set_recording :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return launcher_set_recording(api, on)
+}
+
+@(private)
+c_launcher_add_lane :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_add_lane(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_delete_lane :: proc "c" (api: ^Api, lane: i64) -> Result {
+	context = runtime.default_context()
+	return launcher_delete_lane(api, lane)
+}
+
+@(private)
+c_launcher_rename_lane :: proc "c" (api: ^Api, lane: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return launcher_rename_lane(api, lane, name_s)
+}
+
+@(private)
+c_launcher_color_lane :: proc "c" (api: ^Api, lane: i64, color: i64) -> Result {
+	context = runtime.default_context()
+	return launcher_color_lane(api, lane, color)
+}
+
+@(private)
+c_launcher_move_sequence :: proc "c" (api: ^Api, slot: i64, lane: i64, row: i64) -> Result {
+	context = runtime.default_context()
+	return launcher_move_sequence(api, slot, lane, row)
+}
+
+@(private)
+c_launcher_new_sequence :: proc "c" (api: ^Api, lane: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_new_sequence(api, lane)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
 c_mixer_state :: proc "c" (api: ^Api, out: ^Mixer_State) -> Result {
 	context = runtime.default_context()
 	v, r := mixer_state(api)
@@ -1198,6 +1445,38 @@ c_param_text :: proc "c" (api: ^Api, ref: Param_Ref, out: [^]u8, out_cap: i64, o
 c_param_touch :: proc "c" (api: ^Api, ref: Param_Ref, on: bool) -> Result {
 	context = runtime.default_context()
 	return param_touch(api, ref, on)
+}
+
+@(private)
+c_perform_state :: proc "c" (api: ^Api, out: ^Perform_State) -> Result {
+	context = runtime.default_context()
+	v, r := perform_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_perform_set_play_mode :: proc "c" (api: ^Api, mode: Play_Mode) -> Result {
+	context = runtime.default_context()
+	return perform_set_play_mode(api, mode)
+}
+
+@(private)
+c_perform_set_bank :: proc "c" (api: ^Api, bank: i64) -> Result {
+	context = runtime.default_context()
+	return perform_set_bank(api, bank)
+}
+
+@(private)
+c_perform_select_pad :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return perform_select_pad(api, pad)
+}
+
+@(private)
+c_perform_set_keys :: proc "c" (api: ^Api, scale: Scale, root: i64, octave: i64, chord: Chord) -> Result {
+	context = runtime.default_context()
+	return perform_set_keys(api, scale, root, octave, chord)
 }
 
 @(private)
@@ -1649,6 +1928,257 @@ c_settings_set_text :: proc "c" (api: ^Api, name: cstring, name_len: i64, value:
 	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
 	value_s := string(([^]u8)(value)[:max(value_len, 0)]) if value != nil else ""
 	return settings_set_text(api, name_s, value_s)
+}
+
+@(private)
+c_song_state :: proc "c" (api: ^Api, out: ^Song_State) -> Result {
+	context = runtime.default_context()
+	v, r := song_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_clip :: proc "c" (api: ^Api, index: i64, out: ^Song_Clip) -> Result {
+	context = runtime.default_context()
+	v, r := song_clip(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_clip_label :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := song_clip_label(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_song_add :: proc "c" (api: ^Api, slot: i64, lane: i64, at: f64, length: f64, repeats: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_add(api, slot, lane, at, length, repeats)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_set_clip :: proc "c" (api: ^Api, index: i64, c: Song_Clip) -> Result {
+	context = runtime.default_context()
+	return song_set_clip(api, index, c)
+}
+
+@(private)
+c_song_remove_clips :: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64) -> Result {
+	context = runtime.default_context()
+	indices_s := indices[:max(indices_len, 0)] if indices != nil else nil
+	return song_remove_clips(api, indices_s)
+}
+
+@(private)
+c_song_duplicate_clips :: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	indices_s := indices[:max(indices_len, 0)] if indices != nil else nil
+	v, r := song_duplicate_clips(api, indices_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_clear :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return song_clear(api)
+}
+
+@(private)
+c_song_merge_sequence :: proc "c" (api: ^Api, from: i64, to: i64) -> Result {
+	context = runtime.default_context()
+	return song_merge_sequence(api, from, to)
+}
+
+@(private)
+c_song_move_clips :: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64, beats: f64, lanes: i64) -> Result {
+	context = runtime.default_context()
+	indices_s := indices[:max(indices_len, 0)] if indices != nil else nil
+	return song_move_clips(api, indices_s, beats, lanes)
+}
+
+@(private)
+c_song_lane :: proc "c" (api: ^Api, lane: i64, out: ^Song_Lane) -> Result {
+	context = runtime.default_context()
+	v, r := song_lane(api, lane)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_lane_name :: proc "c" (api: ^Api, lane: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := song_lane_name(api, lane)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_song_add_lane :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_add_lane(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_set_lane :: proc "c" (api: ^Api, lane: i64, l: Song_Lane) -> Result {
+	context = runtime.default_context()
+	return song_set_lane(api, lane, l)
+}
+
+@(private)
+c_song_rename_lane :: proc "c" (api: ^Api, lane: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return song_rename_lane(api, lane, name_s)
+}
+
+@(private)
+c_song_tempo_point :: proc "c" (api: ^Api, index: i64, out: ^Tempo_Point) -> Result {
+	context = runtime.default_context()
+	v, r := song_tempo_point(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_add_tempo_point :: proc "c" (api: ^Api, t: Tempo_Point) -> Result {
+	context = runtime.default_context()
+	return song_add_tempo_point(api, t)
+}
+
+@(private)
+c_song_remove_tempo_point :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return song_remove_tempo_point(api, index)
+}
+
+@(private)
+c_song_meter :: proc "c" (api: ^Api, index: i64, out: ^Time_Signature) -> Result {
+	context = runtime.default_context()
+	v, r := song_meter(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_set_meter :: proc "c" (api: ^Api, beat: f64, num: i64, den: i64) -> Result {
+	context = runtime.default_context()
+	return song_set_meter(api, beat, num, den)
+}
+
+@(private)
+c_song_remove_meter :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return song_remove_meter(api, index)
+}
+
+@(private)
+c_song_marker :: proc "c" (api: ^Api, index: i64, out: ^f64) -> Result {
+	context = runtime.default_context()
+	v, r := song_marker(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_marker_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := song_marker_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_song_add_marker :: proc "c" (api: ^Api, beat: f64, name: cstring, name_len: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	v, r := song_add_marker(api, beat, name_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_rename_marker :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return song_rename_marker(api, index, name_s)
+}
+
+@(private)
+c_song_remove_marker :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return song_remove_marker(api, index)
+}
+
+@(private)
+c_song_set_loop :: proc "c" (api: ^Api, on: bool, start: f64, end: f64) -> Result {
+	context = runtime.default_context()
+	return song_set_loop(api, on, start, end)
+}
+
+@(private)
+c_song_jump :: proc "c" (api: ^Api, beat: f64) -> Result {
+	context = runtime.default_context()
+	return song_jump(api, beat)
+}
+
+@(private)
+c_song_arrangement_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := song_arrangement_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_song_select_arrangement :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return song_select_arrangement(api, index)
+}
+
+@(private)
+c_song_add_arrangement :: proc "c" (api: ^Api, copy_of: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_add_arrangement(api, copy_of)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_rename_arrangement :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return song_rename_arrangement(api, index, name_s)
+}
+
+@(private)
+c_song_delete_arrangement :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return song_delete_arrangement(api, index)
 }
 
 @(private)
