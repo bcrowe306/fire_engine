@@ -7,6 +7,7 @@ import "app:ui"
 import pa "api"
 import pm "model"
 import im "deps:imgui"
+import "fire:prof"
 
 // The transport toolbar's rows: how wide its controls were last frame
 // (to centre them). (Its tap tempo and Stop's timing are the core's:
@@ -309,6 +310,7 @@ draw_input_quantize :: proc(a: ^App) {
 // How the pads play: as pads, as a keyboard of the selected pad, or as it
 // at 16 velocities (also in the Perform panel).
 draw_play_modes :: proc(a: ^App) {
+	prof.zone("draw_play_modes")
 	// How the pads play (also in the Perform panel).
 	modes := [3]struct { mode: pm.Play_Mode, icon: string, tip: cstring }{
 		{.Pads, ui.ICON_LAYOUT_GRID, "Play the pads as pads (each its sound)"},

@@ -18,6 +18,7 @@ import "fire:synth"
 import "fire:stream"
 import tb "fire:timebase"
 import "fire:transport"
+import "fire:prof"
 
 // Keeps the engine's graph in step with the project: a sampler and a
 // 3-band EQ for every pad with a sample, and the router that turns pad
@@ -289,11 +290,14 @@ source_of :: proc(e: ^Engine, id: app.Id) -> ^stream.Source {
 // Brings every dirty pad up to date in the graph, in one commit if nodes
 // were added or removed.
 sync :: proc(e: ^Engine) {
+	prof.zone("model.sync")
 	g := e.host.graph
+	prof.begin("model.polls")
 	preview_poll(e)
 	warp_poll(e)
 	comp_poll(e)
 	tone_frame(e)
+	prof.end()
 	structural := false
 	for i in 0 ..< PADS {
 		if !e.dirty[i] do continue
@@ -442,7 +446,10 @@ sync :: proc(e: ^Engine) {
 	}
 	if sync_mixer(e) do structural = true
 	if sync_watch(e) do structural = true
-	if structural do graph.commit(g)
+	if structural {
+		prof.zone("graph.commit")
+		graph.commit(g)
+	}
 	e.resend = false
 	// A targeted node rebuilt: its automation goes to the new one.
 	if !e.stopped && targets_stale(e) do e.seq_dirty = true
@@ -452,6 +459,7 @@ sync :: proc(e: ^Engine) {
 // The tempo, the click and the current sequence.
 @(private)
 sync_sequencer :: proc(e: ^Engine) {
+	prof.zone("model.sync_sequencer")
 	p := e.project
 	// The tempo: what plays now sets it (a sequence may have its own), and
 	// the next sequence's goes in exactly where that one takes over.
@@ -548,6 +556,7 @@ sync_sequencer :: proc(e: ^Engine) {
 // song.
 @(private)
 sequencer_tick :: proc(e: ^Engine) {
+	prof.zone("model.sequencer_tick")
 	p := e.project
 	pos, playing, _ := transport.timeline_status(e.host.clock, e.timeline)
 	beat := f64(pos)
@@ -961,6 +970,7 @@ watch_read :: proc(e: ^Engine, out: []f32) -> bool {
 // the graph changed.
 @(private)
 sync_watch :: proc(e: ^Engine) -> bool {
+	prof.zone("model.sync_watch")
 	if e.tap == nil do return false
 	id: graph.Node_Id
 	if f := target_node(e, e.watch); f != nil && f.has do id = f.id

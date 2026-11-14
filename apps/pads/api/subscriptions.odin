@@ -67,6 +67,13 @@ subscribe :: proc(api: ^Api, topic: Topic, index: i64, callback: Change_Proc, us
 	id := Subscription(api.next_sub)
 	api.next_sub += 1
 	append(&api.subs, Sub{id, topic, index, callback, user, api.owner})
+	// A topic nobody watched isn't kept up: what it is now, so a change
+	// after this is told.
+	if topic not_in api.watched {
+		now := seen_now(api, {topic})
+		seen_take(&api.last, &now, topic)
+		api.watched += {topic}
+	}
 	return id, .Ok
 }
 
@@ -83,11 +90,13 @@ unsubscribe :: proc(api: ^Api, sub: Subscription) -> Result {
 // Tells the subscribers what changed since the last frame.
 @(private)
 deliver_changes :: proc(api: ^Api) {
-	now := seen_now(api)
-	if !api.primed {
-		api.last, api.primed = now, true
-		return
-	}
+	// Only the topics someone subscribes to are looked at (Pads itself
+	// subscribes to none: then nothing is).
+	watched: bit_set[Topic]
+	for s in api.subs do watched += {s.topic}
+	api.watched = watched
+	if watched == {} do return
+	now := seen_now(api, watched) // (each topic's last is what it was when it was first subscribed to, or at the last frame)
 	changed: bit_set[Topic]
 	if now.transport != api.last.transport do changed += {.Transport}
 	if now.history != api.last.history || now.undo_name != api.last.undo_name do changed += {.History}
@@ -97,6 +106,7 @@ deliver_changes :: proc(api: ^Api) {
 	if now.song != api.last.song do changed += {.Song}
 	if now.launcher != api.last.launcher do changed += {.Launcher}
 	if now.selection != api.last.selection do changed += {.Selection}
+	changed &= watched
 	api.last = now
 	if changed == {} do return
 	// (A callback may subscribe or unsubscribe: go by id over a copy.)
@@ -111,31 +121,53 @@ still_subscribed :: proc(api: ^Api, id: Subscription) -> bool {
 	return false
 }
 
+// Topic `t`'s part of `from` into `to`.
 @(private)
-seen_now :: proc(api: ^Api) -> Seen {
+seen_take :: proc(to, from: ^Seen, t: Topic) {
+	#partial switch t {
+	case .Transport: to.transport = from.transport
+	case .History:   to.history, to.undo_name = from.history, from.undo_name
+	case .Project:   to.project, to.dir = from.project, from.dir
+	case .Settings:  to.settings = from.settings
+	case .Mixer:     to.mixer = from.mixer
+	case .Song:      to.song = from.song
+	case .Launcher:  to.launcher = from.launcher
+	case .Selection: to.selection = from.selection
+	}
+}
+
+// What `topics` are now (the others left zero).
+@(private)
+seen_now :: proc(api: ^Api, topics: bit_set[Topic]) -> Seen {
 	s: Seen
-	s.transport, _ = transport_state(api)
-	s.transport.beat, s.transport.timeline_beat = 0, 0 // (the playhead is polled, not reported)
-	s.transport.bar, s.transport.beat_in_bar, s.transport.sixteenth = 0, 0, 0
-	s.history, _ = history_state(api)
-	name, _ := history_undo_name(api)
-	copy(s.undo_name[:], name)
+	if .Transport in topics {
+		s.transport, _ = transport_state(api)
+		s.transport.beat, s.transport.timeline_beat = 0, 0 // (the playhead is polled, not reported)
+		s.transport.bar, s.transport.beat_in_bar, s.transport.sixteenth = 0, 0, 0
+	}
+	if .History in topics {
+		s.history, _ = history_state(api)
+		name, _ := history_undo_name(api)
+		copy(s.undo_name[:], name)
+	}
 	// (Not `project_state`: whether it is dirty is History's, and the
 	// templates are a folder, not read every frame.)
-	s.project = {untitled = api.core.files.untitled, recent = i64(len(api.core.files.recent))}
-	copy(s.dir[:], api.core.m.project.dir)
-	s.settings = api.core.registry.version
-	s.mixer = mixer_digest(api)
+	if .Project in topics {
+		s.project = {untitled = api.core.files.untitled, recent = i64(len(api.core.files.recent))}
+		copy(s.dir[:], api.core.m.project.dir)
+	}
+	if .Settings in topics do s.settings = api.core.registry.version
+	if .Mixer in topics do s.mixer = mixer_digest(api)
 	c := api.core
 	p := &c.m.project
-	{
+	if .Song in topics {
 		h := fnv_init()
 		fnv(&h, mem.any_to_bytes(p.song))
 		fnv(&h, mem.any_to_bytes(p.arrangement))
 		fnv(&h, mem.any_to_bytes(c.m.engine.cue))
 		s.song = h
 	}
-	{
+	if .Launcher in topics {
 		h := fnv_init()
 		fnv(&h, mem.any_to_bytes(p.lanes))
 		x := struct{ at: pm.Switch_At, hold, cont, rec: bool }{p.switch_at, p.launch_hold, p.launch_continue, pm.launch_recording(&c.m)}
@@ -147,7 +179,7 @@ seen_now :: proc(api: ^Api) -> Seen {
 		}
 		s.launcher = h
 	}
-	{
+	if .Selection in topics {
 		h := fnv_init()
 		x := struct{ sel, bank: int, mode: pm.Play_Mode, keys: pm.Keys }{c.selected, c.bank, c.play_mode, c.keys}
 		fnv(&h, mem.any_to_bytes(x))

@@ -7,6 +7,7 @@ import "app:ui"
 import pa "api"
 import pm "model"
 import im "deps:imgui"
+import "fire:prof"
 
 // How a chord shows on a pad in keyboard mode.
 CHORD_SUFFIX := [pm.Chord]string{.Off = "", .Triad = "chord", .Seventh = "7th", .Power = "5"}
@@ -17,6 +18,7 @@ PAD_KEY_LABELS := [16]string{"Z", "X", "C", "V", "A", "S", "D", "F", "Q", "W", "
 // The pad grid: bank tabs above, the bank's 16 pads in a 4×4
 // grid that fills the panel.
 draw_pads :: proc(user: rawptr) {
+	prof.zone("draw_pads")
 	a := (^App)(user)
 	p := &a.m.project
 	f := a.platform.fonts

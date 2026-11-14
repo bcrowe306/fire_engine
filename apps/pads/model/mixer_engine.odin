@@ -9,6 +9,7 @@ import "fire:synth"
 import "fire:clap"
 import "fire:dsp"
 import "fire:graph"
+import "fire:prof"
 
 // What an effect slot needs in the graph: a node of this kind (a plug-in
 // from this file). Settings changes don't need a new node; these do.
@@ -331,6 +332,7 @@ dest_input :: proc(e: ^Engine, b: int) -> graph.Node_Id {
 // pad's strip, then the buses and main. True if the graph changed.
 @(private)
 sync_mixer :: proc(e: ^Engine) -> (structural: bool) {
+	prof.zone("model.sync_mixer")
 	if !e.mixer.built do return false
 	g := e.host.graph
 	p := e.project

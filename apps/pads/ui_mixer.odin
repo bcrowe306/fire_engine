@@ -10,6 +10,7 @@ import "fire:dsp"
 import pa "api"
 import pm "model"
 import im "deps:imgui"
+import "fire:prof"
 
 // A meter's display: what it shows, held peaks falling back, and the
 // loudest peak since it was last reset (its readout).
@@ -51,6 +52,7 @@ meter_update :: proc(v: ^[2]Meter_View, peak, rms: [2]f32, dt: f32, ms: Meter_Se
 
 // Reads every meter once a frame (whether the mixer shows or not).
 update_meters :: proc(a: ^App) {
+	prof.zone("update_meters")
 	e := &a.m.engine
 	dt := im.GetIO().DeltaTime
 	for i in 0 ..< pm.PADS {
@@ -323,6 +325,7 @@ TOGGLES_W :: 30
 // what it is on hover), and narrow or wide strips.
 @(private)
 draw_mixer_toggles :: proc(a: ^App) {
+	prof.zone("draw_mixer_toggles")
 	v := &a.settings.mixer_view
 	changed := false
 	n: f32 = 5
@@ -537,6 +540,7 @@ gap :: proc(h: f32 = 4) {
 // a flat, dim one. True when clicked.
 @(private)
 eq_thumb :: proc(eq: ^[3]f32, color: ui.Color, on := true, width: f32 = 0) -> bool {
+	prof.zone("eq_thumb")
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -622,6 +626,7 @@ row :: proc(a: ^App, id: cstring, label: string, color: ui.Color, highlight := f
 // the Effects tab. An empty slot shows "+" under the mouse.
 @(private)
 slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool) {
+	prof.zone("slot_row")
 	t := ui.theme()
 	name := pm.slot_name(s) if s.kind != .None else ""
 	if failed do name = fmt.tprintf("%s (missing)", name)
@@ -730,6 +735,7 @@ send_input :: proc(a: ^App, pad, bus: int, range: f32, horizontal: bool) {
 // at the top, orange when pre-fader) over its bus's letter or name.
 @(private)
 send_knobs :: proc(a: ^App, pad: int) {
+	prof.zone("send_knobs")
 	m := &a.m
 	t := ui.theme()
 	n := m.project.bus_count
@@ -810,6 +816,7 @@ ui_drag :: proc(value: ^f32, lo, hi, default, range_px: f32, horizontal := false
 // every selected strip, when it is one of them).
 @(private)
 output_row :: proc(a: ^App, pad: int) {
+	prof.zone("output_row")
 	m := &a.m
 	t := ui.theme()
 	cur := int(m.project.pads[pad].bus)
@@ -834,6 +841,7 @@ output_row :: proc(a: ^App, pad: int) {
 // level along the row); click to choose.
 @(private)
 audio_in_row :: proc(a: ^App, pad: int, h: f32 = -1) {
+	prof.zone("audio_in_row")
 	t := ui.theme()
 	text := audio_in_text(a, pad)
 	lo, hi, clicked := row(a, "##audio in", fmt.tprintf("%s %s", ui.ICON_MIC, text), t.text_dim, h = io_h() if h < 0 else h)
@@ -879,6 +887,7 @@ monitor_row :: proc(a: ^App, pad: int, h: f32) {
 // Track `pad`'s MIDI input (with its activity light); click to choose.
 @(private)
 midi_in_row :: proc(a: ^App, pad: int, h: f32 = -1) {
+	prof.zone("midi_in_row")
 	t := ui.theme()
 	text := midi_in_text(a, pad)
 	lo, hi, clicked := row(a, "##midi in", fmt.tprintf("%s %s", ui.ICON_KEYBOARD_MUSIC, text), t.text_dim, h = io_h() if h < 0 else h)
@@ -962,6 +971,7 @@ bus_output_row :: proc(a: ^App, b: int) {
 // to centre.
 @(private)
 pan_knob :: proc(a: ^App, pan: ^f32) -> ui.Edit {
+	prof.zone("pan_knob")
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -1018,6 +1028,7 @@ fader_db :: proc(frac: f32) -> f32 {
 // above the fader (click the peak to reset it).
 @(private)
 readouts :: proc(a: ^App, db: f32, view: ^[2]Meter_View) {
+	prof.zone("readouts")
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -1052,6 +1063,7 @@ readouts :: proc(a: ^App, db: f32, view: ^[2]Meter_View) {
 // from the top beside the meter.
 @(private)
 fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32, gr_db: f32 = -1) -> (e: ui.Edit) {
+	prof.zone("fader_meter")
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -1159,6 +1171,7 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32, gr_db: f
 // for an audio pad its record arm.
 @(private)
 mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: bool) {
+	prof.zone("mute_solo")
 	t := ui.theme()
 	parts := [3]^bool{mute, solo, arm}
 	names := [3]cstring{"M##m", "S##s", "R##r"}
@@ -1197,6 +1210,7 @@ mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: boo
 // The strip's name on its colour, at the bottom. True when clicked.
 @(private)
 name_plate :: proc(name: string, color: ui.Color) -> bool {
+	prof.zone("name_plate")
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -1264,6 +1278,7 @@ send_knobs_a_row :: proc() -> int { return 2 if narrow() else 3 }
 // pan, readouts, fader, mute and solo, and name.
 @(private)
 pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
+	prof.zone("pad_strip")
 	m := &a.m
 	pad := m.project.pads[i]
 	im.PushIDInt(i32(i))
@@ -1420,6 +1435,7 @@ pad_strip :: proc(a: ^App, i: int, h: f32, compact := false) {
 // Bus `b`'s strip (BUSES: main), `h` tall.
 @(private)
 bus_strip :: proc(a: ^App, b: int, h: f32) {
+	prof.zone("bus_strip")
 	m := &a.m
 	bus := pm.bus_of(m, b)^
 	im.PushIDInt(i32(1000 + b))
@@ -1567,6 +1583,7 @@ strip_reduction :: proc(a: ^App, kind: pm.Fx_Target_Kind, index, slots: int) -> 
 // straight up, wide spread sideways, out of phase flat).
 @(private)
 draw_main_meters :: proc(a: ^App, h: f32) {
+	prof.zone("draw_main_meters")
 	m := &a.m
 	t := ui.theme()
 	im.BeginGroup()

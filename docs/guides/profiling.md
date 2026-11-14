@@ -121,6 +121,18 @@ left, largest first: the synth's effects, its voices (oscillators,
 filters: SIMD unison already), the inserts, and many small nodes a pad
 (gain, pan, meter, EQ).
 
+In the UI (per frame, on an M-series core; ARM is four to five times
+that): the API's change subscriptions built a snapshot of every topic
+each frame, though Pads itself subscribes to none (47 µs; 89 µs on
+ARM); now only topics someone subscribes to are looked at, and a topic's
+first subscriber takes its snapshot (0.1 µs). What a frame gives the GPU
+is modest (`pads --profile` prints it: 6,600 to 23,000 vertices, 90 to
+315 draw commands), well within a Raspberry Pi's GPU. The rest is spread
+out: the Mixer's strips (about 10 µs each), the device editor (60 µs),
+the Sequence view (55 µs). For small machines **Settings > Appearance >
+Frame rate** caps the frames a second (60 or 30): the UI's cost goes with
+its frames.
+
 ## Smaller pieces
 
 - `tools/synth_bench`: Synth 1's voices against their budget, with one

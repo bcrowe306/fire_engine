@@ -1167,8 +1167,10 @@ it.
   preset**; the **zoom** (50–300%: everything drawn larger or smaller, as
   a browser zooms); the **control size** (Auto, Compact 28 pt,
   Comfortable 34 pt, Touch 44 pt: how tall buttons and fields are; Auto
-  is Comfortable in this layout); the pads' waveforms; whether the layout is
-  remembered, and **Reset layout**.
+  is Comfortable in this layout); the **frame rate** (Display: as many
+  frames a second as the display shows; or at most 60 or 30, which leaves
+  more of a small computer to the sound); the pads' waveforms; whether the
+  layout is remembered, and **Reset layout**.
 - **Audio**: the **driver** where there is a choice (WASAPI or ASIO on
   Windows, ALSA or JACK on Linux; one not built in or not installed is
   greyed with why; switching opens its default devices at once, kept with

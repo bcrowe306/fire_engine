@@ -18,6 +18,7 @@ settings_register :: proc(a: ^App) {
 	// Appearance.
 	reg(c, {name = "appearance.zoom", kind = .Number, group = .Appearance, store = .F32, ptr = &s.zoom, min = 0.5, max = 3, about = "the size of everything (1: as designed)"})
 	reg(c, {name = "appearance.pad_waveforms", kind = .Bool, group = .Appearance, store = .Bool, ptr = &s.pad_waves, about = "the pads show their sound's waveform"})
+	reg(c, {name = "appearance.frame_rate", kind = .Choice, group = .Appearance, store = .U8, ptr = &s.frame_rate, choices = reflect.enum_field_names(Frame_Rate), about = "the most frames a second the window draws (Display: as many as it shows)"})
 	reg(c, {name = "appearance.control_size", kind = .Choice, group = .Appearance, store = .U8, ptr = &s.control_size, choices = reflect.enum_field_names(Control_Size), about = "how large controls are"})
 	reg(c, {name = "appearance.remember_layout", kind = .Bool, group = .Appearance, store = .Bool, ptr = &s.layout, about = "the window's panels as they were left"})
 	reg(c, {name = "meters.scale", kind = .Choice, group = .Appearance, store = .U8, ptr = &s.meters.scale, choices = reflect.enum_field_names(Meter_Scale), about = "the level meters' scale (dBFS or a K-system's)"})

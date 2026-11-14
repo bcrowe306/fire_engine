@@ -8,6 +8,7 @@ import "app:ui"
 import pa "api"
 import pm "model"
 import im "deps:imgui"
+import "fire:prof"
 
 // The synth's presets, on the line of the device tabs: the one playing
 // (a menu of the built-in bank by kind and of yours), the ones before
@@ -55,6 +56,7 @@ load_entry :: proc(a: ^App, e: Preset_Entry) {
 
 // The preset bar, right-aligned at `right` on the line at `y`.
 draw_preset_bar :: proc(a: ^App, right, y: f32) {
+	prof.zone("draw_preset_bar")
 	m := &a.m
 	i := a.selected
 	entries := preset_entries(a)

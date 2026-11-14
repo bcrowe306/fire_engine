@@ -6,6 +6,7 @@ import "app:ui"
 import pa "api"
 import pm "model"
 import im "deps:imgui"
+import "fire:prof"
 
 // The sampler device's tabs (an audio pad has Sample and Global).
 Detail_Tab :: enum u8 {
@@ -149,6 +150,7 @@ track_accent :: proc(a: ^App, folded: bool) -> ui.Color {
 // selects it and unfolds on it; files and devices drop onto them as onto
 // the grid.
 draw_pad_bar :: proc(a: ^App) {
+	prof.zone("draw_pad_bar")
 	p := &a.m.project
 	t := ui.theme()
 	h := im.GetFrameHeight()
@@ -282,6 +284,7 @@ draw_detail :: proc(user: rawptr) {
 // the first empty slot. The tabs choose; `device_content` draws.
 @(private)
 device_tabs :: proc(a: ^App) {
+	prof.zone("device_tabs")
 	m := &a.m
 	st := &a.detail
 	tr := st.track
@@ -343,6 +346,7 @@ device_tabs :: proc(a: ^App) {
 // the + tab's effects to put in an empty slot.
 @(private)
 device_content :: proc(a: ^App) {
+	prof.zone("device_content")
 	m := &a.m
 	st := &a.detail
 	tr := st.track

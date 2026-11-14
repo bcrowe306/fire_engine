@@ -45,6 +45,12 @@ Platform_Settings :: struct {
 }
 
 // The window, the GPU device and the ImGui context. Fields are read-only.
+// What a frame gave the GPU: ImGui's vertices, indices, draw lists and
+// draw commands (a frame's draw cost on a real GPU goes with these).
+Draw_Stats :: struct {
+	vertices, indices, lists, commands: int,
+}
+
 Platform :: struct {
 	settings:     Platform_Settings,
 	confirm_quit: bool, // the window's close and the system's quit only set `quit_requested` (the app decides)
@@ -52,6 +58,9 @@ Platform :: struct {
 	window:       ^sdl.Window,
 	device:       ^sdl.GPUDevice,
 	claimed:      bool, // the window has a swapchain
+	drawn:        Draw_Stats, // what the last frame gave the GPU
+	max_fps:      f64,       // frames a second at most (0: as many as the display shows); `set_frame_rate_cap`
+	frame_at:     time.Tick, // when the last frame began
 	target:       ^sdl.GPUTexture, // what every frame is drawn into
 	target_w:     u32, // its size in pixels
 	target_h:     u32,
@@ -169,6 +178,13 @@ platform_destroy :: proc(p: ^Platform) {
 // Polls input (and the driver's, when one runs), and starts an ImGui
 // frame. Returns false once the app should quit.
 frame_begin :: proc(p: ^Platform) -> bool {
+	// The frame-rate cap: the time left of this frame's share waited out
+	// (not headless or driven: tests count frames, not time).
+	if p.max_fps > 0 && !p.settings.headless && p.driver == nil && p.frame_at != {} {
+		share := time.Duration(1e9 / p.max_fps)
+		if left := share - time.tick_since(p.frame_at); left > 0 do time.accurate_sleep(left)
+	}
+	p.frame_at = time.tick_now()
 	// SDL delivers typed text only while text input is on. ImGui's backend
 	// turns it on for a clicked field but not for one focused from code (a
 	// palette's search box): keep it in step with what ImGui wants.
@@ -252,6 +268,11 @@ frame_end :: proc(p: ^Platform) {
 	prof.begin("im.Render")
 	im.Render()
 	prof.end()
+	if dd := im.GetDrawData(); dd != nil {
+		p.drawn = {vertices = int(dd.TotalVtxCount), indices = int(dd.TotalIdxCount), lists = int(dd.CmdLists.Size)}
+		p.drawn.commands = 0
+		for k in 0 ..< int(dd.CmdLists.Size) do p.drawn.commands += int(dd.CmdLists.Data[k].CmdBuffer.Size)
+	}
 	shot := p.driver != nil && p.driver.shot_path != ""
 	if p.settings.headless && !p.settings.draw_unseen && !shot {
 		// Textures ImGui wants made or updated (the font atlas) wait in its
@@ -365,6 +386,12 @@ set_accent :: proc(p: ^Platform, c: Color) {
 // drawn that much larger, fixed sizes included, as a browser zooms.
 set_zoom :: proc(p: ^Platform, zoom: f32) {
 	p.zoom = clamp(zoom, 0.5, 3)
+}
+
+// Draws at most `fps` frames a second (0: as many as the display shows,
+// the default). For small machines: the UI's cost goes with its frames.
+set_frame_rate_cap :: proc(p: ^Platform, fps: f64) {
+	p.max_fps = max(fps, 0)
 }
 
 // Asks the app to quit after this frame.

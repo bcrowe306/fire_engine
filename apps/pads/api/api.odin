@@ -50,7 +50,7 @@ Api :: struct {
 	lock:      sync.Mutex, // guards `posted`
 	posted:    [dynamic]Posted,
 	last:      Seen, // what subscribers were last told about
-	primed:    bool,
+	watched:   bit_set[Topic], // the topics someone subscribes to (only they are looked at)
 	table:     Table_V1, // the C function table (gen_c.odin)
 	manager:   ^surface.Manager, // the control surfaces' (surface.odin), once one loads
 	surfaces:  [dynamic]Loaded_Surface,

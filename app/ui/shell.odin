@@ -467,9 +467,13 @@ panel_focus :: proc(w: ^Workspace, id: cstring) -> bool {
 // Draws the workspace: `menu` (may be nil) in the main menu bar, the
 // dockspace, every open panel, the palette and the toasts.
 workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr) = nil, menu_user: rawptr = nil) {
-	if menu != nil && im.BeginMainMenuBar() {
-		menu(menu_user)
-		im.EndMainMenuBar()
+	if menu != nil {
+		prof.begin("menu bar")
+		if im.BeginMainMenuBar() {
+			menu(menu_user)
+			im.EndMainMenuBar()
+		}
+		prof.end()
 	}
 	if w.toolbar != nil {
 		flags := im.WindowFlags{.NoScrollbar, .NoSavedSettings, .NoTitleBar, .NoResize, .NoMove, .NoScrollWithMouse, .NoDocking}
@@ -510,7 +514,9 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 			if im.IsItemActive() do w.left_w = clamp(w.left_w + im.GetIO().MouseDelta.x, LEFT_MIN, max(vp.Size.x * LEFT_MAX, LEFT_MIN))
 			im.SetCursorScreenPos(back)
 			im.DrawList_AddLine(im.GetWindowDrawList(), {at.x + size.x - 1, at.y}, {at.x + size.x - 1, at.y + size.y}, col(current.accent if hot else current.border), 2 if hot else 1)
+			prof.begin("left area")
 			w.left(w.left_user)
+			prof.end()
 		}
 		im.End()
 	}
@@ -538,7 +544,9 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 				im.SetCursorScreenPos(back)
 			}
 			im.DrawList_AddLine(dl, at, {at.x + size.x, at.y}, col(current.accent if hot else current.border), 2 if hot else 1)
+			prof.begin("bottom area")
 			w.bottom(w.bottom_user, w.bottom_folded)
+			prof.end()
 		}
 		im.End()
 	}
@@ -554,7 +562,9 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 	im.Begin("##dockhost", nil, fixed + {.NoBackground, .NoNavFocus})
 	im.PopStyleVar(3)
 	w.dock_id = im.GetID("##workspace_dock")
+	prof.begin("dockspace")
 	im.DockSpace(w.dock_id, {0, 0}, {.PassthruCentralNode})
+	prof.end()
 	im.End()
 	if !w.built {
 		w.built = true
@@ -584,8 +594,10 @@ workspace_draw :: proc(w: ^Workspace, actions: ^Actions, menu: proc(user: rawptr
 		}
 		im.End()
 	}
+	prof.begin("palette, toasts")
 	if actions != nil do palette_draw(&w.palette, actions)
-	toasts_draw(&w.toasts, w.center_pos, w.center_size) // (over the panels, clear of the bottom area)
+	toasts_draw(&w.toasts, w.center_pos, w.center_size)
+	prof.end() // (over the panels, clear of the bottom area)
 }
 
 // ImGuiDockNodeFlags_NoTabBar, an internal flag (bit 12): a node with no tab bar.

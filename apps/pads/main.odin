@@ -758,16 +758,21 @@ run_profile :: proc(a: ^App, frames: int) {
 	p := &a.platform
 	times := make([]f64, frames)
 	defer delete(times)
+	drawn := make([]ui.Draw_Stats, frames)
+	defer delete(drawn)
 	for i in 0 ..< frames {
 		t0 := time.tick_now()
 		if !ui.frame_begin(p) do break
 		frame(a)
 		ui.frame_end(p)
 		times[i] = time.duration_milliseconds(time.tick_since(t0))
+		drawn[i] = p.drawn
 	}
+	slice.sort_by(drawn[frames / 10:], proc(x, y: ui.Draw_Stats) -> bool { return x.vertices < y.vertices })
+	d := drawn[frames / 10 + (frames - frames / 10) / 2]
 	rest := times[frames / 10:]
 	slice.sort(rest)
-	fmt.printfln("%d frames: median %.3f ms, p99 %.3f ms", len(rest), rest[len(rest) / 2], rest[len(rest) * 99 / 100])
+	fmt.printfln("%d frames: median %.3f ms, p99 %.3f ms; drawn (median): %d vertices, %d indices, %d draw lists, %d draw commands", len(rest), rest[len(rest) / 2], rest[len(rest) * 99 / 100], d.vertices, d.indices, d.lists, d.commands)
 }
 
 // A pad pressed (on the grid in Pads mode, or by MIDI): recorded into

@@ -34,6 +34,7 @@ App_Settings :: struct {
 	zoom:      f32,
 	pad_waves: bool,
 	control_size: Control_Size, // how large controls are
+	frame_rate: Frame_Rate,     // the most frames a second the window draws
 	layout:    bool, // remember the window layout (layout2.ini beside settings.ini)
 	meters:    Meter_Settings, // how the level meters read
 	mixer_view: Mixer_View, // the Mixer's strips: their sections shown, narrow or wide
@@ -187,6 +188,7 @@ settings_load :: proc(a: ^App) {
 	s.zoom = f32(app.ini_f64(ini_, "appearance", "zoom", 1))
 	s.pad_waves = app.ini_bool(ini_, "appearance", "pad_waveforms", true)
 	s.control_size = control_size_parse(app.ini_get(ini_, "appearance", "control_size") or_else "auto")
+	s.frame_rate = frame_rate_parse(app.ini_get(ini_, "appearance", "frame_rate") or_else "display")
 	s.layout = app.ini_bool(ini_, "appearance", "remember_layout", true)
 	s.meters = {
 		scale    = meter_scale_parse(g(ini_, "meters", "scale", "dbfs")),
@@ -280,6 +282,7 @@ settings_save :: proc(a: ^App) {
 	app.ini_set_f64(ini, "appearance", "zoom", f64(s.zoom))
 	app.ini_set_bool(ini, "appearance", "pad_waveforms", s.pad_waves)
 	app.ini_set(ini, "appearance", "control_size", CONTROL_SIZE_NAMES[s.control_size])
+	app.ini_set(ini, "appearance", "frame_rate", FRAME_RATE_NAMES[s.frame_rate])
 	app.ini_set_bool(ini, "appearance", "remember_layout", s.layout)
 	app.ini_set(ini, "meters", "scale", METER_SCALE_KEYS[s.meters.scale])
 	app.ini_set_bool(ini, "meters", "rms_emphasis", s.meters.rms)
@@ -469,6 +472,33 @@ Control_Size :: enum u8 {
 	Touch,
 }
 
+// The most frames a second the window draws: the display's rate, or
+// fewer (for small machines: the UI's cost goes with its frames).
+Frame_Rate :: enum u8 {
+	Display, // as many as the display shows (60, 120...)
+	Fps_60,
+	Fps_30,
+}
+
+// How each frame rate is written in settings.ini.
+FRAME_RATE_NAMES := [Frame_Rate]string{.Display = "display", .Fps_60 = "60", .Fps_30 = "30"}
+
+// A frame rate from its name in settings.ini (Display if unknown).
+frame_rate_parse :: proc(s: string) -> Frame_Rate {
+	for n, k in FRAME_RATE_NAMES do if n == s do return k
+	return .Display
+}
+
+// Frames a second at most for `f` (0: no cap).
+frame_rate_fps :: proc(f: Frame_Rate) -> f64 {
+	switch f {
+	case .Fps_60: return 60
+	case .Fps_30: return 30
+	case .Display:
+	}
+	return 0
+}
+
 // How each control size is written in settings.ini.
 CONTROL_SIZE_NAMES := [Control_Size]string{.Auto = "auto", .Compact = "compact", .Comfortable = "comfortable", .Touch = "touch"}
 
@@ -494,6 +524,7 @@ appearance_apply :: proc(a: ^App) {
 	s := &a.settings
 	ui.set_theme(&a.platform, s.theme)
 	ui.set_zoom(&a.platform, s.zoom)
+	ui.set_frame_rate_cap(&a.platform, frame_rate_fps(s.frame_rate))
 	ui.set_density(&a.platform, density_for(a.control_size if a.control_size != .Auto else s.control_size))
 	a.dark = ui.theme_is_dark(s.theme)
 	a.pad_waves = s.pad_waves
@@ -862,6 +893,15 @@ page_appearance :: proc(a: ^App) -> (changed: bool) {
 	}
 	ui.name("control size")
 	hint("Auto: as the layout suits (Comfortable in this one, Touch on a touch screen).")
+	label("Frame rate")
+	rate := int(s.frame_rate)
+	if ui.segmented("frame rate", {"Display", "60", "30"}, &rate) {
+		s.frame_rate = Frame_Rate(rate)
+		appearance_apply(a)
+		changed = true
+	}
+	ui.name("frame rate")
+	hint("The most times a second the window is drawn. Fewer leaves more of a small computer to the sound; meters and the playhead move less smoothly.")
 	label("Pad waveforms")
 	if ui.toggle("Show each pad's sound on it", &s.pad_waves) {
 		appearance_apply(a)
