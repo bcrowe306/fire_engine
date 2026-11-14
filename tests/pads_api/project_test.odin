@@ -4,6 +4,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:testing"
+import "core:time"
 
 import app "app:core"
 import pa "../../apps/pads/api"
@@ -117,6 +118,9 @@ a_backup_is_recovered_or_thrown_away :: proc(t: ^testing.T) {
 	// Changes autosaved (as Pads does every few minutes), then lost (as a
 	// crash loses them): the backup brings them back, not yet saved.
 	pa.transport_set_tempo(api, 140)
+	// (A backup counts when its file is newer than the project's; Windows
+	// moves file times on in steps of up to ~16 ms. Pads waits minutes.)
+	time.sleep(50 * time.Millisecond)
 	pc.autosave(&r.core, 1, false)
 	pa.history_undo(api)
 	testing.expect_value(t, r.core.m.project.bpm, 120)

@@ -284,7 +284,7 @@ user_config_folder :: proc(app: string, allocator := context.allocator) -> strin
 	} else {
 		home := os.get_env("HOME", context.temp_allocator)
 		xdg := os.get_env("XDG_CONFIG_HOME", context.temp_allocator)
-		if xdg == "" do xdg, _ = filepath.join({os.get_env("HOME", context.temp_allocator), ".config"}, context.temp_allocator)
+		if xdg == "" do xdg, _ = filepath.join({home, ".config"}, context.temp_allocator)
 		p, _ = filepath.join({xdg, strings.to_lower(app, context.temp_allocator)}, context.temp_allocator)
 	}
 	return strings.clone(p, allocator)

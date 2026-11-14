@@ -16,7 +16,7 @@ platform_trash :: proc(path: string) -> bool {
 	w[n], w[n + 1] = 0, 0
 	op := win.SHFILEOPSTRUCTW {
 		wFunc  = win.FO_DELETE,
-		pFrom  = raw_data(w),
+		pFrom  = cstring16(raw_data(w)),
 		fFlags = win.FILEOP_FLAGS(win.FOF_ALLOWUNDO | win.FOF_NO_UI),
 	}
 	return win.SHFileOperationW(&op) == 0 && !bool(op.fAnyOperationsAborted)

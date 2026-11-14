@@ -3,6 +3,7 @@ package test_pads_api
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
+import "core:time"
 
 import pa "../../apps/pads/api"
 import pc "../../apps/pads/core"
@@ -119,10 +120,14 @@ the_browser_walks_folders_and_keeps_favourites :: proc(t: ^testing.T) {
 	// A search (on its own thread), the preview's settings.
 	pa.browser_go(api, lib)
 	testing.expect_value(t, pa.browser_search(api, "boom"), pa.Result.Ok)
-	for k2 := 0; k2 < 500; k2 += 1 {
+	// (Up to 10 s: on Windows the thread and the folder reads can take a
+	// while, far longer than a few hundred frames that don't wait.)
+	start := time.tick_now()
+	for time.tick_since(start) < 10 * time.Second {
 		s, _ = pa.browser_state(api)
 		if !s.searching do break
 		frame(r)
+		time.sleep(time.Millisecond)
 	}
 	s, _ = pa.browser_state(api)
 	testing.expect_value(t, s.results, 1)
