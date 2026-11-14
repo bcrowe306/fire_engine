@@ -663,6 +663,35 @@ files_init :: proc(a: ^App) {
 			a := (^App)(user)
 			for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
 		},
+		ui = {
+			show = proc(user: rawptr, name: string) -> bool { return show_named((^App)(user), name) },
+			set_dark = proc(user: rawptr, dark: bool) { set_dark((^App)(user), dark) },
+			dark = proc(user: rawptr) -> bool { return (^App)(user).dark },
+			toast = proc(user: rawptr, kind: int, text: string) {
+				kinds := [4]ui.Toast_Kind{.Info, .Success, .Warning, .Error}
+				ui.toast(&(^App)(user).ws.toasts, kinds[clamp(kind, 0, 3)], text)
+			},
+			messages = proc(user: rawptr) -> []string {
+				t, _ := ui.toast_texts(&(^App)(user).ws.toasts)
+				return t
+			},
+			select_pads = proc(user: rawptr, pads: []int) {
+				a := (^App)(user)
+				a.pad_sel = {}
+				for p in pads do a.pad_sel += {p}
+				a.selected, a.pad_anchor = pads[0], pads[0]
+				if a.play_mode != .Keyboard do a.bank = pads[0] / pm.PADS_PER_BANK
+				show_pad_chain(a, a.selected)
+			},
+			selected_pads = proc(user: rawptr) -> []int {
+				a := (^App)(user)
+				sel := selected_pads(a)
+				out := make([dynamic]int, context.temp_allocator)
+				append(&out, a.selected)
+				for p in 0 ..< pm.PADS do if p in sel && p != a.selected do append(&out, p)
+				return out[:]
+			},
+		},
 		param_moved = proc(user: rawptr, t: pm.Auto_Target, value: f32) {
 			a := (^App)(user)
 			scale := a.knob_scale

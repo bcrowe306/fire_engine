@@ -158,10 +158,7 @@ draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []
 			im.BeginGroup()
 			im.Dummy({1, im.GetTextLineHeight() + 4}) // level with the knobs' dials
 			on := v >= 0.5
-			if ui.toggle(fmt.ctprintf("%s##p%d", p.name, p.id), &on) {
-				pm.set_target_param(m, t, p.id, 1 if on else 0)
-				app.seal(&m.history)
-			}
+			if ui.toggle(fmt.ctprintf("%s##p%d", p.name, p.id), &on) do control_effect_param(a, t, i64(p.id), 1 if on else 0, true, true)
 			im.EndGroup()
 			continue
 		}
@@ -174,8 +171,7 @@ draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []
 			idx := between if dragging else f32(nearest_note(v))
 			e := ui.knob("Note##pnote", &idx, 0, f32(len(NOTE_VALUES) - 1), f32(nearest_note(0.75)), "%.0f", shown_value = NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].name)
 			dragging, between = e.active && !e.ended, idx
-			if e.changed do pm.set_target_param(m, t, p.id, f32(NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].beats))
-			if e.ended do app.seal(&m.history)
+			control_effect_param(a, t, i64(p.id), f64(NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].beats), e.changed, e.ended)
 			continue
 		}
 		format := param_format(p)
@@ -183,11 +179,8 @@ draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []
 		knob_target(a, fx_auto_target(t, p.id))
 		e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale)
 		knob_target(a, {})
-		if e.changed {
-			if .Stepped in p.flags do v = f32(int(v + 0.5))
-			pm.set_target_param(m, t, p.id, v)
-		}
-		if e.ended do app.seal(&m.history)
+		if .Stepped in p.flags do v = f32(int(v + 0.5))
+		control_effect_param(a, t, i64(p.id), clamp(f64(v), p.min, p.max), e.changed, e.ended)
 		if t.kind == .Instrument do lane_menu(a, t.index, p)
 	}
 	if len(params) == 0 do im.TextDisabled("No settings.")

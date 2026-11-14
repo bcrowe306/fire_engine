@@ -20,7 +20,7 @@ send 0 1 -12              # the kick also into bus A (and its reverb), post-fade
 send 2 2 -6 pre           # the loop into bus B, pre-fader
 expect undo Pre-fader Send
 insert 0 0 lowpass
-fx_param 2 600            # its cutoff
+fx_param 863 74            # its cutoff (the FX Filter's, a key: about 600 Hz)
 expect fx filter
 busfx 0 0 reverb
 busfx 4 0 compressor

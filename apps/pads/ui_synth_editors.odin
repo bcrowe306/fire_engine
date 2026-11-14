@@ -5,6 +5,7 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import fc "fire:core"
@@ -99,7 +100,8 @@ draw_synth_filter :: proc(a: ^App) {
 			im.SameLine(0, 8)
 			serial := pm.synth_value(m, i, f(n, .From_Filter)) > 0.5
 			if ui.icon_button(ui.ICON_LINK, "In series: filter 1's output into filter 2 (off: side by side)", on = serial) {
-				pm.set_synth_value(m, i, f(n, .From_Filter), 0 if serial else 1, "Filters in Series")
+				pa.history_name_next(&a.api, "Filters in Series")
+				pa.param_set(&a.api, {track = .Pad, index = i64(i), device = .Sound, param = i64(f(n, .From_Filter))}, 0 if serial else 1)
 				app.seal(&m.history)
 			}
 			ui.name("filters in series")

@@ -1,5 +1,7 @@
 package pads_api
 
+import "core:strings"
+
 import app "app:core"
 
 // The undo history now: steps that can be undone and redone, and whether
@@ -102,8 +104,28 @@ history_gesture_end :: proc(api: ^Api) -> Result {
 	return .Ok
 }
 
-// After an edit: the next one starts a new step, unless a gesture is open.
+// Names the step the next edit makes (or merges into): the UI's own
+// names for its controls' steps ("Shape Envelope"). Up to 63 bytes.
+history_name_next :: proc(api: ^Api, name: string) -> Result {
+	if name == "" || len(name) > 63 do return fail(api, .Invalid_Argument, "a step's name is 1..63 bytes")
+	api.next_name_len = copy(api.next_name[:], name)
+	api.next_name_at = len(api.core.m.history.undo) // (only a step made after this is named)
+	return .Ok
+}
+
+// After an edit: its step named (history_name_next); the next one starts
+// a new step, unless a gesture is open.
 @(private)
 edited :: proc(api: ^Api) {
-	if !api.gesture do app.seal(&api.core.m.history)
+	h := &api.core.m.history
+	if api.next_name_len > 0 {
+		if len(h.undo) > api.next_name_at && h.group == nil {
+			top := &h.undo[len(h.undo) - 1]
+			delete(top.name, h.allocator)
+			top.name = strings.clone(string(api.next_name[:api.next_name_len]), h.allocator)
+			app.changed_history(h)
+		}
+		api.next_name_len = 0
+	}
+	if !api.gesture do app.seal(h)
 }

@@ -51,6 +51,19 @@ Hooks :: struct {
 	param_touched: proc(user: rawptr, t: pm.Auto_Target, on: bool), // a parameter touched or let go (automation recording)
 	param_moved:   proc(user: rawptr, t: pm.Auto_Target, value: f32), // the touched parameter moved (plain units)
 	release_held:  proc(user: rawptr), // the pads held on the grid let go (the play mode changes)
+	ui:            Ui_Hooks, // the window's, when there is one (none: the API's ui_* are Unsupported)
+}
+
+// What the app's window does for the API's `ui` module: views, the look,
+// messages, the pads selected together. A headless core leaves them nil.
+Ui_Hooks :: struct {
+	show:        proc(user: rawptr, name: string) -> bool, // a view, panel or device page by name ("mixer", "sample", "eq"...)
+	set_dark:    proc(user: rawptr, dark: bool),
+	dark:        proc(user: rawptr) -> bool,
+	toast:       proc(user: rawptr, kind: int, text: string), // 0 info, 1 success, 2 warning, 3 error
+	messages:    proc(user: rawptr) -> []string, // the messages showing (temporary)
+	select_pads: proc(user: rawptr, pads: []int), // the pads selected together (the first the selected one)
+	selected_pads: proc(user: rawptr) -> []int,   // (temporary)
 }
 
 // Frees the files' state.

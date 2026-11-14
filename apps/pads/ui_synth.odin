@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import fc "fire:core"
@@ -146,15 +147,19 @@ host_value :: proc(a: ^App, id: fc.Param_Id) -> f32 {
 	return pm.slot_value(s, id, def) if ok else def
 }
 
-// Sets parameter `id` where the controls are pointed (`name`: its undo step's).
+// Sets parameter `id` where the controls are pointed (`name`: its undo
+// step's), in a gesture: the caller ends it (`pa.history_gesture_end`)
+// when the control is let go.
 host_set :: proc(a: ^App, id: fc.Param_Id, v: f32, name: string) {
-	if !a.param_host.slot {
-		pm.set_synth_value(&a.m, a.selected, id, v, name)
-		return
-	}
 	spec := synth.param_spec(id)
 	x := clamp(v, spec.min, spec.max) if spec != nil else v
-	pm.set_target_param(&a.m, a.param_host.t, id, x)
+	pa.history_gesture_begin(&a.api)
+	pa.history_name_next(&a.api, name)
+	if !a.param_host.slot {
+		pa.param_set(&a.api, {track = .Pad, index = i64(a.selected), device = .Sound, param = i64(id)}, f64(x))
+		return
+	}
+	pa.effect_set_param(&a.api, slot_ref(a.param_host.t), i64(id), f64(x))
 }
 
 // A knob for synth parameter `id` of the selected pad, labelled `label`:
@@ -173,8 +178,7 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 		knob_target(a, fx_auto_target(a.param_host.t, id)) // (Automate in its menu, its automation's ring)
 		e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, size = SYNTH_KNOB)
 		knob_target(a, {})
-		if e.changed do host_set(a, id, v, spec.name)
-		if e.ended do app.seal(&m.history)
+		control_effect_param(a, a.param_host.t, i64(id), f64(clamp(v, spec.min, spec.max)), e.changed, e.ended)
 		return
 	}
 	routes := pm.synth_routes_to(m, i, id)
@@ -182,8 +186,7 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 	e := ui.knob(label, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown, step = step, overlap = len(routes) > 0, size = SYNTH_KNOB)
 	knob_target(a, {})
 	knob_id := im.GetItemID()
-	if e.changed do pm.set_synth_value(m, i, id, v, spec.name)
-	if e.ended do app.seal(&m.history)
+	control_param(a, {track = .Pad, index = i64(i), device = .Sound, param = i64(id)}, f64(v), spec.name, e.changed, e.ended)
 	// A source dropped on it: a route (a quarter of the range, to start).
 	if im.BeginDragDropTarget() {
 		if pl := im.AcceptDragDropPayload(SYNTH_MOD_PAYLOAD); pl != nil {
@@ -288,13 +291,12 @@ wrap_in :: proc(col, w, need, gap: f32) {
 // A choice (an indexed parameter) as a combo of `names` (shown after
 // `prefix`).
 synth_choice :: proc(a: ^App, id: fc.Param_Id, names: []string, width: f32, label: cstring, prefix := "") {
-	m := &a.m
 	v := int(math.round(host_value(a, id)))
 	im.SetNextItemWidth(width)
 	if ui.combo(label, fmt.ctprintf("%s%s", prefix, names[clamp(v, 0, len(names) - 1)])) {
 		for n, k in names do if im.Selectable(fmt.ctprintf("%s###c%d", n, k), k == v) {
 			host_set(a, id, f32(k), names[k])
-			app.seal(&m.history)
+			pa.history_gesture_end(&a.api)
 		}
 		im.EndCombo()
 	}
@@ -303,22 +305,20 @@ synth_choice :: proc(a: ^App, id: fc.Param_Id, names: []string, width: f32, labe
 // A parameter as a compact number to drag, shown as `format` of its
 // value times `scale`, `width` wide.
 synth_drag :: proc(a: ^App, id: fc.Param_Id, format: cstring, scale: f64, width: f32) {
-	m := &a.m
 	spec := synth.param_spec(id)
 	if spec == nil do return
 	v := f64(host_value(a, id)) * scale
 	if e := ui.number_drag(fmt.ctprintf("%s", spec.name), &v, f64(spec.min) * scale, f64(spec.max) * scale, (f64(spec.max) - f64(spec.min)) * scale / 200, 0.1, format, width); e.changed {
 		host_set(a, id, f32(v / scale), spec.name)
-	} else if e.ended do app.seal(&m.history)
+	} else if e.ended do pa.history_gesture_end(&a.api)
 }
 
 // An on/off parameter as a toggle.
 synth_toggle :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
-	m := &a.m
 	on := host_value(a, id) > 0.5
 	if ui.toggle(label, &on) {
 		host_set(a, id, 1 if on else 0, string(label))
-		app.seal(&m.history)
+		pa.history_gesture_end(&a.api)
 	}
 }
 
@@ -760,8 +760,7 @@ draw_synth_global :: proc(a: ^App) {
 	g :: synth.global_param
 	mode := int(pm.synth_value(m, i, g(.Mono)))
 	if ui.segmented("voice_mode", {"Poly", "Mono", "Legato"}, &mode) {
-		pm.set_synth_value(m, i, g(.Mono), f32(mode), "Voice Mode")
-		app.seal(&m.history)
+		set_synth_param(a, i, i64(g(.Mono)), f64(mode), "Voice Mode")
 	}
 	im.SameLine(0, 14)
 	os := int(pm.synth_value(m, i, g(.Oversampling)))
@@ -769,8 +768,7 @@ draw_synth_global :: proc(a: ^App) {
 	im.TextDisabled("Oversampling")
 	im.SameLine()
 	if ui.segmented("oversampling", {"1×", "2×", "4×", "8×"}, &os) {
-		pm.set_synth_value(m, i, g(.Oversampling), f32(os), "Oversampling")
-		app.seal(&m.history)
+		set_synth_param(a, i, i64(g(.Oversampling)), f64(os), "Oversampling")
 	}
 	im.SameLine(0, 14)
 	synth_choice(a, g(.Priority), PRIORITY_NAMES, 130, "##prio")

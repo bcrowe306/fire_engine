@@ -3,8 +3,8 @@ package pads
 import "core:fmt"
 import "core:math"
 
-import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import fc "fire:core"
@@ -80,8 +80,7 @@ draw_synth_effects :: proc(a: ^App) {
 		im.SetCursorScreenPos({ctop.x, ctop.y + f32(k) * (row_h + 3)})
 		on := pm.synth_value(m, i, effect_on(e)) > 0.5
 		if ui.icon_button(ui.ICON_POWER, fmt.ctprintf("%s on / off", name), on = on) {
-			pm.set_synth_value(m, i, effect_on(e), 0 if on else 1, name)
-			app.seal(&m.history)
+			set_synth_param(a, i, i64(effect_on(e)), 0 if on else 1, name)
 		}
 		ui.name(fmt.tprintf("effect %s on", name))
 		im.SameLine(0, 6)
@@ -266,7 +265,7 @@ draw_synth_effect :: proc(a: ^App, e: fx.Effect, x0, w, bottom: f32) {
 			host_set(a, synth.effect_param(.Filter, synth.Fx_Filter_Field.Cutoff), 69 + 12 * math.log2(hz / 440), "FX Filter Cutoff")
 			host_set(a, synth.effect_param(.Filter, synth.Fx_Filter_Field.Resonance), clamp(handle[1] / 24, 0, 1), "FX Filter Cutoff")
 		}
-		if ev.ended do app.seal(&m.history)
+		if ev.ended do pa.history_gesture_end(&a.api)
 	case .Distortion: draw_distortion_view(&cp.distortion, size, color, sr)
 	case .Delay:      draw_delay_view(&cp.delay, size, color)
 	case .Reverb:     draw_reverb_view(&cp.reverb, size, color)

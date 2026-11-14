@@ -89,6 +89,19 @@ MODULES = {
         (r"\bpm\.learn_midi\(|\bapp\.host_midi_inject\(", "midi_learn / midi_send"),
         (r"\bpm\.set_pad\([^)]*\.(Midi_In|Midi_Out|Input)\b", "midi_set_pad_input / output, pad_set_input"),
     ],
+    "params": [
+        # (A knob, fader or toggle moves a parameter through the API. The
+        # editors that move several parameters in one drag keep their own
+        # way until they are reworked: the sampler's envelope and filter
+        # shapes, the synth's envelope and filter curves, an effect's
+        # response handles.)
+        (r"\bpm\.set_synth_value\(", "param_set (control_param)", None, ("ui_synth_editors.odin",)),
+        (r"\bpm\.set_target_param\(", "effect_set_param / param_set (control_param)", None, ("ui_fxview.odin",)),
+        (r"\bpm\.set_voice\(", "param_set (control_param)", None, ("ui_device.odin",)),
+    ],
+    "ui": [
+        (r"\bset_dark\(a,", "ui_set_dark", "shell.odin"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [

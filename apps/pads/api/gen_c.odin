@@ -105,6 +105,7 @@ Table_V1 :: struct {
 	history_group_end: proc "c" (api: ^Api) -> Result,
 	history_gesture_begin: proc "c" (api: ^Api) -> Result,
 	history_gesture_end: proc "c" (api: ^Api) -> Result,
+	history_name_next: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
 	launcher_state: proc "c" (api: ^Api, out: ^Launcher_State) -> Result,
 	launcher_lane: proc "c" (api: ^Api, lane: i64, out: ^Lane_State) -> Result,
 	launcher_lane_name: proc "c" (api: ^Api, lane: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -305,6 +306,13 @@ Table_V1 :: struct {
 	transport_set_song_mode: proc "c" (api: ^Api, on: bool) -> Result,
 	transport_set_sync: proc "c" (api: ^Api, sync: Sync) -> Result,
 	transport_set_clock_out: proc "c" (api: ^Api, on: bool) -> Result,
+	ui_state: proc "c" (api: ^Api, out: ^Ui_State) -> Result,
+	ui_show: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
+	ui_set_dark: proc "c" (api: ^Api, dark: bool) -> Result,
+	ui_message_show: proc "c" (api: ^Api, kind: Message_Kind, text: cstring, text_len: i64) -> Result,
+	ui_message: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	ui_select_pads: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64) -> Result,
+	ui_selected_pad: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -412,6 +420,7 @@ table_fill :: proc(api: ^Api) {
 	t.history_group_end = c_history_group_end
 	t.history_gesture_begin = c_history_gesture_begin
 	t.history_gesture_end = c_history_gesture_end
+	t.history_name_next = c_history_name_next
 	t.launcher_state = c_launcher_state
 	t.launcher_lane = c_launcher_lane
 	t.launcher_lane_name = c_launcher_lane_name
@@ -612,6 +621,13 @@ table_fill :: proc(api: ^Api) {
 	t.transport_set_song_mode = c_transport_set_song_mode
 	t.transport_set_sync = c_transport_set_sync
 	t.transport_set_clock_out = c_transport_set_clock_out
+	t.ui_state = c_ui_state
+	t.ui_show = c_ui_show
+	t.ui_set_dark = c_ui_set_dark
+	t.ui_message_show = c_ui_message_show
+	t.ui_message = c_ui_message
+	t.ui_select_pads = c_ui_select_pads
+	t.ui_selected_pad = c_ui_selected_pad
 }
 
 @(private)
@@ -1357,6 +1373,13 @@ c_history_gesture_begin :: proc "c" (api: ^Api) -> Result {
 c_history_gesture_end :: proc "c" (api: ^Api) -> Result {
 	context = runtime.default_context()
 	return history_gesture_end(api)
+}
+
+@(private)
+c_history_name_next :: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return history_name_next(api, name_s)
 }
 
 @(private)
@@ -2833,4 +2856,59 @@ c_transport_set_sync :: proc "c" (api: ^Api, sync: Sync) -> Result {
 c_transport_set_clock_out :: proc "c" (api: ^Api, on: bool) -> Result {
 	context = runtime.default_context()
 	return transport_set_clock_out(api, on)
+}
+
+@(private)
+c_ui_state :: proc "c" (api: ^Api, out: ^Ui_State) -> Result {
+	context = runtime.default_context()
+	v, r := ui_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_show :: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return ui_show(api, name_s)
+}
+
+@(private)
+c_ui_set_dark :: proc "c" (api: ^Api, dark: bool) -> Result {
+	context = runtime.default_context()
+	return ui_set_dark(api, dark)
+}
+
+@(private)
+c_ui_message_show :: proc "c" (api: ^Api, kind: Message_Kind, text: cstring, text_len: i64) -> Result {
+	context = runtime.default_context()
+	text_s := string(([^]u8)(text)[:max(text_len, 0)]) if text != nil else ""
+	return ui_message_show(api, kind, text_s)
+}
+
+@(private)
+c_ui_message :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := ui_message(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_ui_select_pads :: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64) -> Result {
+	context = runtime.default_context()
+	pads_s := pads[:max(pads_len, 0)] if pads != nil else nil
+	return ui_select_pads(api, pads_s)
+}
+
+@(private)
+c_ui_selected_pad :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := ui_selected_pad(api, index)
+	if out != nil do out^ = v
+	return r
 }

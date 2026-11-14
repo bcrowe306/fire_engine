@@ -7,10 +7,11 @@ note 0 0 4 1
 play
 insert 0 0 delay
 edit_fx pad 0 0
-fx_param 2 1
-fx_param 7 250
-fx_param 8 5000
-fx_param 4 60
+# The synth's delay: ids 764 + Delay_Field (Sync 2, Feedback 7, Wet 8, Cutoff 9).
+fx_param 766 1
+fx_param 771 0.6
+fx_param 772 0.5
+fx_param 773 80
 wait 60
 screenshot delay_synced
 stop

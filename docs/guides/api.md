@@ -23,8 +23,8 @@ The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
 **settings**, **pads**, **params**, **effects**, **devices**,
 **mixer**, **sequencer**, **audio**, **recording**, **song**,
-**launcher**, **perform**, **export**, **browser** and **midi**, with
-results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
+**launcher**, **perform**, **export**, **browser**, **midi** and **ui**,
+with results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
 menus and script commands for these already go through it.
 
 ## Results and errors
@@ -72,6 +72,9 @@ pads_api.history_gesture_begin(api) // a fader held
 for bpm in ramp do pads_api.transport_set_tempo(api, bpm)
 pads_api.history_gesture_end(api) // one step
 ```
+
+`history_name_next` names the step the next edit makes ("Shape
+Envelope"), as Pads' own controls name theirs.
 
 `history_state`, `history_step_name` and `history_go_to` show and move
 along the whole history (Pads' History menu uses them). While a group is
@@ -317,6 +320,13 @@ pads_api.midi_learn(api, 36, 0)                   // key 36 plays pad 0
 pads_api.midi_send(api, 0x90, 36, 100)            // as if it came in on a port
 pads_api.midi_set_pad_output(api, 0, true, 9, 36, "") // pad 0's hits out on channel 10
 ```
+
+## The window
+
+With a window (not headless), `ui_show` brings up a view or page by name
+("mixer", "song", "sample", "eq"...), `ui_set_dark` picks the theme,
+`ui_message_show` shows a message, `ui_select_pads` selects pads together
+(their menus then act on them all). Headless, they answer `Unsupported`.
 
 ## From C
 

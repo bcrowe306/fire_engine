@@ -71,7 +71,7 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "palette", label = "Command Palette", icon = ui.ICON_SEARCH, chord = ui.MOD_CMD | i32(im.Key.K), user = a,
 		run = proc(u: rawptr) { ui.palette_open(&(^App)(u).ws.palette) }})
 	add(acts, {id = "theme", label = "Light Theme", icon = ui.ICON_SUN, user = a,
-		run = proc(u: rawptr) { a := (^App)(u); set_dark(a, !a.dark) },
+		run = proc(u: rawptr) { a := (^App)(u); pa.ui_set_dark(&a.api, !a.dark) },
 		checked = proc(u: rawptr) -> bool { return !(^App)(u).dark }})
 	add(acts, {id = "pad_waves", label = "Pad Waveforms", icon = ui.ICON_AUDIO_WAVEFORM, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); a.pad_waves = !a.pad_waves },
@@ -172,6 +172,26 @@ draw_history_menu :: proc(a: ^App) {
 	}
 	im.Separator()
 	im.TextDisabled("%s", fmt.ctprintf("%d step%s; Cmd+Z undoes one", h.undo_steps, "" if h.undo_steps == 1 else "s"))
+}
+
+// Shows view, panel or device page `name` (the API's ui_show).
+show_named :: proc(a: ^App, name: string) -> bool {
+	switch name {
+	case "sample":            show_detail(a, .Sample)
+	case "pad", "inspector", "global": show_detail(a, .Global)
+	case "env":               show_detail(a, .Env)
+	case "filter":            show_detail(a, .Filter)
+	case "pitch":             show_detail(a, .Pitch)
+	case "lfo":               show_detail(a, .Lfo)
+	case "effect", "effects": show_device(a, a.fx)
+	case "eq":                show_eq(a)
+	case "midi":              show_midi(a)
+	case "pads":              a.ws.bottom_folded = false
+	case "browser", "library": library_show(a, 0)
+	case "devices":            library_show(a, 1)
+	case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(name, context.temp_allocator))
+	}
+	return true
 }
 
 set_dark :: proc(a: ^App, dark: bool) {
@@ -549,8 +569,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		else do pm.chop_to_pads(&a.m, i, pm.Chop_Transients{f64(numf(w, 3))})
 		return true
 	case "theme":
-		set_dark(a, len(w) < 2 || w[1] != "light")
-		return true
+		return pa.ui_set_dark(&a.api, len(w) < 2 || w[1] != "light") == .Ok
 	case "mode":
 		if len(w) < 2 do return false
 		switch w[1] {
@@ -737,9 +756,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "fx_param":
 		// fx_param ID VALUE: a setting of the slot being edited
 		if len(w) < 3 do return false
-		pm.set_target_param(&a.m, a.fx, fc.Param_Id(num(w, 1)), numf(w, 2))
-		app.seal(&a.m.history)
-		return true
+		return pa.effect_set_param(&a.api, slot_ref(a.fx), i64(num(w, 1)), f64(numf(w, 2))) == .Ok
 	case "edit_fx":
 		// edit_fx pad PAD SLOT / edit_fx bus BUS SLOT / edit_fx perf N
 		if len(w) < 3 do return false
@@ -1068,22 +1085,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "panel":
 		if len(w) < 2 do return false
-		switch w[1] {
-		case "sample":            show_detail(a, .Sample)
-		case "pad", "inspector", "global": show_detail(a, .Global)
-		case "env":               show_detail(a, .Env)
-		case "filter":            show_detail(a, .Filter)
-		case "pitch":             show_detail(a, .Pitch)
-		case "lfo":               show_detail(a, .Lfo)
-		case "effect", "effects": show_device(a, a.fx)
-		case "eq":                show_eq(a)
-		case "midi":              show_midi(a)
-		case "pads":              a.ws.bottom_folded = false
-		case "browser", "library": library_show(a, 0)
-		case "devices":            library_show(a, 1)
-		case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(w[1], context.temp_allocator))
-		}
-		return true
+		return pa.ui_show(&a.api, w[1]) == .Ok
 	case "play":
 		return pa.transport_play(&a.api) == .Ok
 	case "stop":

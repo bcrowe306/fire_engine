@@ -70,6 +70,7 @@ MODULE_TITLES = {
     "export": "Export: mixdowns, stems, resampling, bouncing, freezing, MIDI files",
     "browser": "Browser: folders, favourites, search, preview",
     "midi": "MIDI: ports, the MIDI map, pads' MIDI in and out",
+    "ui": "The window: views, the theme, messages, the pads selected",
 }
 
 

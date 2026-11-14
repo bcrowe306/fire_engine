@@ -791,6 +791,14 @@ history_gesture_end :: proc(api: ^Api) -> Result
 
 Ends the gesture: the next edit is a new step.
 
+### history_name_next
+
+```odin
+history_name_next :: proc(api: ^Api, name: string) -> Result
+```
+
+Names the step the next edit makes (or merges into): the UI's own names for its controls' steps ("Shape Envelope"). Up to 63 bytes.
+
 ## Launcher: lanes, launching, stopping, Hold, Record to Song
 
 ### launcher_state
@@ -2417,6 +2425,64 @@ transport_set_clock_out :: proc(api: ^Api, on: bool) -> Result
 
 Sends MIDI clock to the output port, or stops (the setting "midi.clock_out").
 
+## The window: views, the theme, messages, the pads selected
+
+### ui_state
+
+```odin
+ui_state :: proc(api: ^Api) -> (Ui_State, Result)
+```
+
+The window now.
+
+### ui_show
+
+```odin
+ui_show :: proc(api: ^Api, name: string) -> Result
+```
+
+Shows view, panel or device page `name`: a view ("sequence", "song", "mixer", "perform"), the pads ("pads"), the Library ("browser", "devices"), or the selected pad's page ("sample", "global", "env", "filter", "pitch", "lfo", "effect", "eq", "midi"). Not_Found for another name.
+
+### ui_set_dark
+
+```odin
+ui_set_dark :: proc(api: ^Api, dark: bool) -> Result
+```
+
+The dark theme (`dark`), or the light one. Saved with the settings.
+
+### ui_message_show
+
+```odin
+ui_message_show :: proc(api: ^Api, kind: Message_Kind, text: string) -> Result
+```
+
+Shows message `text` for a few seconds (and keeps it in the log).
+
+### ui_message
+
+```odin
+ui_message :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Message `index` of those showing (the oldest first). Temporary.
+
+### ui_select_pads
+
+```odin
+ui_select_pads :: proc(api: ^Api, pads: []i64) -> Result
+```
+
+Selects pads `pads` together (the first the selected pad: what Keyboard mode plays and the editors show). Menus of the pads act on them all.
+
+### ui_selected_pad
+
+```odin
+ui_selected_pad :: proc(api: ^Api, index: i64) -> (i64, Result)
+```
+
+Pad `index` of those selected together.
+
 ## Types
 
 ### Result
@@ -2598,6 +2664,12 @@ The metronome's sound.
 What the tempo, start and stop follow.
 
 `Internal`, `Midi_Clock`, `Link`
+
+### Message_Kind
+
+A message's kind.
+
+`Info`, `Success`, `Warning`, `Error`
 
 ### Part_State
 
@@ -3135,4 +3207,14 @@ The transport now. The playhead (`beat`, `timeline_beat`, the position) moves wi
 | `metronome_recording_only` | `bool` | it clicks only while recording (and counting in) |
 | `sync` | `Sync` | what the tempo follows (the setting "midi.sync") |
 | `clock_out` | `bool` | MIDI clock goes out (the setting "midi.clock_out") |
+
+### Ui_State
+
+The window now (Unsupported without one: a headless Pads).
+
+| Field | Type | |
+|---|---|---|
+| `dark` | `bool` | the dark theme |
+| `messages` | `i64` | messages showing (ui_message) |
+| `selected` | `i64` | pads selected together (ui_selected_pad) |
 

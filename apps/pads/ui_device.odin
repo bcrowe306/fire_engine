@@ -53,9 +53,14 @@ voice_knob :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, def: f32, forma
 	// What it moves on the sampler, for Automate (its own units: some are
 	// 0..1 here and percent there).
 	target_name, scale := voice_param(Voice_Key(key), string(label))
-	if target_name != "" do knob_target(a, sound_target(a, i, target_name), scale)
+	target: pm.Auto_Target
+	if target_name != "" do target = sound_target(a, i, target_name)
+	if target.track != .None do knob_target(a, target, scale)
 	e := ui.knob(label, &x, lo, hi, def, format, log_scale = log_scale)
 	knob_target(a, {})
+	// (Through the API when it is one of the sampler's parameters, in its
+	// units: scale times the knob's.)
+	if target.track != .None && control_param(a, param_ref(target), f64(x * (scale if scale != 0 else 1)), step, e.changed, e.ended) do return
 	if e.changed {
 		v := m.project.pads[i].voice
 		// The same field of a copy: value points into a copy of the voice.

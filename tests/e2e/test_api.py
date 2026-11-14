@@ -176,3 +176,18 @@ def test_export_browser_and_midi_through_the_api(app, fixtures, tmp_path):
     assert app.state()["browser"]["root"] == fixtures
     app.api("midi_learn", key=40, pad=3)
     assert app.api("midi_key_of", pad=3) == 3 or app.api("midi_key_of", pad=3) == 40
+
+
+def test_the_window_through_the_api(app):
+    app.api("ui_show", name="mixer")
+    app.wait(2)
+    app.expect_item("add bus")  # (the Mixer in front)
+    app.api("ui_message_show", kind="Success", text="Hello from a script")
+    st = app.api("ui_state")
+    assert st["messages"] >= 1
+    msgs = [app.api("ui_message", index=k) for k in range(st["messages"])]
+    assert "Hello from a script" in msgs
+    app.api("ui_select_pads", pads=[1, 2])
+    assert app.state()["pad_sel"] == [1, 2] and app.state()["selected"] == 1
+    r = app.api("ui_show", check=False, name="nowhere")
+    assert r["result"] == "Not_Found"

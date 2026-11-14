@@ -5,8 +5,8 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
 settings), 3 (pads, params, effects, devices), 4 (mixer), 5
-(sequencer, audio, recording), 6 (song, launcher, perform) and 7a
-(export, browser, midi) built 2026-11-14; 7b (ui) and 8 planned
+(sequencer, audio, recording), 6 (song, launcher, perform) and 7
+(export, browser, midi, ui) built 2026-11-14; 8 (surfaces) planned
 (decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
@@ -111,13 +111,8 @@ devices and effects (and the knobs moved onto `param_set`).
 - `devices`: the synth's built-in presets, preset files (load, save),
   the preset a pad came from, a CLAP instrument on a pad.
 - `param_set` names its step after the parameter ("Set Cutoff").
-- **Not moved yet: the device knobs.** The sampler's, the synth's and
-  the effects' knobs (about 28 places) still write the model through
-  its setters, each with its own display scaling, merging key and step
-  name ("Shape Envelope", "Voice Mode", which tests and users see). They
-  move onto `param_set` with the `ui` module (stage 7), when the knob
-  widget can carry its `Param_Ref` and a step name; until then a surface
-  sets the same values through `param_set` and the knobs show them.
+- The device knobs moved onto `param_set` in stage 7b (see there): this
+  stage left them on the model's setters.
 
 ### Stage 4, as built (mixer)
 
@@ -190,6 +185,7 @@ devices and effects (and the knobs moved onto `param_set`).
   menu, jumps; the launcher's lanes, launches, stops and settings; the
   sequence move commands; the play mode, bank and keys controls; the
   shell's song, lanes, launch, switch, bank, scale and chord commands.
+
 ### Stage 7a, as built (export, browser, midi)
 
 - `export_*`: the export job (`Job`: the export, busy, progress) moved
@@ -212,10 +208,37 @@ devices and effects (and the knobs moved onto `param_set`).
   strip's MIDI and audio input and MIDI output menus, the shell's
   commands.
 
-- Not moved yet (the `ui` module): the Song view's drags (a clip's
-  edges and moves, markers, tempo points, the loop range), Paste Clips
-  (the UI's clipboard), and selecting a pad (it moves the bank along in
-  several places; `perform_select_pad` does both).
+### Stage 7b, as built (ui, the knobs)
+
+- `ui_*`: the window's side is the app's (`Core.hooks.ui`: show a view
+  or page by name, the theme, messages, the pads selected together);
+  headless (the tests, a script host) it is `Unsupported`. `ui_show`'s
+  names are the shell's `panel` command's (`show_named`).
+- `history_name_next`: names the step the next edit makes (only a step
+  made after it: an edit that changes nothing leaves the step before
+  alone). Pads' controls keep their own step names through it.
+- The knobs: `control_param` (ui_api.odin) moves a parameter through
+  `param_set` in a gesture named as the control names it (the knob's own
+  hooks record its automation, so it isn't touched through the API
+  too); `control_effect_param` an effect's (`effect_set_param`, a
+  performance effect's too). The sampler's voice knobs, the pad knobs
+  that are parameters (fader, transpose, attack, release, EQ gains), the
+  synth's knobs, drags, choices and toggles (`host_set`, a gesture its
+  callers end), and the effects' knobs and toggles go through them.
+- **Still the editors' own** (the lint exempts their files for these
+  calls): drags that move several values at once or from their own
+  base: the note grid (painting, moving, velocity and chance lanes, CC
+  and automation drawing), the Audio tab's regions, the Song view's
+  clips, markers, tempo points and loop range, the sampler's envelope
+  and filter shapes, the synth's envelope and filter curves, an
+  effect's response handles. Through the API each value would be its own
+  step; they want a "one gesture, several parameters, one step" call
+  (a group in a gesture) and their editors reworked around it. Also the
+  UI's clipboards (Paste Pad, Paste Effect, Paste Clips).
+
+- Selecting a pad by the mouse or keys still sets the app's selection
+  itself (it moves the bank along in several places);
+  `perform_select_pad` and `ui_select_pads` do it through the API.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,

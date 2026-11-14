@@ -236,7 +236,7 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 
 	if wide do im.TableNextColumn()
 	section(a, "Sound", !wide)
-	knob_f32(a, "Volume", &pad.volume, -48, 12, 0, "%.1f dB", .Volume, "Set Volume")
+	knob_f32(a, "Volume", &pad.volume, -48, 6, 0, "%.1f dB", .Volume, "Set Volume")
 	im.SameLine(0, 14)
 	knob_f32(a, "Pan", &pad.pan, -1, 1, 0, "%+.2f", .Pan, "Set Pan")
 	if wide do im.TableNextColumn()
@@ -260,13 +260,17 @@ draw_audio_inspector :: proc(a: ^App, i: int) {
 knob_f32 :: proc(a: ^App, label: cstring, value: ^f32, lo, hi, default: f32, format: cstring, field: pm.Pad_Field, step: string, log_scale := false, snap: f32 = 0) {
 	m := &a.m
 	v := value^
-	knob_target(a, pad_field_target(a, a.selected, field))
+	target := pad_field_target(a, a.selected, field)
+	knob_target(a, target)
 	e := ui.knob(label, &v, lo, hi, default, format, log_scale = log_scale, step = snap)
 	knob_target(a, {})
+	// (Through the API when the field is a parameter: the fader, transpose,
+	// attack, release, the EQ's gains; its own way otherwise.)
+	if target.track != .None && control_param(a, param_ref(target), f64(v), step, e.changed, e.ended) do return
 	if e.changed {
 		p := m.project.pads[a.selected]
 		set_field(&p, field, v)
-		pm.set_pad(m, a.selected, field, step, p)
+		pm.set_pad(m, a.selected, field, step, p) // api-lint: a pad field that is no parameter
 	}
 	if e.ended do app.seal(&m.history)
 }

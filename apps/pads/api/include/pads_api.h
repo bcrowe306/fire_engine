@@ -317,6 +317,15 @@ enum {
 	PADS_SYNC_LINK = 2,
 };
 
+// A message's kind.
+typedef int32_t Pads_Message_Kind;
+enum {
+	PADS_MESSAGE_KIND_INFO = 0,
+	PADS_MESSAGE_KIND_SUCCESS = 1,
+	PADS_MESSAGE_KIND_WARNING = 2,
+	PADS_MESSAGE_KIND_ERROR = 3,
+};
+
 // Called on the control thread when `topic` changed (`index`: which; -1 all).
 typedef void (*Pads_Change_Fn)(Pads_Api* api, Pads_Topic topic, int64_t index, void* user);
 // A call posted from another thread, run on the control thread.
@@ -744,6 +753,13 @@ typedef struct Pads_Transport_State {
 	bool clock_out; // MIDI clock goes out (the setting "midi.clock_out")
 } Pads_Transport_State;
 
+// The window now (Unsupported without one: a headless Pads).
+typedef struct Pads_Ui_State {
+	bool dark; // the dark theme
+	int64_t messages; // messages showing (ui_message)
+	int64_t selected; // pads selected together (ui_selected_pad)
+} Pads_Ui_State;
+
 // The function table, version 1. It only grows: `size` says how much of it
 // the host has (check it before calling a function added later).
 typedef struct Pads_Api_V1 {
@@ -998,6 +1014,9 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*history_gesture_begin)(Pads_Api* api);
 	// Ends the gesture: the next edit is a new step.
 	Pads_Result (*history_gesture_end)(Pads_Api* api);
+	// Names the step the next edit makes (or merges into): the UI's own
+	// names for its controls' steps ("Shape Envelope"). Up to 63 bytes.
+	Pads_Result (*history_name_next)(Pads_Api* api, const char* name, int64_t name_len);
 	// The launcher now.
 	Pads_Result (*launcher_state)(Pads_Api* api, Pads_Launcher_State* out);
 	// Lane `lane` now.
@@ -1506,6 +1525,25 @@ typedef struct Pads_Api_V1 {
 	// Sends MIDI clock to the output port, or stops (the setting
 	// "midi.clock_out").
 	Pads_Result (*transport_set_clock_out)(Pads_Api* api, bool on);
+	// The window now.
+	Pads_Result (*ui_state)(Pads_Api* api, Pads_Ui_State* out);
+	// Shows view, panel or device page `name`: a view ("sequence", "song",
+	// "mixer", "perform"), the pads ("pads"), the Library ("browser",
+	// "devices"), or the selected pad's page ("sample", "global", "env",
+	// "filter", "pitch", "lfo", "effect", "eq", "midi"). Not_Found for
+	// another name.
+	Pads_Result (*ui_show)(Pads_Api* api, const char* name, int64_t name_len);
+	// The dark theme (`dark`), or the light one. Saved with the settings.
+	Pads_Result (*ui_set_dark)(Pads_Api* api, bool dark);
+	// Shows message `text` for a few seconds (and keeps it in the log).
+	Pads_Result (*ui_message_show)(Pads_Api* api, Pads_Message_Kind kind, const char* text, int64_t text_len);
+	// Message `index` of those showing (the oldest first). Temporary.
+	Pads_Result (*ui_message)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Selects pads `pads` together (the first the selected pad: what Keyboard
+	// mode plays and the editors show). Menus of the pads act on them all.
+	Pads_Result (*ui_select_pads)(Pads_Api* api, const int64_t* pads, int64_t pads_len);
+	// Pad `index` of those selected together.
+	Pads_Result (*ui_selected_pad)(Pads_Api* api, int64_t index, int64_t* out);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

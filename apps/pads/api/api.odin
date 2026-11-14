@@ -40,6 +40,9 @@ Api :: struct {
 	gesture:   bool, // a gesture is open: edits merge (history_gesture_begin)
 	touched:   Param_Ref, // the parameter touched (param_touch), when `has_touch`
 	has_touch: bool,
+	next_name: [64]u8, // the next edit's step's name (history_name_next)
+	next_name_len: int,
+	next_name_at:  int, // the undo steps there were when it was named
 	subs:      [dynamic]Sub,
 	next_sub:  i64,
 	lock:      sync.Mutex, // guards `posted`

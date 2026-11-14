@@ -828,6 +828,14 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := history_gesture_end(api)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_history_name_next":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := history_name_next(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_launcher_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -2512,6 +2520,62 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := transport_set_clock_out(api, on)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_show":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_show(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_set_dark":
+		dark := remote_bool(args, "dark", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_set_dark(api, dark)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_message_show":
+		kind := Message_Kind(remote_enum(args, "kind", Message_Kind_NAMES[:], &ok))
+		text := remote_string(args, "text", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_message_show(api, kind, text)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_message":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_message(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_select_pads":
+		pads := remote_i64s(args, "pads", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_select_pads(api, pads)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_selected_pad":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_selected_pad(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
 	case:
 		remote_answer(out, .Not_Found, nil, "no such method")
 	}
@@ -2606,6 +2670,9 @@ Metronome_Sound_NAMES := [?]string{"Beep", "Wood", "Stick", "Cowbell"}
 
 @(private)
 Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
+
+@(private)
+Message_Kind_NAMES := [?]string{"Info", "Success", "Warning", "Error"}
 
 @(private)
 remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
@@ -2913,6 +2980,7 @@ REMOTE_METHODS := [?]string{
 	"pads_history_group_end",
 	"pads_history_gesture_begin",
 	"pads_history_gesture_end",
+	"pads_history_name_next",
 	"pads_launcher_state",
 	"pads_launcher_lane",
 	"pads_launcher_lane_name",
@@ -3112,4 +3180,11 @@ REMOTE_METHODS := [?]string{
 	"pads_transport_set_song_mode",
 	"pads_transport_set_sync",
 	"pads_transport_set_clock_out",
+	"pads_ui_state",
+	"pads_ui_show",
+	"pads_ui_set_dark",
+	"pads_ui_message_show",
+	"pads_ui_message",
+	"pads_ui_select_pads",
+	"pads_ui_selected_pad",
 }

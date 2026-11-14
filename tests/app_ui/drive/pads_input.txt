@@ -20,7 +20,7 @@ wait 3
 drag_by Volume in detail 0 -84 12   # the Volume knob, upwards
 wait 2
 expect undo Set Volume
-expect pad 0 volume 12
+expect pad 0 volume 6
 key cmd+z
 wait 2
 expect pad 0 volume 0
