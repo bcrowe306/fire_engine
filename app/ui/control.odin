@@ -14,7 +14,8 @@ import "core:strings"
 //
 // One client at a time; the next connects when it leaves. Commands run
 // through the app's `Driver` (live), so everything a script can do, a
-// connection can.
+// connection can. A line that starts with `{` goes to the app's `json`
+// handler instead (an API call, say), answered with what it writes.
 Control :: struct {
 	listener: net.TCP_Socket,
 	client:   net.TCP_Socket,
@@ -22,6 +23,8 @@ Control :: struct {
 	inbuf:    [dynamic]u8,
 	busy:     bool, // a line is running: its answer goes when the driver is idle
 	port:     int,
+	json:      proc(user: rawptr, line: string, out: ^strings.Builder), // answers a line that starts with `{` (one line of JSON), or nil
+	json_user: rawptr,
 }
 
 // Starts listening on 127.0.0.1:`port` (0: any free port; `c.port` says
@@ -88,7 +91,12 @@ control_poll :: proc(c: ^Control, d: ^Driver) {
 			line := strings.trim_space(string(c.inbuf[:i]))
 			l := strings.clone(line, context.temp_allocator)
 			remove_range(&c.inbuf, 0, i + 1)
-			if l != "" {
+			if l != "" && l[0] == '{' && c.json != nil {
+				sb := strings.builder_make(context.temp_allocator)
+				c.json(c.json_user, l, &sb)
+				strings.write_byte(&sb, '\n')
+				control_send(c, sb.buf[:])
+			} else if l != "" {
 				driver_feed(d, l)
 				c.busy = true
 			}
@@ -122,7 +130,12 @@ control_answer :: proc(c: ^Control, d: ^Driver) {
 	strings.write_string(&sb, `, "output": `)
 	json_string(&sb, strings.to_string(d.reply))
 	strings.write_string(&sb, "}\n")
-	out := sb.buf[:]
+	control_send(c, sb.buf[:])
+}
+
+@(private)
+control_send :: proc(c: ^Control, data: []u8) {
+	out := data
 	for len(out) > 0 {
 		n, err := net.send_tcp(c.client, out)
 		if err != nil {

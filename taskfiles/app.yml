@@ -80,9 +80,11 @@ tasks:
         vars: {HEADLESS: '1'}
 
   lint:
-    desc: 'Check the app code for ImGui calls given Odin strings where C wants cstrings (they crash).'
+    desc: 'Check the app code: ImGui calls given Odin strings where C wants cstrings (they crash); Pads doing past its API what a built module does; the API''s generated files current, documented and tested.'
     cmds:
       - '{{if eq OS "windows"}}python{{else}}python3{{end}} scripts/lint_imgui.py apps app'
+      - '{{if eq OS "windows"}}python{{else}}python3{{end}} scripts/lint_api.py'
+      - '{{if eq OS "windows"}}python{{else}}python3{{end}} scripts/api.py --check'
 
   e2e:
     desc: 'The end-to-end suite: Pads driven over its control socket by tests/e2e (pytest), as a person uses it; a crash fails the test with its report. A window on the Mac (watch it), headless elsewhere or with HEADLESS=1. Args go to pytest: task app:e2e -- -k browser -x'

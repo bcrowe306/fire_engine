@@ -41,6 +41,17 @@ GPL-3.0-or-later so it can build Ableton Link in (whenever `third_party/link`
 is built: `task deps` / `./scripts/link.sh`; `LINK=0` leaves it out).
 See docs/guides/building.md, docs/guides/app-layer.md and docs/guides/pads.md.
 
+### The Pads API
+
+```bash
+python3 scripts/api.py           # regenerate pads_api.h, gen_c.odin, gen_remote.odin, docs/reference/pads-api.md
+python3 scripts/api.py --check   # generated files current, every API proc documented and tested
+python3 scripts/lint_api.py      # the UI and shell go through the API for the built modules
+./scripts/test.sh pads_api       # the API, headless
+```
+
+See docs/design/api.md (stages) and docs/guides/api.md.
+
 ### Linux test machine (DigitalOcean)
 
 ```bash

@@ -12,6 +12,7 @@ import "core:time"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
@@ -24,11 +25,11 @@ setup_actions :: proc(a: ^App) {
 	acts := &a.actions
 	add :: proc(acts: ^ui.Actions, x: ui.Action) { ui.action_add(acts, x) }
 	add(acts, {id = "undo", label = "Undo", icon = ui.ICON_UNDO_2, chord = ui.MOD_CMD | i32(im.Key.Z), user = a,
-		run = proc(u: rawptr) { app.undo(&(^App)(u).m.history) },
-		enabled = proc(u: rawptr) -> bool { return len((^App)(u).m.history.undo) > 0 }})
+		run = proc(u: rawptr) { pa.history_undo(&(^App)(u).api) },
+		enabled = proc(u: rawptr) -> bool { h, _ := pa.history_state(&(^App)(u).api); return h.undo_steps > 0 }})
 	add(acts, {id = "redo", label = "Redo", icon = ui.ICON_REDO_2, chord = ui.MOD_CMD | ui.MOD_SHIFT | i32(im.Key.Z), user = a,
-		run = proc(u: rawptr) { app.redo(&(^App)(u).m.history) },
-		enabled = proc(u: rawptr) -> bool { return len((^App)(u).m.history.redo) > 0 }})
+		run = proc(u: rawptr) { pa.history_redo(&(^App)(u).api) },
+		enabled = proc(u: rawptr) -> bool { h, _ := pa.history_state(&(^App)(u).api); return h.redo_steps > 0 }})
 	add(acts, {id = "new", label = "New Project", icon = ui.ICON_FILE_PLUS, chord = ui.MOD_CMD | i32(im.Key.N), user = a,
 		run = proc(u: rawptr) { leave((^App)(u), .New) }})
 	add(acts, {id = "open", label = "Open Project…", icon = ui.ICON_FOLDER_OPEN, chord = ui.MOD_CMD | i32(im.Key.O), user = a,
@@ -44,7 +45,7 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "resample", label = "Resample Sequence to Pad", icon = ui.ICON_COPY_PLUS, user = a,
 		run = proc(u: rawptr) { start_resample((^App)(u)) }})
 	add(acts, {id = "song_mode", label = "Song Mode", icon = ui.ICON_LIST_MUSIC, user = a,
-		run = proc(u: rawptr) { a := (^App)(u); a.m.project.song_mode = !a.m.project.song_mode; a.m.engine.seq_dirty = true },
+		run = proc(u: rawptr) { a := (^App)(u); pa.transport_set_song_mode(&a.api, !a.m.project.song_mode) },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).m.project.song_mode }})
 	add(acts, {id = "import", label = "Import Sample…", icon = ui.ICON_FILE_AUDIO, chord = ui.MOD_CMD | i32(im.Key.I), user = a,
 		run = proc(u: rawptr) { open_import_dialog((^App)(u)) }})
@@ -101,7 +102,7 @@ setup_actions :: proc(a: ^App) {
 		run = proc(u: rawptr) { toggle_record((^App)(u)) },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).capture.armed }})
 	add(acts, {id = "metronome", label = "Metronome", icon = ui.ICON_METRONOME, user = a,
-		run = proc(u: rawptr) { e := &(^App)(u).m.engine; e.metronome = !e.metronome },
+		run = proc(u: rawptr) { a := (^App)(u); pa.transport_set_metronome(&a.api, !a.m.engine.metronome) },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).m.engine.metronome }})
 	add(acts, {id = "quantize", label = "Quantize Sequence", icon = ui.ICON_MAGNET, chord = ui.MOD_CMD | i32(im.Key.U), user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pm.quantize_sequence(&a.m, a.m.project.slot, a.seq.grid) }})
@@ -148,30 +149,29 @@ bank_actions := [pm.BANKS]proc(u: rawptr) {
 // Edit > History: every step that can be undone (the newest first) and
 // redone; choose one to go back (or forward) to just after it.
 draw_history_menu :: proc(a: ^App) {
-	h := &a.m.history
-	if !im.BeginMenu("History", len(h.undo) > 0 || len(h.redo) > 0) do return
+	h, _ := pa.history_state(&a.api)
+	if !im.BeginMenu("History", h.undo_steps > 0 || h.redo_steps > 0) do return
 	defer im.EndMenu()
 	// Redoable, the furthest first (dimmed: undone).
-	for k := 0; k < len(h.redo); k += 1 {
-		step := h.redo[k]
-		ahead := len(h.redo) - k // redos to reach it
+	for k := h.redo_steps - 1; k >= 0; k -= 1 {
+		name, _ := pa.history_step_name(&a.api, h.undo_steps + k)
 		im.PushStyleColorVec4(.Text, transmute(im.Vec4)ui.theme().text_dim)
-		clicked := im.MenuItem(fmt.ctprintf("%s###redo%d", step.name, k))
-		ui.name(fmt.tprintf("history redo %d", ahead))
+		clicked := im.MenuItem(fmt.ctprintf("%s###redo%d", name, h.redo_steps - 1 - k))
+		ui.name(fmt.tprintf("history redo %d", k + 1))
 		im.PopStyleColor()
-		if clicked do for _ in 0 ..< ahead do app.redo(h)
+		if clicked do pa.history_go_to(&a.api, h.undo_steps + k + 1)
 	}
-	if len(h.redo) > 0 do im.Separator()
-	for k := len(h.undo) - 1; k >= 0; k -= 1 {
-		step := h.undo[k]
-		back := len(h.undo) - 1 - k // undos to be just after it
-		label := fmt.ctprintf("%s%s###undo%d", step.name, "  (now)" if back == 0 else "", k)
+	if h.redo_steps > 0 do im.Separator()
+	for k := h.undo_steps - 1; k >= 0; k -= 1 {
+		name, _ := pa.history_step_name(&a.api, k)
+		back := h.undo_steps - 1 - k // undos to be just after it
+		label := fmt.ctprintf("%s%s###undo%d", name, "  (now)" if back == 0 else "", k)
 		clicked := im.MenuItem(label, nil, back == 0)
 		ui.name(fmt.tprintf("history %d", k + 1))
-		if clicked do for _ in 0 ..< back do app.undo(h)
+		if clicked do pa.history_go_to(&a.api, k + 1)
 	}
 	im.Separator()
-	im.TextDisabled("%s", fmt.ctprintf("%d step%s; Cmd+Z undoes one", len(h.undo), "" if len(h.undo) == 1 else "s"))
+	im.TextDisabled("%s", fmt.ctprintf("%d step%s; Cmd+Z undoes one", h.undo_steps, "" if h.undo_steps == 1 else "s"))
 }
 
 set_dark :: proc(a: ^App, dark: bool) {
@@ -619,11 +619,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "count_in": // count_in BARS (0..2): bars of click before recording (a new project's: 1)
 		if len(w) < 2 do return false
-		n := a.m.project.transport
-		n.count_in = clamp(num(w, 1), 0, 2)
-		pm.set_transport(&a.m, .Count_In, "Count-in", n)
-		app.seal(&a.m.history)
-		return true
+		return pa.transport_set_count_in(&a.api, i64(clamp(num(w, 1), 0, 2))) == .Ok
 	case "track_loop": // track_loop PAD BEATS: the pad's own loop in the current sequence (0: none)
 		if i := num(w, 1); pad_ok(i) && len(w) > 2 {
 			pm.set_track_loop(&a.m, a.m.project.slot, i, f64(numf(w, 2)))
@@ -994,12 +990,9 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			i := pm.song_add(&a.m, num(w, 2) - 1, repeats = reps, lane = lane, at = at, length = length)
 			if i < 0 do return false
 		case "mode":
-			a.m.project.song_mode = len(w) < 3 || w[2] != "off"
-			a.m.engine.seq_dirty = true
+			pa.transport_set_song_mode(&a.api, len(w) < 3 || w[2] != "off")
 		case "loop": // the transport's loop (the song's, a sequence's)
-			tr := a.m.project.transport
-			tr.loop = len(w) < 3 || w[2] != "off"
-			pm.set_transport(&a.m, .Loop, "Loop", tr)
+			pa.transport_set_loop(&a.api, len(w) < 3 || w[2] != "off")
 		case "clear":
 			pm.set_song(&a.m, "Clear Song", {})
 		case "tempo": // song tempo BEAT BPM [ramp]: a tempo point
@@ -1093,18 +1086,14 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		return true
 	case "play":
-		pm.play(&a.m.engine)
-		return true
+		return pa.transport_play(&a.api) == .Ok
 	case "stop":
-		pm.stop(&a.m.engine)
-		pm.capture_arm(&a.m, &a.capture, false)
-		return true
+		return pa.transport_stop(&a.api) == .Ok
 	case "rec":
 		pm.capture_arm(&a.m, &a.capture, len(w) < 2 || w[1] != "off")
 		return true
 	case "metronome":
-		a.m.engine.metronome = len(w) < 2 || w[1] != "off"
-		return true
+		return pa.transport_set_metronome(&a.api, len(w) < 2 || w[1] != "off") == .Ok
 	case "mixer": // mixer inserts|eq|sends|io on|off / mixer narrow|wide: the Mixer's bar
 		if len(w) < 2 do return false
 		v := &a.settings.mixer_view
@@ -1162,9 +1151,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		app.seal(&a.m.history)
 		return true
 	case "tempo":
-		pm.set_bpm(&a.m, f64(numf(w, 1)))
-		app.seal(&a.m.history)
-		return true
+		return pa.transport_set_tempo(&a.api, clamp(f64(numf(w, 1)), 40, 300)) == .Ok
 	case "action":
 		return len(w) > 1 && ui.run_action(&a.actions, w[1])
 	case "command": // command ID KIND [INDEX [SLOT]]: a command on a target (pad 3, sequence 2...)
@@ -1424,7 +1411,7 @@ drive_expect :: proc(a: ^App, w: []string) -> bool {
 		return true
 	case "undo":
 		want := strings.join(w[2:], " ", context.temp_allocator)
-		got := app.undo_name(&a.m.history)
+		got, _ := pa.history_undo_name(&a.api)
 		if got != want do return drive_fail(a, fmt.tprintf("expected undo %q, got %q", want, got))
 		return true
 	case "pad":

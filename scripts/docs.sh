@@ -57,8 +57,9 @@ for entry in "${PACKAGES[@]}"; do
 done
 
 if [ $CHECK = 1 ]; then
-	if ! diff -r -q "$ROOT/docs/reference" "$OUT" >/dev/null 2>&1; then
-		diff -r -q "$ROOT/docs/reference" "$OUT" || true
+	# (pads-api.md is scripts/api.py's: its --check keeps it current.)
+	if ! diff -r -q -x pads-api.md "$ROOT/docs/reference" "$OUT" >/dev/null 2>&1; then
+		diff -r -q -x pads-api.md "$ROOT/docs/reference" "$OUT" || true
 		echo "docs/reference is out of date: run ./scripts/docs.sh and commit the result"
 		status=1
 	fi

@@ -7,6 +7,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import "fire:backend"
 import "fire:fx"
@@ -330,8 +331,10 @@ state_json :: proc(a: ^App) -> string {
 	s.dark = a.dark
 	s.folded, s.library = a.ws.bottom_folded, a.ws.left_shown
 	s.control_h = ui.DENSITY_HEIGHT[a.platform.density]
-	s.beat, s.playing = pm.position(&m.engine)
-	s.slot, s.bpm, s.metronome = p.slot + 1, p.bpm, m.engine.metronome
+	ts, _ := pa.transport_state(&a.api)
+	s.beat, s.playing = ts.beat, ts.playing
+	s.slot, s.bpm = p.slot + 1, ts.bpm
+	s.metronome = ts.metronome
 	s.project_dir, s.untitled = p.dir, a.proj.untitled
 	s.recording = a.capture.armed
 	tr := p.transport
@@ -441,7 +444,7 @@ state_json :: proc(a: ^App) -> string {
 	for e in plugin_effects(a) do append(&s.plugin_effects, e.name)
 	s.pad_sel = make([dynamic]int, context.temp_allocator)
 	for i in 0 ..< pm.PADS do if i in selected_pads(a) do append(&s.pad_sel, i)
-	s.undo = app.undo_name(&m.history)
+	s.undo, _ = pa.history_undo_name(&a.api)
 	s.dirty = pm.model_dirty(m)
 	s.project = p.dir
 	s.exporting = a.proj.exporting

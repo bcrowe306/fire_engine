@@ -144,6 +144,26 @@ class Pads:
             raise PadsError(f"{line}: {r.get('error', '')}")
         return r["output"]
 
+    def api(self, method, check=True, **args):
+        """Calls the Pads API (`pads_` + method) as another process does: a
+        JSON line over the socket. Returns its value (None for none); raises
+        PadsError if its result isn't Ok (and `check`)."""
+        if self.closed:
+            raise PadsError("the app is closed")
+        line = json.dumps({"method": "pads_" + method, "args": args})
+        try:
+            self.file.write(line + "\n")
+            self.file.flush()
+            answer = self.file.readline()
+        except (OSError, ValueError):
+            answer = ""
+        if not answer:
+            raise self._crash(f"Pads died running: {line}")
+        r = json.loads(answer)
+        if check and r["result"] != "Ok":
+            raise PadsError(f"{method}: {r['result']}: {r.get('error', '')}")
+        return r.get("value") if check else r
+
     def run(self, script):
         """Runs several commands (a drive script's lines)."""
         for line in script.strip().splitlines():

@@ -6,6 +6,7 @@ import "core:strings"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -169,9 +170,8 @@ draw_song_ruler :: proc(a: ^App, v: Song_View) {
 			if !p.transport.loop do p.transport.loop = true // (a range to loop: looping)
 			m.engine.seq_dirty = true
 		} else {
-			p.song_mode = true
-			m.engine.seq_dirty = true
-			pm.play(&m.engine, from_beat = tm.ruler_from)
+			pa.transport_set_song_mode(&a.api, true)
+			pa.transport_play(&a.api, from_beat = max(tm.ruler_from, 0))
 		}
 		tm.ruler_x, tm.ruler_moved = 0, false
 	}

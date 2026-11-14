@@ -7,6 +7,7 @@ import "core:slice"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 
@@ -841,12 +842,7 @@ draw_transport :: proc(a: ^App) {
 
 // Starts or stops the sequencer (stopping also stops recording).
 toggle_play :: proc(a: ^App) {
-	if _, playing := pm.position(&a.m.engine); playing {
-		pm.stop(&a.m.engine)
-		pm.capture_arm(&a.m, &a.capture, false)
-	} else {
-		pm.play(&a.m.engine)
-	}
+	pa.transport_toggle(&a.api)
 }
 
 // Arms or disarms recording; arming while stopped starts playing (after
@@ -855,7 +851,7 @@ toggle_record :: proc(a: ^App) {
 	on := !a.capture.armed
 	pm.capture_arm(&a.m, &a.capture, on)
 	// From a stop: the count-in first (if the transport has one).
-	if _, playing := pm.position(&a.m.engine); on && !playing do pm.play(&a.m.engine, count_in = true)
+	if _, playing := pm.position(&a.m.engine); on && !playing do pa.transport_play(&a.api, count_in = true)
 }
 
 _ :: slice.contains

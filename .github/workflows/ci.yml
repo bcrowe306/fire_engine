@@ -67,6 +67,11 @@ jobs:
         shell: bash
         run: ./scripts/docs.sh --check
 
+      - name: Pads API generated, documented, tested; the UI uses it
+        if: matrix.opt == 'none' && runner.os != 'Windows'
+        shell: bash
+        run: python3 scripts/api.py --check && python3 scripts/lint_api.py
+
       - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

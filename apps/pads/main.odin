@@ -41,15 +41,16 @@ import "core:time"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
+import pc "core"
 import pm "model"
 import im "deps:imgui"
 
 App :: struct {
+	using core: pc.Core, // the model and the app's state without the window (bus, host, m, capture, transport)
+	api:      pa.Api,   // what the UI, the scripts and surfaces act through (apps/pads/api)
 	platform: ui.Platform,
 	driver:   ui.Driver,
-	bus:      app.Bus,
-	host:     app.Host,
-	m:        pm.Model,
 	actions:  ui.Actions,
 	ws:       ui.Workspace,
 	dark:     bool,
@@ -99,7 +100,6 @@ App :: struct {
 	synth_ui:  Synth_Ui,     // the synth page's tab, oscillator, envelope, LFO
 	seq:      Seq_State,
 	take_peaks: map[string]Peaks, // takes' waveforms, for the Audio tab and the rows (by path)
-	capture:  pm.Capture,
 	pad_rects: [pm.PADS_PER_BANK][2]im.Vec2, // where this bank's pads were drawn (for drops)
 	pad_sel:  Pad_Set, // pads selected together (Shift: a range, Cmd: one more); see `selected_pads`
 	pad_anchor: int,   // where a Shift-click range starts
@@ -121,7 +121,7 @@ App :: struct {
 	plugin_pad: Plugin_Pad_Ui,
 	proj:     Project_State,
 	detail:   Detail_State,
-	transport: Transport_State, // the toolbar's
+	toolbar:  Toolbar_State, // the transport toolbar's rows
 	perf_hold: bool, // performance effects latch
 	perf_held, perf_latched: [pm.PERF_FX]bool,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
@@ -228,6 +228,8 @@ main :: proc() {
 		os.exit(1)
 	}
 	outputs_apply(a)
+	pa.api_init(&a.api, &a.core)
+	defer pa.api_destroy(&a.api)
 	// (After the model is gone, its files let go: an unsaved project left
 	// without saving.)
 	defer if a.proj.discard != "" && is_unsaved(a, a.proj.discard) do os.remove_all(a.proj.discard)
@@ -244,7 +246,7 @@ main :: proc() {
 	} else {
 		pm.model_new(&a.m, project)
 	}
-	a.m.engine.metronome = true // (the click on; a new project's clicks only while recording: see Project_Defaults.recording)
+	pa.transport_set_metronome(&a.api, true) // (the click on; a new project's clicks only while recording: see Project_Defaults.recording)
 	a.proj.untitled = untitled
 	a.proj.last_save = time.tick_now()
 	a.proj.last_backup = time.tick_now()
@@ -290,6 +292,7 @@ main :: proc() {
 		a.driver.live = true
 		a.driver.command = drive_command
 		a.driver.user = a
+		a.control.json, a.control.json_user = proc(user: rawptr, line: string, out: ^strings.Builder) { pa.remote_call(&(^App)(user).api, line, out) }, a
 		p.driver, p.control = &a.driver, &a.control
 		if headless do p.fixed_dt = 1.0 / 60
 		ui.probe_on(true)
@@ -357,6 +360,7 @@ open_engine :: proc(a: ^App, fake: bool) -> bool {
 
 // One frame: events, the engine, then the UI.
 frame :: proc(a: ^App) {
+	pa.api_frame(&a.api, f64(im.GetIO().DeltaTime)) // (posted calls, what is due, subscribers told)
 	app.dispatch(&a.bus)
 	app.host_update(&a.host)
 	run_fake(a)

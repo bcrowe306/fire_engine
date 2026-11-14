@@ -5,19 +5,15 @@ import "core:math"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
-import "fire:dsp"
 import im "deps:imgui"
 
-// The transport toolbar's state: the tap tempo, and how wide its controls
-// were last frame (to centre them).
-Transport_State :: struct {
-	taps:  pm.Tap_Tempo,
-	clock: f64, // seconds of frames (what taps are timed by: frames, so a script's are steady)
-	tapped: f64, // when Tap was last pressed (for its flash)
-	stopped_at: f64, // when Stop was last pressed (a second press soon after silences everything)
-	silences: int,   // times Stop silenced everything (for tests)
-	left, center, right: ui.Flex, // the toolbar's rows: what plays and where, the transport (centred on the window), tempo and click
+// The transport toolbar's rows: how wide its controls were last frame
+// (to centre them). (Its tap tempo and Stop's timing are the core's:
+// `a.transport`.)
+Toolbar_State :: struct {
+	left, center, right: ui.Flex, // what plays and where, the transport (centred on the window), tempo and click
 }
 
 // Height of the transport toolbar.
@@ -47,8 +43,8 @@ draw_toolbar :: proc(user: rawptr) {
 	p := &m.project
 	tr := p.transport
 	t := ui.theme()
-	st := &a.transport
-	st.clock += f64(im.GetIO().DeltaTime)
+	st := &a.toolbar
+	clock := a.transport.clock
 
 	// Every control the same height, flat (a shade off the bar rather than
 	// raised from it), in a row of groups centred both ways.
@@ -121,10 +117,7 @@ draw_toolbar :: proc(user: rawptr) {
 	// What plays (the sequence, or the song), and when a sequence picked
 	// while playing takes over.
 	mode := 1 if p.song_mode else 0
-	if ui.segmented("play_mode", {"Pattern", "Song"}, &mode) {
-		p.song_mode = mode == 1
-		e.seq_dirty = true
-	}
+	if ui.segmented("play_mode", {"Pattern", "Song"}, &mode) do pa.transport_set_song_mode(&a.api, mode == 1)
 	if im.IsItemHovered() do im.SetTooltip("Play the sequence shown (Pattern) or the song's steps one after another (Song)")
 	// (When a sequence picked while playing takes over is in Perform.)
 	ui.flex_next(&st.left)
@@ -151,29 +144,19 @@ draw_toolbar :: proc(user: rawptr) {
 	ui.flex_next(&st.center)
 	// Transport.
 	if ui.icon_button(ui.ICON_PLAY, "Play (Space)", on = playing, color = t.ok, size = big) {
-		if !playing do pm.play(e)
+		if !playing do pa.transport_play(&a.api)
 	}
 	im.SameLine(0, 2)
 	if ui.icon_button(ui.ICON_SQUARE, "Stop (Space); press twice to silence every sound", size = big) {
 		// Pressed again soon after (or while stopped): every voice stops too.
-		if !playing || st.clock - st.stopped_at < 0.6 {
-			pm.silence_all(e)
-			st.silences += 1
-		}
-		pm.stop(e)
-		pm.capture_arm(m, &a.capture, false)
-		st.stopped_at = st.clock
+		if !playing || clock - a.transport.stopped_at < 0.6 do pa.transport_silence(&a.api)
+		pa.transport_stop(&a.api)
 	}
 	im.SameLine(0, 2)
 	// Record: red whatever the accent, and blinking while it records.
-	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = st.clock) do toggle_record(a)
+	if tool_toggle(ui.ICON_CIRCLE_DOT, "Rec", "Record (Cmd+R)", a.capture.armed, t.danger, big, blink = a.capture.armed && playing, time = clock) do toggle_record(a)
 	im.SameLine(0, 2)
-	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) {
-		n := tr
-		n.loop = !n.loop
-		pm.set_transport(m, .Loop, "Loop", n)
-		app.seal(&m.history)
-	}
+	if tool_toggle(ui.ICON_REPEAT, "Loop", "Loop: on (it goes round)" if tr.loop else "Loop: off (it plays once and stops)", tr.loop, t.accent, big) do pa.transport_set_loop(&a.api, !tr.loop)
 	im.SameLine(0, 2)
 	// Recording knob moves: only when this is on (off by default).
 	if tool_toggle(ui.ICON_SPLINE, "Auto", "Record automation: on (knobs and faders moved while recording are written into the sequence)" if a.auto_rec.armed else "Record automation: off (knobs only change the sound)", a.auto_rec.armed, t.danger, big) {
@@ -196,18 +179,22 @@ draw_toolbar :: proc(user: rawptr) {
 	// Tempo: drag by 1 (Shift: 0.1), tap, and the time signature.
 	bpm := p.bpm
 	te := ui.number_drag("tempo", &bpm, 40, 300, 1, 0.1, "%.1f BPM", 104, fill = false)
-	if te.changed do pm.set_bpm(m, bpm)
-	if te.ended do app.seal(&m.history)
+	if te.changed {
+		pa.history_gesture_begin(&a.api)
+		pa.transport_set_tempo(&a.api, bpm)
+	}
+	if te.ended do pa.history_gesture_end(&a.api)
 	im.SameLine(0, 4)
 	// Tap: it flashes with each tap (and while a start is coming, on each
 	// beat of the new tempo); the fourth tap starts playback where a fifth
 	// would land.
-	if pm.tap_start_due(&st.taps, st.clock) && !playing do pm.play(e)
-	since := st.clock - st.tapped if st.tapped > 0 else 1e9 // never tapped: dark
+	// (The fourth tap's start is the core's: it plays when due.)
+	tt := &a.transport
+	since := clock - tt.tapped if tt.tapped > 0 else 1e9 // never tapped: dark
 	lit := since < 0.12
-	if st.taps.start_at > 0 {
+	if tt.taps.start_at > 0 {
 		beat_s := 60 / p.bpm
-		lit = lit || math.mod(st.clock - (st.taps.start_at - beat_s), beat_s) < 0.12
+		lit = lit || math.mod(clock - (tt.taps.start_at - beat_s), beat_s) < 0.12
 	}
 	glow := f32(clamp(1 - since / 0.35, 0, 1))
 	if lit || glow > 0 {
@@ -218,58 +205,35 @@ draw_toolbar :: proc(user: rawptr) {
 	}
 	pressed := im.Button("Tap")
 	if lit || glow > 0 do im.PopStyleColor(3)
-	if pressed {
-		st.tapped = max(st.clock, 1e-6)
-		if b := pm.tap(&st.taps, st.clock); b > 0 {
-			pm.set_bpm(m, f64(int(b * 10 + 0.5)) / 10)
-			app.seal(&m.history)
-		}
-		if playing do st.taps.start_at = 0 // playing: only the tempo
-	}
+	if pressed do pa.transport_tap(&a.api)
 	if im.IsItemHovered() do im.SetTooltip("Tap tempo: tap in time; the fourth tap starts playback a beat later (a pause of 2 s starts again)")
 	im.SameLine(0, 8)
 	ts := tr.time_sig
 	im.SetNextItemWidth(64)
 	if ui.combo("##timesig", fmt.ctprintf("%d/%d", ts.num, ts.den)) {
 		common := [?]pm.Time_Sig{{4, 4}, {3, 4}, {2, 4}, {5, 4}, {6, 8}, {7, 8}, {12, 8}}
-		for c in common do if im.Selectable(fmt.ctprintf("%d/%d", c.num, c.den), c == ts) {
-			n := tr
-			n.time_sig = c
-			pm.set_transport(m, .Time_Sig, "Time Signature", n)
-			app.seal(&m.history)
-		}
+		for c in common do if im.Selectable(fmt.ctprintf("%d/%d", c.num, c.den), c == ts) do pa.transport_set_time_signature(&a.api, i64(c.num), i64(c.den))
 		im.Separator()
 		num := i32(ts.num)
 		im.SetNextItemWidth(120)
 		if im.SliderInt("##num", &num, 1, 16, "%d beats") {
-			n := tr
-			n.time_sig.num = int(num)
-			pm.set_transport(m, .Time_Sig, "Time Signature", n)
+			pa.history_gesture_begin(&a.api)
+			pa.transport_set_time_signature(&a.api, i64(num), i64(ts.den))
 		}
-		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+		if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 		dens := [4]int{2, 4, 8, 16}
 		den := 0
 		for d, k in dens do if d == ts.den do den = k
-		if ui.segmented("den", {"/2", "/4", "/8", "/16"}, &den) {
-			n := tr
-			n.time_sig.den = dens[den]
-			pm.set_transport(m, .Time_Sig, "Time Signature", n)
-			app.seal(&m.history)
-		}
+		if ui.segmented("den", {"/2", "/4", "/8", "/16"}, &den) do pa.transport_set_time_signature(&a.api, i64(ts.num), i64(dens[den]))
 		im.EndCombo()
 	}
 	if im.IsItemHovered() do im.SetTooltip("Time signature")
 	ui.flex_next(&st.right)
 	ci_tip := fmt.ctprintf("Count-in: %s (click to change)", "off" if tr.count_in == 0 else fmt.tprintf("%d bar%s", tr.count_in, "" if tr.count_in == 1 else "s"))
-	if tool_toggle(ui.ICON_TIMER if tr.count_in > 0 else ui.ICON_TIMER_OFF, fmt.tprintf("Count-in %d", tr.count_in) if tr.count_in > 0 else "Count-in", ci_tip, tr.count_in > 0, t.accent, big) {
-		n := tr
-		n.count_in = (n.count_in + 1) % 3
-		pm.set_transport(m, .Count_In, "Count-in", n)
-		app.seal(&m.history)
-	}
+	if tool_toggle(ui.ICON_TIMER if tr.count_in > 0 else ui.ICON_TIMER_OFF, fmt.tprintf("Count-in %d", tr.count_in) if tr.count_in > 0 else "Count-in", ci_tip, tr.count_in > 0, t.accent, big) do pa.transport_set_count_in(&a.api, i64((tr.count_in + 1) % 3))
 	ui.flex_next(&st.right)
 	// The metronome: on/off, and its settings.
-	if tool_toggle(ui.ICON_METRONOME, "Click", "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", e.metronome, t.accent, big) do e.metronome = !e.metronome
+	if tool_toggle(ui.ICON_METRONOME, "Click", "Metronome" if !tr.metro_rec_only else "Metronome (only while recording)", e.metronome, t.accent, big) do pa.transport_set_metronome(&a.api, !e.metronome)
 	im.SameLine(0, 0)
 	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Metronome settings") do im.OpenPopup("##metro")
 	if im.BeginPopup("##metro") {
@@ -277,42 +241,21 @@ draw_toolbar :: proc(user: rawptr) {
 		lvl := tr.metro_db
 		im.SetNextItemWidth(180)
 		if im.SliderFloat("##metro_db", &lvl, -48, 6, "Level %.0f dB") {
-			n := tr
-			n.metro_db = lvl
-			pm.set_transport(m, .Metro_Level, "Metronome Level", n)
+			pa.history_gesture_begin(&a.api)
+			pa.transport_set_metronome_level(&a.api, lvl)
 		}
-		if im.IsItemDeactivatedAfterEdit() do app.seal(&m.history)
+		if im.IsItemDeactivatedAfterEdit() do pa.history_gesture_end(&a.api)
 		snd := int(tr.click)
-		if ui.segmented("metro_sound", {"Beep", "Wood", "Stick", "Cowbell"}, &snd) {
-			n := tr
-			n.click = dsp.Click_Sound(snd)
-			pm.set_transport(m, .Metro_Sound, "Metronome Sound", n)
-			app.seal(&m.history)
-		}
+		if ui.segmented("metro_sound", {"Beep", "Wood", "Stick", "Cowbell"}, &snd) do pa.transport_set_metronome_sound(&a.api, pa.Metronome_Sound(snd))
 		ui.name("metronome sound")
 		acc := !tr.no_accent
-		if ui.toggle("Accent the bar", &acc) {
-			n := tr
-			n.no_accent = !acc
-			pm.set_transport(m, .Metro_Accent, "Metronome Accent", n)
-			app.seal(&m.history)
-		}
+		if ui.toggle("Accent the bar", &acc) do pa.transport_set_metronome_accent(&a.api, acc)
 		ro := tr.metro_rec_only
-		if ui.toggle("Only while recording", &ro) {
-			n := tr
-			n.metro_rec_only = ro
-			pm.set_transport(m, .Metro_Rec_Only, "Metronome Mode", n)
-			app.seal(&m.history)
-		}
+		if ui.toggle("Only while recording", &ro) do pa.transport_set_metronome_recording_only(&a.api, ro)
 		im.Spacing()
 		im.TextDisabled("Count-in before recording")
 		ci := tr.count_in
-		if ui.segmented("count_in", {"Off", "1 bar", "2 bars"}, &ci) {
-			n := tr
-			n.count_in = ci
-			pm.set_transport(m, .Count_In, "Count-in", n)
-			app.seal(&m.history)
-		}
+		if ui.segmented("count_in", {"Off", "1 bar", "2 bars"}, &ci) do pa.transport_set_count_in(&a.api, i64(ci))
 		im.EndPopup()
 	}
 	ui.flex_end(&st.right)

@@ -1,6 +1,41 @@
-# The Pads API
+---
+title: The Pads API design
+description: One Odin API for everything Pads does, a C ABI and remote methods generated from it, and the app a client of it; built a module at a time.
+---
 
-Status: planned (decisions taken 2026-11-13). Nothing below is built yet.
+Status: stage 1 (the foundation, history, transport) built 2026-11-14;
+the rest planned (decisions taken 2026-11-13). Using it: the
+[guide](/guides/api/) and the [reference](/reference/pads-api/).
+
+### Stage 1, as built
+
+- `apps/pads/core` (package `pads_core`): `Core` holds the bus, host,
+  model, Rec's capture and the transport's own state (tap tempo, Stop's
+  timing); Pads' `App` embeds it (`using core`), so fields move into it a
+  module at a time without touching the UI's reads. `tick` is the app's
+  clock (a tap tempo's start comes due on it).
+- `apps/pads/api` (package `pads_api`): `api.odin` (the handle, `Result`,
+  `last_error`, `api_post`, `api_frame`), `subscriptions.odin` (topics
+  reported by comparing snapshots once a frame: coalesced, whoever made
+  the change), `history.odin` (undo, redo, step names, go to, groups,
+  gestures), `transport.odin`. Setters seal the undo step unless a
+  gesture is open (`history_gesture_begin/end`), which is how the UI's
+  drags merge.
+- The generator is `scripts/api.py` (not a shell script): the header
+  (`apps/pads/api/include/pads_api.h`), `gen_c.odin` (`proc "c"` shims,
+  `Table_V1`, `api_table`), `gen_remote.odin` (`remote_call`) and
+  docs/reference/pads-api.md. `--check` also fails on an API proc without
+  a doc comment or a test naming it, and compiles the header.
+- Callbacks (`Change_Proc`, `Post_Proc`) are `proc "c"` in Odin too, so one
+  type serves both.
+- Remote: a control-socket line starting with `{` is an API call
+  (`ui.Control.json`), answered at once; drive commands work beside it.
+  `subscribe` and `api_post` aren't remote yet (stage 8).
+- The lint is `scripts/lint_api.py` (in `task app:lint` and CI): the calls
+  into the model a built module owns, banned in package `pads`.
+- Transport sync (MIDI clock, Link) lives in the app's settings: it moves
+  with **settings** in stage 2. Input quantize (in the toolbar) is the
+  sequencer's, stage 5.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,
@@ -142,7 +177,7 @@ back). Generated from the same declarations.
 1. **The app calls it.** A module's UI is moved onto the API when the module
    is built; a check then fails if a UI file of that module imports the
    model directly (`scripts/lint_api.py`, module by module).
-2. **Generated files are current.** `scripts/api.sh --check` (in CI, as
+2. **Generated files are current.** `python3 scripts/api.py --check` (in CI, as
    docs --check): the C header, the shims, the function table and the
    remote methods match the Odin declarations.
 3. **Every API proc is documented and tested.** The check lists any without

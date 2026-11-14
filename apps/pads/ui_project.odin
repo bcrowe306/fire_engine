@@ -9,6 +9,7 @@ import "core:time"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
@@ -140,7 +141,7 @@ new_project :: proc(a: ^App) {
 	dir := unsaved_new(a)
 	defer delete(dir)
 	if pm.model_new(&a.m, dir) != .None do ui.toast(&a.ws.toasts, .Error, "Could not start a new project")
-	a.m.engine.metronome = true // (its click on: while recording, as a new project's is)
+	pa.transport_set_metronome(&a.api, true) // (its click on: while recording, as a new project's is)
 	a.proj.untitled = true
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1

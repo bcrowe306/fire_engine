@@ -184,6 +184,15 @@ Fire Engine is a library: its documentation is part of the API.
 - Frequently used features get a runnable program in `examples/`, which CI
   builds and runs (`scripts/examples.sh`). Guides quote from them.
 
+## The Pads API
+
+Pads is a client of its own API (`apps/pads/api`; docs/design/api.md):
+once a module is built, a feature of it is reachable through the API or it
+isn't done. The UI and the test-script commands call the API, not the
+model (`scripts/lint_api.py` checks). Changing what a feature does changes
+its API entry, its doc comment and its test (tests/pads_api) in the same
+commit; then run `python3 scripts/api.py` and commit what it generates.
+
 ## Style
 
 - Tabs for indentation, as `odin` and the core library do.
