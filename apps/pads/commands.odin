@@ -179,7 +179,7 @@ register_commands :: proc(a: ^App) {
 	add(c, {id = "pad.group", label = "Group Selected Pads", icon = ui.ICON_GROUP, kinds = {.Pad}, group = 2, keys = "Cmd+G",
 		run = proc(a: ^App, t: Target) { group_selected(a, t.index) }, enabled = pad_has})
 	add(c, {id = "bus.ungroup", label = "Ungroup", icon = ui.ICON_GROUP, kinds = {.Bus}, group = 1,
-		run = proc(a: ^App, t: Target) { pm.ungroup(&a.m, t.index + 1) },
+		run = proc(a: ^App, t: Target) { pa.mixer_ungroup(&a.api, i64(t.index)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return t.index < pm.BUSES && a.m.project.buses[t.index].group }})
 	add(c, {id = "pad.copy", label = "Copy Pad", icon = ui.ICON_COPY, kinds = {.Pad}, group = 2,
 		run = proc(a: ^App, t: Target) { a.pad_clip, a.has_pad_clip = a.m.project.pads[t.index], true }, enabled = pad_has})
@@ -289,24 +289,29 @@ register_commands :: proc(a: ^App) {
 
 	// Buses.
 	add(c, {id = "bus.mute", label = "Mute", icon = ui.ICON_VOLUME_X, kinds = {.Bus}, group = 0,
-		run = proc(a: ^App, t: Target) { b := pm.bus_of(&a.m, t.index)^; b.mute = !b.mute; pm.set_bus(&a.m, t.index, 1, "Mute", b); app.seal(&a.m.history) },
+		run = proc(a: ^App, t: Target) { pa.mixer_set_bus_mute(&a.api, i64(t.index), !pm.bus_of(&a.m, t.index).mute) },
 		checked = proc(a: ^App, t: Target) -> bool { return pm.bus_of(&a.m, t.index).mute }})
 	add(c, {id = "bus.solo", label = "Solo", icon = ui.ICON_HEADPHONES, kinds = {.Bus}, group = 0,
-		run = proc(a: ^App, t: Target) { b := pm.bus_of(&a.m, t.index)^; b.solo = !b.solo; pm.set_bus(&a.m, t.index, 1, "Solo", b); app.seal(&a.m.history) },
+		run = proc(a: ^App, t: Target) { pa.mixer_set_bus_solo(&a.api, i64(t.index), !pm.bus_of(&a.m, t.index).solo) },
 		enabled = proc(a: ^App, t: Target) -> bool { return t.index != pm.BUSES },
 		checked = proc(a: ^App, t: Target) -> bool { return pm.bus_of(&a.m, t.index).solo }})
 	add(c, {id = "bus.reset", label = "Reset Level and Pan", icon = ui.ICON_ROTATE_CCW, kinds = {.Bus}, group = 1,
-		run = proc(a: ^App, t: Target) { b := pm.bus_of(&a.m, t.index)^; b.volume, b.pan = 0, 0; pm.set_bus(&a.m, t.index, 0, "Reset Bus", b); app.seal(&a.m.history) }})
+		run = proc(a: ^App, t: Target) {
+			pa.history_group_begin(&a.api, "Reset Bus")
+			pa.mixer_set_bus_volume(&a.api, i64(t.index), 0)
+			pa.mixer_set_bus_pan(&a.api, i64(t.index), 0)
+			pa.history_group_end(&a.api)
+		}})
 	add(c, {id = "bus.bounce", label = "Bounce to Pad", icon = ui.ICON_COMBINE, kinds = {.Bus}, group = 1,
 		run = proc(a: ^App, t: Target) { if t.index == pm.BUSES do start_resample(a); else do start_bounce_bus(a, t.index) }})
 	add(c, {id = "bus.rename", label = "Rename…", icon = ui.ICON_PENCIL, kinds = {.Bus}, group = 2,
 		run = proc(a: ^App, t: Target) { begin_rename_bus(a, t.index + 1) },
 		enabled = proc(a: ^App, t: Target) -> bool { return t.index != pm.BUSES }})
 	add(c, {id = "bus.delete", label = "Delete Bus", icon = ui.ICON_TRASH_2, kinds = {.Bus}, group = 2,
-		run = proc(a: ^App, t: Target) { pm.delete_bus(&a.m, t.index + 1) },
+		run = proc(a: ^App, t: Target) { pa.mixer_delete_bus(&a.api, i64(t.index)) },
 		enabled = proc(a: ^App, t: Target) -> bool { return t.index != pm.BUSES && a.m.project.bus_count > 1 }})
 	add(c, {id = "bus.add", label = "Add Bus", icon = ui.ICON_PLUS, kinds = {.Bus}, group = 2,
-		run = proc(a: ^App, t: Target) { pm.add_bus(&a.m) },
+		run = proc(a: ^App, t: Target) { pa.mixer_add_bus(&a.api) },
 		enabled = proc(a: ^App, t: Target) -> bool { return a.m.project.bus_count < pm.BUSES }})
 
 	// Files in the browser.

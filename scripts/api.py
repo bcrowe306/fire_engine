@@ -60,6 +60,7 @@ MODULE_TITLES = {
     "params": "Parameters, by reference",
     "effects": "Effects: inserts, bus effects, performance effects, sends, sidechains",
     "devices": "Devices: synth presets, plug-in instruments",
+    "mixer": "Mixer: buses, outputs, groups, cue, meters, loudness, latency",
 }
 
 
@@ -196,6 +197,8 @@ def c_params(d, enums, structs):
     for name, typ, _ in d.params:
         if typ == "string":
             out += [f"const char* {name}", f"int64_t {name}_len"]
+        elif typ == "[]i64":
+            out += [f"const int64_t* {name}", f"int64_t {name}_len"]
         else:
             out.append(f"{c_type(typ, enums, structs)} {name}")
     if d.value == "string":
@@ -287,6 +290,9 @@ def gen_c(procs, enums, structs):
             if typ == "string":
                 o.append(f"\t{name}_s := string(([^]u8)({name})[:max({name}_len, 0)]) if {name} != nil else \"\"\n")
                 args.append(f"{name}_s")
+            elif typ == "[]i64":
+                o.append(f"\t{name}_s := {name}[:max({name}_len, 0)] if {name} != nil else nil\n")
+                args.append(f"{name}_s")
             else:
                 args.append(name)
         call = f"{d.name}(api{''.join(', ' + a for a in args)})"
@@ -308,6 +314,8 @@ def shim_type(d):
     for name, typ, _ in d.params:
         if typ == "string":
             ps += [f"{name}: cstring", f"{name}_len: i64"]
+        elif typ == "[]i64":
+            ps += [f"{name}: [^]i64", f"{name}_len: i64"]
         else:
             ps.append(f"{name}: {typ}")
     if d.value == "string":
@@ -349,7 +357,7 @@ def gen_remote(procs, enums, structs):
             elif typ in structs:
                 o.append(f"\t\t{name} := remote_struct_{typ}(args, \"{name}\", &ok)\n")
             else:
-                fn = {"bool": "remote_bool", "i64": "remote_i64", "f64": "remote_f64", "f32": "remote_f32", "string": "remote_string", "Subscription": "remote_sub"}[typ]
+                fn = {"bool": "remote_bool", "i64": "remote_i64", "f64": "remote_f64", "f32": "remote_f32", "string": "remote_string", "Subscription": "remote_sub", "[]i64": "remote_i64s"}[typ]
                 dflt = ""
                 if default is not None:
                     dflt = f", {default}"

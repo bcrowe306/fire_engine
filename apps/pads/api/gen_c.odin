@@ -49,6 +49,31 @@ Table_V1 :: struct {
 	history_group_end: proc "c" (api: ^Api) -> Result,
 	history_gesture_begin: proc "c" (api: ^Api) -> Result,
 	history_gesture_end: proc "c" (api: ^Api) -> Result,
+	mixer_state: proc "c" (api: ^Api, out: ^Mixer_State) -> Result,
+	mixer_bus_state: proc "c" (api: ^Api, bus: i64, out: ^Bus_State) -> Result,
+	mixer_bus_name: proc "c" (api: ^Api, bus: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	mixer_add_bus: proc "c" (api: ^Api, out: ^i64) -> Result,
+	mixer_delete_bus: proc "c" (api: ^Api, bus: i64) -> Result,
+	mixer_rename_bus: proc "c" (api: ^Api, bus: i64, name: cstring, name_len: i64) -> Result,
+	mixer_set_bus_output: proc "c" (api: ^Api, bus: i64, output: Output) -> Result,
+	mixer_set_pad_output: proc "c" (api: ^Api, pad: i64, output: Output) -> Result,
+	mixer_pad_output: proc "c" (api: ^Api, pad: i64, out: ^Output) -> Result,
+	mixer_set_bus_mute: proc "c" (api: ^Api, bus: i64, on: bool) -> Result,
+	mixer_set_bus_solo: proc "c" (api: ^Api, bus: i64, on: bool) -> Result,
+	mixer_set_bus_volume: proc "c" (api: ^Api, bus: i64, db: f32) -> Result,
+	mixer_set_bus_pan: proc "c" (api: ^Api, bus: i64, pan: f32) -> Result,
+	mixer_group_pads: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64, name: cstring, name_len: i64, out: ^i64) -> Result,
+	mixer_ungroup: proc "c" (api: ^Api, bus: i64) -> Result,
+	mixer_set_group_folded: proc "c" (api: ^Api, bus: i64, folded: bool) -> Result,
+	mixer_set_pad_cue: proc "c" (api: ^Api, pad: i64, db: f32, pre: bool) -> Result,
+	mixer_set_bus_cue: proc "c" (api: ^Api, bus: i64, db: f32, pre: bool) -> Result,
+	mixer_pad_meter: proc "c" (api: ^Api, pad: i64, out: ^Meter) -> Result,
+	mixer_bus_meter: proc "c" (api: ^Api, bus: i64, out: ^Meter) -> Result,
+	mixer_cue_meter: proc "c" (api: ^Api, out: ^Meter) -> Result,
+	mixer_input_meter: proc "c" (api: ^Api, pair: i64, out: ^Meter) -> Result,
+	mixer_loudness: proc "c" (api: ^Api, out: ^Loudness) -> Result,
+	mixer_loudness_reset: proc "c" (api: ^Api) -> Result,
+	mixer_pad_latency: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result,
 	pad_state: proc "c" (api: ^Api, pad: i64, out: ^Pad_State) -> Result,
 	pad_name: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	pad_label: proc "c" (api: ^Api, pad: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
@@ -173,6 +198,31 @@ table_fill :: proc(api: ^Api) {
 	t.history_group_end = c_history_group_end
 	t.history_gesture_begin = c_history_gesture_begin
 	t.history_gesture_end = c_history_gesture_end
+	t.mixer_state = c_mixer_state
+	t.mixer_bus_state = c_mixer_bus_state
+	t.mixer_bus_name = c_mixer_bus_name
+	t.mixer_add_bus = c_mixer_add_bus
+	t.mixer_delete_bus = c_mixer_delete_bus
+	t.mixer_rename_bus = c_mixer_rename_bus
+	t.mixer_set_bus_output = c_mixer_set_bus_output
+	t.mixer_set_pad_output = c_mixer_set_pad_output
+	t.mixer_pad_output = c_mixer_pad_output
+	t.mixer_set_bus_mute = c_mixer_set_bus_mute
+	t.mixer_set_bus_solo = c_mixer_set_bus_solo
+	t.mixer_set_bus_volume = c_mixer_set_bus_volume
+	t.mixer_set_bus_pan = c_mixer_set_bus_pan
+	t.mixer_group_pads = c_mixer_group_pads
+	t.mixer_ungroup = c_mixer_ungroup
+	t.mixer_set_group_folded = c_mixer_set_group_folded
+	t.mixer_set_pad_cue = c_mixer_set_pad_cue
+	t.mixer_set_bus_cue = c_mixer_set_bus_cue
+	t.mixer_pad_meter = c_mixer_pad_meter
+	t.mixer_bus_meter = c_mixer_bus_meter
+	t.mixer_cue_meter = c_mixer_cue_meter
+	t.mixer_input_meter = c_mixer_input_meter
+	t.mixer_loudness = c_mixer_loudness
+	t.mixer_loudness_reset = c_mixer_loudness_reset
+	t.mixer_pad_latency = c_mixer_pad_latency
 	t.pad_state = c_pad_state
 	t.pad_name = c_pad_name
 	t.pad_label = c_pad_label
@@ -570,6 +620,187 @@ c_history_gesture_begin :: proc "c" (api: ^Api) -> Result {
 c_history_gesture_end :: proc "c" (api: ^Api) -> Result {
 	context = runtime.default_context()
 	return history_gesture_end(api)
+}
+
+@(private)
+c_mixer_state :: proc "c" (api: ^Api, out: ^Mixer_State) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_bus_state :: proc "c" (api: ^Api, bus: i64, out: ^Bus_State) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_bus_state(api, bus)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_bus_name :: proc "c" (api: ^Api, bus: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := mixer_bus_name(api, bus)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_mixer_add_bus :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_add_bus(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_delete_bus :: proc "c" (api: ^Api, bus: i64) -> Result {
+	context = runtime.default_context()
+	return mixer_delete_bus(api, bus)
+}
+
+@(private)
+c_mixer_rename_bus :: proc "c" (api: ^Api, bus: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return mixer_rename_bus(api, bus, name_s)
+}
+
+@(private)
+c_mixer_set_bus_output :: proc "c" (api: ^Api, bus: i64, output: Output) -> Result {
+	context = runtime.default_context()
+	return mixer_set_bus_output(api, bus, output)
+}
+
+@(private)
+c_mixer_set_pad_output :: proc "c" (api: ^Api, pad: i64, output: Output) -> Result {
+	context = runtime.default_context()
+	return mixer_set_pad_output(api, pad, output)
+}
+
+@(private)
+c_mixer_pad_output :: proc "c" (api: ^Api, pad: i64, out: ^Output) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_pad_output(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_set_bus_mute :: proc "c" (api: ^Api, bus: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return mixer_set_bus_mute(api, bus, on)
+}
+
+@(private)
+c_mixer_set_bus_solo :: proc "c" (api: ^Api, bus: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return mixer_set_bus_solo(api, bus, on)
+}
+
+@(private)
+c_mixer_set_bus_volume :: proc "c" (api: ^Api, bus: i64, db: f32) -> Result {
+	context = runtime.default_context()
+	return mixer_set_bus_volume(api, bus, db)
+}
+
+@(private)
+c_mixer_set_bus_pan :: proc "c" (api: ^Api, bus: i64, pan: f32) -> Result {
+	context = runtime.default_context()
+	return mixer_set_bus_pan(api, bus, pan)
+}
+
+@(private)
+c_mixer_group_pads :: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64, name: cstring, name_len: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	pads_s := pads[:max(pads_len, 0)] if pads != nil else nil
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	v, r := mixer_group_pads(api, pads_s, name_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_ungroup :: proc "c" (api: ^Api, bus: i64) -> Result {
+	context = runtime.default_context()
+	return mixer_ungroup(api, bus)
+}
+
+@(private)
+c_mixer_set_group_folded :: proc "c" (api: ^Api, bus: i64, folded: bool) -> Result {
+	context = runtime.default_context()
+	return mixer_set_group_folded(api, bus, folded)
+}
+
+@(private)
+c_mixer_set_pad_cue :: proc "c" (api: ^Api, pad: i64, db: f32, pre: bool) -> Result {
+	context = runtime.default_context()
+	return mixer_set_pad_cue(api, pad, db, pre)
+}
+
+@(private)
+c_mixer_set_bus_cue :: proc "c" (api: ^Api, bus: i64, db: f32, pre: bool) -> Result {
+	context = runtime.default_context()
+	return mixer_set_bus_cue(api, bus, db, pre)
+}
+
+@(private)
+c_mixer_pad_meter :: proc "c" (api: ^Api, pad: i64, out: ^Meter) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_pad_meter(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_bus_meter :: proc "c" (api: ^Api, bus: i64, out: ^Meter) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_bus_meter(api, bus)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_cue_meter :: proc "c" (api: ^Api, out: ^Meter) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_cue_meter(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_input_meter :: proc "c" (api: ^Api, pair: i64, out: ^Meter) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_input_meter(api, pair)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_loudness :: proc "c" (api: ^Api, out: ^Loudness) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_loudness(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_loudness_reset :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return mixer_loudness_reset(api)
+}
+
+@(private)
+c_mixer_pad_latency :: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_pad_latency(api, pad)
+	if out != nil do out^ = v
+	return r
 }
 
 @(private)

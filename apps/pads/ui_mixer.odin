@@ -264,7 +264,7 @@ draw_mixer :: proc(user: rawptr) {
 	if n_buses < pm.BUSES {
 		im.SameLine(0, 2)
 		if ui.icon_button(ui.ICON_PLUS, "Add a bus", size = 22) {
-			pm.add_bus(m)
+			pa.mixer_add_bus(&a.api)
 			bus_added = 2
 		}
 		ui.name("add bus")
@@ -375,14 +375,14 @@ group_tab :: proc(a: ^App, b: int, h: f32) {
 	pos := im.GetCursorScreenPos()
 	im.PushIDInt(i32(5000 + b))
 	defer im.PopID()
-	if im.InvisibleButton("##group", {w, h}) do pm.set_group_folded(m, b, !g.folded)
+	if im.InvisibleButton("##group", {w, h}) do pa.mixer_set_group_folded(&a.api, i64(b - 1), !g.folded)
 	ui.name(fmt.tprintf("group %s", pm.bus_name(p, b)))
 	hot := im.IsItemHovered()
 	if hot do im.SetTooltip("%s", fmt.ctprintf("%s: %d pads · click to %s · right-click: rename, ungroup", pm.bus_name(p, b), len(pm.group_members(p, b)), "unfold" if g.folded else "fold"))
 	if im.BeginPopupContextItem("##groupmenu") {
-		if im.MenuItem("Fold", nil, g.folded) do pm.set_group_folded(m, b, !g.folded)
+		if im.MenuItem("Fold", nil, g.folded) do pa.mixer_set_group_folded(&a.api, i64(b - 1), !g.folded)
 		if im.MenuItem("Rename…") do begin_rename_bus(a, b)
-		if im.MenuItem("Ungroup") do pm.ungroup(m, b)
+		if im.MenuItem("Ungroup") do pa.mixer_ungroup(&a.api, i64(b - 1))
 		im.EndPopup()
 	}
 	dl := im.GetWindowDrawList()
@@ -405,11 +405,12 @@ group_tab :: proc(a: ^App, b: int, h: f32) {
 group_selected :: proc(a: ^App, i: int) {
 	sel := selected_pads(a)
 	if i not_in sel do sel = {i}
-	pads := make([dynamic]int, context.temp_allocator)
-	for k in 0 ..< pm.PADS do if k in sel && pm.pad_used(&a.m.project, k) do append(&pads, k)
+	pads := make([dynamic]i64, context.temp_allocator)
+	for k in 0 ..< pm.PADS do if k in sel && pm.pad_used(&a.m.project, k) do append(&pads, i64(k))
 	if len(pads) == 0 do return
-	b := pm.group_pads(&a.m, pads[:])
-	if b == 0 {
+	gb, r := pa.mixer_group_pads(&a.api, pads[:], "")
+	b := int(gb) + 1 // (the model's bus numbers: 1..)
+	if r != .Ok {
 		ui.toast(&a.ws.toasts, .Error, "No bus left for a group")
 		return
 	}
@@ -435,7 +436,7 @@ draw_rename_bus :: proc(a: ^App) {
 		im.SetNextItemWidth(200)
 		enter := im.InputText("##busname", cstring(&st.rename_buf[0]), len(st.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
 		if im.Button("Rename") || enter {
-			pm.rename_bus(&a.m, st.rename_bus, strings.truncate_to_byte(string(st.rename_buf[:]), 0))
+			pa.mixer_rename_bus(&a.api, i64(st.rename_bus - 1), strings.truncate_to_byte(string(st.rename_buf[:]), 0))
 			st.rename_bus = 0
 			im.CloseCurrentPopup()
 		}
@@ -821,10 +822,9 @@ output_row :: proc(a: ^App, pad: int) {
 		if d, ok := out_pairs_menu(a, cur); ok do pick = d
 		if pick >= 0 {
 			targets := strip_targets(a, pad)
-			app.begin(&m.history, "Route")
-			for j in 0 ..< pm.PADS do if j in targets do pm.set_pad_bus(m, j, pick)
-			app.end(&m.history)
-			app.seal(&m.history)
+			pa.history_group_begin(&a.api, "Route")
+			for j in 0 ..< pm.PADS do if j in targets do pa.mixer_set_pad_output(&a.api, i64(j), dest_output(pick))
+			pa.history_group_end(&a.api)
 		}
 		im.EndPopup()
 	}
@@ -954,9 +954,9 @@ bus_output_row :: proc(a: ^App, b: int) {
 	if im.BeginPopup("##busout") {
 		for d in 0 ..= m.project.bus_count do if d != b + 1 {
 			ok := pm.bus_dest_ok(&m.project, b + 1, d)
-			if im.MenuItem(fmt.ctprintf("%s###bo%d", pm.bus_name(&m.project, d), d), nil, d == cur, ok) do pm.set_bus_dest(m, b + 1, d)
+			if im.MenuItem(fmt.ctprintf("%s###bo%d", pm.bus_name(&m.project, d), d), nil, d == cur, ok) do pa.mixer_set_bus_output(&a.api, i64(b), dest_output(d))
 		}
-		if d, ok := out_pairs_menu(a, cur); ok do pm.set_bus_dest(m, b + 1, d)
+		if d, ok := out_pairs_menu(a, cur); ok do pa.mixer_set_bus_output(&a.api, i64(b), dest_output(d))
 		im.EndPopup()
 	}
 }
@@ -1459,11 +1459,10 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	pe := pan_knob(a, &pan)
 	knob_target(a, {})
 	if pe.changed {
-		nb := bus
-		nb.pan = pan
-		pm.set_bus(m, b, 2, "Set Pan", nb)
+		pa.history_gesture_begin(&a.api)
+		pa.mixer_set_bus_pan(&a.api, i64(b), clamp(pan, -1, 1))
 	}
-	if pe.ended do app.seal(&m.history)
+	if pe.ended do pa.history_gesture_end(&a.api)
 	gap()
 	vol := bus.volume
 	readouts(a, vol, &a.mixer.buses[b])
@@ -1471,18 +1470,15 @@ bus_strip :: proc(a: ^App, b: int, h: f32) {
 	fe := fader_meter(a, &vol, &a.mixer.buses[b], fader_h(h, false, block_h(a, h)), strip_reduction(a, .Bus, b, pm.BUS_SLOTS))
 	knob_target(a, {})
 	if fe.changed {
-		nb := bus
-		nb.volume = vol
-		pm.set_bus(m, b, 0, "Set Volume", nb)
+		pa.history_gesture_begin(&a.api)
+		pa.mixer_set_bus_volume(&a.api, i64(b), clamp(vol, FADER_LO, FADER_HI))
 	}
-	if fe.ended do app.seal(&m.history)
+	if fe.ended do pa.history_gesture_end(&a.api)
 	gap()
 	mute, solo := bus.mute, bus.solo
 	if mute_solo(a, &mute, nil if is_main else &solo) {
-		nb := bus
-		nb.mute, nb.solo = mute, solo
-		pm.set_bus(m, b, 1, "Mute" if mute != bus.mute else "Solo", nb)
-		app.seal(&m.history)
+		if mute != bus.mute do pa.mixer_set_bus_mute(&a.api, i64(b), mute)
+		else do pa.mixer_set_bus_solo(&a.api, i64(b), solo)
 	}
 	gap()
 	if strip_view.io {
@@ -1508,9 +1504,10 @@ cue_row :: proc(a: ^App, pad, bus: int) {
 	m := &a.m
 	t := ui.theme()
 	s := m.project.pads[pad].cue if pad >= 0 else m.project.buses[bus].cue
-	set :: proc(m: ^pm.Model, pad, bus: int, s: pm.Send) {
-		if pad >= 0 do pm.set_pad_cue(m, pad, s)
-		else do pm.set_bus_cue(m, bus, s)
+	set :: proc(a: ^App, pad, bus: int, s: pm.Send) {
+		db := clamp(pm.send_db(s), pm.SEND_MIN_DB, 6)
+		if pad >= 0 do pa.mixer_set_pad_cue(&a.api, i64(pad), db, s.pre)
+		else do pa.mixer_set_bus_cue(&a.api, i64(bus), db, s.pre)
 	}
 	on := s.level > 0
 	lo, hi, _ := row(a, "##cue", "", t.text)
@@ -1538,15 +1535,15 @@ cue_row :: proc(a: ^App, pad, bus: int) {
 	if e.changed {
 		ns := s
 		ns.level = pm.send_level(v)
-		set(m, pad, bus, ns)
+		pa.history_gesture_begin(&a.api)
+		set(a, pad, bus, ns)
 	}
-	if e.ended do app.seal(&m.history)
+	if e.ended do pa.history_gesture_end(&a.api)
 	if im.BeginPopupContextItem("##cuemenu") {
 		if im.MenuItem("Pre-fader", nil, s.pre) {
 			ns := s
 			ns.pre = !s.pre
-			set(m, pad, bus, ns)
-			app.seal(&m.history)
+			set(a, pad, bus, ns)
 		}
 		im.EndPopup()
 	}
@@ -1603,13 +1600,13 @@ draw_main_meters :: proc(a: ^App, h: f32) {
 	im.TextDisabled("LUFS-S")
 	im.Text("%s", fmt.ctprintf("M  %s", lufs(mom)))
 	ui.name("main momentary")
-	if im.Selectable(fmt.ctprintf("I  %s  %s###integrated", lufs(integ), ui.ICON_ROTATE_CCW), false, {}, {w, 0}) do pm.main_loudness_reset(&m.engine)
+	if im.Selectable(fmt.ctprintf("I  %s  %s###integrated", lufs(integ), ui.ICON_ROTATE_CCW), false, {}, {w, 0}) do pa.mixer_loudness_reset(&a.api)
 	ui.name("main integrated")
 	if im.IsItemHovered() do im.SetTooltip("Integrated loudness since the last reset (gated, EBU R128): click to start again")
 	tp_db := 20 * math.log10(max(tp, 1e-9))
 	hot := tp_db > -1
 	im.PushStyleColorVec4(.Text, transmute(im.Vec4)(t.danger if hot else t.text))
-	if im.Selectable(fmt.ctprintf("TP %s dB###truepeak", "-inf" if tp <= 0 else fmt.tprintf("%+.1f", tp_db)), false, {}, {w, 0}) do pm.main_loudness_reset(&m.engine)
+	if im.Selectable(fmt.ctprintf("TP %s dB###truepeak", "-inf" if tp <= 0 else fmt.tprintf("%+.1f", tp_db)), false, {}, {w, 0}) do pa.mixer_loudness_reset(&a.api)
 	im.PopStyleColor()
 	ui.name("main true peak")
 	if im.IsItemHovered() do im.SetTooltip("True peak since the last reset (between the samples too); over -1 dBTP it may clip after encoding. Click to start again")
@@ -1652,4 +1649,12 @@ draw_main_meters :: proc(a: ^App, h: f32) {
 		im.DrawList_AddRectFilled(dl, {gc.x + clamp(x, -1, 1) * r, gc.y - clamp(y, -1, 1) * r}, {gc.x + clamp(x, -1, 1) * r + 1.5, gc.y - clamp(y, -1, 1) * r + 1.5}, ui.col(dot))
 	}
 	if im.IsItemHovered() do im.SetTooltip("The stereo image: mono straight up and down, wide sideways, out of phase flat across")
+}
+
+// The API's output for the model's route number `d` (0 main, 1.. a bus,
+// an output pair).
+dest_output :: proc(d: int) -> pa.Output {
+	if pm.is_out_dest(d) do return {kind = .Pair, index = i64(d - pm.OUT_DEST)}
+	if d >= 1 && d <= pm.BUSES do return {kind = .Bus, index = i64(d - 1)}
+	return {kind = .Main}
 }

@@ -41,6 +41,9 @@ MODULES = {
     "devices": [
         (r"\bpm\.(preset_apply|preset_apply_builtin|preset_save|make_plugin_pad)\(", "device_load_preset / load_preset_file / save_preset / load_plugin"),
     ],
+    "mixer": [
+        (r"\bpm\.(add_bus|delete_bus|rename_bus|set_bus_dest|set_pad_bus|group_pads|ungroup|set_group_folded|set_pad_cue|set_bus_cue|main_loudness_reset|set_bus)\(", "mixer_* (buses, outputs, groups, cue, loudness)"),
+    ],
     # (The Settings window is the editor of the same fields the registry
     # points at; the test-script commands set them through the API.)
     "settings": [

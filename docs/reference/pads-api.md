@@ -337,6 +337,208 @@ history_gesture_end :: proc(api: ^Api) -> Result
 
 Ends the gesture: the next edit is a new step.
 
+## Mixer: buses, outputs, groups, cue, meters, loudness, latency
+
+### mixer_state
+
+```odin
+mixer_state :: proc(api: ^Api) -> (Mixer_State, Result)
+```
+
+The mixer now.
+
+### mixer_bus_state
+
+```odin
+mixer_bus_state :: proc(api: ^Api, bus: i64) -> (Bus_State, Result)
+```
+
+Bus `bus` (or MAIN) now.
+
+### mixer_bus_name
+
+```odin
+mixer_bus_name :: proc(api: ^Api, bus: i64) -> (string, Result)
+```
+
+Bus `bus`'s name ("Bus A", its own, "Main"). Temporary.
+
+### mixer_add_bus
+
+```odin
+mixer_add_bus :: proc(api: ^Api) -> (i64, Result)
+```
+
+Adds a bus (after the others, going to main): its number. Busy when there are 16.
+
+### mixer_delete_bus
+
+```odin
+mixer_delete_bus :: proc(api: ^Api, bus: i64) -> Result
+```
+
+Deletes bus `bus`: what went to it goes to main, its sends go, the buses after it move up. One undo step. Busy for the last bus left.
+
+### mixer_rename_bus
+
+```odin
+mixer_rename_bus :: proc(api: ^Api, bus: i64, name: string) -> Result
+```
+
+Names bus `bus` (up to 15 bytes; "": its letter again), undoably.
+
+### mixer_set_bus_output
+
+```odin
+mixer_set_bus_output :: proc(api: ^Api, bus: i64, output: Output) -> Result
+```
+
+Sends bus `bus` to `output`, undoably. Invalid_Argument if that goes round in a loop (to itself, or through buses back to it).
+
+### mixer_set_pad_output
+
+```odin
+mixer_set_pad_output :: proc(api: ^Api, pad: i64, output: Output) -> Result
+```
+
+Sends pad `pad` to `output` (main, a bus, an output pair), undoably.
+
+### mixer_pad_output
+
+```odin
+mixer_pad_output :: proc(api: ^Api, pad: i64) -> (Output, Result)
+```
+
+Where pad `pad` plays.
+
+### mixer_set_bus_mute
+
+```odin
+mixer_set_bus_mute :: proc(api: ^Api, bus: i64, on: bool) -> Result
+```
+
+Mutes bus `bus` (or MAIN) or not, undoably.
+
+### mixer_set_bus_solo
+
+```odin
+mixer_set_bus_solo :: proc(api: ^Api, bus: i64, on: bool) -> Result
+```
+
+Solos bus `bus` or not, undoably. Unsupported for main.
+
+### mixer_set_bus_volume
+
+```odin
+mixer_set_bus_volume :: proc(api: ^Api, bus: i64, db: f32) -> Result
+```
+
+Sets bus `bus`'s (or MAIN's) fader (-60..6 dB): param_set on its Volume.
+
+### mixer_set_bus_pan
+
+```odin
+mixer_set_bus_pan :: proc(api: ^Api, bus: i64, pan: f32) -> Result
+```
+
+Sets bus `bus`'s (or MAIN's) pan (-1..1): param_set on its Pan.
+
+### mixer_group_pads
+
+```odin
+mixer_group_pads :: proc(api: ^Api, pads: []i64, name: string) -> (i64, Result)
+```
+
+Groups pads `pads` under a new group bus named `name` ("": "Group N"), going where the first went: the bus. One undo step. Busy when there are 16 buses.
+
+### mixer_ungroup
+
+```odin
+mixer_ungroup :: proc(api: ^Api, bus: i64) -> Result
+```
+
+Ungroups group bus `bus`: its pads go where it went, and it goes. One undo step. Invalid_Argument for a bus that isn't a group.
+
+### mixer_set_group_folded
+
+```odin
+mixer_set_group_folded :: proc(api: ^Api, bus: i64, folded: bool) -> Result
+```
+
+Folds group bus `bus`'s pads away in the Mixer, or shows them (a view: saved, not undone).
+
+### mixer_set_pad_cue
+
+```odin
+mixer_set_pad_cue :: proc(api: ^Api, pad: i64, db: f32, pre: bool) -> Result
+```
+
+Sets pad `pad`'s send to the cue mix (a performer's headphones): `db` (-60: off; up to 6), before its fader (`pre`) or after. Undoably.
+
+### mixer_set_bus_cue
+
+```odin
+mixer_set_bus_cue :: proc(api: ^Api, bus: i64, db: f32, pre: bool) -> Result
+```
+
+Sets bus `bus`'s send to the cue mix (as `mixer_set_pad_cue`). Not main.
+
+### mixer_pad_meter
+
+```odin
+mixer_pad_meter :: proc(api: ^Api, pad: i64) -> (Meter, Result)
+```
+
+Pad `pad`'s meter now (after its fader). Poll it: it isn't reported.
+
+### mixer_bus_meter
+
+```odin
+mixer_bus_meter :: proc(api: ^Api, bus: i64) -> (Meter, Result)
+```
+
+Bus `bus`'s (or MAIN's) meter now.
+
+### mixer_cue_meter
+
+```odin
+mixer_cue_meter :: proc(api: ^Api) -> (Meter, Result)
+```
+
+The cue mix's meter now.
+
+### mixer_input_meter
+
+```odin
+mixer_input_meter :: proc(api: ^Api, pair: i64) -> (Meter, Result)
+```
+
+The interface's input pair `pair`'s meter now (0: inputs 1/2).
+
+### mixer_loudness
+
+```odin
+mixer_loudness :: proc(api: ^Api) -> (Loudness, Result)
+```
+
+Main's loudness and stereo now.
+
+### mixer_loudness_reset
+
+```odin
+mixer_loudness_reset :: proc(api: ^Api) -> Result
+```
+
+Starts main's integrated loudness and true peak again.
+
+### mixer_pad_latency
+
+```odin
+mixer_pad_latency :: proc(api: ^Api, pad: i64) -> (i64, Result)
+```
+
+Frames pad `pad`'s inserts delay it (the others are delayed to match).
+
 ## Pads
 
 ### pad_state
@@ -953,6 +1155,12 @@ What a compressor's or gate's sidechain listens to.
 
 `None`, `Pad`, `Bus`
 
+### Output_Kind
+
+Where a pad or a bus plays.
+
+`Main`, `Bus`, `Pair`
+
 ### Pad_Kind
 
 What a pad is.
@@ -1060,6 +1268,63 @@ The undo history now: steps that can be undone and redone, and whether the proje
 | `redo_steps` | `i64` | steps undone that can be redone |
 | `dirty` | `bool` | changed since it was saved |
 | `grouping` | `bool` | a group is open (history_group_begin) |
+
+### Output
+
+Where a pad or a bus plays.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | `Output_Kind` |  |
+| `index` | `i64` |  |
+
+### Mixer_State
+
+The mixer now.
+
+| Field | Type | |
+|---|---|---|
+| `buses` | `i64` | buses in use (0..buses-1) |
+| `total_latency` | `i64` | frames the whole mix runs behind (compensated) |
+
+### Bus_State
+
+Bus `bus` (0..buses-1, or MAIN) now (its name: mixer_bus_name).
+
+| Field | Type | |
+|---|---|---|
+| `volume` | `f32` | dB |
+| `pan` | `f32` | -1..1 |
+| `mute` | `bool` |  |
+| `solo` | `bool` | (main: never) |
+| `group` | `bool` | a group: the pads going to it show with it |
+| `folded` | `bool` | a group whose pads' strips are hidden |
+| `output` | `Output` | where it goes (main: its own outputs) |
+| `cue_db` | `f32` | its send to the cue mix (-60: off) |
+| `cue_pre` | `bool` |  |
+
+### Meter
+
+A meter's reading now (linear: 1 is full scale).
+
+| Field | Type | |
+|---|---|---|
+| `peak_l` | `f32` |  |
+| `peak_r` | `f32` |  |
+| `rms_l` | `f32` |  |
+| `rms_r` | `f32` |  |
+
+### Loudness
+
+Main's loudness (EBU R128) and its stereo.
+
+| Field | Type | |
+|---|---|---|
+| `momentary` | `f32` | LUFS |
+| `short_term` | `f32` | LUFS |
+| `integrated` | `f32` | LUFS (since the last reset) |
+| `true_peak_db` | `f32` | dBTP |
+| `correlation` | `f32` | -1..1 (1: mono) |
 
 ### Pad_State
 

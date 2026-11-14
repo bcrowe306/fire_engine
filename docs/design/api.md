@@ -4,8 +4,8 @@ description: One Odin API for everything Pads does, a C ABI and remote methods g
 ---
 
 Status: stages 1 (the foundation, history, transport), 2 (project,
-settings) and 3 (pads, params, effects, devices) built 2026-11-14; the
-rest planned (decisions taken 2026-11-13). Using it: the
+settings), 3 (pads, params, effects, devices) and 4 (mixer) built
+2026-11-14; the rest planned (decisions taken 2026-11-13). Using it: the
 [guide](/guides/api/) and the [reference](/reference/pads-api/).
 
 ### Stage 1, as built
@@ -116,6 +116,21 @@ devices and effects (and the knobs moved onto `param_set`).
   move onto `param_set` with the `ui` module (stage 7), when the knob
   widget can carry its `Param_Ref` and a step name; until then a surface
   sets the same values through `param_set` and the knobs show them.
+
+### Stage 4, as built (mixer)
+
+- `mixer_*`: the buses in use and the total latency; a bus's state and
+  name; add, delete, rename, route (`Output`: main, a bus, an output
+  pair; loops refused), mute, solo, volume and pan (over `param_set`);
+  a pad's output; group pads (a list argument: the generator now takes
+  `[]i64`, C a pointer and a length, remote a JSON array), ungroup, fold;
+  cue sends; meters, main's loudness and its reset, a pad's latency.
+  Buses are 0-based; the model's bus numbers (1.., 0 main) stay inside.
+- Topic `Mixer`: a digest each frame of the buses and each pad's mix
+  (levels, pans, mutes, solos, sends, outputs, cue), not its sound.
+- The Mixer's bus strips, its add, group, rename, routing and cue
+  controls, the bus commands, Perform's main fader and the shell's bus
+  commands use them; the lint checks it.
 
 One Odin API through which everything Pads can do is done: by Pads' own
 UI and its test scripts, by control-surface libraries loaded at runtime,

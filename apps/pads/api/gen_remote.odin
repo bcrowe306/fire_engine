@@ -345,6 +345,214 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := history_gesture_end(api)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_bus_state":
+		bus := remote_i64(args, "bus", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_bus_state(api, bus)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_bus_name":
+		bus := remote_i64(args, "bus", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_bus_name(api, bus)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_add_bus":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_add_bus(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_delete_bus":
+		bus := remote_i64(args, "bus", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_delete_bus(api, bus)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_rename_bus":
+		bus := remote_i64(args, "bus", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_rename_bus(api, bus, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_bus_output":
+		bus := remote_i64(args, "bus", &ok)
+		output := remote_struct_Output(args, "output", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_bus_output(api, bus, output)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_pad_output":
+		pad := remote_i64(args, "pad", &ok)
+		output := remote_struct_Output(args, "output", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_pad_output(api, pad, output)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_pad_output":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_pad_output(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_set_bus_mute":
+		bus := remote_i64(args, "bus", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_bus_mute(api, bus, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_bus_solo":
+		bus := remote_i64(args, "bus", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_bus_solo(api, bus, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_bus_volume":
+		bus := remote_i64(args, "bus", &ok)
+		db := remote_f32(args, "db", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_bus_volume(api, bus, db)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_bus_pan":
+		bus := remote_i64(args, "bus", &ok)
+		pan := remote_f32(args, "pan", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_bus_pan(api, bus, pan)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_group_pads":
+		pads := remote_i64s(args, "pads", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_group_pads(api, pads, name)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_ungroup":
+		bus := remote_i64(args, "bus", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_ungroup(api, bus)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_group_folded":
+		bus := remote_i64(args, "bus", &ok)
+		folded := remote_bool(args, "folded", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_group_folded(api, bus, folded)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_pad_cue":
+		pad := remote_i64(args, "pad", &ok)
+		db := remote_f32(args, "db", &ok)
+		pre := remote_bool(args, "pre", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_pad_cue(api, pad, db, pre)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_set_bus_cue":
+		bus := remote_i64(args, "bus", &ok)
+		db := remote_f32(args, "db", &ok)
+		pre := remote_bool(args, "pre", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_set_bus_cue(api, bus, db, pre)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_pad_meter":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_pad_meter(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_bus_meter":
+		bus := remote_i64(args, "bus", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_bus_meter(api, bus)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_cue_meter":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_cue_meter(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_input_meter":
+		pair := remote_i64(args, "pair", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_input_meter(api, pair)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_loudness":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_loudness(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_mixer_loudness_reset":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := mixer_loudness_reset(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_pad_latency":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_pad_latency(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_pad_state":
 		pad := remote_i64(args, "pad", &ok)
 		if !ok {
@@ -953,6 +1161,9 @@ Effect_Place_NAMES := [?]string{"Insert", "Bus", "Main", "Perf"}
 Key_Kind_NAMES := [?]string{"None", "Pad", "Bus"}
 
 @(private)
+Output_Kind_NAMES := [?]string{"Main", "Bus", "Pair"}
+
+@(private)
 Pad_Kind_NAMES := [?]string{"Sampler", "Audio", "Slicer", "Synth", "Plugin"}
 
 @(private)
@@ -984,6 +1195,19 @@ Metronome_Sound_NAMES := [?]string{"Beep", "Wood", "Stick", "Cowbell"}
 
 @(private)
 Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
+
+@(private)
+remote_struct_Output :: proc(args: json.Object, name: string, ok: ^bool) -> Output {
+	obj, is := args[name].(json.Object)
+	if !is {
+		ok^ = false
+		return {}
+	}
+	v: Output
+	v.kind = Output_Kind(remote_enum_or(obj, "kind", Output_Kind_NAMES[:], 0, ok))
+	v.index = remote_i64_or(obj, "index", 0, ok)
+	return v
+}
 
 @(private)
 remote_struct_Param_Ref :: proc(args: json.Object, name: string, ok: ^bool) -> Param_Ref {
@@ -1056,6 +1280,31 @@ REMOTE_METHODS := [?]string{
 	"pads_history_group_end",
 	"pads_history_gesture_begin",
 	"pads_history_gesture_end",
+	"pads_mixer_state",
+	"pads_mixer_bus_state",
+	"pads_mixer_bus_name",
+	"pads_mixer_add_bus",
+	"pads_mixer_delete_bus",
+	"pads_mixer_rename_bus",
+	"pads_mixer_set_bus_output",
+	"pads_mixer_set_pad_output",
+	"pads_mixer_pad_output",
+	"pads_mixer_set_bus_mute",
+	"pads_mixer_set_bus_solo",
+	"pads_mixer_set_bus_volume",
+	"pads_mixer_set_bus_pan",
+	"pads_mixer_group_pads",
+	"pads_mixer_ungroup",
+	"pads_mixer_set_group_folded",
+	"pads_mixer_set_pad_cue",
+	"pads_mixer_set_bus_cue",
+	"pads_mixer_pad_meter",
+	"pads_mixer_bus_meter",
+	"pads_mixer_cue_meter",
+	"pads_mixer_input_meter",
+	"pads_mixer_loudness",
+	"pads_mixer_loudness_reset",
+	"pads_mixer_pad_latency",
 	"pads_pad_state",
 	"pads_pad_name",
 	"pads_pad_label",

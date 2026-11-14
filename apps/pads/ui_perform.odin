@@ -3,7 +3,6 @@ package pads
 import "core:fmt"
 import "core:math"
 
-import app "app:core"
 import "app:ui"
 import pa "api"
 import pm "model"
@@ -561,9 +560,11 @@ draw_perf_levels :: proc(a: ^App) {
 	strip_begin(total, false)
 	strip_name = "Main" // (its fader: "Main fader", as in the mixer)
 	if e := fader_meter(a, &vol, &a.mixer.buses[pm.BUSES], h); e.changed || e.ended {
-		b.volume = vol
-		if e.changed do pm.set_bus(m, pm.BUSES, 0, "Main Volume", b)
-		if e.ended do app.seal(&m.history)
+		if e.changed {
+			pa.history_gesture_begin(&a.api)
+			pa.mixer_set_bus_volume(&a.api, pa.MAIN, clamp(vol, -60, 6))
+		}
+		if e.ended do pa.history_gesture_end(&a.api)
 	}
 	label(fmt.ctprintf("Main %.1f", vol))
 	strip_end(top, total)

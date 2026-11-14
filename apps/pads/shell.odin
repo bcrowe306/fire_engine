@@ -765,8 +765,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return true
 	case "route":
 		if i := num(w, 1); pad_ok(i) {
-			pm.set_pad_bus(&a.m, i, num(w, 2))
-			return true
+			return pa.mixer_set_pad_output(&a.api, i64(i), dest_output(num(w, 2))) == .Ok
 		}
 	case "slicer": // slicer PAD [FILE]: the pad a slicer (its sample sliced), or FILE loaded into one
 		i := num(w, 1)
@@ -890,25 +889,19 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		plugins_scan(a)
 		return true
 	case "addbus": // a bus after the others
-		return pm.add_bus(&a.m) > 0
+		_, r := pa.mixer_add_bus(&a.api)
+		return r == .Ok
 	case "delbus": // delbus B (1..)
-		n := a.m.project.bus_count
-		pm.delete_bus(&a.m, num(w, 1))
-		return a.m.project.bus_count == n - 1
+		return pa.mixer_delete_bus(&a.api, i64(num(w, 1) - 1)) == .Ok
 	case "busdest": // busdest B D: bus B (1..) to D (0 = main, or a bus); fails if it would loop
-		return pm.set_bus_dest(&a.m, num(w, 1), num(w, 2))
+		return pa.mixer_set_bus_output(&a.api, i64(num(w, 1) - 1), dest_output(num(w, 2))) == .Ok
 	case "busname": // busname B NAME
 		if len(w) < 3 do return false
-		pm.rename_bus(&a.m, num(w, 1), strings.join(w[2:], " ", context.temp_allocator))
-		return true
+		return pa.mixer_rename_bus(&a.api, i64(num(w, 1) - 1), strings.join(w[2:], " ", context.temp_allocator)) == .Ok
 	case "busvol":
 		b := num(w, 1)
 		if b < 0 || b > pm.BUSES do return false
-		bus := pm.bus_of(&a.m, b)^
-		bus.volume = numf(w, 2)
-		pm.set_bus(&a.m, b, 0, "Set Volume", bus)
-		app.seal(&a.m.history)
-		return true
+		return pa.mixer_set_bus_volume(&a.api, i64(b), clamp(numf(w, 2), -60, 6)) == .Ok
 	case "mute", "solo":
 		// mute pad N / mute bus B (solo likewise); toggles
 		if len(w) < 3 do return false
@@ -920,11 +913,8 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		if w[1] == "bus" && i >= 0 && i <= pm.BUSES {
 			bus := pm.bus_of(&a.m, i)^
-			if w[0] == "mute" do bus.mute = !bus.mute
-			else do bus.solo = !bus.solo
-			pm.set_bus(&a.m, i, 1, "Mute", bus)
-			app.seal(&a.m.history)
-			return true
+			if w[0] == "mute" do return pa.mixer_set_bus_mute(&a.api, i64(i), !bus.mute) == .Ok
+			return pa.mixer_set_bus_solo(&a.api, i64(i), !bus.solo) == .Ok
 		}
 	case "perf":
 		// perf N on|off: hold (or let go of) performance effect N (0..15)
@@ -1188,22 +1178,21 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		if len(w) < 2 do return false
 		switch w[1] {
 		case "fold", "unfold":
-			pm.set_group_folded(&a.m, num(w, 2), w[1] == "fold")
-			return true
+			return pa.mixer_set_group_folded(&a.api, i64(num(w, 2) - 1), w[1] == "fold") == .Ok
 		case "ungroup":
-			pm.ungroup(&a.m, num(w, 2))
-			return true
+			return pa.mixer_ungroup(&a.api, i64(num(w, 2) - 1)) == .Ok
 		}
-		pads := make([dynamic]int, context.temp_allocator)
+		pads := make([dynamic]i64, context.temp_allocator)
 		name := ""
 		for k := 1; k < len(w); k += 1 {
 			if w[k] == "as" {
 				name = strings.join(w[k + 1:], " ", context.temp_allocator)
 				break
 			}
-			append(&pads, num(w, k))
+			append(&pads, i64(num(w, k)))
 		}
-		return pm.group_pads(&a.m, pads[:], name) > 0
+		_, r := pa.mixer_group_pads(&a.api, pads[:], name)
+		return r == .Ok
 	case "sidechain": // sidechain PAD SLOT pad N | bus B | off [listen] [hpf HZ]: insert SLOT (0..) of pad PAD (0..) keyed from pad N (0..) or bus B (0..)
 		if len(w) < 4 do return false
 		ref := pa.Slot_Ref{place = .Insert, index = i64(num(w, 1)), slot = i64(num(w, 2))}

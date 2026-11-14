@@ -107,3 +107,17 @@ def test_effects_through_the_api(app, fixtures):
     assert app.api("effect_state", s=slot)["on"] is False
     app.key("cmd+z")
     assert app.api("effect_state", s=slot)["on"] is True
+
+
+def test_the_mixer_through_the_api(app):
+    b = app.api("mixer_add_bus")
+    app.api("mixer_rename_bus", bus=b, name="Drums")
+    app.api("mixer_set_pad_output", pad=0, output={"kind": "Bus", "index": b})
+    assert app.api("mixer_pad_output", pad=0) == {"kind": "Bus", "index": b}
+    app.api("mixer_set_bus_volume", bus=b, db=-4)
+    st = app.state()
+    assert any(x["name"] == "Drums" and x["volume"] == -4 for x in st["buses"])
+    g = app.api("mixer_group_pads", pads=[2, 3], name="Toms")
+    assert app.api("mixer_bus_name", bus=g) == "Toms"
+    r = app.api("mixer_set_bus_output", check=False, bus=b, output={"kind": "Bus", "index": b})
+    assert r["result"] == "Invalid_Argument"

@@ -83,6 +83,27 @@ remote_i64_or :: proc(args: json.Object, name: string, dflt: i64, ok: ^bool) -> 
 	return remote_i64(args, name, ok)
 }
 
+// A list of whole numbers (a JSON array). Temporary.
+@(private)
+remote_i64s :: proc(args: json.Object, name: string, ok: ^bool) -> []i64 {
+	arr, is := args[name].(json.Array)
+	if !is {
+		ok^ = false
+		return nil
+	}
+	out := make([]i64, len(arr), context.temp_allocator)
+	for v, k in arr {
+		#partial switch x in v {
+		case json.Integer: out[k] = i64(x)
+		case json.Float:   // (numbers are parsed as floats: a whole one is fine)
+			if f64(i64(x)) == f64(x) do out[k] = i64(x)
+			else do ok^ = false
+		case:              ok^ = false
+		}
+	}
+	return out
+}
+
 @(private)
 remote_sub :: proc(args: json.Object, name: string, ok: ^bool) -> Subscription {
 	return Subscription(remote_i64(args, name, ok))

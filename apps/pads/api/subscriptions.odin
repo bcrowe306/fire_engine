@@ -1,5 +1,9 @@
 package pads_api
 
+import "core:mem"
+
+import pm "../model"
+
 // What a subscriber hears about. Topics whose module isn't built yet
 // answer `subscribe` with `Unsupported`.
 Topic :: enum i32 {
@@ -7,7 +11,7 @@ Topic :: enum i32 {
 	History,   // undo and redo steps, saved or not
 	Selection,
 	Pad,
-	Mixer,
+	Mixer,     // buses (added, routed, levels, mute, solo, groups), the pads' levels, pans, mutes, solos, sends, outputs (not the meters: poll them)
 	Sequence,
 	Song,
 	Launcher,
@@ -18,7 +22,7 @@ Topic :: enum i32 {
 }
 
 // The topics this version reports.
-TOPICS :: bit_set[Topic]{.Transport, .History, .Project, .Settings}
+TOPICS :: bit_set[Topic]{.Transport, .History, .Mixer, .Project, .Settings}
 
 // Called on the control thread, once a frame at most, when `topic`
 // changed (`index`: which pad, bus...; -1 for the whole topic), with the
@@ -47,6 +51,7 @@ Seen :: struct {
 	project:   Project_State,
 	dir:       [256]u8,
 	settings:  u64,
+	mixer:     u64,
 }
 
 // Calls `callback` with `user` when `topic` changes (`index`: only for
@@ -84,6 +89,7 @@ deliver_changes :: proc(api: ^Api) {
 	if now.history != api.last.history || now.undo_name != api.last.undo_name do changed += {.History}
 	if now.project != api.last.project || now.dir != api.last.dir do changed += {.Project}
 	if now.settings != api.last.settings do changed += {.Settings}
+	if now.mixer != api.last.mixer do changed += {.Mixer}
 	api.last = now
 	if changed == {} do return
 	// (A callback may subscribe or unsubscribe: go by id over a copy.)
@@ -112,5 +118,38 @@ seen_now :: proc(api: ^Api) -> Seen {
 	s.project = {untitled = api.core.files.untitled, recent = i64(len(api.core.files.recent))}
 	copy(s.dir[:], api.core.m.project.dir)
 	s.settings = api.core.registry.version
+	s.mixer = mixer_digest(api)
 	return s
+}
+
+// A digest of what the Mixer topic reports: the buses, and each pad's
+// mix (not its sound: hashing every pad's whole patch each frame would
+// cost too much).
+@(private)
+mixer_digest :: proc(api: ^Api) -> u64 {
+	p := &api.core.m.project
+	h: u64 = 14695981039346656037
+	mix :: proc(h: ^u64, data: []byte) {
+		for b in data {
+			h^ ~= u64(b)
+			h^ *= 1099511628211
+		}
+	}
+	mix(&h, mem.any_to_bytes(p.bus_count))
+	for &b in p.buses[:p.bus_count] {
+		x := struct{ v, pan: f32, mute, solo, group, folded: bool, dest: u8, cue: pm.Send }{b.volume, b.pan, b.mute, b.solo, b.group, b.folded, b.dest, b.cue}
+		mix(&h, mem.any_to_bytes(x))
+		mix(&h, b.name[:])
+	}
+	{
+		m := p.main
+		x := struct{ v, pan: f32, mute: bool }{m.volume, m.pan, m.mute}
+		mix(&h, mem.any_to_bytes(x))
+	}
+	for &pad in p.pads {
+		x := struct{ v, pan: f32, mute, solo: bool, bus: u8, cue: pm.Send }{pad.volume, pad.pan, pad.mute, pad.solo, pad.bus, pad.cue}
+		mix(&h, mem.any_to_bytes(x))
+		mix(&h, mem.slice_to_bytes(pad.sends[:]))
+	}
+	return h
 }

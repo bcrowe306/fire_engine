@@ -21,8 +21,8 @@ procedure is in the [reference](/reference/pads-api/).
 
 The API is being built a module at a time ([the design](/design/api/)).
 In this version: **history**, **transport**, **project**,
-**settings**, **pads**, **params**, **effects** and **devices**, with
-results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
+**settings**, **pads**, **params**, **effects**, **devices** and
+**mixer**, with results, errors, threading and changes. Pads' own toolbar, History and File menus, shortcuts, pad
 menus and script commands for these already go through it.
 
 ## Results and errors
@@ -212,6 +212,27 @@ path, _ := pads_api.device_save_preset(api, 4, "/Presets", "Mine")
 pads_api.device_load_preset_file(api, 5, path)
 pads_api.device_load_plugin(api, 6, "/Library/Audio/Plug-Ins/CLAP/S.clap", "com.s.synth", "S")
 ```
+
+## The mixer
+
+Buses are numbered 0..15 (`mixer_state` says how many are in use); main
+is `MAIN`. Where a pad or a bus plays is an `Output`: main, a bus, or
+one of the interface's output pairs.
+
+```odin
+b, _ := pads_api.mixer_add_bus(api)
+pads_api.mixer_rename_bus(api, b, "Drums")
+pads_api.mixer_set_pad_output(api, 0, {kind = .Bus, index = b})
+pads_api.mixer_set_bus_output(api, b, {kind = .Pair, index = 1})     // outputs 3/4
+pads_api.mixer_set_bus_volume(api, b, -6)                            // (param_set on its fader)
+g, _ := pads_api.mixer_group_pads(api, {4, 5, 6}, "Toms")            // a group bus
+pads_api.mixer_set_pad_cue(api, 0, -3, true)                         // to the headphones, pre-fader
+```
+
+A bus can't go round to itself (`Invalid_Argument`). Meters
+(`mixer_pad_meter`, `mixer_bus_meter`, `mixer_cue_meter`,
+`mixer_input_meter`), main's loudness and the latencies are polled; the
+`Mixer` topic reports the rest (levels, pans, mutes, routing, groups).
 
 ## From C
 

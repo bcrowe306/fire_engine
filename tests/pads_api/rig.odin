@@ -4,12 +4,14 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:testing"
+import "core:time"
 
 import app "app:core"
 import pa "../../apps/pads/api"
 import pc "../../apps/pads/core"
 import pm "../../apps/pads/model"
 import fc "fire:core"
+import "fire:stream"
 import kit "fire:testkit"
 
 SR :: 48_000.0
@@ -65,6 +67,10 @@ frame :: proc(r: ^Rig, dt := 1.0 / 60) {
 // Renders `frames` of audio offline (the transport moves).
 render :: proc(r: ^Rig, frames: int) {
 	pm.sync(&r.core.m.engine)
+	// (Samples in memory before they play: a slow disk would play silence.)
+	for _, src in r.core.m.engine.sources {
+		for stream.source_state(src) == .Loading do time.sleep(time.Millisecond)
+	}
 	out := [2][]f32{make([]f32, frames, context.temp_allocator), make([]f32, frames, context.temp_allocator)}
 	app.host_render(&r.core.host, out[:], frames, nil)
 }

@@ -51,6 +51,14 @@ enum {
 	PADS_KEY_KIND_BUS = 2,
 };
 
+// Where a pad or a bus plays.
+typedef int32_t Pads_Output_Kind;
+enum {
+	PADS_OUTPUT_KIND_MAIN = 0,
+	PADS_OUTPUT_KIND_BUS = 1,
+	PADS_OUTPUT_KIND_PAIR = 2,
+};
+
 // What a pad is.
 typedef int32_t Pads_Pad_Kind;
 enum {
@@ -204,6 +212,48 @@ typedef struct Pads_History_State {
 	bool dirty; // changed since it was saved
 	bool grouping; // a group is open (history_group_begin)
 } Pads_History_State;
+
+// Where a pad or a bus plays.
+typedef struct Pads_Output {
+	Pads_Output_Kind kind;
+	int64_t index;
+} Pads_Output;
+
+// The mixer now.
+typedef struct Pads_Mixer_State {
+	int64_t buses; // buses in use (0..buses-1)
+	int64_t total_latency; // frames the whole mix runs behind (compensated)
+} Pads_Mixer_State;
+
+// Bus `bus` (0..buses-1, or MAIN) now (its name: mixer_bus_name).
+typedef struct Pads_Bus_State {
+	float volume; // dB
+	float pan; // -1..1
+	bool mute;
+	bool solo; // (main: never)
+	bool group; // a group: the pads going to it show with it
+	bool folded; // a group whose pads' strips are hidden
+	Pads_Output output; // where it goes (main: its own outputs)
+	float cue_db; // its send to the cue mix (-60: off)
+	bool cue_pre;
+} Pads_Bus_State;
+
+// A meter's reading now (linear: 1 is full scale).
+typedef struct Pads_Meter {
+	float peak_l;
+	float peak_r;
+	float rms_l;
+	float rms_r;
+} Pads_Meter;
+
+// Main's loudness (EBU R128) and its stereo.
+typedef struct Pads_Loudness {
+	float momentary; // LUFS
+	float short_term; // LUFS
+	float integrated; // LUFS (since the last reset)
+	float true_peak_db; // dBTP
+	float correlation; // -1..1 (1: mono)
+} Pads_Loudness;
 
 // Pad `pad` now (its name: `pad_name`).
 typedef struct Pads_Pad_State {
@@ -425,6 +475,64 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*history_gesture_begin)(Pads_Api* api);
 	// Ends the gesture: the next edit is a new step.
 	Pads_Result (*history_gesture_end)(Pads_Api* api);
+	// The mixer now.
+	Pads_Result (*mixer_state)(Pads_Api* api, Pads_Mixer_State* out);
+	// Bus `bus` (or MAIN) now.
+	Pads_Result (*mixer_bus_state)(Pads_Api* api, int64_t bus, Pads_Bus_State* out);
+	// Bus `bus`'s name ("Bus A", its own, "Main"). Temporary.
+	Pads_Result (*mixer_bus_name)(Pads_Api* api, int64_t bus, char* out, int64_t out_cap, int64_t* out_len);
+	// Adds a bus (after the others, going to main): its number. Busy when
+	// there are 16.
+	Pads_Result (*mixer_add_bus)(Pads_Api* api, int64_t* out);
+	// Deletes bus `bus`: what went to it goes to main, its sends go, the buses
+	// after it move up. One undo step. Busy for the last bus left.
+	Pads_Result (*mixer_delete_bus)(Pads_Api* api, int64_t bus);
+	// Names bus `bus` (up to 15 bytes; "": its letter again), undoably.
+	Pads_Result (*mixer_rename_bus)(Pads_Api* api, int64_t bus, const char* name, int64_t name_len);
+	// Sends bus `bus` to `output`, undoably. Invalid_Argument if that goes
+	// round in a loop (to itself, or through buses back to it).
+	Pads_Result (*mixer_set_bus_output)(Pads_Api* api, int64_t bus, Pads_Output output);
+	// Sends pad `pad` to `output` (main, a bus, an output pair), undoably.
+	Pads_Result (*mixer_set_pad_output)(Pads_Api* api, int64_t pad, Pads_Output output);
+	// Where pad `pad` plays.
+	Pads_Result (*mixer_pad_output)(Pads_Api* api, int64_t pad, Pads_Output* out);
+	// Mutes bus `bus` (or MAIN) or not, undoably.
+	Pads_Result (*mixer_set_bus_mute)(Pads_Api* api, int64_t bus, bool on);
+	// Solos bus `bus` or not, undoably. Unsupported for main.
+	Pads_Result (*mixer_set_bus_solo)(Pads_Api* api, int64_t bus, bool on);
+	// Sets bus `bus`'s (or MAIN's) fader (-60..6 dB): param_set on its Volume.
+	Pads_Result (*mixer_set_bus_volume)(Pads_Api* api, int64_t bus, float db);
+	// Sets bus `bus`'s (or MAIN's) pan (-1..1): param_set on its Pan.
+	Pads_Result (*mixer_set_bus_pan)(Pads_Api* api, int64_t bus, float pan);
+	// Groups pads `pads` under a new group bus named `name` ("": "Group N"),
+	// going where the first went: the bus. One undo step. Busy when there are
+	// 16 buses.
+	Pads_Result (*mixer_group_pads)(Pads_Api* api, const int64_t* pads, int64_t pads_len, const char* name, int64_t name_len, int64_t* out);
+	// Ungroups group bus `bus`: its pads go where it went, and it goes. One
+	// undo step. Invalid_Argument for a bus that isn't a group.
+	Pads_Result (*mixer_ungroup)(Pads_Api* api, int64_t bus);
+	// Folds group bus `bus`'s pads away in the Mixer, or shows them (a view:
+	// saved, not undone).
+	Pads_Result (*mixer_set_group_folded)(Pads_Api* api, int64_t bus, bool folded);
+	// Sets pad `pad`'s send to the cue mix (a performer's headphones): `db`
+	// (-60: off; up to 6), before its fader (`pre`) or after. Undoably.
+	Pads_Result (*mixer_set_pad_cue)(Pads_Api* api, int64_t pad, float db, bool pre);
+	// Sets bus `bus`'s send to the cue mix (as `mixer_set_pad_cue`). Not main.
+	Pads_Result (*mixer_set_bus_cue)(Pads_Api* api, int64_t bus, float db, bool pre);
+	// Pad `pad`'s meter now (after its fader). Poll it: it isn't reported.
+	Pads_Result (*mixer_pad_meter)(Pads_Api* api, int64_t pad, Pads_Meter* out);
+	// Bus `bus`'s (or MAIN's) meter now.
+	Pads_Result (*mixer_bus_meter)(Pads_Api* api, int64_t bus, Pads_Meter* out);
+	// The cue mix's meter now.
+	Pads_Result (*mixer_cue_meter)(Pads_Api* api, Pads_Meter* out);
+	// The interface's input pair `pair`'s meter now (0: inputs 1/2).
+	Pads_Result (*mixer_input_meter)(Pads_Api* api, int64_t pair, Pads_Meter* out);
+	// Main's loudness and stereo now.
+	Pads_Result (*mixer_loudness)(Pads_Api* api, Pads_Loudness* out);
+	// Starts main's integrated loudness and true peak again.
+	Pads_Result (*mixer_loudness_reset)(Pads_Api* api);
+	// Frames pad `pad`'s inserts delay it (the others are delayed to match).
+	Pads_Result (*mixer_pad_latency)(Pads_Api* api, int64_t pad, int64_t* out);
 	// Pad `pad` now. Not_Found out of 0..PADS-1.
 	Pads_Result (*pad_state)(Pads_Api* api, int64_t pad, Pads_Pad_State* out);
 	// Pad `pad`'s name: its own, else its sound's ("" for an empty pad).

@@ -13,6 +13,6 @@ play
 wait 20
 expect level bus 4 above -40
 screenshot groups_open
-group fold 1
+group fold 5
 wait 5
 screenshot groups_folded
