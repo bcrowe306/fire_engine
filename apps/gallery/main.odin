@@ -100,7 +100,7 @@ main :: proc() {
 	}
 	s.peaks = ui.peaks_of(samples, 2048)
 
-	if !ui.platform_init(&s.p, {title = "Gallery", width = 1440, height = 900, headless = headless, vsync = profile == 0}) do os.exit(1)
+	if !ui.platform_init(&s.p, {title = "Gallery", width = 1440, height = 900, headless = headless, draw_unseen = profile > 0, vsync = profile == 0}) do os.exit(1)
 	defer ui.platform_destroy(&s.p)
 	app.history_init(&s.history, &s.m)
 	setup_actions(s)

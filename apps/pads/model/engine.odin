@@ -678,6 +678,13 @@ silence_all :: proc(e: ^Engine) {
 	intrinsics.atomic_add(&e.router.silence, 1)
 }
 
+// Whether pad `index`'s sample is decoded and can play: a sample loads on
+// the streamer's thread, and a hit before then is silent.
+pad_ready :: proc(e: ^Engine, index: int) -> bool {
+	src, ok := e.sources[e.project.pads[index].sample]
+	return ok && src != nil && stream.source_state(src) == .Ready
+}
+
 // The sample frame pad `index` is playing (its newest voice), or false
 // when it is silent: for a playhead over its waveform.
 pad_playhead :: proc(e: ^Engine, index: int) -> (frame: i64, playing: bool) {

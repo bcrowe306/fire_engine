@@ -3,6 +3,7 @@ package ui
 import "core:fmt"
 import "core:net"
 import "core:strings"
+import "core:time"
 
 // Live control of a running app, for a test harness: a TCP server on
 // 127.0.0.1 taking drive-script commands, one per line, and answering
@@ -19,6 +20,11 @@ import "core:strings"
 // app may also send the client lines of its own between answers
 // (`control_push`: events it subscribed to), told when one connects and
 // leaves (`connected`).
+//
+// With `lockstep` (a headless test run), frames go by only while a line
+// runs: between lines the app waits for the next one, so a command's
+// frames are the frames that pass (however slow the harness is to send the
+// next), and an idle app leaves the CPU to the others.
 Control :: struct {
 	listener: net.TCP_Socket,
 	client:   net.TCP_Socket,
@@ -29,7 +35,12 @@ Control :: struct {
 	json:      proc(user: rawptr, line: string, out: ^strings.Builder), // answers a line that starts with `{` (one line of JSON), or nil
 	json_user: rawptr,
 	connected: proc(user: rawptr, on: bool), // a client connected (on) or left, or nil; with `json_user`
+	lockstep:  bool, // between lines, wait for the next (up to LOCKSTEP_WAIT) instead of running frames
 }
+
+// How long a lockstep app waits for a line before it lets one frame go by
+// (so it still sees a window's events and a client that has gone).
+LOCKSTEP_WAIT :: 500 * time.Millisecond
 
 // Starts listening on 127.0.0.1:`port` (0: any free port; `c.port` says
 // which). False if it can't.
@@ -75,8 +86,12 @@ control_poll :: proc(c: ^Control, d: ^Driver) {
 		control_answer(c, d)
 		c.busy = false
 	}
-	// Read what came.
 	buf: [4096]u8
+	// Lockstep, with nothing to run: wait for the next line.
+	if c.lockstep && !c.busy && index_of_newline(c.inbuf[:]) < 0 {
+		if !control_wait(c, buf[:]) do return
+	}
+	// Read what came.
 	for {
 		n, err := net.recv_tcp(c.client, buf[:])
 		if err != nil {
@@ -107,6 +122,29 @@ control_poll :: proc(c: ^Control, d: ^Driver) {
 			}
 		}
 	}
+}
+
+// Waits (up to LOCKSTEP_WAIT) for bytes from the client and keeps them.
+// False if the client has gone (it is dropped).
+@(private)
+control_wait :: proc(c: ^Control, buf: []u8) -> bool {
+	net.set_blocking(c.client, true)
+	defer net.set_blocking(c.client, false)
+	_ = net.set_option(c.client, .Receive_Timeout, LOCKSTEP_WAIT)
+	n, err := net.recv_tcp(c.client, buf)
+	#partial switch err {
+	case .None:
+		if n == 0 {
+			control_drop(c) // closed
+			return false
+		}
+		append(&c.inbuf, ..buf[:n])
+	case .Timeout, .Would_Block, .Interrupted: // nothing yet
+	case:
+		control_drop(c)
+		return false
+	}
+	return true
 }
 
 @(private)

@@ -87,13 +87,19 @@ tasks:
       - '{{if eq OS "windows"}}python{{else}}python3{{end}} scripts/api.py --check'
 
   e2e:
-    desc: 'The end-to-end suite: Pads driven over its control socket by tests/e2e (pytest), as a person uses it; a crash fails the test with its report. A window on the Mac (watch it), headless elsewhere or with HEADLESS=1. Args go to pytest: task app:e2e -- -k browser -x'
-    env:
+    desc: 'The end-to-end suite: Pads driven over its control socket by tests/e2e (pytest), as a person uses it; a crash fails the test with its report. A window on the Mac (watch it), headless elsewhere or with HEADLESS=1. Headless, tests run in parallel, one app per core (JOBS=4 to choose, JOBS=0 for one at a time). Args go to pytest: task app:e2e -- -k browser -x'
+    vars:
       E2E_HEADLESS: '{{if .HEADLESS}}{{.HEADLESS}}{{else if eq OS "darwin"}}0{{else}}1{{end}}'
+      # Apps with windows run one at a time (watched); headless ones in parallel.
+      E2E_JOBS: '{{if .JOBS}}{{.JOBS}}{{else if eq .E2E_HEADLESS "1"}}auto{{else}}0{{end}}'
+    env:
+      E2E_HEADLESS: '{{.E2E_HEADLESS}}'
     cmds:
       - task: pads
         vars: {OPT: none}
-      - '{{.E2E_PYTHON}} -m pytest tests/e2e -q {{.CLI_ARGS}}'
+      # pytest-xdist runs the tests in parallel (machines set up before it was in `task deps` get it here).
+      - '{{.E2E_PYTHON}} -c "import xdist" 2>/dev/null || {{.E2E_PYTHON}} -m pip install --quiet pytest-xdist==3.6.1'
+      - '{{.E2E_PYTHON}} -m pytest tests/e2e -q -n {{.E2E_JOBS}} --dist worksteal {{.CLI_ARGS}}'
 
   ctl:
     desc: 'Pads under remote control (a window): type drive commands (click_item, drag_item, state, ...) one per line; each answer prints, and a crash prints its report. Args go to tests/e2e/ctl.py: task app:ctl -- --headless state'

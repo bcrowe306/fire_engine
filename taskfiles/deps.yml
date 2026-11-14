@@ -78,7 +78,7 @@ tasks:
         -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE={{.ROOT_DIR}}/vendor/imgui
       - cmake --build {{.DEPS}}/build/imgui --config Release --parallel {{numCPU}}
       - touch {{.DEPS}}/build/imgui/.probe_v1
-      - '{{.PYTHON}} -m pip install --quiet pytest==8.3.5'  # for the e2e harness (tests/e2e)
+      - '{{.PYTHON}} -m pip install --quiet pytest==8.3.5 pytest-xdist==3.6.1'  # for the e2e harness (tests/e2e; xdist runs it in parallel)
       - '{{if eq OS "darwin"}}{{.PYTHON}} -m pip install --quiet dmgbuild==1.6.7{{else}}true{{end}}'  # macOS: task release:macos's disk image
 
   clean:

@@ -1477,16 +1477,32 @@ The fixtures (samples, the `library/` folders and `beat.mid`) are made by
 control socket (`--control`), and checks the app's state after each step;
 a crash fails the test with the app's crash report (the cause, the last
 command, a back trace). Each test gets a fresh Pads with its own
-preferences and project. On the Mac a window opens (watch it); elsewhere,
-and with `HEADLESS=1`, it runs headless.
+preferences and project. On the Mac a window opens (watch it), and the
+tests run one at a time; elsewhere, and with `HEADLESS=1`, they run
+headless and in parallel (pytest-xdist, one app per core; `JOBS=N` to
+choose, `JOBS=0` for one at a time).
 
 ```bash
-task deps                              # once: also puts pytest in .deps/venv
+task deps                              # once: also puts pytest and pytest-xdist in .deps/venv
 task app:e2e                           # the suite (a window on the Mac)
-task app:e2e HEADLESS=1                # headless (what task app:test runs)
+task app:e2e HEADLESS=1                # headless, in parallel (what task app:test runs)
+task app:e2e HEADLESS=1 JOBS=0         # headless, one at a time
 task app:e2e -- -k browser -x          # some tests; stop at the first failure
-.deps/venv/bin/python -m pytest tests/e2e -q   # the same, by hand (after task app:pads OPT=none)
+.deps/venv/bin/python -m pytest tests/e2e -q -n auto   # the same, by hand (after task app:pads OPT=none)
 ```
+
+Headless, two things keep it fast on machines without a GPU (the cloud
+test machines draw in software): a frame is drawn only when a screenshot
+takes it (ImGui still builds every frame, so items and clicks work as
+ever), and frames go by only while a command runs (lockstep: between
+commands the app waits for the next). So a test's frames are exactly the
+ones it asks for, however slow the machine: `click` takes 23 frames
+(the click and 20 more, past ImGui's double-click time), `wait N` N.
+On the 2-vCPU DigitalOcean droplet a headless frame went from 58 ms to
+6 ms, and the suite from 62 to 15 minutes. What still runs on the
+clock is another thread's work: a sample decodes on the streamer's thread
+after `load`, so a test that must hear a pad waits for its `ready` first
+(`app.until(lambda s: s["pads"][0]["ready"])`).
 
 | File | What it uses |
 |---|---|

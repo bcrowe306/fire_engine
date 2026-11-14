@@ -204,7 +204,7 @@ main :: proc() {
 	// (layout2.ini: the panels as they are since the Library and the bottom
 	// area; a layout.ini from before has panels that are gone.)
 	if a.settings.layout do layout, _ = filepath.join({settings_folder(a), "layout2.ini"})
-	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, vsync = profile == 0, ini_path = layout}) {
+	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, draw_unseen = profile > 0, vsync = profile == 0, ini_path = layout}) {
 		ui.platform_destroy(p)
 		os.exit(1)
 	}
@@ -312,8 +312,10 @@ main :: proc() {
 		// frames ("wait 25", a click's frames), and a window's frames come
 		// at the display's rate (120 a second on a ProMotion display, more
 		// without vsync), which made taps twice as fast and double-clicks
-		// out of time.
+		// out of time. Headless, frames go by only while a command runs (a
+		// test's frames are the ones it asked for, however busy the machine).
 		p.fixed_dt = 1.0 / 60
+		if headless do a.control.lockstep = true
 		ui.probe_on(true)
 		fmt.printfln("control: listening on 127.0.0.1:%d", a.control.port)
 		os.flush(os.stdout)
