@@ -2287,7 +2287,79 @@ Stops subscription `sub`. Not_Found if there is none. Control thread (a callback
 surface_load :: proc(api: ^Api, path: string, index: i64 = 0) -> (i64, Result)
 ```
 
-Loads the control-surface library at `path` (a .dylib, .so or .dll exporting `fire_surface_entry`) and starts its surface `index`, which gets this API by asking for "fire.pads" version 1: its place among the surfaces running. Io_Error if the library won't load; Not_Found if it has no surface `index` (of an ABI this Pads loads); Unsupported if the surface won't start. MIDI ports of its own aren't given yet.
+Loads the control-surface library at `path` (a .fsurf) and offers its surfaces to detection: a controller of theirs on the MIDI ports starts one. Its place among the libraries (`surface_library_*`); a library loaded already: its place. Io_Error if it won't load. (`index`: kept for the first version of the table; any.)
+
+### surface_library_count
+
+```odin
+surface_library_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+The surface libraries loaded (from the folders, and `surface_load`'s), those that didn't load included.
+
+### surface_library_path
+
+```odin
+surface_library_path :: proc(api: ^Api, lib: i64) -> (string, Result)
+```
+
+Library `lib`'s path. Temporary.
+
+### surface_library_error
+
+```odin
+surface_library_error :: proc(api: ^Api, lib: i64) -> (string, Result)
+```
+
+Why library `lib` didn't load ("" when it did). Temporary.
+
+### surface_library_unload
+
+```odin
+surface_library_unload :: proc(api: ^Api, lib: i64) -> Result
+```
+
+Unloads library `lib`: its surfaces stop (the libraries after it move down one).
+
+### surface_offered_count
+
+```odin
+surface_offered_count :: proc(api: ^Api, lib: i64) -> (i64, Result)
+```
+
+The surfaces library `lib` offers (one a controller model).
+
+### surface_offered_name
+
+```odin
+surface_offered_name :: proc(api: ^Api, lib: i64, k: i64) -> (string, Result)
+```
+
+The name of surface `k` that library `lib` offers ("Push 2"). Temporary.
+
+### surface_offered_id
+
+```odin
+surface_offered_id :: proc(api: ^Api, lib: i64, k: i64) -> (string, Result)
+```
+
+The id of surface `k` that library `lib` offers ("com.example.push2"). Temporary.
+
+### surface_set_detect
+
+```odin
+surface_set_detect :: proc(api: ^Api, lib: i64, k: i64, on: bool) -> Result
+```
+
+Turns detection of library `lib`'s surface `k` on or off (kept between runs). Off, the controllers found for it are forgotten.
+
+### surface_detect
+
+```odin
+surface_detect :: proc(api: ^Api, lib: i64, k: i64) -> (bool, Result)
+```
+
+Whether library `lib`'s surface `k` is detected.
 
 ### surface_count
 
@@ -2295,7 +2367,7 @@ Loads the control-surface library at `path` (a .dylib, .so or .dll exporting `fi
 surface_count :: proc(api: ^Api) -> (i64, Result)
 ```
 
-The surfaces running.
+The surfaces: a controller each, found on the MIDI ports (whatever its state) or assigned by hand.
 
 ### surface_name
 
@@ -2303,7 +2375,7 @@ The surfaces running.
 surface_name :: proc(api: ^Api, index: i64) -> (string, Result)
 ```
 
-Surface `index`'s name, as its library gives it ("Fire Mini"). Temporary.
+Surface `index`'s name, as its library gives it ("Push 2"). Temporary.
 
 ### surface_path
 
@@ -2311,7 +2383,31 @@ Surface `index`'s name, as its library gives it ("Fire Mini"). Temporary.
 surface_path :: proc(api: ^Api, index: i64) -> (string, Result)
 ```
 
-The library surface `index` came from. Temporary.
+The library surface `index` comes from. Temporary.
+
+### surface_state
+
+```odin
+surface_state :: proc(api: ^Api, index: i64) -> (Surface_State, Result)
+```
+
+Where surface `index`'s controller is.
+
+### surface_ports
+
+```odin
+surface_ports :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+The MIDI ports surface `index` is on: its first pair's names ("in / out"). Temporary.
+
+### surface_assign
+
+```odin
+surface_assign :: proc(api: ^Api, lib: i64, k: i64, input: string, output: string) -> (i64, Result)
+```
+
+Starts library `lib`'s surface `k` on MIDI ports chosen by hand (by their ids: `midi_port_id`; output "" for none), whatever their names: it takes them from any surface found there, and keeps them until `surface_unload`. Its index among the surfaces.
 
 ### surface_unload
 
@@ -2319,7 +2415,87 @@ The library surface `index` came from. Temporary.
 surface_unload :: proc(api: ^Api, index: i64) -> Result
 ```
 
-Stops surface `index` (the ones after it move down one); its library unloads when nothing else uses it. What it subscribed while it started goes with it; a surface unsubscribes the rest in its `destroy`.
+Stops surface `index`: one assigned by hand is forgotten; one found has its surface's detection turned off (`surface_set_detect` turns it on again). The surfaces after it move down.
+
+### surface_monitor
+
+```odin
+surface_monitor :: proc(api: ^Api, on: bool) -> Result
+```
+
+Turns the surfaces' MIDI monitor on or off: each message from a surface's controller (what its claim table did with it), and each it sent, named by its surface.
+
+### surface_monitor_count
+
+```odin
+surface_monitor_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+The messages the monitor has (the oldest go past 2048).
+
+### surface_monitor_line
+
+```odin
+surface_monitor_line :: proc(api: ^Api, i: i64) -> (string, Result)
+```
+
+The monitor's message `i` as a line: "in  1  90 24 64  claim (rule 2) Grid / Pads 3,0 (Drum)". Temporary.
+
+### surface_monitor_clear
+
+```odin
+surface_monitor_clear :: proc(api: ^Api) -> Result
+```
+
+Empties the monitor.
+
+### surface_control_count
+
+```odin
+surface_control_count :: proc(api: ^Api, index: i64) -> (i64, Result)
+```
+
+The controls surface `index` describes (buttons, pads, encoders, faders, displays). Unsupported if it doesn't describe them.
+
+### surface_control_name
+
+```odin
+surface_control_name :: proc(api: ^Api, index: i64, k: i64) -> (string, Result)
+```
+
+The name of surface `index`'s control `k` ("Play", "Pads 3,0"). Temporary.
+
+### surface_press
+
+```odin
+surface_press :: proc(api: ^Api, index: i64, name: string, velocity: f32 = 1) -> Result
+```
+
+Presses surface `index`'s control `name` (a button or pad, at `velocity` 0..1), as its controller would send it: into Pads' MIDI input on its port, through its claim table. Not_Found for no such control.
+
+### surface_release
+
+```odin
+surface_release :: proc(api: ^Api, index: i64, name: string) -> Result
+```
+
+Releases surface `index`'s control `name`.
+
+### surface_turn
+
+```odin
+surface_turn :: proc(api: ^Api, index: i64, name: string, steps: i64) -> Result
+```
+
+Turns surface `index`'s encoder `name` by `steps` (negative: down).
+
+### surface_move
+
+```odin
+surface_move :: proc(api: ^Api, index: i64, name: string, value: f64) -> Result
+```
+
+Moves surface `index`'s fader `name` to `value` (0..1).
 
 ## Transport
 
@@ -2694,6 +2870,12 @@ What part of Pads a setting changes (applied when it is set: the audio device re
 What a subscriber hears about. Topics whose module isn't built yet answer `subscribe` with `Unsupported`.
 
 `Transport`, `History`, `Selection`, `Pad`, `Mixer`, `Sequence`, `Song`, `Launcher`, `Project`, `Settings`, `Recording`, `Ui`
+
+### Surface_State
+
+Where a surface's controller is.
+
+`Identifying`, `Waiting`, `Active`, `Not_Identified`, `Passed_Over`, `Failed`, `Gone`
 
 ### Metronome_Sound
 

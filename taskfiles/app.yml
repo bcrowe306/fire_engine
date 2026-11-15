@@ -14,7 +14,8 @@ version: '3'
 vars:
   OUT: '{{.ROOT_DIR}}/.build/app'
   EXE: '{{if eq OS "windows"}}.exe{{end}}'
-  COLLECTIONS: -collection:fire={{.ROOT_DIR}}/f_engine -collection:app={{.ROOT_DIR}}/app -collection:deps={{.ROOT_DIR}}/vendor
+  # fsurf: the fire-surface SDK (control surfaces), a git submodule in extern/.
+  COLLECTIONS: -collection:fire={{.ROOT_DIR}}/f_engine -collection:app={{.ROOT_DIR}}/app -collection:deps={{.ROOT_DIR}}/vendor -collection:fsurf={{.ROOT_DIR}}/extern/fire-surface
   # Pads (GPL-3.0-or-later) has Ableton Link built in when its library is
   # there (./scripts/link.sh, which `task deps` runs); LINK=0 leaves it out,
   # LINK=1 insists on it.

@@ -215,16 +215,18 @@ def test_subscriptions_over_the_socket(app):
     assert r["result"] == "Unsupported"
 
 
-def test_a_surface_loaded_through_the_api(app):
+def test_a_surface_library_loaded_through_the_api(app):
     """The example C surface (scripts/surface.sh builds it), loaded by a
-    remote client, and listed by the app."""
-    libs = glob.glob(os.path.join(ROOT, ".build", "surface", "pads_mini.*"))
+    remote client and listed by the app: its surface offered, waiting for
+    its controller (test_surfaces.py plugs controllers in)."""
+    libs = glob.glob(os.path.join(ROOT, ".build", "surface", "pads_mini.fsurf"))
     if not libs:
         import pytest
         pytest.skip("the example surface isn't built (./scripts/surface.sh)")
-    assert app.api("surface_load", check=False, path="no/such.dylib")["result"] == "Io_Error"
-    assert app.api("surface_load", path=libs[0]) == 0
-    assert app.api("surface_count") == 1 and app.api("surface_name", index=0) == "Pads Mini"
-    assert "0 Pads Mini" in app.cmd("surface list")
-    app.api("surface_unload", index=0)
-    assert app.api("surface_count") == 0
+    assert app.api("surface_load", check=False, path="no/such.fsurf")["result"] == "Io_Error"
+    lib = app.api("surface_load", path=libs[0])
+    assert app.api("surface_library_path", lib=lib) == libs[0]
+    assert app.api("surface_offered_name", lib=lib, k=0) == "Pads Mini"
+    assert app.api("surface_count") == 0  # (no controller of it)
+    assert "dev.fire-engine.example.pads-mini" in app.cmd("surface libs")
+    app.api("surface_library_unload", lib=lib)

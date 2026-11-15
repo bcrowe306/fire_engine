@@ -113,6 +113,7 @@ Settings_Page :: enum u8 {
 	Appearance,
 	Audio,
 	Midi,
+	Surfaces,
 	Recording,
 	Project,
 	Plugins,
@@ -120,9 +121,9 @@ Settings_Page :: enum u8 {
 }
 
 @(private)
-PAGE_NAMES := [Settings_Page]cstring{.Appearance = "Appearance", .Audio = "Audio", .Midi = "MIDI & Sync", .Recording = "Recording", .Project = "Projects", .Plugins = "Plug-ins", .Keyboard = "Keyboard"}
+PAGE_NAMES := [Settings_Page]cstring{.Appearance = "Appearance", .Audio = "Audio", .Midi = "MIDI & Sync", .Surfaces = "Control Surfaces", .Recording = "Recording", .Project = "Projects", .Plugins = "Plug-ins", .Keyboard = "Keyboard"}
 @(private)
-PAGE_ICONS := [Settings_Page]string{.Appearance = ui.ICON_PALETTE, .Audio = ui.ICON_AUDIO_WAVEFORM, .Midi = ui.ICON_MUSIC, .Recording = ui.ICON_CIRCLE_DOT, .Project = ui.ICON_FOLDER, .Plugins = ui.ICON_LAYOUT_GRID, .Keyboard = ui.ICON_COMMAND}
+PAGE_ICONS := [Settings_Page]string{.Appearance = ui.ICON_PALETTE, .Audio = ui.ICON_AUDIO_WAVEFORM, .Midi = ui.ICON_MUSIC, .Surfaces = ui.ICON_JOYSTICK, .Recording = ui.ICON_CIRCLE_DOT, .Project = ui.ICON_FOLDER, .Plugins = ui.ICON_LAYOUT_GRID, .Keyboard = ui.ICON_COMMAND}
 
 // What the tempo, start and stop follow.
 Sync_Mode :: enum u8 {
@@ -540,6 +541,7 @@ host_settings :: proc(a: ^App, fake: bool) -> app.Host_Settings {
 		sample_rate = s.audio.rate, buffer_frames = s.audio.buffer,
 		midi = s.midi_on, midi_output = s.midi_output, midi_inputs_off = s.midi_off[:],
 		fake_devices = fake_interfaces[:] if a.fake_interface else nil,
+		midi_driver = a.fake_midi,
 	}
 	hs.input_channels, hs.output_channels = channels_wanted(&s.audio)
 	return hs
@@ -632,6 +634,7 @@ midi_apply :: proc(a: ^App) {
 		app.host_midi_reopen(h)
 	}
 	pm.midi_ports_changed(&a.m.engine) // (the ports' numbers changed)
+	if a.api.surfaces_on do app.surfaces_ports(&a.api.surfaces) // (and the surfaces' ports)
 	sync_apply(a)
 }
 
@@ -708,6 +711,7 @@ draw_settings :: proc(a: ^App) {
 			case .Appearance: changed = page_appearance(a)
 			case .Audio:      changed = page_audio(a)
 			case .Midi:       changed = page_midi(a)
+			case .Surfaces:   page_surfaces(a)
 			case .Recording:  changed = page_recording(a)
 			case .Project:    changed = page_project(a)
 			case .Plugins:    changed = page_plugins(a)

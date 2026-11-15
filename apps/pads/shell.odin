@@ -12,6 +12,7 @@ import "core:time"
 
 import app "app:core"
 import "app:ui"
+import mfake "fire:midi/fake"
 import pa "api"
 import pm "model"
 import im "deps:imgui"
@@ -1105,24 +1106,118 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		return false
 	case "surface":
-		// surface load PATH [INDEX] / surface unload N / surface list: control-surface libraries (through the API)
+		// Control surfaces (through the API):
+		//   surface load PATH / surface libs / surface list / surface unload N
+		//   surface assign LIB K IN-ID [OUT-ID] / surface detect LIB K on|off
+		//   surface press N NAME... [VEL] / release N NAME... / turn N NAME... STEPS / move N NAME... VALUE
+		//   surface monitor on|off|show|clear
 		if len(w) < 2 do return false
+		fail :: proc(a: ^App) -> bool {
+			why, _ := pa.last_error(&a.api)
+			return drive_fail(a, why)
+		}
+		// The name after the surface's index, with a number after it (or not).
+		name_num :: proc(w: []string, has_num: bool) -> (string, string) {
+			if has_num && len(w) > 4 do return strings.join(w[3:len(w) - 1], " ", context.temp_allocator), w[len(w) - 1]
+			return strings.join(w[3:], " ", context.temp_allocator), ""
+		}
 		switch w[1] {
 		case "load":
 			if len(w) < 3 do return false
-			if _, r := pa.surface_load(&a.api, w[2], i64(num(w, 3)) if len(w) > 3 else 0); r != .Ok {
-				why, _ := pa.last_error(&a.api)
-				return drive_fail(a, why)
-			}
+			if _, r := pa.surface_load(&a.api, w[2]); r != .Ok do return fail(a)
 		case "unload":
 			if len(w) < 3 do return false
-			if pa.surface_unload(&a.api, i64(num(w, 2))) != .Ok do return drive_fail(a, "no such surface")
+			if pa.surface_unload(&a.api, i64(num(w, 2))) != .Ok do return fail(a)
 		case "list":
 			n, _ := pa.surface_count(&a.api)
 			for k in 0 ..< n {
 				name, _ := pa.surface_name(&a.api, k)
-				ui.driver_say(&a.driver, fmt.tprintf("%d %s", k, name))
+				st, _ := pa.surface_state(&a.api, k)
+				ports, _ := pa.surface_ports(&a.api, k)
+				ui.driver_say(&a.driver, fmt.tprintf("%d %s: %v on %s", k, name, st, ports))
 			}
+		case "libs":
+			n, _ := pa.surface_library_count(&a.api)
+			for l in 0 ..< n {
+				path, _ := pa.surface_library_path(&a.api, l)
+				why, _ := pa.surface_library_error(&a.api, l)
+				m, _ := pa.surface_offered_count(&a.api, l)
+				ui.driver_say(&a.driver, fmt.tprintf("%d %s: %s", l, path, why if why != "" else fmt.tprintf("%d surfaces", m)))
+				for k in 0 ..< m {
+					id, _ := pa.surface_offered_id(&a.api, l, k)
+					on, _ := pa.surface_detect(&a.api, l, k)
+					ui.driver_say(&a.driver, fmt.tprintf("  %d %s%s", k, id, "" if on else " (detection off)"))
+				}
+			}
+		case "assign":
+			if len(w) < 5 do return false
+			if _, r := pa.surface_assign(&a.api, i64(num(w, 2)), i64(num(w, 3)), w[4], w[5] if len(w) > 5 else ""); r != .Ok do return fail(a)
+		case "detect":
+			if len(w) < 5 do return false
+			if pa.surface_set_detect(&a.api, i64(num(w, 2)), i64(num(w, 3)), w[4] != "off") != .Ok do return fail(a)
+		case "press":
+			if len(w) < 4 do return false
+			_, last_is_num := strconv.parse_f64(w[len(w) - 1])
+			name, v := name_num(w, len(w) > 4 && last_is_num)
+			vel := strconv.parse_f64(v) or_else 1
+			if pa.surface_press(&a.api, i64(num(w, 2)), name, f32(vel)) != .Ok do return fail(a)
+		case "release":
+			if len(w) < 4 do return false
+			name, _ := name_num(w, false)
+			if pa.surface_release(&a.api, i64(num(w, 2)), name) != .Ok do return fail(a)
+		case "turn":
+			if len(w) < 5 do return false
+			name, v := name_num(w, true)
+			if pa.surface_turn(&a.api, i64(num(w, 2)), name, i64(strconv.parse_int(v) or_else 1)) != .Ok do return fail(a)
+		case "move":
+			if len(w) < 5 do return false
+			name, v := name_num(w, true)
+			if pa.surface_move(&a.api, i64(num(w, 2)), name, strconv.parse_f64(v) or_else 0) != .Ok do return fail(a)
+		case "monitor":
+			if len(w) < 3 do return false
+			switch w[2] {
+			case "on", "off": pa.surface_monitor(&a.api, w[2] == "on")
+			case "clear": pa.surface_monitor_clear(&a.api)
+			case "show":
+				n, _ := pa.surface_monitor_count(&a.api)
+				for i in 0 ..< n {
+					line, _ := pa.surface_monitor_line(&a.api, i)
+					ui.driver_say(&a.driver, line)
+				}
+			case: return false
+			}
+		case:
+			return false
+		}
+		return true
+	case "midiport":
+		// Pretend controllers (--fake-midi):
+		//   midiport plug ID in|out|inout NAME... / midiport unplug ID
+		//   midiport play ID HEX... (MIDI from it) / midiport sent ID (what it was sent) / midiport clear
+		d := a.fake_midi
+		if d == nil do return drive_fail(a, "no pretend MIDI ports: run with --fake-midi")
+		if len(w) < 2 do return false
+		switch w[1] {
+		case "plug":
+			if len(w) < 5 do return false
+			mfake.plug(d, {id = w[2], name = strings.join(w[4:], " ", context.temp_allocator), input = w[3] != "out", output = w[3] != "in"})
+		case "unplug":
+			if len(w) < 3 do return false
+			mfake.unplug(d, w[2])
+		case "play":
+			if len(w) < 4 do return false
+			bytes := make([dynamic]u8, context.temp_allocator)
+			for x in w[3:] do append(&bytes, u8(strconv.parse_uint(x, 16) or_else 0))
+			if !mfake.receive(d, w[2], bytes[:]) do return drive_fail(a, "that port isn't open")
+		case "sent":
+			if len(w) < 3 do return false
+			for m in mfake.sent_to(d, w[2]) {
+				b := strings.builder_make(context.temp_allocator)
+				for x, i in m do fmt.sbprintf(&b, "%s%02X", " " if i > 0 else "", x)
+				ui.driver_say(&a.driver, strings.to_string(b))
+			}
+		case "clear":
+			mfake.clear_sent(d)
 		case:
 			return false
 		}

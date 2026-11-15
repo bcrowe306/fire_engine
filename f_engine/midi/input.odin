@@ -15,6 +15,7 @@ Input_Event :: struct {
 	time_ns: u64, // host clock (rt.host_time_ns)
 	port:    u8, // port index given at open
 	bytes:   [3]u8, // MIDI 1.0 message; unused bytes are 0
+	unfiltered: bool, // past the input's filter (pushed by the app itself)
 }
 
 // Collects MIDI input from driver threads and places it, sample-accurately,
@@ -36,6 +37,7 @@ Midi_Input :: struct {
 	parsers:       [MAX_PORTS]Byte_Parser, // for drivers that deliver MIDI 1.0 bytes
 	sysex_storage: []u8, // backing memory for the assemblers
 	latency_ns:    u64, // atomic; see input_set_latency
+	filter:        ^Input_Filter, // atomic; see input_set_filter
 
 	// Audio thread only.
 	pending:     []Input_Event, // sorted by time
@@ -45,6 +47,33 @@ Midi_Input :: struct {
 	late:    u64, // events placed at offset 0 because they arrived too late
 	dropped: u64, // short messages lost to a full queue or pending buffer
 	ignored: u64, // UMP messages with no MIDI 1.0 meaning (MIDI 2.0 voice, utility...)
+}
+
+// A filter on the short messages a `Midi_Input` delivers: `filter` sees
+// each as it is taken from the drivers' queue (on the audio thread, or the
+// thread that drains it), and says what it becomes, or drops it. `proc`
+// must be [rt]: no allocation, locks or syscalls. A control surface's claim
+// table is one: messages its surface takes never reach the engine.
+Input_Filter :: struct {
+	filter: proc "contextless" (user: rawptr, port: u8, bytes: [3]u8, time_ns: u64) -> (out: [3]u8, keep: bool),
+	user:   rawptr,
+}
+
+// Sets (or, with nil, clears) the input's filter, from any thread; it
+// applies from the next message taken. The caller keeps `f` alive until
+// another is set and a block has passed.
+input_set_filter :: proc "contextless" (in_: ^Midi_Input, f: ^Input_Filter) {
+	intrinsics.atomic_store_explicit(&in_.filter, f, .Release)
+}
+
+// [rt] A message through the filter (if there is one): false when it's dropped.
+@(private)
+filtered :: #force_inline proc "contextless" (in_: ^Midi_Input, e: ^Input_Event) -> bool {
+	f := intrinsics.atomic_load_explicit(&in_.filter, .Acquire)
+	if f == nil || f.filter == nil || e.unfiltered do return true
+	out, keep := f.filter(f.user, e.port, e.bytes, e.time_ns)
+	e.bytes = out
+	return keep
 }
 
 // Sizes for `input_init`. A zero config means `default_input_config()`.
@@ -102,10 +131,10 @@ input_set_latency :: proc "contextless" (in_: ^Midi_Input, latency_ns: u64) {
 // Driver threads. Queues one short message received at host time `time_ns` on
 // port index `port`. Never call it from the audio thread (it takes a mutex).
 // A full queue counts a drop.
-input_push_short :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8, bytes: [3]u8) {
+input_push_short :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8, bytes: [3]u8, unfiltered := false) {
 	sync.mutex_lock(&in_.producer_lock)
 	defer sync.mutex_unlock(&in_.producer_lock)
-	push_locked(in_, {time_ns, port, bytes})
+	push_locked(in_, {time_ns, port, bytes, unfiltered})
 }
 
 // Decodes a run of UMP words (MIDI 1.0 protocol). SysEx goes to the SysEx queue.
@@ -118,7 +147,7 @@ input_push_ump :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8, 
 		switch words[i] >> 28 {
 		case UMP_SYSTEM, UMP_MIDI1_VOICE:
 			if bytes, ok := ump_to_short(words[i]); ok {
-				push_locked(in_, {time_ns, port, bytes})
+				push_locked(in_, {time_ns, port, bytes, false})
 			} else {
 				intrinsics.atomic_add_explicit(&in_.ignored, 1, .Relaxed)
 			}
@@ -157,7 +186,7 @@ input_push_bytes :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8
 	for b in bytes {
 		switch {
 		case b >= 0xF8: // real-time: never disturbs the message in progress
-			if message_length(b) == 1 do push_locked(in_, {time_ns, port, {b, 0, 0}})
+			if message_length(b) == 1 do push_locked(in_, {time_ns, port, {b, 0, 0}, false})
 		case b == 0xF0:
 			if p.in_sysex do intrinsics.atomic_add_explicit(&in_.sysex.dropped, 1, .Relaxed) // unterminated
 			p.in_sysex, p.status, p.have = true, 0, 0
@@ -183,7 +212,7 @@ input_push_bytes :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8
 			}
 			p.status, p.have, p.need = b, 0, n - 1
 			if p.need == 0 {
-				push_locked(in_, {time_ns, port, {b, 0, 0}})
+				push_locked(in_, {time_ns, port, {b, 0, 0}, false})
 				p.status = 0 // system messages cancel running status
 			}
 		case p.in_sysex:
@@ -197,7 +226,7 @@ input_push_bytes :: proc "contextless" (in_: ^Midi_Input, time_ns: u64, port: u8
 			p.data[p.have] = b
 			p.have += 1
 			if p.have == p.need {
-				push_locked(in_, {time_ns, port, {p.status, p.data[0], p.data[1] if p.need == 2 else 0}})
+				push_locked(in_, {time_ns, port, {p.status, p.data[0], p.data[1] if p.need == 2 else 0}, false})
 				p.have = 0
 				if p.status >= 0xF0 do p.status = 0 // no running status for system common
 			}
@@ -218,7 +247,10 @@ push_locked :: proc "contextless" (in_: ^Midi_Input, e: Input_Event) {
 // time order. `block_ns` is the presentation time of the block's first frame
 // (Io_Block.output_ns).
 input_process :: proc "contextless" (in_: ^Midi_Input, block_ns: u64, frames: int, sample_rate: f64, out: ^core.Event_Writer) {
-	for e in rt.spsc_pop(&in_.queue) do insert_pending(in_, e)
+	for e in rt.spsc_pop(&in_.queue) {
+		e := e
+		if filtered(in_, &e) do insert_pending(in_, e)
+	}
 	if frames <= 0 do return
 
 	latency := i64(intrinsics.atomic_load_explicit(&in_.latency_ns, .Relaxed))
@@ -250,7 +282,10 @@ input_process :: proc "contextless" (in_: ^Midi_Input, block_ns: u64, frames: in
 // on a driver of their own, and drain it from one thread only. SysEx comes
 // from `sysex_pop` as usual.
 input_drain :: proc(in_: ^Midi_Input, each: proc(user: rawptr, port: u8, bytes: [3]u8, time_ns: u64), user: rawptr) {
-	for e in rt.spsc_pop(&in_.queue) do insert_pending(in_, e)
+	for e in rt.spsc_pop(&in_.queue) {
+		e := e
+		if filtered(in_, &e) do insert_pending(in_, e)
+	}
 	for e in in_.pending[:in_.pending_len] do each(user, e.port, e.bytes, e.time_ns)
 	in_.pending_len = 0
 }

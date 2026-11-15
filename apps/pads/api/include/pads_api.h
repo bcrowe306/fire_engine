@@ -300,6 +300,18 @@ enum {
 	PADS_TOPIC_UI = 11,
 };
 
+// Where a surface's controller is.
+typedef int32_t Pads_Surface_State;
+enum {
+	PADS_SURFACE_STATE_IDENTIFYING = 0,
+	PADS_SURFACE_STATE_WAITING = 1,
+	PADS_SURFACE_STATE_ACTIVE = 2,
+	PADS_SURFACE_STATE_NOT_IDENTIFIED = 3,
+	PADS_SURFACE_STATE_PASSED_OVER = 4,
+	PADS_SURFACE_STATE_FAILED = 5,
+	PADS_SURFACE_STATE_GONE = 6,
+};
+
 // The metronome's sound.
 typedef int32_t Pads_Metronome_Sound;
 enum {
@@ -1479,22 +1491,22 @@ typedef struct Pads_Api_V1 {
 	// Stops subscription `sub`. Not_Found if there is none. Control thread
 	// (a callback may unsubscribe itself).
 	Pads_Result (*unsubscribe)(Pads_Api* api, Pads_Subscription sub);
-	// Loads the control-surface library at `path` (a .dylib, .so or .dll
-	// exporting `fire_surface_entry`) and starts its surface `index`, which
-	// gets this API by asking for "fire.pads" version 1: its place among the
-	// surfaces running. Io_Error if the library won't load; Not_Found if it
-	// has no surface `index` (of an ABI this Pads loads); Unsupported if the
-	// surface won't start. MIDI ports of its own aren't given yet.
+	// Loads the control-surface library at `path` (a .fsurf) and offers its
+	// surfaces to detection: a controller of theirs on the MIDI ports starts
+	// one. Its place among the libraries (`surface_library_*`); a library
+	// loaded already: its place. Io_Error if it won't load. (`index`: kept for
+	// the first version of the table; any.)
 	Pads_Result (*surface_load)(Pads_Api* api, const char* path, int64_t path_len, int64_t index, int64_t* out);
-	// The surfaces running.
+	// The surfaces: a controller each, found on the MIDI ports (whatever its
+	// state) or assigned by hand.
 	Pads_Result (*surface_count)(Pads_Api* api, int64_t* out);
-	// Surface `index`'s name, as its library gives it ("Fire Mini"). Temporary.
+	// Surface `index`'s name, as its library gives it ("Push 2"). Temporary.
 	Pads_Result (*surface_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
-	// The library surface `index` came from. Temporary.
+	// The library surface `index` comes from. Temporary.
 	Pads_Result (*surface_path)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
-	// Stops surface `index` (the ones after it move down one); its library
-	// unloads when nothing else uses it. What it subscribed while it started
-	// goes with it; a surface unsubscribes the rest in its `destroy`.
+	// Stops surface `index`: one assigned by hand is forgotten; one found has
+	// its surface's detection turned off (`surface_set_detect` turns it on
+	// again). The surfaces after it move down.
 	Pads_Result (*surface_unload)(Pads_Api* api, int64_t index);
 	// The transport now.
 	Pads_Result (*transport_state)(Pads_Api* api, Pads_Transport_State* out);
@@ -1561,6 +1573,63 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*ui_select_pads)(Pads_Api* api, const int64_t* pads, int64_t pads_len);
 	// Pad `index` of those selected together.
 	Pads_Result (*ui_selected_pad)(Pads_Api* api, int64_t index, int64_t* out);
+	// The surface libraries loaded (from the folders, and `surface_load`'s),
+	// those that didn't load included.
+	Pads_Result (*surface_library_count)(Pads_Api* api, int64_t* out);
+	// Library `lib`'s path. Temporary.
+	Pads_Result (*surface_library_path)(Pads_Api* api, int64_t lib, char* out, int64_t out_cap, int64_t* out_len);
+	// Why library `lib` didn't load ("" when it did). Temporary.
+	Pads_Result (*surface_library_error)(Pads_Api* api, int64_t lib, char* out, int64_t out_cap, int64_t* out_len);
+	// Unloads library `lib`: its surfaces stop (the libraries after it move
+	// down one).
+	Pads_Result (*surface_library_unload)(Pads_Api* api, int64_t lib);
+	// The surfaces library `lib` offers (one a controller model).
+	Pads_Result (*surface_offered_count)(Pads_Api* api, int64_t lib, int64_t* out);
+	// The name of surface `k` that library `lib` offers ("Push 2"). Temporary.
+	Pads_Result (*surface_offered_name)(Pads_Api* api, int64_t lib, int64_t k, char* out, int64_t out_cap, int64_t* out_len);
+	// The id of surface `k` that library `lib` offers ("com.example.push2"). Temporary.
+	Pads_Result (*surface_offered_id)(Pads_Api* api, int64_t lib, int64_t k, char* out, int64_t out_cap, int64_t* out_len);
+	// Turns detection of library `lib`'s surface `k` on or off (kept between
+	// runs). Off, the controllers found for it are forgotten.
+	Pads_Result (*surface_set_detect)(Pads_Api* api, int64_t lib, int64_t k, bool on);
+	// Whether library `lib`'s surface `k` is detected.
+	Pads_Result (*surface_detect)(Pads_Api* api, int64_t lib, int64_t k, bool* out);
+	// Where surface `index`'s controller is.
+	Pads_Result (*surface_state)(Pads_Api* api, int64_t index, Pads_Surface_State* out);
+	// The MIDI ports surface `index` is on: its first pair's names ("in /
+	// out"). Temporary.
+	Pads_Result (*surface_ports)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Starts library `lib`'s surface `k` on MIDI ports chosen by hand (by
+	// their ids: `midi_port_id`; output "" for none), whatever their names:
+	// it takes them from any surface found there, and keeps them until
+	// `surface_unload`. Its index among the surfaces.
+	Pads_Result (*surface_assign)(Pads_Api* api, int64_t lib, int64_t k, const char* input, int64_t input_len, const char* output, int64_t output_len, int64_t* out);
+	// Turns the surfaces' MIDI monitor on or off: each message from a
+	// surface's controller (what its claim table did with it), and each it
+	// sent, named by its surface.
+	Pads_Result (*surface_monitor)(Pads_Api* api, bool on);
+	// The messages the monitor has (the oldest go past 2048).
+	Pads_Result (*surface_monitor_count)(Pads_Api* api, int64_t* out);
+	// The monitor's message `i` as a line: "in  1  90 24 64  claim (rule 2)
+	// Grid / Pads 3,0 (Drum)". Temporary.
+	Pads_Result (*surface_monitor_line)(Pads_Api* api, int64_t i, char* out, int64_t out_cap, int64_t* out_len);
+	// Empties the monitor.
+	Pads_Result (*surface_monitor_clear)(Pads_Api* api);
+	// The controls surface `index` describes (buttons, pads, encoders,
+	// faders, displays). Unsupported if it doesn't describe them.
+	Pads_Result (*surface_control_count)(Pads_Api* api, int64_t index, int64_t* out);
+	// The name of surface `index`'s control `k` ("Play", "Pads 3,0"). Temporary.
+	Pads_Result (*surface_control_name)(Pads_Api* api, int64_t index, int64_t k, char* out, int64_t out_cap, int64_t* out_len);
+	// Presses surface `index`'s control `name` (a button or pad, at `velocity`
+	// 0..1), as its controller would send it: into Pads' MIDI input on its
+	// port, through its claim table. Not_Found for no such control.
+	Pads_Result (*surface_press)(Pads_Api* api, int64_t index, const char* name, int64_t name_len, float velocity);
+	// Releases surface `index`'s control `name`.
+	Pads_Result (*surface_release)(Pads_Api* api, int64_t index, const char* name, int64_t name_len);
+	// Turns surface `index`'s encoder `name` by `steps` (negative: down).
+	Pads_Result (*surface_turn)(Pads_Api* api, int64_t index, const char* name, int64_t name_len, int64_t steps);
+	// Moves surface `index`'s fader `name` to `value` (0..1).
+	Pads_Result (*surface_move)(Pads_Api* api, int64_t index, const char* name, int64_t name_len, double value);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

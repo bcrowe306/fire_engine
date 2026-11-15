@@ -240,6 +240,18 @@ devices and effects (and the knobs moved onto `param_set`).
   itself (it moves the bank along in several places);
   `perform_select_pad` and `ui_select_pads` do it through the API.
 
+### Stage 8, revised: fire-surface (2026-11-16)
+
+The surfaces moved to [fire-surface](https://github.com/bcrowe306/fire-surface)
+(extern/fire-surface, a git submodule), and fire:surface is gone. A
+surface is a `.fsurf`; its controller is found on the MIDI ports, and its
+claim table applied to that MIDI on the audio thread (app/core/surfaces.odin).
+It gets this API as `"fire.pads"` 1, and `fsurf.daw` (apps/pads/api/daw.odin,
+over this API). `surface_load` loads a library; `surface_count` and the
+rest are the surfaces running; the table's version 1 grew the libraries,
+assigning, detection, the monitor and controls by name. See
+docs/guides/surfaces.md. What follows is the first version, as it was.
+
 ### Stage 8, as built (surfaces)
 
 - fire:surface: `Host.get_extension(name, version)` (ABI version 2; a

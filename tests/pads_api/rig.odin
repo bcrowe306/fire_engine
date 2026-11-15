@@ -25,11 +25,13 @@ Rig :: struct {
 	browser_on: bool,
 }
 
-rig_make :: proc(t: ^testing.T, name: string) -> ^Rig {
+// A Pads, headless, its engine rendered by hand. `midi`: a MIDI driver for
+// its ports (fire:midi/fake: pretend controllers), the rig's to free.
+rig_make :: proc(t: ^testing.T, name: string, midi_driver: ^app.Midi_Driver = nil) -> ^Rig {
 	r := new(Rig)
 	c := &r.core
 	app.bus_init(&c.bus)
-	app.host_init(&c.host, {fake = true, sample_rate = SR, max_block = 256}, &c.bus)
+	app.host_init(&c.host, {fake = true, sample_rate = SR, max_block = 256, midi_driver = midi_driver}, &c.bus)
 	app.host_open(&c.host) // makes the graph at 48 kHz
 	app.host_close(&c.host) // render offline from here
 	r.dir, _ = filepath.join({kit.artifacts_root(), "pads_api", name})

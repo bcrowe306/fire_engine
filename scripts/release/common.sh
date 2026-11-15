@@ -18,7 +18,7 @@ build_pads() {
 	[ "$(uname)" = "Darwin" ] && MINOS="-minimum-os-version:13.0"
 	for f in "$ROOT"/third_party/link/lib/*abl_link*; do [ -e "$f" ] && LINKC="on"; done
 	odin build "$ROOT/apps/pads" -collection:fire="$ROOT/f_engine" -collection:app="$ROOT/app" \
-		-collection:deps="$ROOT/vendor" -collection:padslink="$ROOT/apps/pads/link/$LINKC" \
+		-collection:deps="$ROOT/vendor" -collection:fsurf="$ROOT/extern/fire-surface" -collection:padslink="$ROOT/apps/pads/link/$LINKC" \
 		-define:PADS_COMMIT="\"$COMMIT\"" -define:PADS_DATE="\"$DATE\"" \
 		${EXTRA_BUILD:-} $MINOS -o:speed -debug -vet -strict-style -out:"$1"
 	echo "built $1 (Link: $LINKC)"

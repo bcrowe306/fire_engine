@@ -438,3 +438,35 @@ output_sender_holds_until_due_when_driver_cannot_schedule :: proc(t: ^testing.T)
 		testing.expectf(t, late >= 0 && late < 20_000_000, "message %d sent %d ns after its time", i, late)
 	}
 }
+
+// A filter sees each short message as it is taken: it changes some, drops
+// others (a control surface's claim table), and the rest go on untouched.
+@(test)
+an_input_filter_changes_and_drops_messages :: proc(t: ^testing.T) {
+	in_ := make_input(t)
+	defer free_input(in_)
+	Seen :: struct { n: int }
+	seen: Seen
+	f := midi.Input_Filter{
+		user = &seen,
+		filter = proc "contextless" (user: rawptr, port: u8, b: [3]u8, time_ns: u64) -> ([3]u8, bool) {
+			(^Seen)(user).n += 1
+			if port == 1 do return b, false // port 1's: a surface's
+			if b[1] == 36 do return {b[0], 48, b[2]}, true // remapped
+			return b, true
+		},
+	}
+	midi.input_set_filter(in_, &f)
+	midi.input_push_short(in_, 100, 0, {0x90, 36, 100})
+	midi.input_push_short(in_, 200, 1, {0x90, 60, 100})
+	midi.input_push_short(in_, 300, 0, {0x90, 61, 100})
+	events := collect(in_, 0, 512)
+	testing.expect_value(t, seen.n, 3)
+	if testing.expect_value(t, len(events), 2) {
+		testing.expect_value(t, events[0].payload.(core.Midi_Raw), core.Midi_Raw{{0x90, 48, 100}, 0})
+		testing.expect_value(t, events[1].payload.(core.Midi_Raw), core.Midi_Raw{{0x90, 61, 100}, 0})
+	}
+	midi.input_set_filter(in_, nil) // cleared: all through
+	midi.input_push_short(in_, 400, 1, {0x90, 60, 100})
+	testing.expect_value(t, len(collect(in_, 0, 512)), 1)
+}

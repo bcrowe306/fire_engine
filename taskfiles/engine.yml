@@ -41,6 +41,6 @@ tasks:
       - bash ./scripts/link.sh
 
   surface:
-    desc: Build the C control-surface test script (tests/surface skips without it).
+    desc: Build the example C control surface, pads_mini.fsurf (tests/pads_api_c skips without it).
     cmds:
       - bash ./scripts/surface.sh

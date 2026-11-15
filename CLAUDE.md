@@ -26,7 +26,7 @@ ImGui statically:
 
 ```bash
 task deps                 # once per machine: fetch + build static SDL3 and ImGui (into vendor/, gitignored)
-task app:pads             # build .build/app/pads (collections: fire, app=app, deps=vendor)
+task app:pads             # build .build/app/pads (collections: fire, app=app, deps=vendor, fsurf=extern/fire-surface)
 task app:test             # tests/app_* (headless) + apps/ui_tests (UI cases with a window, main thread)
 task app:pads-drive       # Pads driven by tests/app_ui/drive/pads*.txt (fake audio, headless; expect lines)
 task app:e2e              # tests/e2e: Pads used by mouse and keys over --control (pytest); a crash fails with its report
@@ -96,14 +96,17 @@ Credentials live in `secrets.env` (gitignored, never commit or print it).
 "$(odin root)/vendor/miniaudio/src/build_miniaudio.sh"   # Linux only, once: miniaudio for fire:audiofile/codecs
 ./scripts/link.sh            # fetch + build Ableton Link (GPL, into gitignored third_party/) for fire:link; tests/link skips without it
 ./scripts/clap.sh            # build the CLAP test plug-ins (C, and Odin via fire:clap/sdk); tests/clap skips without them
-./scripts/surface.sh         # build the C control-surface test script; tests/surface skips without it
+./scripts/surface.sh         # build the example C control surface (pads_mini.fsurf); tests/pads_api_c skips without it
 ```
 
 Every exported symbol needs a doc comment; internals are `@(private)`. See the
 Documentation section of CONVENTIONS.md. Docs are Starlight Markdown
 (`docs/_integration.md`).
 
-Builds always need `-collection:fire=f_engine`.
+Builds always need `-collection:fire=f_engine`; the app layer and Pads also
+`-collection:fsurf=extern/fire-surface`: control surfaces come from
+[fire-surface](https://github.com/bcrowe306/fire-surface), a git submodule
+(`git submodule update --init` after cloning). See docs/guides/surfaces.md.
 
 ## Non-negotiables
 

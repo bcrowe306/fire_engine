@@ -199,6 +199,7 @@ Input_Event :: struct {
 	time_ns: u64,
 	port: u8,
 	bytes: [3]u8,
+	unfiltered: bool,
 }
 ```
 
@@ -209,6 +210,7 @@ One short message received by a driver, on its way to the audio thread.
 | `time_ns` | host clock (rt.host_time_ns) |
 | `port` | port index given at open |
 | `bytes` | MIDI 1.0 message; unused bytes are 0 |
+| `unfiltered` | past the input's filter (pushed by the app itself) |
 
 ### Midi_Input
 
@@ -221,6 +223,7 @@ Midi_Input :: struct {
 	parsers: [16]Byte_Parser,
 	sysex_storage: []u8,
 	latency_ns: u64,
+	filter: ^Input_Filter,
 	pending: []Input_Event,
 	pending_len: int,
 	late: u64,
@@ -250,11 +253,27 @@ Set up with `input_init`, free with `input_destroy`. Read SysEx from
 | `parsers` | for drivers that deliver MIDI 1.0 bytes |
 | `sysex_storage` | backing memory for the assemblers |
 | `latency_ns` | atomic; see input_set_latency |
+| `filter` | atomic; see input_set_filter |
 | `pending` | Audio thread only. sorted by time |
 | `pending_len` | events in use at the start of pending |
 | `late` | Counters (atomic). events placed at offset 0 because they arrived too late |
 | `dropped` | short messages lost to a full queue or pending buffer |
 | `ignored` | UMP messages with no MIDI 1.0 meaning (MIDI 2.0 voice, utility...) |
+
+### Input_Filter
+
+```odin
+Input_Filter :: struct {
+	filter: proc "contextless"(user: rawptr, port: u8, bytes: [3]u8, time_ns: u64) -> (out: [3]u8, keep: bool),
+	user: rawptr,
+}
+```
+
+A filter on the short messages a `Midi_Input` delivers: `filter` sees
+each as it is taken from the drivers' queue (on the audio thread, or the
+thread that drains it), and says what it becomes, or drops it. `proc`
+must be [rt]: no allocation, locks or syscalls. A control surface's claim
+table is one: messages its surface takes never reach the engine.
 
 ### Input_Config
 
@@ -567,6 +586,16 @@ from the control thread or the Midi_Output sender thread, never the audio
 thread. Returns .Invalid_Argument for an empty or invalid message or a port
 that is not an output.
 
+### input_set_filter
+
+```odin
+input_set_filter :: proc "contextless"(in_: ^Midi_Input, f: ^Input_Filter)
+```
+
+Sets (or, with nil, clears) the input's filter, from any thread; it
+applies from the next message taken. The caller keeps `f` alive until
+another is set and a block has passed.
+
 ### default_input_config
 
 ```odin
@@ -615,7 +644,7 @@ time it is placed in a block. Any thread; takes effect on the next block.
 ### input_push_short
 
 ```odin
-input_push_short :: proc "contextless"(in_: ^Midi_Input, time_ns: u64, port: u8, bytes: [3]u8)
+input_push_short :: proc "contextless"(in_: ^Midi_Input, time_ns: u64, port: u8, bytes: [3]u8, unfiltered: bool = false)
 ```
 
 Driver threads. Queues one short message received at host time `time_ns` on

@@ -17,7 +17,8 @@ package pads_api
 import "core:strings"
 import "core:sync"
 
-import "fire:surface"
+import app "app:core"
+import fsurf "fsurf:host"
 
 import pc "../core"
 
@@ -52,8 +53,10 @@ Api :: struct {
 	last:      Seen, // what subscribers were last told about
 	watched:   bit_set[Topic], // the topics someone subscribes to (only they are looked at)
 	table:     Table_V1, // the C function table (gen_c.odin)
-	manager:   ^surface.Manager, // the control surfaces' (surface.odin), once one loads
-	surfaces:  [dynamic]Loaded_Surface,
+	surfaces:  app.Surfaces, // the control surfaces (surface.odin), once started
+	surfaces_on: bool,
+	virtuals:  [dynamic]fsurf.Virtual, // their virtual controllers, opened when asked
+	daw:       Daw_State, // fsurf.daw for them (daw.odin)
 	owner:     i64, // a subscription made now belongs to this (a surface starting, the remote client)
 	next_owner: i64,
 	remote:    Remote_Link, // the remote client's (remote.odin)
@@ -75,7 +78,6 @@ api_init :: proc(api: ^Api, core: ^pc.Core) {
 	api.subs = make([dynamic]Sub)
 	api.posted = make([dynamic]Posted)
 	api.next_sub = 1
-	api.surfaces = make([dynamic]Loaded_Surface)
 	table_fill(api)
 }
 
@@ -102,7 +104,11 @@ api_frame :: proc(api: ^Api, dt: f64) {
 	for p in posted do p.call(api, p.user)
 	delete(posted)
 	deliver_changes(api)
-	if api.manager != nil do surface.manager_update(api.manager)
+	if api.surfaces_on {
+		app.surfaces_update(&api.surfaces)
+		daw_frame(api)
+		virtuals_prune(api)
+	}
 }
 
 // Queues `call` to run on the control thread at the next frame, with

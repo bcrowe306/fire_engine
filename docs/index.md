@@ -23,7 +23,6 @@ DAW, a headless box on a single-board computer) on top of its packages.
 | [`fire:clap`](/reference/clap/) | Hosting CLAP plug-ins as graph nodes: parameters, notes and MIDI, transport, latency, state, editors |
 | [`fire:clap/sdk`](/reference/clap/sdk/) | Making CLAP plug-ins from Fire Engine nodes |
 | [`fire:session`](/reference/session/) | Saving and loading whole sessions: clock, timelines, nodes with their parameters, clips and plug-in state, in a versioned file |
-| [`fire:surface`](/reference/surface/) | Control-surface scripts in dynamic libraries: MIDI, transport, app-published controls, graph parameters |
 | [`fire:stretch`](/reference/stretch/) | Time-stretching for audio clips: Signalsmith Stretch, ported to Odin |
 | [`fire:stream`](/reference/stream/) | Disk streaming: files read ahead on background threads, instant jumps to cue points |
 | [`fire:backend`](/reference/backend/) | Audio devices: one API over [CoreAudio](/reference/backend/coreaudio/), [ALSA](/reference/backend/alsa/), [JACK](/reference/backend/jack/), [WASAPI](/reference/backend/wasapi/) and a [simulated driver](/reference/backend/fake/) |
@@ -45,7 +44,7 @@ DAW, a headless box on a single-board computer) on top of its packages.
    And [instruments](/guides/instruments/): the synth and the sampler.
 7. [Writing a node](/guides/writing-a-node/): your own DSP, and testing it.
 8. [Plug-ins](/guides/plugins/): hosting CLAP plug-ins, and making them from your nodes.
-   And [control surfaces](/guides/surfaces/): scripts for hardware controllers.
+   And [control surfaces](/guides/surfaces/): hardware controllers, through fire-surface.
 9. [Saving sessions](/guides/sessions/): the whole engine to one file, and back.
 10. [Single-board computers](/guides/single-board-computers/): ARM Linux boards like the Raspberry Pi, and what fits on them.
 11. [Building](/guides/building/) every part with Task, and [the application layer](/guides/app-layer/): GUI apps with SDL3 and Dear ImGui, driven from scripts for testing.

@@ -356,18 +356,18 @@ functions and refuses to drop one). A breaking change is version 2.
 
 ## Control surfaces
 
-A surface library (see [Control surfaces](/guides/surfaces/)) asks its
-host for the table by name and version, as a CLAP plug-in asks for an
-extension, and drives Pads through it:
+A control-surface library ([Control surfaces](/guides/surfaces/): a
+fire-surface `.fsurf`) asks its host for the table by name and version, as
+a CLAP plug-in asks for an extension, and drives Pads through it:
 
 ```c
-#include "fire_surface.h"
+#include "fsurf.h"
 #include "pads_api.h"
 
-static fire_surface *create(fire_surface_host *host) {
-	if (host->abi_version < 2) return NULL; // get_extension came with version 2
-	const Pads_Api_V1 *pads = host->get_extension(host, PADS_API_NAME, PADS_API_VERSION);
-	if (!pads) return NULL;                 // not Pads, or not this version
+static bool init(const fsurf_surface_t *s) {
+	mini_t *m = s->surface_data;
+	const Pads_Api_V1 *pads = m->host->get_extension(m->host, PADS_API_NAME, PADS_API_VERSION);
+	if (!pads) return false; // not Pads, or not this version
 	pads->transport_set_tempo(pads->api, 96);
 	...
 }
@@ -375,19 +375,22 @@ static fire_surface *create(fire_surface_host *host) {
 
 `examples/pads_surface/pads_mini.c` is a whole one: notes play pads,
 buttons play and stop, CCs set the tempo and a fader, and a subscription
-to the transport lights its play LED. `./scripts/surface.sh` builds it
-(`.build/surface/pads_mini.*`); load it with
+to the transport lights its play LED. Its claim table keeps those from
+the engine. `./scripts/surface.sh` builds it
+(`.build/surface/pads_mini.fsurf`); Pads starts it when a MIDI port named
+"Pads Mini..." is there. Put it in Pads' Surfaces folder, or load it with
 
 ```bash
-.build/app/pads --surface .build/surface/pads_mini.dylib
+.build/app/pads --surface .build/surface/pads_mini.fsurf
 ```
 
 or `surface_load(api, path)` (the script command `surface load PATH`).
-Settings → MIDI lists the surfaces running. Everything a surface does
-happens on the control thread, in `api_frame`. What it subscribed while
-starting goes when it unloads; anything later it unsubscribes in its
-`destroy`. Giving a surface MIDI ports of its own isn't done yet:
-`tests/pads_api_c` stands in for a controller.
+A surface written for any host uses the standard extension `fsurf.daw`
+instead, which Pads also offers. The API's `surface_*` procedures list
+the libraries, the surfaces running, assign one by hand, turn detection
+on and off, read the MIDI monitor and press a surface's controls by name.
+Everything a surface does happens on the control thread, in `api_frame`;
+what it subscribes it unsubscribes in its `destroy`.
 
 ## From another process
 

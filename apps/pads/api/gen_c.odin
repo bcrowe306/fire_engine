@@ -318,6 +318,28 @@ Table_V1 :: struct {
 	ui_message: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	ui_select_pads: proc "c" (api: ^Api, pads: [^]i64, pads_len: i64) -> Result,
 	ui_selected_pad: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
+	surface_library_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	surface_library_path: proc "c" (api: ^Api, lib: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_library_error: proc "c" (api: ^Api, lib: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_library_unload: proc "c" (api: ^Api, lib: i64) -> Result,
+	surface_offered_count: proc "c" (api: ^Api, lib: i64, out: ^i64) -> Result,
+	surface_offered_name: proc "c" (api: ^Api, lib: i64, k: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_offered_id: proc "c" (api: ^Api, lib: i64, k: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_set_detect: proc "c" (api: ^Api, lib: i64, k: i64, on: bool) -> Result,
+	surface_detect: proc "c" (api: ^Api, lib: i64, k: i64, out: ^bool) -> Result,
+	surface_state: proc "c" (api: ^Api, index: i64, out: ^Surface_State) -> Result,
+	surface_ports: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_assign: proc "c" (api: ^Api, lib: i64, k: i64, input: cstring, input_len: i64, output: cstring, output_len: i64, out: ^i64) -> Result,
+	surface_monitor: proc "c" (api: ^Api, on: bool) -> Result,
+	surface_monitor_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	surface_monitor_line: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_monitor_clear: proc "c" (api: ^Api) -> Result,
+	surface_control_count: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
+	surface_control_name: proc "c" (api: ^Api, index: i64, k: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_press: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, velocity: f32) -> Result,
+	surface_release: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result,
+	surface_turn: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, steps: i64) -> Result,
+	surface_move: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, value: f64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -638,6 +660,28 @@ table_fill :: proc(api: ^Api) {
 	t.ui_message = c_ui_message
 	t.ui_select_pads = c_ui_select_pads
 	t.ui_selected_pad = c_ui_selected_pad
+	t.surface_library_count = c_surface_library_count
+	t.surface_library_path = c_surface_library_path
+	t.surface_library_error = c_surface_library_error
+	t.surface_library_unload = c_surface_library_unload
+	t.surface_offered_count = c_surface_offered_count
+	t.surface_offered_name = c_surface_offered_name
+	t.surface_offered_id = c_surface_offered_id
+	t.surface_set_detect = c_surface_set_detect
+	t.surface_detect = c_surface_detect
+	t.surface_state = c_surface_state
+	t.surface_ports = c_surface_ports
+	t.surface_assign = c_surface_assign
+	t.surface_monitor = c_surface_monitor
+	t.surface_monitor_count = c_surface_monitor_count
+	t.surface_monitor_line = c_surface_monitor_line
+	t.surface_monitor_clear = c_surface_monitor_clear
+	t.surface_control_count = c_surface_control_count
+	t.surface_control_name = c_surface_control_name
+	t.surface_press = c_surface_press
+	t.surface_release = c_surface_release
+	t.surface_turn = c_surface_turn
+	t.surface_move = c_surface_move
 }
 
 @(private)
@@ -2968,4 +3012,198 @@ c_ui_selected_pad :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
 	v, r := ui_selected_pad(api, index)
 	if out != nil do out^ = v
 	return r
+}
+
+@(private)
+c_surface_library_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := surface_library_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_library_path :: proc "c" (api: ^Api, lib: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_library_path(api, lib)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_library_error :: proc "c" (api: ^Api, lib: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_library_error(api, lib)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_library_unload :: proc "c" (api: ^Api, lib: i64) -> Result {
+	context = runtime.default_context()
+	return surface_library_unload(api, lib)
+}
+
+@(private)
+c_surface_offered_count :: proc "c" (api: ^Api, lib: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := surface_offered_count(api, lib)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_offered_name :: proc "c" (api: ^Api, lib: i64, k: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_offered_name(api, lib, k)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_offered_id :: proc "c" (api: ^Api, lib: i64, k: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_offered_id(api, lib, k)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_set_detect :: proc "c" (api: ^Api, lib: i64, k: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return surface_set_detect(api, lib, k, on)
+}
+
+@(private)
+c_surface_detect :: proc "c" (api: ^Api, lib: i64, k: i64, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := surface_detect(api, lib, k)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_state :: proc "c" (api: ^Api, index: i64, out: ^Surface_State) -> Result {
+	context = runtime.default_context()
+	v, r := surface_state(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_ports :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_ports(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_assign :: proc "c" (api: ^Api, lib: i64, k: i64, input: cstring, input_len: i64, output: cstring, output_len: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	input_s := string(([^]u8)(input)[:max(input_len, 0)]) if input != nil else ""
+	output_s := string(([^]u8)(output)[:max(output_len, 0)]) if output != nil else ""
+	v, r := surface_assign(api, lib, k, input_s, output_s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_monitor :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return surface_monitor(api, on)
+}
+
+@(private)
+c_surface_monitor_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := surface_monitor_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_monitor_line :: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_monitor_line(api, i)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_monitor_clear :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return surface_monitor_clear(api)
+}
+
+@(private)
+c_surface_control_count :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := surface_control_count(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_control_name :: proc "c" (api: ^Api, index: i64, k: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_control_name(api, index, k)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_press :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, velocity: f32) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return surface_press(api, index, name_s, velocity)
+}
+
+@(private)
+c_surface_release :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return surface_release(api, index, name_s)
+}
+
+@(private)
+c_surface_turn :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, steps: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return surface_turn(api, index, name_s, steps)
+}
+
+@(private)
+c_surface_move :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, value: f64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return surface_move(api, index, name_s, value)
 }

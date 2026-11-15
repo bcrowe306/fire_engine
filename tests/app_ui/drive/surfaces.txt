@@ -1,0 +1,34 @@
+# Settings > Control Surfaces, with two pretend controllers (--fake-midi) and
+# the kit's examples (--surface): Grid (identified by its answer) and Screen
+# (by its port's name); its virtual controller, its displays mirrored. Not
+# in app:pads-drive (it needs these flags); tests/e2e/test_surfaces.py
+# covers it. To look at it:
+#   (cd extern/fire-surface && ./scripts/build.sh)
+#   .build/app/pads --headless --fake --fake-midi \
+#     --surface extern/fire-surface/.build/grid_odin.fsurf --surface extern/fire-surface/.build/screen_odin.fsurf \
+#     --drive tests/app_ui/drive/surfaces.txt --out .build/shots_surfaces
+size 1440 900
+wait 2
+midiport plug grid inout Grid MIDI
+midiport plug screen inout Screen MIDI
+wait 3
+midiport play grid F0 7E 00 06 02 7D 20 01 F7
+wait 3
+surface list
+action settings
+wait 2
+click_item "Control Surfaces"
+wait 2
+click_item "Show surface 1"
+wait 6
+move 900 650
+scroll 0 -40
+wait 2
+screenshot surfaces_screen
+scroll 0 40
+wait 2
+click_item "Show surface 0"
+wait 2
+scroll 0 -40
+wait 3
+screenshot surfaces_grid

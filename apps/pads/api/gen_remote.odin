@@ -2388,6 +2388,82 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := surface_load(api, path, index)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_library_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_library_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_library_path":
+		lib := remote_i64(args, "lib", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_library_path(api, lib)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_library_error":
+		lib := remote_i64(args, "lib", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_library_error(api, lib)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_library_unload":
+		lib := remote_i64(args, "lib", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_library_unload(api, lib)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_offered_count":
+		lib := remote_i64(args, "lib", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_offered_count(api, lib)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_offered_name":
+		lib := remote_i64(args, "lib", &ok)
+		k := remote_i64(args, "k", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_offered_name(api, lib, k)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_offered_id":
+		lib := remote_i64(args, "lib", &ok)
+		k := remote_i64(args, "k", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_offered_id(api, lib, k)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_set_detect":
+		lib := remote_i64(args, "lib", &ok)
+		k := remote_i64(args, "k", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_set_detect(api, lib, k, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_detect":
+		lib := remote_i64(args, "lib", &ok)
+		k := remote_i64(args, "k", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_detect(api, lib, k)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_surface_count":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -2411,6 +2487,33 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := surface_path(api, index)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_state":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_state(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_ports":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_ports(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_assign":
+		lib := remote_i64(args, "lib", &ok)
+		k := remote_i64(args, "k", &ok)
+		input := remote_string(args, "input", &ok)
+		output := remote_string(args, "output", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_assign(api, lib, k, input, output)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_surface_unload":
 		index := remote_i64(args, "index", &ok)
 		if !ok {
@@ -2418,6 +2521,92 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := surface_unload(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_monitor":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_monitor(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_monitor_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_monitor_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_monitor_line":
+		i := remote_i64(args, "i", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_monitor_line(api, i)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_monitor_clear":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_monitor_clear(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_control_count":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_control_count(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_control_name":
+		index := remote_i64(args, "index", &ok)
+		k := remote_i64(args, "k", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_control_name(api, index, k)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_press":
+		index := remote_i64(args, "index", &ok)
+		name := remote_string(args, "name", &ok)
+		velocity := remote_f32_or(args, "velocity", 1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_press(api, index, name, velocity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_release":
+		index := remote_i64(args, "index", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_release(api, index, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_turn":
+		index := remote_i64(args, "index", &ok)
+		name := remote_string(args, "name", &ok)
+		steps := remote_i64(args, "steps", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_turn(api, index, name, steps)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_move":
+		index := remote_i64(args, "index", &ok)
+		name := remote_string(args, "name", &ok)
+		value := remote_f64(args, "value", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_move(api, index, name, value)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_transport_state":
 		if !ok {
@@ -2704,6 +2893,9 @@ Setting_Group_NAMES := [?]string{"Appearance", "Audio", "Midi", "Sync", "Recordi
 
 @(private)
 Topic_NAMES := [?]string{"Transport", "History", "Selection", "Pad", "Mixer", "Sequence", "Song", "Launcher", "Project", "Settings", "Recording", "Ui"}
+
+@(private)
+Surface_State_NAMES := [?]string{"Identifying", "Waiting", "Active", "Not_Identified", "Passed_Over", "Failed", "Gone"}
 
 @(private)
 Metronome_Sound_NAMES := [?]string{"Beep", "Wood", "Stick", "Cowbell"}
@@ -3203,10 +3395,32 @@ REMOTE_METHODS := [?]string{
 	"pads_song_delete_arrangement",
 	"pads_unsubscribe",
 	"pads_surface_load",
+	"pads_surface_library_count",
+	"pads_surface_library_path",
+	"pads_surface_library_error",
+	"pads_surface_library_unload",
+	"pads_surface_offered_count",
+	"pads_surface_offered_name",
+	"pads_surface_offered_id",
+	"pads_surface_set_detect",
+	"pads_surface_detect",
 	"pads_surface_count",
 	"pads_surface_name",
 	"pads_surface_path",
+	"pads_surface_state",
+	"pads_surface_ports",
+	"pads_surface_assign",
 	"pads_surface_unload",
+	"pads_surface_monitor",
+	"pads_surface_monitor_count",
+	"pads_surface_monitor_line",
+	"pads_surface_monitor_clear",
+	"pads_surface_control_count",
+	"pads_surface_control_name",
+	"pads_surface_press",
+	"pads_surface_release",
+	"pads_surface_turn",
+	"pads_surface_move",
 	"pads_transport_state",
 	"pads_transport_play",
 	"pads_transport_stop",

@@ -44,6 +44,10 @@ Host_Settings :: struct {
 	midi:          bool,   // open the system's MIDI: every input port into the graph (see `host_midi_*`)
 	midi_output:   string, // the MIDI output port id an app sends to by default ("" = none); every output port is opened (see `host_midi_output_index`)
 	midi_inputs_off: []string, // input port ids left closed (every other input is opened)
+	// A MIDI driver to use instead of the system's (fire:midi/fake, for tests
+	// and headless runs): opened as `midi` would be, even with `fake` audio.
+	// The caller keeps it and frees it after the host.
+	midi_driver:   ^Midi_Driver,
 	// At a new sample rate, start from an empty graph and clock instead of
 	// carrying the old ones over (for apps that rebuild the engine from
 	// their own model on `Host_Engine_Changed`).
@@ -144,7 +148,7 @@ host_init :: proc(h: ^Host, settings: Host_Settings, bus: ^Bus) -> fc.Error {
 	if midi.input_init(&h.midi_in) != nil do return .Out_Of_Memory
 	h.in_events = make([]fc.Event, 1024)
 	h.out_events = make([]fc.Event, 2048)
-	if settings.midi && !settings.fake do open_midi(h)
+	if wants_midi(h) do open_midi(h)
 	return session.register_builtin(&h.registry, &h.env)
 }
 
@@ -156,7 +160,7 @@ host_midi_reopen :: proc(h: ^Host) {
 	running := h.running
 	if running do host_close(h)
 	close_midi(h)
-	if h.settings.midi && !h.settings.fake do open_midi(h)
+	if wants_midi(h) do open_midi(h)
 	if running do host_open(h)
 }
 
@@ -178,7 +182,7 @@ close_midi :: proc(h: ^Host) {
 	delete(h.midi_inputs)
 	delete(h.midi_input_ids)
 	h.midi_outputs, h.midi_output_ids, h.midi_inputs, h.midi_input_ids = nil, nil, nil, nil
-	midi.driver_destroy(h.midi_driver)
+	if h.settings.midi_driver == nil do midi.driver_destroy(h.midi_driver) // (one given is the caller's)
 	h.midi_driver = nil
 }
 
@@ -219,12 +223,15 @@ host_block_midi :: proc(h: ^Host) -> ^[]fc.Event {
 // settings. A machine with no MIDI is not an error: there is just none.
 @(private)
 open_midi :: proc(h: ^Host) {
-	d, err := platform_midi()
+	d, err := h.settings.midi_driver, fc.Error.None
+	if d == nil do d, err = platform_midi()
 	if err != .None || d == nil do return
 	h.midi_driver = d
 	d.input = &h.midi_in
 	h.midi_inputs, h.midi_input_ids = make([dynamic]midi.Port), make([dynamic]string)
-	h.midi_outputs, h.midi_output_ids = make([dynamic]midi.Port), make([dynamic]string)
+	// (Room for ports plugged in later, so the audio thread's view of the
+	// outputs never moves: see host_midi_poll.)
+	h.midi_outputs, h.midi_output_ids = make([dynamic]midi.Port, 0, MIDI_OUTPUT_SLOTS), make([dynamic]string)
 	ports, _ := midi.enumerate(d, context.temp_allocator)
 	for p in ports {
 		if p.direction == .Input {
@@ -249,9 +256,119 @@ open_midi :: proc(h: ^Host) {
 	}
 }
 
+// The most MIDI output ports open at once (plugged in later included).
+MIDI_OUTPUT_SLOTS :: 64
+
+// Hot plug, once a frame: opens the MIDI ports that appeared and closes
+// those that went away, as the driver reports them. Open ports keep their
+// indices (a closed one's slot, its id "", is reused by the next to open),
+// and the audio keeps running. Whether anything changed. Control thread.
+host_midi_poll :: proc(h: ^Host) -> bool {
+	d := h.midi_driver
+	if d == nil do return false
+	changed, scan := false, false
+	for e in midi.poll_event(d) {
+		switch e.kind {
+		case .Ports_Changed: scan = true
+		case .Port_Lost:
+			for &p, i in h.midi_inputs do if p == e.port {
+				midi.close_port(d, p)
+				p = 0
+				delete(h.midi_input_ids[i])
+				h.midi_input_ids[i] = ""
+				changed = true
+			}
+			for &p, i in h.midi_outputs do if p == e.port {
+				midi.close_port(d, p)
+				p = 0
+				delete(h.midi_output_ids[i])
+				h.midi_output_ids[i] = ""
+				changed = true
+			}
+			scan = true
+		}
+	}
+	if !scan do return changed
+	ports, _ := midi.enumerate(d, context.temp_allocator)
+	here :: proc(ports: []midi.Port_Info, id: string, dir: midi.Port_Direction) -> bool {
+		for p in ports do if p.direction == dir && p.id == id do return true
+		return false
+	}
+	// Gone without a Port_Lost (some drivers): closed.
+	for &p, i in h.midi_inputs do if p != 0 && !here(ports, h.midi_input_ids[i], .Input) {
+		midi.close_port(d, p)
+		p = 0
+		delete(h.midi_input_ids[i])
+		h.midi_input_ids[i] = ""
+		changed = true
+	}
+	for &p, i in h.midi_outputs do if p != 0 && !here(ports, h.midi_output_ids[i], .Output) {
+		midi.close_port(d, p)
+		p = 0
+		delete(h.midi_output_ids[i])
+		h.midi_output_ids[i] = ""
+		changed = true
+	}
+	// New: opened, in a free slot or a new one.
+	for p in ports {
+		if p.direction == .Input {
+			if host_midi_input_index(h, p.id) >= 0 do continue
+			off := false
+			for x in h.settings.midi_inputs_off do if x == p.id do off = true
+			if off do continue
+			slot := -1
+			for id, i in h.midi_input_ids do if id == "" { slot = i; break }
+			if slot < 0 && len(h.midi_inputs) >= midi.MAX_PORTS do continue
+			index := slot if slot >= 0 else len(h.midi_inputs)
+			port, err := midi.open_input(d, p.id, u8(index))
+			if err != .None do continue
+			if slot >= 0 {
+				h.midi_inputs[slot] = port
+				h.midi_input_ids[slot] = strings.clone(p.id)
+			} else {
+				append(&h.midi_inputs, port)
+				append(&h.midi_input_ids, strings.clone(p.id))
+			}
+			changed = true
+		} else {
+			open := false
+			for id in h.midi_output_ids do if id == p.id do open = true
+			if open do continue
+			slot := -1
+			for id, i in h.midi_output_ids do if id == "" { slot = i; break }
+			if slot < 0 && len(h.midi_outputs) >= MIDI_OUTPUT_SLOTS do continue
+			if !h.midi_out_open {
+				if midi.output_init(&h.midi_out, d) != nil do continue
+				midi.output_start(&h.midi_out)
+				h.midi_out_open = true
+			}
+			port, err := midi.open_output(d, p.id)
+			if err != .None do continue
+			if slot >= 0 {
+				h.midi_outputs[slot] = port
+				h.midi_output_ids[slot] = strings.clone(p.id)
+			} else {
+				append(&h.midi_outputs, port) // (within its reserved room: it doesn't move)
+				append(&h.midi_output_ids, strings.clone(p.id))
+			}
+			changed = true
+		}
+	}
+	return changed
+}
+
+// A MIDI driver (`Host_Settings.midi_driver`; the settings' `midi` hides the package).
+Midi_Driver :: midi.Driver
+
+@(private)
+wants_midi :: proc(h: ^Host) -> bool {
+	return h.settings.midi_driver != nil || (h.settings.midi && !h.settings.fake)
+}
+
 // The index MIDI input port `id` has in `core.Midi_Raw.port` (as it came
 // in), or -1 if it isn't open.
 host_midi_input_index :: proc(h: ^Host, id: string) -> int {
+	if id == "" do return -1 // (a closed port's slot)
 	for x, i in h.midi_input_ids do if x == id do return i
 	return -1
 }
@@ -279,10 +396,11 @@ host_midi_counts :: proc "contextless" (h: ^Host) -> (sent, received: u64) {
 }
 
 // Plays a MIDI message into the graph as if it came from a port (port index
-// `port`): for tests, scripts and on-screen keyboards. Any thread but the
-// audio thread.
+// `port`): for tests, scripts, on-screen keyboards and control surfaces
+// handing a message on. It skips the input's filter (a surface's claim
+// table). Any thread but the audio thread.
 host_midi_inject :: proc(h: ^Host, bytes: [3]u8, port: u8 = 0) {
-	midi.input_push_short(&h.midi_in, 0, port, bytes)
+	midi.input_push_short(&h.midi_in, 0, port, bytes, unfiltered = true)
 }
 
 // One of a platform's audio drivers: its id (for `Host_Settings.driver`),

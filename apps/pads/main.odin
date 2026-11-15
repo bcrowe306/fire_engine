@@ -41,6 +41,8 @@ import "core:slice"
 import "core:strconv"
 import "core:time"
 
+import "fire:midi"
+import mfake "fire:midi/fake"
 import "fire:prof"
 
 import app "app:core"
@@ -113,6 +115,9 @@ App :: struct {
 	editors:  [dynamic]Plugin_Editor, // plug-ins' own windows open
 	about:    About_State,
 	fake_interface: bool, // --fake-interface: the simulated driver has `fake_interfaces`
+	fake_midi: ^midi.Driver, // --fake-midi: pretend MIDI ports (tests plug controllers into it: `midiport`)
+	surfaces_page: Surfaces_Page, // Settings > Control Surfaces (ui_surfaces.odin)
+	surface_monitor: bool, // its MIDI monitor records
 	control_size:   Control_Size, // --control-size: the size controls are this run, whatever Settings says (Auto: as Settings says)
 	audio_fallback: bool, // the interface in the settings wasn't there at the start: the system's plays
 	plugin_pad: Plugin_Pad_Ui,
@@ -135,6 +140,7 @@ main :: proc() {
 	control := -1
 	surfaces: [dynamic]string // --surface PATH: control-surface libraries to load
 	defer delete(surfaces)
+	surface_dev, fake_midi := false, false
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
 			if i^ + 1 < len(os.args) {
@@ -154,6 +160,8 @@ main :: proc() {
 		case "--prefs":    prefs = next(&i)
 		case "--control":  control = strconv.parse_int(next(&i)) or_else 0
 		case "--surface":  append(&surfaces, next(&i))
+		case "--surface-dev": surface_dev = true // (a surface's author: rebuilt libraries load again)
+		case "--fake-midi": fake_midi = true // (tests: MIDI ports of pretend controllers, plugged in by `midiport`)
 		case "--control-size": control_size = control_size_parse(next(&i)) // (tests: the size their positions were written for)
 		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
@@ -173,6 +181,13 @@ main :: proc() {
 	defer prof.stop()
 	a := new(App)
 	a.fake_interface = fake_interface
+	if fake_midi do a.fake_midi = mfake.create()
+	a.surfaces_page = {assign_lib = -1, virtual = -1, held = -1}
+	defer {
+		delete(a.surfaces_page.assign_in)
+		delete(a.surfaces_page.assign_out)
+	}
+	defer if a.fake_midi != nil do midi.driver_destroy(a.fake_midi)
 	a.control_size = control_size
 	a.dark, a.pad_waves = true, true
 	a.io.by_select = -1
@@ -247,13 +262,18 @@ main :: proc() {
 	// without saving.)
 	defer if a.files.discard != "" && pc.is_unsaved(&a.core, a.files.discard) do os.remove_all(a.files.discard)
 	defer pm.model_destroy(&a.m)
-	// Control surfaces: loaded through the API (each gets it as "fire.pads"
-	// 1), stopped before the model goes.
+	// Control surfaces (fire-surface): the libraries in Pads' Surfaces
+	// folder, FSURF_PATH and the system's, and --surface's; each gets the API
+	// as "fire.pads" 1 and fsurf.daw. Stopped before the model goes.
+	{
+		folder, _ := filepath.join({settings_folder(a), "Surfaces"}, context.temp_allocator)
+		pa.surfaces_start(&a.api, {folder}, watch = surface_dev)
+	}
+	defer pa.surfaces_stop(&a.api)
 	for path in surfaces do if _, r := pa.surface_load(&a.api, path); r != .Ok {
 		why, _ := pa.last_error(&a.api)
 		fmt.eprintfln("pads: --surface %s: %s", path, why)
 	}
-	defer for n, _ := pa.surface_count(&a.api); n > 0; n, _ = pa.surface_count(&a.api) do pa.surface_unload(&a.api, n - 1)
 	defer pm.capture_destroy(&a.capture)
 	defer project_state_destroy(&a.proj)
 	defer pm.export_destroy(&a.job.export)

@@ -228,3 +228,10 @@ fnv :: proc(h: ^u64, data: []byte) {
 		h^ *= 1099511628211
 	}
 }
+
+// Drops the subscriptions tagged `owner`.
+@(private)
+drop_owned :: proc(api: ^Api, owner: i64) {
+	if owner == 0 do return
+	for k := len(api.subs) - 1; k >= 0; k -= 1 do if api.subs[k].owner == owner do ordered_remove(&api.subs, k)
+}

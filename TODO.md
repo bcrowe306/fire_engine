@@ -73,7 +73,7 @@ plan before it is built.
 - **MIDI clip** — records and plays MIDI clips, to play external MIDI
   instruments from a sequence.
 
-- **Control surfaces.** Load a surface script (the engine's `fire:surface`
+- **Control surfaces.** (Done: fire-surface, extern/fire-surface; USB/HID for displays waits.) Load a surface script (the engine's `fire:surface`
   manager), give it MIDI in and out ports, load and unload it from Settings
   > MIDI. To plan first: what a script can see and do (pads, sequences,
   transport, the mixer, the selection, LEDs and displays), how it maps to
