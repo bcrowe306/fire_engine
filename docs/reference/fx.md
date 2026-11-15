@@ -475,12 +475,13 @@ A chorus's settings.
 ```odin
 Chorus :: struct {
 	delays: [8]Delay,
+	lines: [2][2]Line4,
+	active: int,
 	phase: f32,
 	hz: [8][2]f32,
 	from: [2]f32,
 	to: [2]f32,
 	tick: int,
-	scratch: [2][32]f32,
 	set: bool,
 }
 ```
@@ -489,13 +490,14 @@ A chorus's state: a delay a side for each of its voices (two a pair).
 
 | Field | Description |
 |-------|-------------|
-| `delays` |  |
+| `delays` | their state (not their lines) |
+| `lines` | the delays' lines, four delays a group, a side each (delay 4g + j: lane j) |
+| `active` | delays that ran last (a delay switched on starts clean) |
 | `phase` |  |
 | `hz` | each delay's rate since the last control point |
 | `from` |  |
 | `to` | wet, dry |
 | `tick` |  |
-| `scratch` |  |
 | `set` |  |
 
 ### Flanger_Params

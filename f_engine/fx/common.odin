@@ -150,6 +150,12 @@ line4_clear :: proc "contextless" (l: ^Line4) {
 	l.at = 0
 }
 
+// [rt] Clears line `j` of four (the others kept).
+@(private)
+line4_clear_lane :: proc "contextless" (l: ^Line4, j: int) #no_bounds_check {
+	for &v in l.buf do (^[4]f32)(&v)[j] = 0
+}
+
 // [rt] Writes the next sample of each.
 @(private)
 line4_push :: #force_inline proc "contextless" (l: ^Line4, x: #simd[4]f32) #no_bounds_check {

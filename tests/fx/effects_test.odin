@@ -232,3 +232,53 @@ the_chain :: proc(t: ^testing.T) {
 	fx.chain_render(c, &p, z, zr, SR)
 	testing.expectf(t, kit.peak(z) == 0, "switched on: silent in, silent out (%v)", kit.peak(z))
 }
+
+// A chorus's voices changed while it plays: those switched on start clean
+// (nothing left from when they last played), on its grid, whatever the
+// block size.
+@(test)
+chorus_voices_switched_on_start_clean :: proc(t: ^testing.T) {
+	// The voices from each change on, at samples apart from any block's edge.
+	CHANGES :: [4][2]int{{0, 4}, {12_013, 1}, {36_007, 4}, {48_021, 2}}
+	render :: proc(block: int, l, r: []f32) {
+		c := new(fx.Chorus)
+		defer free(c)
+		fx.chorus_make(c, SR)
+		defer fx.chorus_destroy(c)
+		p := fx.CHORUS_DEFAULTS
+		changes := CHANGES
+		for at := 0; at < len(l); {
+			next := len(l)
+			for ch in changes {
+				if ch[0] <= at do p.voices = ch[1]
+				else do next = min(next, ch[0])
+			}
+			m := min(block, next - at)
+			fx.chorus_render(c, &p, l[at:at + m], r[at:at + m], SR)
+			at += m
+		}
+	}
+	N :: 60_000
+	input :: proc(l, r: []f32) {
+		seed: u32 = 7
+		for i in 0 ..< 12_013 { // noise while four voices play, then silence
+			seed = seed * 1664525 + 1013904223
+			l[i] = f32(seed >> 8) / f32(1 << 24) - 0.5
+			r[i] = -l[i]
+		}
+	}
+	ref_l, ref_r := stereo(N)
+	input(ref_l, ref_r)
+	render(128, ref_l, ref_r)
+	for x in ref_l do testing.expect(t, !math.is_nan(x) && !math.is_inf(x))
+	// The one voice left rang out before the others came back: they bring
+	// nothing back with them.
+	testing.expectf(t, kit.peak(ref_l[30_000:36_007]) < 1e-4, "the one voice rang out (%v)", kit.peak(ref_l[30_000:36_007]))
+	testing.expectf(t, kit.peak(ref_l[36_007:]) < 1e-4, "voices switched on start clean (%v)", kit.peak(ref_l[36_007:]))
+	for block in ([]int{1, 33, 256, 1000}) {
+		l, r := stereo(N)
+		input(l, r)
+		render(block, l, r)
+		testing.expectf(t, kit.compare_slices(ref_l, l).max_abs_error == 0 && kit.compare_slices(ref_r, r).max_abs_error == 0, "block %d: the same", block)
+	}
+}

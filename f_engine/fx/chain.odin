@@ -94,8 +94,9 @@ chain_order_valid :: proc "contextless" (order: [len(Effect)]Effect) -> bool {
 chain_reset :: proc "contextless" (c: ^Chain, e: Effect) {
 	switch e {
 	case .Chorus:
-		for &d in c.chorus.delays do delay_clear(&d)
-		c.chorus.phase, c.chorus.tick, c.chorus.set = 0, 0, false
+		for &d in c.chorus.delays do d = {}
+		for &g in c.chorus.lines do for &l in g do line4_clear(&l)
+		c.chorus.phase, c.chorus.tick, c.chorus.set, c.chorus.active = 0, 0, false, 0
 	case .Compressor: c.compressor = {}
 	case .Delay:      delay_clear(&c.delay)
 	case .Distortion: c.distortion = {}

@@ -103,6 +103,7 @@ block:
 | after the reverb, chorus and loudness meter | 32.5% | 37.9% |
 | after the pads' strips and flat EQ bands | 30.0% | 34.0% |
 | after the effects' second round | 28.3% | 32.5% |
+| after the chorus's interleaved lines | 27.5% | 31.0% |
 
 - **The reverb** (Synth 1's, and the inserts' and buses', which are the
   same): its delays' wander called `sin` or `cos` sixteen times a sample;
@@ -141,14 +142,20 @@ block:
   - the compressor's powers are skipped while an envelope sits at its
     threshold (the ratio is then 1).
 
-  On ARM, Synth 1's effects 1091 → 919 ms of the heavy run (the gain is
+  - the chorus's eight delays keep their lines as two `Line4`s a side
+    (four delays a group), as the reverb's: 20 → 14 µs on an M-series
+    core, 61 → 49 µs on ARM. A voice switched on (more voices while it
+    plays) starts clean, its lanes cleared, where before it played on
+    from what it held when it stopped.
+
+  On ARM, Synth 1's effects 1091 → 828 ms of the heavy run (the gain is
   smaller there than on the Mac's wider cores).
 
 Synth effects went from 45% of the graph workers' time to 30%, then a
 sixth less again. What is
 left, largest first: the synth's voices (oscillators, filters: SIMD
-unison already), its effects (on ARM, each of the chorus, reverb and
-compressor still about 60 µs a block: the compressor's six powers a
+unison already), its effects (on ARM, the reverb and compressor still
+about 60 µs a block each, the chorus 49: the compressor's six powers a
 sample, the chorus's and reverb's reads from their lines, a lane at a
 time), and the inserts.
 

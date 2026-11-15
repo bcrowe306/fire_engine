@@ -263,6 +263,13 @@ delay_run :: proc "contextless" (d: ^Delay, p: ^Delay_Params, l, r: []f32, sampl
 // feedback and filter.
 @(private)
 delay_control :: proc "contextless" (d: ^Delay, p: ^Delay_Params, sr: f32, sh: ^Delay_Shared) {
+	delay_control_in(d, p, sr, sh, {line_max(&d.lines[0]), line_max(&d.lines[1])})
+}
+
+// [rt] `delay_control` for a delay whose lines are elsewhere (a chorus's):
+// `longest` its sides' `line_max`.
+@(private)
+delay_control_in :: proc "contextless" (d: ^Delay, p: ^Delay_Params, sr: f32, sh: ^Delay_Shared, longest: [2]f32) {
 	target := p.hz
 	if p.style == .Mono do target[1] = target[0]
 	if !d.set {
@@ -275,7 +282,7 @@ delay_control :: proc "contextless" (d: ^Delay, p: ^Delay_Params, sr: f32, sh: ^
 	if p.style == .Mid_Ping_Pong do samples[0] += samples[1]
 	periods: [2]f32
 	for ch in 0 ..< 2 {
-		periods[ch] = clamp(samples[ch], 3, line_max(&d.lines[ch]))
+		periods[ch] = clamp(samples[ch], 3, longest[ch])
 		if d.set do periods[ch] = d.period[ch] + (periods[ch] - d.period[ch]) * 0.5
 	}
 	now := [9]f32{sh.wet, sh.dry, sh.fbs[0], sh.fbs[1], sh.glo, sh.ghi, sh.gain, periods[0], periods[1]}
@@ -308,24 +315,26 @@ CHORUS_DEFAULTS :: Chorus_Params{voices = 4, hz = 0.125, feedback = 0.4, wet = 0
 
 // A chorus's state: a delay a side for each of its voices (two a pair).
 Chorus :: struct {
-	delays:   [CHORUS_PAIRS * 2]Delay,
+	delays:   [CHORUS_PAIRS * 2]Delay, // their state (not their lines)
+	lines:    [CHORUS_PAIRS / 2][2]Line4, // the delays' lines, four delays a group, a side each (delay 4g + j: lane j)
+	active:   int, // delays that ran last (a delay switched on starts clean)
 	phase:    f32,
 	hz:       [CHORUS_PAIRS * 2][2]f32, // each delay's rate since the last control point
 	from, to: [2]f32,                   // wet, dry
 	tick:     int,
-	scratch:  [2][FX_GRID]f32,
 	set:      bool,
 }
 
 // Control thread. A chorus for sample rates up to `max_rate`.
 chorus_make :: proc(c: ^Chorus, max_rate: f64, allocator := context.allocator) -> core.Error {
-	for &d in c.delays do for &l in d.lines do l = line_make(int((CHORUS_MAX_SECONDS + CHORUS_MAX_SWEEP * 1.5) * max_rate) + 8, allocator) or_return
+	f := int((CHORUS_MAX_SECONDS + CHORUS_MAX_SWEEP * 1.5) * max_rate) + 8
+	for &g in c.lines do for &l in g do l = line4_make({f, f, f, f}, allocator) or_return
 	return .None
 }
 
 // Control thread. Frees a chorus's lines.
 chorus_destroy :: proc(c: ^Chorus, allocator := context.allocator) {
-	for &d in c.delays do delay_destroy(&d, allocator)
+	for &g in c.lines do for &l in g do line4_destroy(&l, allocator)
 }
 
 // [rt] Runs the chorus over `l` and `r` in place: each voice a pair of
@@ -333,37 +342,31 @@ chorus_destroy :: proc(c: ^Chorus, allocator := context.allocator) {
 // spread across it), their times spread between the two set, summed.
 chorus_render :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, l, r: []f32, sample_rate: f64) #no_bounds_check {
 	n := len(l)
-	if n == 0 || len(c.delays[0].lines[0].buf) == 0 do return
+	if n == 0 || len(c.lines[0][0].buf) == 0 do return
 	sr := f32(sample_rate)
 	pairs := clamp(p.voices, 1, CHORUS_PAIRS)
+	count := pairs * 2
 	// (Its delays differ only in their rates: the rest is worked out once.)
 	shared_p := Delay_Params{style = .Stereo, wet = 1, feedback = p.feedback, cutoff = p.cutoff, spread = p.spread}
 	shared := delay_shared(&shared_p, sr)
 	for at := 0; at < n; {
 		if c.tick == 0 do chorus_control(c, p, sr)
+		// A delay switched on (more voices) starts clean, on the chorus's
+		// grid, at its control point now.
+		if count > c.active {
+			for k in c.active ..< count {
+				d := &c.delays[k]
+				d^ = {tick = c.tick}
+				if c.active > 0 do for ch in 0 ..< 2 do line4_clear_lane(&c.lines[k / 4][ch], k % 4) // (none ran yet: new or reset, already clear)
+				dp := Delay_Params{style = .Stereo, wet = 1, feedback = p.feedback, hz = c.hz[k], cutoff = p.cutoff, spread = p.spread}
+				delay_control_in(d, &dp, sr, &shared, chorus_longest(c, k))
+			}
+		}
+		c.active = count
 		m := min(FX_GRID - c.tick, n - at)
 		pl, pr := l[at:at + m], r[at:at + m]
 		out: [2][FX_GRID]f32
-		// Four delays at once while they keep to the chorus's grid (they
-		// always do but after a change of voices part way through a step:
-		// then one at a time until the grid comes round).
-		synced := true
-		for k in 0 ..< pairs * 2 do if c.delays[k].tick != c.tick do synced = false
-		if synced {
-			for g in 0 ..< (pairs * 2 + 3) / 4 do chorus_four(c, p, g, pairs * 2, &shared, pl, pr, &out, m, sr)
-		} else {
-			for k in 0 ..< pairs * 2 {
-				dp := Delay_Params{style = .Stereo, wet = 1, feedback = p.feedback, hz = c.hz[k], cutoff = p.cutoff, spread = p.spread}
-				a, b := c.scratch[0][:m], c.scratch[1][:m]
-				copy(a, pl)
-				copy(b, pr)
-				delay_run(&c.delays[k], &dp, a, b, sample_rate, &shared)
-				for i in 0 ..< m {
-					out[0][i] += a[i] * 0.5
-					out[1][i] += b[i] * 0.5
-				}
-			}
-		}
+		for g in 0 ..< (count + 3) / 4 do chorus_four(c, p, g, count, &shared, pl, pr, &out, m, sr)
 		for i in 0 ..< m {
 			u := f32(c.tick + i + 1) * (1.0 / FX_GRID)
 			w := c.from[0] + (c.to[0] - c.from[0]) * u
@@ -378,10 +381,17 @@ chorus_render :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, l, r: []f32,
 
 @(private) V4 :: #simd[4]f32
 
+// [rt] Chorus delay `k`'s sides' `line_max`.
+@(private)
+chorus_longest :: #force_inline proc "contextless" (c: ^Chorus, k: int) -> [2]f32 {
+	return {simd.to_array(c.lines[k / 4][0].max)[k % 4], simd.to_array(c.lines[k / 4][1].max)[k % 4]}
+}
+
 // [rt] Delays 4g .. 4g + 3 of a chorus (those under `count`) over `m`
-// samples of `pl` and `pr`, a delay a lane: what `delay_render` does for
-// each (a Stereo delay, all wet), added at half into `out`. Its control
-// point, when one is due, is each delay's own (`delay_control`).
+// samples of `pl` and `pr`, a delay a lane (their lines a `Line4`): what
+// `delay_render` does for each (a Stereo delay, all wet), added at half
+// into `out`. Its control point, when one is due, is each delay's own
+// (`delay_control`). The lanes past `count` are silent (written with 0).
 @(private)
 chorus_four :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, g, count: int, shared: ^Delay_Shared, pl, pr: []f32, out: ^[2][FX_GRID]f32, m: int, sr: f32) #no_bounds_check {
 	k0 := g * 4
@@ -390,7 +400,7 @@ chorus_four :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, g, count: int,
 		for j in 0 ..< lanes {
 			k := k0 + j
 			dp := Delay_Params{style = .Stereo, wet = 1, feedback = p.feedback, hz = c.hz[k], cutoff = p.cutoff, spread = p.spread}
-			delay_control(&c.delays[k], &dp, sr, shared)
+			delay_control_in(&c.delays[k], &dp, sr, shared, chorus_longest(c, k))
 		}
 	}
 	// Each field of the delays' last two control points, a lane a delay
@@ -410,8 +420,7 @@ chorus_four :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, g, count: int,
 	for ch in 0 ..< 2 {
 		poles: [4]V4
 		for j in 0 ..< lanes do for q in 0 ..< 4 do (^[4]f32)(&poles[q])[j] = c.delays[k0 + j].poles[ch][q]
-		lines: [4]^Line
-		for j in 0 ..< 4 do lines[j] = &c.delays[k0 + min(j, lanes - 1)].lines[ch]
+		line := &c.lines[g][ch]
 		for i in 0 ..< m {
 			u := f32(tick + i + 1) * (1.0 / FX_GRID)
 			uv := V4{u, u, u, u}
@@ -420,47 +429,19 @@ chorus_four :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, g, count: int,
 			fb := lerp(from[2 + ch], to[2 + ch], uv)
 			glo, ghi := lerp(from[4], to[4], uv), lerp(from[5], to[5], uv)
 			gain := lerp(from[6], to[6], uv)
-			read := line_read4(&lines, lanes, lerp(from[7 + ch], to[7 + ch], uv))
+			read := line4_read(line, lerp(from[7 + ch], to[7 + ch], uv))
 			x := src[ch][i]
 			in_ := V4{x, x, x, x}
 			w := clip_large4(in_ + read * fb)
 			lp := pole_tick4(&poles[0], &poles[1], w * gain, glo)
 			hp := pole_tick4(&poles[2], &poles[3], lp, ghi)
-			push := simd.to_array(lp - hp)
-			for j in 0 ..< lanes do line_push(lines[j], push[j])
+			line4_push(line, lp - hp)
 			y := dry * in_ + wet * read
 			out[ch][i] += simd.reduce_add_ordered(y * half)
 		}
 		for j in 0 ..< lanes do for q in 0 ..< 4 do c.delays[k0 + j].poles[ch][q] = (^[4]f32)(&poles[q])[j]
 	}
 	for j in 0 ..< lanes do c.delays[k0 + j].tick = (tick + m) % FX_GRID
-}
-
-// [rt] `line_read` from four lines at once (the first `lanes` of them;
-// the rest read nothing).
-@(private)
-line_read4 :: #force_inline proc "contextless" (lines: ^[4]^Line, lanes: int, past: V4) -> V4 #no_bounds_check {
-	pa := simd.to_array(past)
-	// Each lane's four points, gathered in registers (lanes past `lanes`:
-	// none, read as 0).
-	t, q0, q1, q2, q3: [4]f32
-	for j in 0 ..< 4 {
-		if j >= lanes do break
-		l := lines[j]
-		p := clamp(pa[j], 2, line_max(l))
-		whole := int(p)
-		t[j] = f32(whole) - p + 1
-		i := l.at - whole - 2
-		m := l.mask
-		q0[j] = l.buf[i & m]
-		q1[j] = l.buf[(i + 1) & m]
-		q2[j] = l.buf[(i + 2) & m]
-		q3[j] = l.buf[(i + 3) & m]
-	}
-	tv := V4{t[0], t[1], t[2], t[3]}
-	p0, p1 := V4{q0[0], q0[1], q0[2], q0[3]}, V4{q1[0], q1[1], q1[2], q1[3]}
-	p2, p3 := V4{q2[0], q2[1], q2[2], q2[3]}, V4{q3[0], q3[1], q3[2], q3[3]}
-	return p1 + 0.5 * tv * (p2 - p0 + tv * (2 * p0 - 5 * p1 + 4 * p2 - p3 + tv * (3 * (p1 - p2) + p3 - p0)))
 }
 
 // [rt] `clip_large` four at once.
