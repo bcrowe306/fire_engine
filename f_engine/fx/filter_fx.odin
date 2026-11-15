@@ -300,3 +300,79 @@ phaser_filter_render :: proc "contextless" (f: ^Filter_State, p: ^Filter_Params,
 	}
 	ps.last = now
 }
+
+// [rt] `phaser_filter_render` for two sides at once, each mono through
+// its own filter (`fs`, cutoffs `cut`, in place in `bufs`): the phaser
+// effect's two sides. The same sums, the sides' twelve stages run side by
+// side (each side's stages are one long chain a sample: two chains keep
+// the core busier), their state in locals.
+@(private)
+phaser_filter_pair :: proc "contextless" (fs: ^[2]Filter_State, p: ^Filter_Params, cut: [2][]f32, bufs: [2][]f32, sample_rate: f64) #no_bounds_check {
+	CLEAR :: 20.0
+	for &f in fs do if f.model != .Phaser || !f.set {
+		f = {}
+		f.model = .Phaser
+	}
+	res := clamp(p.resonance, 0, 1)
+	drv := math.pow(10, clamp(p.drive_db, 0, 36) / 20)
+	p1 := clamp(1 - p.blend, 0, 1)
+	p5 := clamp(p.blend - 1, 0, 1)
+	now := [5]f32{res, (res * 0.5 + 1) * drv, p1, 1 - p1 - p5, p5}
+	invert: f32 = -1 if p.style != .Db12 else 1
+	n := len(cut[0])
+	inv := 1 / f32(max(n, 1))
+	sr := f32(sample_rate)
+	nyq := sr * 0.45
+	last: [2][5]f32
+	cr: [2]Coef_Ramp
+	stages: [2][12][2]f32
+	clean: [2][4]f32
+	feedback: [2]f32
+	for s in 0 ..< 2 {
+		ps := &fs[s].phaser
+		if !fs[s].set do ps.last = now
+		last[s] = ps.last
+		cr[s] = coef_ramp(cut[s], sr, 1, nyq)
+		stages[s] = ps.stages[0]
+		clean[s] = ps.clean[0]
+		feedback[s] = ps.feedback[0]
+	}
+	for i in 0 ..< n {
+		u := f32(i + 1) * inv
+		for s in 0 ..< 2 {
+			l := last[s]
+			v: [5]f32
+			for k in 0 ..< 5 do v[k] = l[k] + (now[k] - l[k]) * u
+			g := cr[s].g0 + cr[s].dg * f32(i)
+			cl := &clean[s]
+			lows := pole_tick(&cl[0], &cl[1], feedback[s], min(g * CLEAR, 0.9))
+			highs := pole_tick(&cl[2], &cl[3], lows, g * (1 / CLEAR))
+			state := v[0] * (lows - highs)
+			src := bufs[s][i]
+			x: f32
+			if p.clean {
+				state = fast_tanh(state)
+				x = v[1] * src + invert * state
+			} else {
+				x = hard_tanh(v[1] * src + invert * state)
+			}
+			outs: [3]f32
+			for grp in 0 ..< 3 {
+				for k in 0 ..< 4 {
+					st := &stages[s][grp * 4 + k]
+					lp := pole_tick(&st[0], &st[1], x, g)
+					x = x - 2 * lp
+				}
+				outs[grp] = x
+			}
+			feedback[s] = v[2] * outs[0] + v[3] * outs[1] + v[4] * outs[2]
+			bufs[s][i] = (src + invert * feedback[s]) * 0.5
+		}
+	}
+	for s in 0 ..< 2 {
+		ps := &fs[s].phaser
+		ps.stages[0], ps.clean[0], ps.feedback[0] = stages[s], clean[s], feedback[s]
+		ps.last = now
+		fs[s].set = true
+	}
+}

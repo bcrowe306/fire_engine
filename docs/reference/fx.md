@@ -270,6 +270,29 @@ Sync :: enum u8 {
 How a rate is set: free (in Hz), or to the tempo (straight, dotted or
 triplet).
 
+### Line4
+
+```odin
+Line4 :: struct {
+	buf: []#simd[4]f32,
+	mask: int,
+	at: int,
+	max: #simd[4]f32,
+}
+```
+
+Four delay lines written together, interleaved: a sample of each at
+every place, so a write is one vector. Each reads as the `Line`
+`line_make` would have made it (the same longest delay), the buffer as
+long as the longest's. The reverb's rows.
+
+| Field | Description |
+|-------|-------------|
+| `buf` |  |
+| `mask` |  |
+| `at` |  |
+| `max` | each line's `line_max` |
+
 ### Distortion_Type
 
 ```odin
@@ -770,8 +793,8 @@ A reverb's settings.
 
 ```odin
 Reverb :: struct {
-	feedback: [16]Line,
-	allpass: [16]Line,
+	feedback: [4]Line4,
+	allpass: [4]Line4,
 	pre: Line,
 	pre_r: Line,
 	pre_filters: [2][4]f32,
@@ -788,8 +811,8 @@ A reverb's state.
 
 | Field | Description |
 |-------|-------------|
-| `feedback` |  |
-| `allpass` |  |
+| `feedback` | the sixteen lines, a row of the 4 × 4 grid each (line 4g + j: lane j) |
+| `allpass` | their diffusers |
 | `pre` | the pre-delay (stereo, interleaved as two lines) |
 | `pre_r` |  |
 | `pre_filters` | a side: the high-pass's and low-pass's poles |

@@ -144,8 +144,8 @@ delay_clear :: proc "contextless" (d: ^Delay) {
 @(private)
 reverb_clear :: proc "contextless" (rv: ^Reverb) {
 	keep := rv^
-	for &l in keep.feedback do line_clear(&l)
-	for &l in keep.allpass do line_clear(&l)
+	for &l in keep.feedback do line4_clear(&l)
+	for &l in keep.allpass do line4_clear(&l)
 	line_clear(&keep.pre)
 	line_clear(&keep.pre_r)
 	rv^ = {feedback = keep.feedback, allpass = keep.allpass, pre = keep.pre, pre_r = keep.pre_r, scale = keep.scale}

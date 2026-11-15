@@ -102,6 +102,7 @@ block:
 | before | 43.3% | 47.2% |
 | after the reverb, chorus and loudness meter | 32.5% | 37.9% |
 | after the pads' strips and flat EQ bands | 30.0% | 34.0% |
+| after the effects' second round | 28.3% | 32.5% |
 
 - **The reverb** (Synth 1's, and the inserts' and buses', which are the
   same): its delays' wander called `sin` or `cos` sixteen times a sample;
@@ -126,9 +127,30 @@ block:
   the graph workers' time in the EQ, gains, meters and strips went from
   397 ms to 182 ms of the heavy run.
 
-Synth effects went from 45% of the graph workers' time to 30%. What is
-left, largest first: the synth's effects, its voices (oscillators,
-filters: SIMD unison already), and the inserts.
+- **The effects, a second round** (`tools/fx_bench` times each alone; all
+  the same output, bit for bit, at any block size and setting):
+  - the reverb's sixteen lines are four interleaved rows (`Line4`): a
+    row is written with one vector, and read with its clamps and indices
+    worked out a vector at a time. 40 → 22 µs a block on an M-series core.
+  - the phaser runs its two sides in one loop, their state in locals:
+    each side's twelve all-passes are one long chain of dependent sums a
+    sample, and two chains side by side keep the core busy. 46 → 24 µs.
+  - the soft clip on the delays' feedback (`clip_large`) is skipped
+    below its knee, where it is the input itself: the chorus 28 → 20 µs,
+    the delay and flanger 6 → 5 µs.
+  - the compressor's powers are skipped while an envelope sits at its
+    threshold (the ratio is then 1).
+
+  On ARM, Synth 1's effects 1091 → 919 ms of the heavy run (the gain is
+  smaller there than on the Mac's wider cores).
+
+Synth effects went from 45% of the graph workers' time to 30%, then a
+sixth less again. What is
+left, largest first: the synth's voices (oscillators, filters: SIMD
+unison already), its effects (on ARM, each of the chorus, reverb and
+compressor still about 60 µs a block: the compressor's six powers a
+sample, the chorus's and reverb's reads from their lines, a lane at a
+time), and the inserts.
 
 In the UI (per frame, on an M-series core; ARM is four to five times
 that): the API's change subscriptions built a snapshot of every topic
@@ -146,5 +168,8 @@ its frames.
 
 - `tools/synth_bench`: Synth 1's voices against their budget, with one
   thing taken away at a time.
+- `tools/fx_bench`: each effect of `fire:fx` (Synth 1's chain, Pads'
+  inserts and bus effects) alone, with a hash of its output to show a
+  change kept the sound (`varied`: other settings than the defaults).
 - `tools/node_bench`: each engine node, and a mix of tracks.
 - `pads --profile N`: the CPU time of N frames drawn flat out.

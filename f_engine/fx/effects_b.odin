@@ -247,7 +247,8 @@ compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, 
 				attack := s2 > c.upper[k][ch]
 				c.upper[k][ch] = (s2 + c.upper[k][ch] * (bk.att_s if attack else bk.rel_s)) * (bk.att_k if attack else bk.rel_k)
 				c.upper[k][ch] = max(c.upper[k][ch], bk.up_t)
-				up_mult := math.pow(bk.up_t / c.upper[k][ch], bk.up_r)
+				// (At its threshold the ratio is 1: no power to raise.)
+				up_mult: f32 = 1 if c.upper[k][ch] == bk.up_t else math.pow(bk.up_t / c.upper[k][ch], bk.up_r)
 				// The lower one (held at most at its threshold): below it, raised.
 				attack = s2 > c.lower[k][ch]
 				c.lower[k][ch] = (s2 + c.lower[k][ch] * (bk.att_s if attack else bk.rel_s)) * (bk.att_k if attack else bk.rel_k)
@@ -255,8 +256,8 @@ compressor_render :: proc "contextless" (c: ^Compressor, p: ^Compressor_Params, 
 				// (Nothing is lifted from below the floor: a band with
 				// nothing in it, a sub bass's highs say, isn't raised 40 dB
 				// and more, which made a pop of a note's first tiny edge.)
-				lo_mult := math.pow(bk.lo_t / max(c.lower[k][ch], LIFT_FLOOR), bk.lo_r)
-				if keyed do lo_mult = 1 // (keyed, it only presses down: a quiet key lifts nothing)
+				lo_mult: f32 = 1 // (keyed, it only presses down: a quiet key lifts nothing)
+				if !keyed && c.lower[k][ch] != bk.lo_t do lo_mult = math.pow(bk.lo_t / max(c.lower[k][ch], LIFT_FLOOR), bk.lo_r)
 				g := clamp(up_mult * lo_mult, 0, 32) * (c.gain[k] + (gains[k] - c.gain[k]) * u)
 				y := s * g
 				c.levels[k][0] += (s * s - c.levels[k][0]) * rms_k
@@ -299,8 +300,8 @@ REVERB_DEFAULTS :: Reverb_Params{wet = 0.25, decay = 1, size = 0.5, pre_low = 0,
 
 // A reverb's state.
 Reverb :: struct {
-	feedback: [16]Line,
-	allpass:  [16]Line,
+	feedback: [4]Line4, // the sixteen lines, a row of the 4 × 4 grid each (line 4g + j: lane j)
+	allpass:  [4]Line4, // their diffusers
 	pre:      Line, // the pre-delay (stereo, interleaved as two lines)
 	pre_r:    Line,
 	pre_filters: [2][4]f32, // a side: the high-pass's and low-pass's poles
@@ -317,9 +318,15 @@ reverb_make :: proc(rv: ^Reverb, max_rate: f64, allocator := context.allocator) 
 	scale := f32(max(max_rate / 44_100, 1))
 	fb := REVERB_FEEDBACK
 	ap := REVERB_ALLPASS
-	for k in 0 ..< 16 {
-		rv.feedback[k] = line_make(int(fb[k] * 2 * scale + REVERB_MAX_CHORUS * scale + 16), allocator) or_return
-		rv.allpass[k] = line_make(int(f32(ap[k]) * scale + 16), allocator) or_return
+	for g in 0 ..< 4 {
+		fbf, apf: [4]int
+		for j in 0 ..< 4 {
+			k := g * 4 + j
+			fbf[j] = int(fb[k] * 2 * scale + REVERB_MAX_CHORUS * scale + 16)
+			apf[j] = int(f32(ap[k]) * scale + 16)
+		}
+		rv.feedback[g] = line4_make(fbf, allocator) or_return
+		rv.allpass[g] = line4_make(apf, allocator) or_return
 	}
 	rv.pre = line_make(int(0.3 * max_rate) + 16, allocator) or_return
 	rv.pre_r = line_make(int(0.3 * max_rate) + 16, allocator) or_return
@@ -328,8 +335,8 @@ reverb_make :: proc(rv: ^Reverb, max_rate: f64, allocator := context.allocator) 
 
 // Control thread. Frees a reverb's lines.
 reverb_destroy :: proc(rv: ^Reverb, allocator := context.allocator) {
-	for &l in rv.feedback do line_destroy(&l, allocator)
-	for &l in rv.allpass do line_destroy(&l, allocator)
+	for &l in rv.feedback do line4_destroy(&l, allocator)
+	for &l in rv.allpass do line4_destroy(&l, allocator)
 	line_destroy(&rv.pre, allocator)
 	line_destroy(&rv.pre_r, allocator)
 }
@@ -384,12 +391,10 @@ reverb_render :: proc "contextless" (rv: ^Reverb, p: ^Reverb_Params, l, r: []f32
 	@(static, rodata) TURN_COS := [4]f32{1, 0.92387953251, 0.70710678119, 0.38268343236} // cos(j × τ/16)
 	@(static, rodata) TURN_SIN := [4]f32{0, 0.38268343236, 0.70710678119, 0.92387953251} // sin(j × τ/16)
 	// The lines a row at a time (see below), and what each row's lanes need.
-	fb_lines, ap_lines: [4][4]^Line
 	lengths4, ap_len4, decay_from, decay_to: [4]V4
 	shelf: [4][4]V4 // a row's shelves: their four states, a lane a line
 	for g in 0 ..< 4 do for j in 0 ..< 4 {
 		k := g * 4 + j
-		fb_lines[g][j], ap_lines[g][j] = &rv.feedback[k], &rv.allpass[k]
 		(^[4]f32)(&lengths4[g])[j] = lengths[k]
 		(^[4]f32)(&ap_len4[g])[j] = f32(ap[k]) * ratio
 		(^[4]f32)(&decay_from[g])[j] = rv.decays[k]
@@ -427,11 +432,10 @@ reverb_render :: proc "contextless" (rv: ^Reverb, p: ^Reverb_Params, l, r: []f32
 		rows: [4]f32
 		#unroll for g in 0 ..< 4 {
 			wander := (wcv if g < 2 else wsv) * depth * (1 if g % 2 == 0 else -1)
-			read := line_read4(&fb_lines[g], 4, lengths4[g] + wander)
-			a := line_read4(&ap_lines[g], 4, ap_len4[g])
+			read := line4_read(&rv.feedback[g], lengths4[g] + wander)
+			a := line4_read(&rv.allpass[g], ap_len4[g])
 			d := read - a * REVERB_ALLPASS_FEEDBACK
-			push := simd.to_array(ins + d)
-			for j in 0 ..< 4 do line_push(ap_lines[g][j], push[j])
+			line4_push(&rv.allpass[g], ins + d)
 			outs[g] = a + d * REVERB_ALLPASS_FEEDBACK
 			rows[g] = simd.reduce_add_ordered(outs[g])
 			cols += outs[g]
@@ -449,9 +453,7 @@ reverb_render :: proc "contextless" (rv: ^Reverb, p: ^Reverb_Params, l, r: []f32
 			w = hf + v[5] * (w - hf)
 			lf := pole_tick4(&shelf[g][2], &shelf[g][3], w, v[6])
 			w -= lf * v[4]
-			dk := simd.to_array(decay_from[g] + (decay_to[g] - decay_from[g]) * uv)
-			pw := simd.to_array(w)
-			for j in 0 ..< 4 do line_push(fb_lines[g][j], dk[j] * pw[j])
+			line4_push(&rv.feedback[g], (decay_from[g] + (decay_to[g] - decay_from[g]) * uv) * w)
 			sides += w
 		}
 		sd := simd.to_array(sides)

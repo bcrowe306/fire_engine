@@ -441,27 +441,34 @@ chorus_four :: proc "contextless" (c: ^Chorus, p: ^Chorus_Params, g, count: int,
 @(private)
 line_read4 :: #force_inline proc "contextless" (lines: ^[4]^Line, lanes: int, past: V4) -> V4 #no_bounds_check {
 	pa := simd.to_array(past)
-	t: V4
-	p0, p1, p2, p3: V4
-	for j in 0 ..< lanes {
+	// Each lane's four points, gathered in registers (lanes past `lanes`:
+	// none, read as 0).
+	t, q0, q1, q2, q3: [4]f32
+	for j in 0 ..< 4 {
+		if j >= lanes do break
 		l := lines[j]
 		p := clamp(pa[j], 2, line_max(l))
 		whole := int(p)
-		(^[4]f32)(&t)[j] = f32(whole) - p + 1
+		t[j] = f32(whole) - p + 1
 		i := l.at - whole - 2
 		m := l.mask
-		(^[4]f32)(&p0)[j] = l.buf[i & m]
-		(^[4]f32)(&p1)[j] = l.buf[(i + 1) & m]
-		(^[4]f32)(&p2)[j] = l.buf[(i + 2) & m]
-		(^[4]f32)(&p3)[j] = l.buf[(i + 3) & m]
+		q0[j] = l.buf[i & m]
+		q1[j] = l.buf[(i + 1) & m]
+		q2[j] = l.buf[(i + 2) & m]
+		q3[j] = l.buf[(i + 3) & m]
 	}
-	return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
+	tv := V4{t[0], t[1], t[2], t[3]}
+	p0, p1 := V4{q0[0], q0[1], q0[2], q0[3]}, V4{q1[0], q1[1], q1[2], q1[3]}
+	p2, p3 := V4{q2[0], q2[1], q2[2], q2[3]}, V4{q3[0], q3[1], q3[2], q3[3]}
+	return p1 + 0.5 * tv * (p2 - p0 + tv * (2 * p0 - 5 * p1 + 4 * p2 - p3 + tv * (3 * (p1 - p2) + p3 - p0)))
 }
 
 // [rt] `clip_large` four at once.
 @(private)
 clip_large4 :: #force_inline proc "contextless" (x: V4) -> V4 {
 	K :: 0.66
+	// Below 8K the curve is x itself, exactly: the rest is skipped.
+	if simd.reduce_max(simd.abs(x)) <= 8 * K do return x
 	y := x * (1.0 / 8)
 	cl := simd.clamp(y, -K, K)
 	z := (y - cl) * (1 / (1 - K))
@@ -604,26 +611,27 @@ phaser_render :: proc "contextless" (ph: ^Phaser, p: ^Phaser_Params, l, r: []f32
 		start := ph.phase
 		ph.phase += p.hz * f32(m) / f32(sample_rate)
 		ph.phase -= math.floor(ph.phase)
+		cut: [2][64]f32
+		dry: [2][64]f32
+		io := [2][]f32{l[at:at + m], r[at:at + m]}
 		for ch in 0 ..< 2 {
-			cut: [64]f32
 			for i in 0 ..< m {
 				x := start + p.hz * f32(i) / f32(sample_rate) + (p.offset * 0.5 if ch == 0 else -p.offset * 0.5)
 				x -= math.floor(x)
 				tri := 1 - abs(x * 2 - 1) // 0..1..0
-				cut[i] = p.center + (tri * 2 - 1) * p.depth
+				cut[ch][i] = p.center + (tri * 2 - 1) * p.depth
 			}
-			fp := Filter_Params{model = .Phaser, style = .Db12, resonance = p.feedback, blend = p.blend, mix = 1, clean = true}
-			src := l[at:at + m] if ch == 0 else r[at:at + m]
-			dry: [64]f32
-			copy(dry[:m], src)
-			io := [2][]f32{src, src} // (one side through its own filter)
-			filter_render_side(&ph.filters[ch], &fp, cut[:m], src, sample_rate)
-			if !ph.set do ph.last_mix = p.wet
+			copy(dry[ch][:m], io[ch])
+		}
+		fp := Filter_Params{model = .Phaser, style = .Db12, resonance = p.feedback, blend = p.blend, mix = 1, clean = true, mono = true}
+		phaser_filter_pair(&ph.filters, &fp, {cut[0][:m], cut[1][:m]}, io, sample_rate)
+		if !ph.set do ph.last_mix = p.wet
+		for ch in 0 ..< 2 {
+			src := io[ch]
 			for i in 0 ..< m {
 				w := ph.last_mix + (clamp(p.wet, 0, 1) - ph.last_mix) * f32(i + 1) / f32(m)
-				src[i] = dry[i] + (src[i] - dry[i]) * w
+				src[i] = dry[ch][i] + (src[i] - dry[ch][i]) * w
 			}
-			_ = io
 		}
 		ph.last_mix = clamp(p.wet, 0, 1)
 		ph.set = true
