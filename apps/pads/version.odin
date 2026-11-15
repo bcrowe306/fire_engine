@@ -9,7 +9,7 @@ import im "deps:imgui"
 // Pads' version, and the commit and date it was built from. The build
 // gives those quoted (-define:PADS_COMMIT='"ab12cd3"'), so a commit of
 // digits stays text (unquoted, 0123456 would be the number 123456).
-PADS_VERSION :: "0.1.0-dev"
+PADS_VERSION :: "0.1.1-dev"
 @(private = "file") COMMIT_DEFINE :: #config(PADS_COMMIT, "unknown")
 @(private = "file") DATE_DEFINE :: #config(PADS_DATE, "")
 
@@ -19,7 +19,7 @@ pads_commit :: proc() -> string { return strings.trim(COMMIT_DEFINE, "\"") }
 // The day it was built ("" when the build didn't say).
 pads_date :: proc() -> string { return strings.trim(DATE_DEFINE, "\"") }
 
-// The version as one line: "0.1.0-dev (ab12cd3, 2026-11-11)".
+// The version as one line: "0.1.1-dev (ab12cd3, 2026-11-11)".
 version_text :: proc() -> string {
 	if pads_date() != "" do return fmt.tprintf("%s (%s, %s)", PADS_VERSION, pads_commit(), pads_date())
 	return fmt.tprintf("%s (%s)", PADS_VERSION, pads_commit())

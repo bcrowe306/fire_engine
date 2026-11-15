@@ -45,7 +45,7 @@ State :: struct {
 	timeline:   f64, // the playhead on the timeline (negative counting in)
 	position:   string, // as the toolbar shows it: bar.beat.sixteenth
 	recording:  bool,
-	version:    string, // Pads' version ("0.1.0-dev")
+	version:    string, // Pads' version ("0.1.1-dev")
 	audio_inputs, audio_outputs: [dynamic]int, // the interface's channels open (1-based)
 	audio_missing_inputs, audio_missing_outputs: [dynamic]int, // asked for, not on it
 	song_mode:  bool,

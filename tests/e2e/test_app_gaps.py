@@ -96,7 +96,7 @@ def test_about_box_shows_the_version(app):
     app.click("menu about")
     app.wait(3)
     app.expect_item("copy version")
-    assert app.state()["version"].startswith("0.1.0-dev"), app.state()["version"]
+    assert app.state()["version"].startswith("0.1.1-dev"), app.state()["version"]
     app.click("about close")
     app.wait(3)
     app.expect_no_item("copy version")
