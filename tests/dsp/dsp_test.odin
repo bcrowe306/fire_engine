@@ -226,3 +226,77 @@ one_pole_stays_fast_with_denormal_input :: proc(t: ^testing.T) {
 	kit.expect_clean_render(t, r)
 	testing.expect_value(t, r.denormals, 0)
 }
+
+// --- strip ---------------------------------------------------------------------
+
+strip_factory :: kit.Node_Factory{create = proc(user: rawptr) -> core.Node {
+	n, _ := dsp.strip_create()
+	return n
+}}
+
+// Its three pairs: after the trim, after the fader (metered), after the
+// output gain; each gain as a `Gain` node's.
+@(test)
+strip_taps_its_stages :: proc(t: ^testing.T) {
+	n, s := dsp.strip_create()
+	defer core.node_destroy(&n)
+	input := stereo_sine(24_000, 440, 0.8)
+	cfg := kit.default_render_config()
+	cfg.out_channels = dsp.STRIP_OUTPUTS
+	cfg.events = {
+		{0, core.Param_Value{dsp.STRIP_PARAM_TRIM_DB, -6.0206}},
+		{0, core.Param_Value{dsp.STRIP_PARAM_FADER_DB, -6.0206}},
+		{0, core.Param_Value{dsp.STRIP_PARAM_OUT_DB, -96}},
+	}
+	out, r := kit.render(&n, input, cfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r)
+	kit.expect_clean_render(t, r)
+	for c in 0 ..< 2 {
+		kit.expect_near(t, kit.tone_amplitude(out.channels[dsp.STRIP_PRE + c][4800:], SR, 440), 0.4, 1e-3, "pre")
+		kit.expect_near(t, kit.tone_amplitude(out.channels[dsp.STRIP_POST + c][4800:], SR, 440), 0.2, 1e-3, "post")
+		testing.expect_value(t, kit.peak(out.channels[dsp.STRIP_OUT + c][4800:]), 0)
+	}
+	peak, _ := dsp.meter_read(&s.meter)
+	kit.expect_near(t, f64(peak[0]), kit.peak(out.channels[dsp.STRIP_POST]), 1e-7, "the meter: the post-fader peak")
+	// The same as three gains in a row.
+	g := dsp.gain_create()
+	defer core.node_destroy(&g)
+	gcfg := kit.default_render_config()
+	gcfg.events = {{0, core.Param_Value{dsp.GAIN_PARAM_DB, -6.0206}}}
+	mid, r2 := kit.render(&g, input, gcfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r2)
+	testing.expect_value(t, kit.compare_slices(mid.channels[0], out.channels[dsp.STRIP_PRE][:len(mid.channels[0])]).max_abs_error, 0)
+}
+
+// With two outputs, they are its out: in × trim × fader × output.
+@(test)
+strip_with_two_outputs_is_its_out :: proc(t: ^testing.T) {
+	n, _ := dsp.strip_create()
+	defer core.node_destroy(&n)
+	input := stereo_sine(24_000, 440, 0.8)
+	cfg := kit.default_render_config()
+	cfg.events = {
+		{0, core.Param_Value{dsp.STRIP_PARAM_TRIM_DB, -6.0206}},
+		{0, core.Param_Value{dsp.STRIP_PARAM_OUT_DB, -6.0206}},
+	}
+	out, r := kit.render(&n, input, cfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r)
+	kit.expect_clean_render(t, r)
+	kit.expect_near(t, kit.tone_amplitude(out.channels[1][4800:], SR, 440), 0.2, 1e-3, "out")
+}
+
+@(test)
+strip_is_block_invariant :: proc(t: ^testing.T) {
+	input := stereo_sine(12_000, 330, 0.7)
+	cfg := kit.default_render_config()
+	cfg.out_channels = dsp.STRIP_OUTPUTS
+	cfg.events = {
+		{0, core.Param_Value{dsp.STRIP_PARAM_FADER_DB, -12}},
+		{2_000, core.Param_Value{dsp.STRIP_PARAM_TRIM_DB, -96}},
+		{3_001, core.Param_Ramp{dsp.STRIP_PARAM_FADER_DB, 6, 1500}},
+		{5_000, core.Param_Value{dsp.STRIP_PARAM_TRIM_DB, 0}},
+		{7_777, core.Param_Value{dsp.STRIP_PARAM_OUT_DB, -20}},
+	}
+	patterns := kit.standard_block_patterns(cfg.max_block)
+	kit.expect_block_invariant(t, strip_factory, input, cfg, patterns[:], 0, "strip")
+}

@@ -231,3 +231,41 @@ ramps_end_on_their_target :: proc(t: ^testing.T) {
 		testing.expect(t, abs(kit.response_db(a.channels[0][12_000:], SR, 3000)) > 1, "the parameter has an effect") // not a vacuous match
 	}
 }
+
+// A bell or shelf at 0 dB is skipped: exactly its input. Moved off 0 dB,
+// it starts from a clean state without a click.
+@(test)
+eq_flat_bands_pass_exactly_and_move_cleanly :: proc(t: ^testing.T) {
+	input := kit.buffer_make(2, 48_000, SR, context.temp_allocator)
+	kit.sine(input.channels[0], SR, 90, 0.5)
+	kit.buffer_mono_to_all(input)
+	n := dsp.eq_create(3)
+	defer core.node_destroy(&n)
+	cfg := kit.default_render_config()
+	b := dsp.eq_band_param
+	cfg.events = {{20_000, core.Param_Value{b(0, .Gain_Db), 9}}, {20_000, core.Param_Value{b(1, .Gain_Db), -6}}}
+	out, r := kit.render(&n, input, cfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r)
+	kit.expect_clean_render(t, r)
+	testing.expect_value(t, kit.compare_slices(input.channels[0][:20_000], out.channels[0][:20_000]).max_abs_error, 0)
+	// Against one never skipped (its bands a hair off 0 dB from the start):
+	// what the cleared state adds while the bands move off 0 dB.
+	ref := dsp.eq_create(3)
+	defer core.node_destroy(&ref)
+	rcfg := cfg
+	rcfg.events = {
+		{0, core.Param_Value{b(0, .Gain_Db), 1e-9}}, {0, core.Param_Value{b(1, .Gain_Db), 1e-9}},
+		{20_000, core.Param_Value{b(0, .Gain_Db), 9}}, {20_000, core.Param_Value{b(1, .Gain_Db), -6}},
+	}
+	want, r2 := kit.render(&ref, input, rcfg, context.temp_allocator)
+	defer kit.render_report_destroy(&r2)
+	// (Measured 0.011 on a 90 Hz tone of 0.5 under a 100 Hz shelf, the worst
+	// case: about -33 dB of the tone, as the band starts; as the On switch's.)
+	diff := kit.compare_slices(want.channels[0][20_000:], out.channels[0][20_000:]).max_abs_error
+	testing.expectf(t, diff < 0.02, "the skipped band's start differs by %.3g", diff)
+	late := kit.compare_slices(want.channels[0][24_000:], out.channels[0][24_000:]).max_abs_error
+	testing.expectf(t, late < 1e-4, "... and %.3g after 4000 frames", late)
+	kit.expect_near(t, kit.tone_amplitude(out.channels[0][30_000:], SR, 90), 0.5 * dsp.eq_response((^dsp.Eq)(n.data), 90), 0.01, "settled")
+	patterns := kit.standard_block_patterns(cfg.max_block)
+	kit.expect_block_invariant(t, {create = proc(user: rawptr) -> core.Node { return dsp.eq_create(3) }}, input, cfg, patterns[:], 0, "eq_flat")
+}

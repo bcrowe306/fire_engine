@@ -160,7 +160,8 @@ Pad_Nodes :: struct {
 	track_in: graph.Node_Id,  // its own stream from the router (see `Track_In`)
 	warp_scale: f64, // how much longer that is than its sample (1: not warped)
 	warp_transposed: bool, // ... and it has the pad's transpose in it (the sampler doesn't transpose again)
-	fader:   graph.Node_Id, // its volume: after its inserts (the mixer wires it)
+	fader:   graph.Node_Id, // its strip after its inserts: mute, volume, meter, output (`dsp.Strip`; the mixer wires it)
+	strip:   ^dsp.Strip,
 	// Automation of the current sequence: a player into the sampler, one
 	// into the EQ, one into the fader.
 	auto_voice, auto_eq, auto_fader: graph.Node_Id,
@@ -361,13 +362,14 @@ sync :: proc(e: ^Engine) {
 				graph.remove_node(g, sid)
 				continue
 			}
-			fid, err3 := graph.add_node(g, dsp.gain_create(), 2, 2)
+			snode, strip := dsp.strip_create()
+			fid, err3 := graph.add_node(g, snode, 2, dsp.STRIP_OUTPUTS)
 			if err3 != .None {
 				graph.remove_node(g, sid)
 				graph.remove_node(g, eid)
 				continue
 			}
-			n.voice, n.eq, n.fader, n.live = sid, eid, fid, true
+			n.voice, n.eq, n.fader, n.strip, n.live = sid, eid, fid, strip, true
 			// The router, through the track's own stream, into its device.
 			if tid, terr := graph.add_node(g, track_in_create(e.router, i), 0, 0); terr == .None {
 				n.track_in = tid

@@ -50,6 +50,7 @@ Eq_Band :: struct {
 	coeffs:   Svf_Coeffs,
 	designed: [3]f64, // the frequency, Q and gain `coeffs` are for
 	state:    []Svf_State, // one per channel
+	flat:     bool, // skipped: a gain mode at 0 dB, its state cleared
 }
 
 @(private)
@@ -201,10 +202,20 @@ eq_render :: proc(q: ^Eq, ctx: ^core.Process_Context, from, to: int) {
 	for &b in q.bands {
 		if !b.on do continue
 		if !(smoothed_is_smoothing(&b.freq) || smoothed_is_smoothing(&b.q) || smoothed_is_smoothing(&b.gain_db)) {
+			// A bell or shelf at 0 dB passes its input exactly: skipped, its
+			// state cleared (moving again, it starts clean: what was missed
+			// shows only in proportion to the gain moved).
+			if b.gain_db.current == 0 && (b.mode == .Bell || b.mode == .Low_Shelf || b.mode == .High_Shelf) {
+				if !b.flat do for &st in b.state do st = {}
+				b.flat = true
+				continue
+			}
+			b.flat = false
 			if b.designed != {b.freq.current, b.q.current, b.gain_db.current} do eq_design(q, &b) // an exact set
 			for c in 0 ..< ins do svf_process(&b.coeffs, &b.state[c], ctx.outputs[c][from:to])
 			continue
 		}
+		b.flat = false
 		for i in from ..< to {
 			b.coeffs = svf_design(b.mode, smoothed_next(&b.freq), smoothed_next(&b.q), smoothed_next(&b.gain_db), q.sample_rate)
 			for c in 0 ..< ins do ctx.outputs[c][i] = f32(svf_tick(&b.coeffs, &b.state[c], f64(ctx.outputs[c][i])))

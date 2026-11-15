@@ -894,6 +894,67 @@ CONVOLUTION_TYPE_ID :: "fire.convolution"
 
 Saved-state ID of `convolution_create` nodes (the impulse response is saved).
 
+### STRIP_PARAM_FADER_DB
+
+```odin
+STRIP_PARAM_FADER_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of the `Strip` node's fader, in dB (-96..24, default 0):
+the same id as `GAIN_PARAM_DB`, so a strip stands in for a fader `Gain`.
+
+### STRIP_PARAM_TRIM_DB
+
+```odin
+STRIP_PARAM_TRIM_DB : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of the `Strip` node's trim, before its pre-fader tap, in dB
+(-96..24, default 0): a mute or solo (-96).
+
+### STRIP_PARAM_OUT_DB
+
+```odin
+STRIP_PARAM_OUT_DB : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of the `Strip` node's output gain, after its post-fader
+tap and meter, in dB (-96..24, default 0).
+
+### STRIP_OUT
+
+```odin
+STRIP_OUT :: 0
+```
+
+The `Strip` node's first output pair: after the output gain, where the
+strip goes.
+
+### STRIP_PRE
+
+```odin
+STRIP_PRE :: 2
+```
+
+The `Strip` node's pair after the trim: pre-fader sends.
+
+### STRIP_POST
+
+```odin
+STRIP_POST :: 4
+```
+
+The `Strip` node's pair after the fader (what its meter measures):
+post-fader sends.
+
+### STRIP_OUTPUTS
+
+```odin
+STRIP_OUTPUTS :: 6
+```
+
+Outputs a `Strip` node is made with for all three pairs.
+
 ### SYNTH_PARAM_OSC1_SHAPE
 
 ```odin
@@ -2474,6 +2535,37 @@ Settings for `stft_init`.
 | `spectrum` |  |
 | `split` | allow analysing and synthesising in more, smaller steps |
 
+### Strip
+
+```odin
+Strip :: struct {
+	trim: Gain,
+	fader: Gain,
+	out: Gain,
+	meter: Meter,
+}
+```
+
+A console's channel strip in one node, after its inserts: trim (mute,
+solo), fader, meter and output gain, each gain as a `Gain` (smoothed,
+automation ramps in dB). Two inputs; its outputs are three stereo pairs,
+`STRIP_OUT`, `STRIP_PRE` and `STRIP_POST`. Made with fewer outputs, the
+pairs it has are its out (and its pre-fader tap).
+
+```odin
+in → trim ─┬→ fader ─┬→ meter → output gain → OUT
+           └→ PRE    └→ POST
+```
+
+Read its meter with `meter_read(&strip.meter)`.
+
+| Field | Description |
+|-------|-------------|
+| `trim` |  |
+| `fader` |  |
+| `out` |  |
+| `meter` | after the fader |
+
 ### Filter_Mode
 
 ```odin
@@ -3922,6 +4014,16 @@ stft_synthesise_step :: proc "contextless"(s: ^Stft, step: int)
 
 **Realtime-safe** (callable on the audio thread). Step `step` of a synthesis; run all of them in order.
 
+### strip_create
+
+```odin
+strip_create :: proc(allocator: mem.Allocator = context.allocator) -> (core.Node, ^Strip)
+```
+
+Control thread. A `Strip` node (give it 2 inputs and `STRIP_OUTPUTS`
+outputs) and its handle, valid until the node is destroyed. Free it with
+`core.node_destroy`.
+
 ### svf_design
 
 ```odin
@@ -4168,6 +4270,14 @@ saturation_params: [4]core.Param_Info
 ```
 
 Parameter table of the `Saturation` node, as returned by `node_params`. Read-only.
+
+### strip_params
+
+```odin
+strip_params: [3]core.Param_Info
+```
+
+Parameter table of the `Strip` node, as returned by `node_params`. Read-only.
 
 ### synth_params
 

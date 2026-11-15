@@ -100,7 +100,8 @@ block:
 | | median | p99 |
 |---|---|---|
 | before | 43.3% | 47.2% |
-| after the changes below | 32.5% | 37.9% |
+| after the reverb, chorus and loudness meter | 32.5% | 37.9% |
+| after the pads' strips and flat EQ bands | 30.0% | 34.0% |
 
 - **The reverb** (Synth 1's, and the inserts' and buses', which are the
   same): its delays' wander called `sin` or `cos` sixteen times a sample;
@@ -116,10 +117,18 @@ block:
   written twice (so the last 12 samples are always in a row). 106 → 12 µs a
   block on ARM; the readings are the same.
 
+- **The pads' strips**: after its inserts each pad ran four nodes, a mute
+  gain, its fader, a meter and an output gain, each with its own graph
+  bookkeeping; now one `dsp.Strip` (`fire.strip`) does all four, its
+  outputs the strip's out and its pre- and post-fader taps.
+- **The EQ** (each pad's): a bell or shelf at 0 dB is now skipped (it
+  passes its input exactly), so a pad's flat EQ costs nothing. On ARM,
+  the graph workers' time in the EQ, gains, meters and strips went from
+  397 ms to 182 ms of the heavy run.
+
 Synth effects went from 45% of the graph workers' time to 30%. What is
 left, largest first: the synth's effects, its voices (oscillators,
-filters: SIMD unison already), the inserts, and many small nodes a pad
-(gain, pan, meter, EQ).
+filters: SIMD unison already), and the inserts.
 
 In the UI (per frame, on an M-series core; ARM is four to five times
 that): the API's change subscriptions built a snapshot of every topic

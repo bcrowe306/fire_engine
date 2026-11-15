@@ -61,20 +61,13 @@ gain_to_db :: #force_inline proc "contextless" (gain: f64) -> f64 {
 
 @(private)
 gain_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, allocator: mem.Allocator) -> core.Error {
-	g := (^Gain)(self)
-	p := gain_params[0]
-	smoothed_init(&g.gain, db_to_gain(p.default), p.smoothing, p.smoothing_ms, cfg.sample_rate)
-	smoothed_init(&g.ramp, p.default, .None, 0, cfg.sample_rate)
-	g.ramping = false
+	gain_init((^Gain)(self), gain_params[0], cfg.sample_rate)
 	return .None
 }
 
 @(private)
 gain_reset :: proc(self: rawptr) {
-	g := (^Gain)(self)
-	if g.ramping do smoothed_reset(&g.gain, db_to_gain(g.ramp.target))
-	smoothed_reset(&g.gain, g.gain.target)
-	g.ramping = false
+	gain_settle((^Gain)(self))
 }
 
 // [rt]
@@ -83,42 +76,63 @@ gain_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 	g := (^Gain)(self)
 	pos := 0
 	for e in ctx.events_in {
-		gain_render(g, ctx, pos, int(e.offset))
+		gain_apply(g, ctx.inputs, ctx.outputs, pos, int(e.offset))
 		pos = int(e.offset)
-		if value, frames, ok := core.param_event(e.payload, GAIN_PARAM_DB); ok {
-			db := clamp(value, -96, 24)
-			if frames >= 0 { // a ramp, in dB from wherever the gain is
-				if !g.ramping do smoothed_reset(&g.ramp, gain_to_db(g.gain.current))
-				smoothed_ramp(&g.ramp, db, frames)
-				g.ramping = true
-			} else {
-				if g.ramping do smoothed_reset(&g.gain, db_to_gain(g.ramp.current))
-				g.ramping = false
-				smoothed_set_target(&g.gain, db_to_gain(db))
-			}
-		}
+		if value, frames, ok := core.param_event(e.payload, GAIN_PARAM_DB); ok do gain_event(g, value, frames)
 	}
-	gain_render(g, ctx, pos, ctx.frames)
+	gain_apply(g, ctx.inputs, ctx.outputs, pos, ctx.frames)
 }
 
-// [rt]
+// A `Gain`'s state at parameter `p`'s default and smoothing (prepare).
 @(private)
-gain_render :: proc(g: ^Gain, ctx: ^core.Process_Context, from, to: int) {
-	channels := len(ctx.outputs)
-	ins := min(len(ctx.inputs), channels)
+gain_init :: proc(g: ^Gain, p: core.Param_Info, sample_rate: f64) {
+	smoothed_init(&g.gain, db_to_gain(p.default), p.smoothing, p.smoothing_ms, sample_rate)
+	smoothed_init(&g.ramp, p.default, .None, 0, sample_rate)
+	g.ramping = false
+}
+
+// [rt] A `Gain` at its target at once (reset).
+@(private)
+gain_settle :: proc "contextless" (g: ^Gain) {
+	if g.ramping do smoothed_reset(&g.gain, db_to_gain(g.ramp.target))
+	smoothed_reset(&g.gain, g.gain.target)
+	g.ramping = false
+}
+
+// [rt] A new gain in dB: set (smoothed), or a ramp of `frames` (≥ 0).
+@(private)
+gain_event :: proc "contextless" (g: ^Gain, value: f64, frames: int) {
+	db := clamp(value, -96, 24)
+	if frames >= 0 { // a ramp, in dB from wherever the gain is
+		if !g.ramping do smoothed_reset(&g.ramp, gain_to_db(g.gain.current))
+		smoothed_ramp(&g.ramp, db, frames)
+		g.ramping = true
+	} else {
+		if g.ramping do smoothed_reset(&g.gain, db_to_gain(g.ramp.current))
+		g.ramping = false
+		smoothed_set_target(&g.gain, db_to_gain(db))
+	}
+}
+
+// [rt] Frames `from ..< to` of `ins` times the gain into `outs` (they may
+// be the same buffers); outputs without an input are silent.
+@(private)
+gain_apply :: proc "contextless" (g: ^Gain, ins, outs: [][]f32, from, to: int) {
+	channels := len(outs)
+	n := min(len(ins), channels)
 	if g.ramping && smoothed_is_smoothing(&g.ramp) {
 		for i in from ..< to {
 			k := f32(db_to_gain(smoothed_next(&g.ramp)))
-			for c in 0 ..< ins do ctx.outputs[c][i] = ctx.inputs[c][i] * k
+			for c in 0 ..< n do outs[c][i] = ins[c][i] * k
 		}
 	} else if g.ramping || !smoothed_is_smoothing(&g.gain) {
 		k := f32(db_to_gain(g.ramp.current) if g.ramping else g.gain.current)
-		for c in 0 ..< ins do for i in from ..< to do ctx.outputs[c][i] = ctx.inputs[c][i] * k
+		for c in 0 ..< n do for i in from ..< to do outs[c][i] = ins[c][i] * k
 	} else {
 		for i in from ..< to {
 			k := f32(smoothed_next(&g.gain))
-			for c in 0 ..< ins do ctx.outputs[c][i] = ctx.inputs[c][i] * k
+			for c in 0 ..< n do outs[c][i] = ins[c][i] * k
 		}
 	}
-	for c in ins ..< channels do for i in from ..< to do ctx.outputs[c][i] = 0
+	for c in n ..< channels do for i in from ..< to do outs[c][i] = 0
 }

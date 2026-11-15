@@ -152,11 +152,18 @@ sync_outputs :: proc(e: ^Engine) -> bool {
 	return true
 }
 
+// Where a send is wired from: a node's stereo pair from `channel`.
+@(private)
+Send_Tap :: struct {
+	node:    graph.Node_Id,
+	channel: int,
+}
+
 // [control] A send (`s`) as a gain from `pre` (before the fader) or `post`
 // into `dest` while it is on (not while exporting: the cue isn't
 // exported). True if the graph changed.
 @(private)
-sync_send :: proc(e: ^Engine, sn: ^Send_Node, s: Send, pre, post, dest: graph.Node_Id) -> (changed: bool) {
+sync_send :: proc(e: ^Engine, sn: ^Send_Node, s: Send, pre, post: Send_Tap, dest: graph.Node_Id) -> (changed: bool) {
 	g := e.host.graph
 	on := s.level > 0 && !e.export_once
 	if sn.has && (!on || sn.pre != s.pre) {
@@ -169,7 +176,7 @@ sync_send :: proc(e: ^Engine, sn: ^Send_Node, s: Send, pre, post, dest: graph.No
 		if err != .None do return
 		src := pre if s.pre else post
 		for c in 0 ..< 2 {
-			graph.connect(g, src, c, id, c)
+			graph.connect(g, src.node, src.channel + c, id, c)
 			graph.connect(g, id, c, dest, c)
 		}
 		sn^ = {has = true, id = id, pre = s.pre, db = 1}

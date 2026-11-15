@@ -99,7 +99,7 @@ tap_source :: proc(e: ^Engine, i: int) -> graph.Node_Id {
 	k := int(in_.source)
 	switch in_.from {
 	case .Interface, .None:
-	case .Pad:  if k != i && k < PADS && mx.strips[k].built do return mx.strips[k].out
+	case .Pad:  if k != i && k < PADS && mx.strips[k].built do return mx.strips[k].fader // (its STRIP_OUT pair)
 	case .Bus:  if k < BUSES && k < e.project.bus_count do return mx.buses[k].meter_id
 	case .Main: return mx.buses[BUSES].meter_id
 	}

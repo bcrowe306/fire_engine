@@ -48,17 +48,25 @@ meter_read :: proc "contextless" (m: ^Meter) -> (peak, rms: [METER_CHANNELS]f32)
 // [rt]
 @(private)
 meter_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
-	m := (^Meter)(self)
 	for out, c in ctx.outputs {
 		if c < len(ctx.inputs) {
 			copy(out[:ctx.frames], ctx.inputs[c][:ctx.frames])
 		} else {
 			for &v in out[:ctx.frames] do v = 0
 		}
-		if c >= METER_CHANNELS do continue
+	}
+	meter_measure((^Meter)(self), ctx.outputs, ctx.frames)
+}
+
+// [rt] Adds the first `frames` of `bufs` (its first `METER_CHANNELS`) to
+// the measurement.
+@(private)
+meter_measure :: proc "contextless" (m: ^Meter, bufs: [][]f32, frames: int) {
+	for out, c in bufs {
+		if c >= METER_CHANNELS do break
 		pk: f32 = 0
 		sq: f64 = 0
-		for v in out[:ctx.frames] {
+		for v in out[:frames] {
 			pk = max(pk, abs(v))
 			sq += f64(v) * f64(v)
 		}
@@ -68,5 +76,5 @@ meter_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		total := transmute(f64)intrinsics.atomic_load(&m.sum[c]) + sq
 		intrinsics.atomic_store(&m.sum[c], transmute(u64)total)
 	}
-	intrinsics.atomic_add(&m.count, u64(ctx.frames))
+	intrinsics.atomic_add(&m.count, u64(frames))
 }
