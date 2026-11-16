@@ -349,6 +349,7 @@ Table_V1 :: struct {
 	surface_log_set_debug: proc "c" (api: ^Api, on: bool) -> Result,
 	surface_log_debug: proc "c" (api: ^Api, out: ^bool) -> Result,
 	surface_devices: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	view_frame: proc "c" (api: ^Api, kind: View_Kind, page: i64, width: i64, height: i64, rgba: rawptr, size: i64, out: ^i64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -700,6 +701,7 @@ table_fill :: proc(api: ^Api) {
 	t.surface_log_set_debug = c_surface_log_set_debug
 	t.surface_log_debug = c_surface_log_debug
 	t.surface_devices = c_surface_devices
+	t.view_frame = c_view_frame
 }
 
 @(private)
@@ -3307,5 +3309,13 @@ c_surface_devices :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, 
 		n := copy(([^]u8)(out)[:out_cap - 1], s)
 		([^]u8)(out)[n] = 0
 	}
+	return r
+}
+
+@(private)
+c_view_frame :: proc "c" (api: ^Api, kind: View_Kind, page: i64, width: i64, height: i64, rgba: rawptr, size: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := view_frame(api, kind, page, width, height, rgba, size)
+	if out != nil do out^ = v
 	return r
 }

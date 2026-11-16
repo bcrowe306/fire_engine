@@ -1238,6 +1238,29 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			return false
 		}
 		return true
+	case "view":
+		// view KIND PAGE W H [PATH]: a view Pads draws for displays (asks for it;
+		// says its frame number; PATH: its newest frame as a PNG)
+		if len(w) < 5 do return false
+		kind: pa.View_Kind
+		found := false
+		for k in pa.View_Kind do if strings.equal_fold(fmt.tprintf("%v", k), w[1]) {
+			kind = k
+			found = true
+		}
+		if !found do return drive_fail(a, "no such view")
+		vw, vh := i64(num(w, 3)), i64(num(w, 4))
+		buf := make([]u8, vw * vh * 4, context.temp_allocator)
+		n, r := pa.view_frame(&a.api, kind, i64(num(w, 2)), vw, vh, raw_data(buf), i64(len(buf)))
+		if r != .Ok {
+			why, _ := pa.last_error(&a.api)
+			return drive_fail(a, why)
+		}
+		ui.driver_say(&a.driver, fmt.tprintf("frame %d", n))
+		if len(w) > 5 && n > 0 {
+			if err := ui.png_write(w[5], buf, int(vw), int(vh)); err != nil do return drive_fail(a, fmt.tprintf("%v", err))
+		}
+		return true
 	case "usbdev":
 		// Pretend USB and HID devices (--fake-usb):
 		//   usbdev plug ID VID PID [hid PAGE] (hex ids) / usbdev unplug ID

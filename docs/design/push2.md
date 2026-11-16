@@ -52,11 +52,13 @@ off without one). Each mode lays out:
 
 ## Stages
 
-1. **The kit: anti-aliasing and TrueType** (fire-surface). Shapes with
+1. **The kit: anti-aliasing and TrueType** (fire-surface; built,
+   fire-surface 4b39b15: pure Odin, no stb). Shapes with
    coverage (lines, rects, rounded rects, circles, arcs), alpha, text in
    any TTF at any size (glyphs cached), Open Sans bundled; the examples'
    displays redrawn with it. Tests: images against references.
-2. **Pads draws views** (`fire.pads`): a second ImGui context rendering
+2. **Pads draws views** (`fire.pads`; built: `app/ui/offscreen.odin`,
+   `view_frame`, the device view's four pages): a second ImGui context rendering
    offscreen (SDL_GPU) at the size asked, read back without waiting
    (a frame late); `view_*` in the API; one view first (the device's).
    Tests: a view's pixels from the API, headless.

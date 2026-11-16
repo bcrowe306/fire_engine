@@ -11,6 +11,10 @@ control surfaces' USB and HID devices (libusb and SDL3's hidapi; see
 `apps/`; the first is **Pads**, a sampler and sequencer. The engine never
 imports any of it.
 
+`ui.Offscreen` draws UI into a texture of any size in an ImGui context of
+its own (the window's fonts and theme), read back as RGBA a frame later:
+for a controller's display (`app/ui/offscreen.odin`).
+
 Build the libraries once (`task deps`, see [Building](/guides/building/)),
 then:
 

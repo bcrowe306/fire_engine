@@ -104,6 +104,21 @@ submodule (`cd extern/fire-surface && ./scripts/build.sh`) and put
   Redo); under the display, the upper row mutes and the lower row
   selects.
 
+## Pads' views on a display
+
+A surface can show Pads' own views on its display, drawn with Pads'
+widgets, fonts and theme: `view_frame` in the Pads API (`fire.pads`) gives
+the newest frame of a view at the size asked for, as RGBA.
+- **Views:** `Device`, the selected pad's sound (page 0: its amp
+  envelope; 1: its filter's response and envelope; 2: its pitch envelope;
+  3: its LFOs). `Mixer`, `Sequencer`, `Clip` and `Browser` come with Push
+  2's modes ([the plan](/design/push2/)).
+- **How:** each view asked for in the last two seconds is drawn after
+  Pads' own frame, in an ImGui context of its own, offscreen on the GPU
+  (`app/ui/offscreen.odin`), and read back without waiting: a frame later.
+- **From scripts:** `view KIND PAGE W H [PATH]` asks for a view and saves
+  its newest frame as a PNG.
+
 ## MIDI: the claim table
 
 A surface says which of its controller's messages are its own, with its
@@ -188,6 +203,7 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
     `surface_state`, `surface_ports`, `surface_devices`
   - `surface_assign`, `surface_unload`, `surface_set_detect`
   - the monitor: `surface_monitor*`
+  - Pads' views for displays: `view_frame`
   - the log: `surface_log_count`, `surface_log_line`, `surface_log_level`,
     `surface_log_surface`, `surface_log_message`, `surface_log_clear`,
     `surface_log_set_debug`, `surface_log_debug`
@@ -197,6 +213,7 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
   - `surface load|libs|list|unload|assign|detect`
   - `surface press|release|turn|move N NAME...`
   - `surface monitor on|off|show|clear`
+  - `view KIND PAGE W H [PATH]`
   - `surface log show|clear|debug on|off`
 - **Pretend controllers:** Pads started with `--fake-midi` has pretend
   MIDI ports (`fire:midi/fake`). The script command `midiport` drives

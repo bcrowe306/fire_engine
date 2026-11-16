@@ -347,6 +347,16 @@ enum {
 	PADS_MESSAGE_KIND_ERROR = 3,
 };
 
+// A view Pads draws for a display.
+typedef int32_t Pads_View_Kind;
+enum {
+	PADS_VIEW_KIND_DEVICE = 0,
+	PADS_VIEW_KIND_MIXER = 1,
+	PADS_VIEW_KIND_SEQUENCER = 2,
+	PADS_VIEW_KIND_CLIP = 3,
+	PADS_VIEW_KIND_BROWSER = 4,
+};
+
 // Called on the control thread when `topic` changed (`index`: which; -1 all).
 typedef void (*Pads_Change_Fn)(Pads_Api* api, Pads_Topic topic, int64_t index, void* user);
 // A call posted from another thread, run on the control thread.
@@ -780,6 +790,15 @@ typedef struct Pads_Ui_State {
 	int64_t messages; // messages showing (ui_message)
 	int64_t selected; // pads selected together (ui_selected_pad)
 } Pads_Ui_State;
+
+// A view to draw (`views_wanted`).
+typedef struct Pads_View_Request {
+	int64_t index;
+	Pads_View_Kind kind;
+	int64_t page;
+	int64_t width;
+	int64_t height;
+} Pads_View_Request;
 
 // The function table, version 1. It only grows: `size` says how much of it
 // the host has (check it before calling a function added later).
@@ -1664,6 +1683,13 @@ typedef struct Pads_Api_V1 {
 	// whether each is open: "display: open", "display: not there" (", "
 	// between them; "" for none). Temporary.
 	Pads_Result (*surface_devices)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// The newest frame of view `kind` (`page` of it) at `width` x `height`
+	// pixels, copied into `rgba` (`size` bytes: RGBA, rows top to bottom,
+	// width x height x 4), asking for it to be drawn from now on. Its frame
+	// number (0: none drawn yet, `rgba` untouched; a number not newer than the
+	// last: unchanged). Each frame Pads draws the views asked for in the last
+	// two seconds.
+	Pads_Result (*view_frame)(Pads_Api* api, Pads_View_Kind kind, int64_t page, int64_t width, int64_t height, void* rgba, int64_t size, int64_t* out);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

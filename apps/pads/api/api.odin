@@ -60,6 +60,7 @@ Api :: struct {
 	owner:     i64, // a subscription made now belongs to this (a surface starting, the remote client)
 	next_owner: i64,
 	remote:    Remote_Link, // the remote client's (remote.odin)
+	views:     [dynamic]View_Want, // views surfaces ask Pads to draw (views.odin)
 }
 
 // A call posted from another thread: run on the control thread at the
@@ -84,6 +85,7 @@ api_init :: proc(api: ^Api, core: ^pc.Core) {
 // Frees what the API holds (its subscriptions go). Control thread.
 api_destroy :: proc(api: ^Api) {
 	surfaces_destroy(api)
+	views_destroy(api)
 	delete(api.subs)
 	delete(api.posted)
 	api^ = {}

@@ -119,6 +119,7 @@ App :: struct {
 	fake_midi: ^midi.Driver, // --fake-midi: pretend MIDI ports (tests plug controllers into it: `midiport`)
 	fake_usb: ^app.Device_Driver, // --fake-usb: pretend USB and HID devices (`usbdev`); else nil
 	surfaces_page: Surfaces_Page, // Settings > Control Surfaces (ui_surfaces.odin)
+	views:    [dynamic]^View_Draw, // Pads' views drawn for surfaces' displays (ui_views.odin)
 	surface_monitor: bool, // its MIDI monitor records
 	control_size:   Control_Size, // --control-size: the size controls are this run, whatever Settings says (Auto: as Settings says)
 	audio_fallback: bool, // the interface in the settings wasn't there at the start: the system's plays
@@ -241,6 +242,7 @@ main :: proc() {
 		os.exit(1)
 	}
 	defer ui.platform_destroy(p)
+	defer views_destroy(a) // (before the platform: their GPU textures)
 	appearance_apply(a)
 	p.confirm_quit = true // (closing asks to save first: draw_leave)
 	app.bus_init(&a.bus)
@@ -377,6 +379,7 @@ main :: proc() {
 		for ui.frame_begin(p) {
 			frame(a)
 			ui.frame_end(p)
+			views_render(a) // (between frames: their own ImGui context)
 		}
 	}
 	if profile > 0 {

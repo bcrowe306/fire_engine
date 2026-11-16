@@ -2979,6 +2979,9 @@ Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
 Message_Kind_NAMES := [?]string{"Info", "Success", "Warning", "Error"}
 
 @(private)
+View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser"}
+
+@(private)
 remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
 	obj, is := args[name].(json.Object)
 	if !is {

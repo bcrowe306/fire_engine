@@ -2773,6 +2773,16 @@ ui_selected_pad :: proc(api: ^Api, index: i64) -> (i64, Result)
 
 Pad `index` of those selected together.
 
+## views
+
+### view_frame
+
+```odin
+view_frame :: proc(api: ^Api, kind: View_Kind, page: i64, width: i64, height: i64, rgba: rawptr, size: i64) -> (i64, Result)
+```
+
+The newest frame of view `kind` (`page` of it) at `width` x `height` pixels, copied into `rgba` (`size` bytes: RGBA, rows top to bottom, width x height x 4), asking for it to be drawn from now on. Its frame number (0: none drawn yet, `rgba` untouched; a number not newer than the last: unchanged). Each frame Pads draws the views asked for in the last two seconds.
+
 ## Types
 
 ### Result
@@ -2972,6 +2982,12 @@ What the tempo, start and stop follow.
 A message's kind.
 
 `Info`, `Success`, `Warning`, `Error`
+
+### View_Kind
+
+A view Pads draws for a display.
+
+`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`
 
 ### Part_State
 
@@ -3519,4 +3535,16 @@ The window now (Unsupported without one: a headless Pads).
 | `dark` | `bool` | the dark theme |
 | `messages` | `i64` | messages showing (ui_message) |
 | `selected` | `i64` | pads selected together (ui_selected_pad) |
+
+### View_Request
+
+A view to draw (`views_wanted`).
+
+| Field | Type | |
+|---|---|---|
+| `index` | `i64` |  |
+| `kind` | `View_Kind` |  |
+| `page` | `i64` |  |
+| `width` | `i64` |  |
+| `height` | `i64` |  |
 
