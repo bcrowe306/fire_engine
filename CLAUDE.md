@@ -25,7 +25,7 @@ taskfiles/). The app layer (`app/`, apps in `apps/`) links SDL3 and Dear
 ImGui statically:
 
 ```bash
-task deps                 # once per machine: fetch + build static SDL3 and ImGui (into vendor/, gitignored)
+task deps                 # once per machine: fetch + build static SDL3, ImGui and libusb (into vendor/, gitignored)
 task app:pads             # build .build/app/pads (collections: fire, app=app, deps=vendor, fsurf=extern/fire-surface)
 task app:test             # tests/app_* (headless) + apps/ui_tests (UI cases with a window, main thread)
 task app:pads-drive       # Pads driven by tests/app_ui/drive/pads*.txt (fake audio, headless; expect lines)
@@ -97,6 +97,7 @@ Credentials live in `secrets.env` (gitignored, never commit or print it).
 ./scripts/link.sh            # fetch + build Ableton Link (GPL, into gitignored third_party/) for fire:link; tests/link skips without it
 ./scripts/clap.sh            # build the CLAP test plug-ins (C, and Odin via fire:clap/sdk); tests/clap skips without them
 ./scripts/surface.sh         # build the example C control surface (pads_mini.fsurf); tests/pads_api_c skips without it
+./scripts/libusb.sh          # fetch + build libusb (LGPL, static, into vendor/libusb/lib) for surfaces' USB displays; `task deps` runs it
 ```
 
 Every exported symbol needs a doc comment; internals are `@(private)`. See the

@@ -22,7 +22,7 @@ def surfaces():
     """The kit's examples, built in the submodule (once)."""
     if not (os.path.exists(GRID) and os.path.exists(SCREEN)):
         subprocess.run([os.path.join(FSURF, "scripts", "build.sh")], cwd=FSURF, check=True, capture_output=True)
-    return ["--fake-midi", "--surface", GRID, "--surface", SCREEN]
+    return ["--fake-midi", "--fake-usb", "--surface", GRID, "--surface", SCREEN]
 
 
 @pytest.fixture
@@ -107,3 +107,23 @@ def test_the_log_shows_what_the_surface_logged(pads):
     pads.click("Clear log")
     pads.wait(2)
     assert pads.api("surface_log_count") == 0
+
+
+def test_a_surfaces_display_reaches_its_usb_device(pads):
+    # The screen example's display (USB 1209:0001), unplugged at first.
+    pads.cmd("midiport plug screen inout Screen MIDI")
+    pads.wait(3)
+    assert pads.api("surface_devices", index=0) == "display: not there"
+    # Plugged in: opened (its thread tries each second), sent a whole frame.
+    pads.cmd("usbdev plug display 1209 0001")
+    for _ in range(40):
+        pads.wait(5)
+        if pads.api("surface_devices", index=0) == "display: open":
+            break
+    assert pads.api("surface_devices", index=0) == "display: open"
+    pads.wait(5)
+    assert pads.cmd("usbdev written display").startswith(f"{256 * 64 * 2} bytes in 1 writes"), pads.cmd("usbdev written display")
+    pads.key("cmd+,")
+    pads.click("Control Surfaces", window="settings")
+    pads.expect_item("Stop surface 0")
+    pads.screenshot("surfaces_device")

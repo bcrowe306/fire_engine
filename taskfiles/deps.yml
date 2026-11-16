@@ -1,4 +1,5 @@
-# Third-party libraries the app layer links statically: SDL3 and Dear ImGui;
+# Third-party libraries the app layer links statically: SDL3, Dear ImGui and
+# libusb;
 # and Ableton Link, which Pads builds in.
 # Sources are fetched at pinned versions into .deps/ (gitignored) and the
 # libraries are built into the vendored bindings' folders, where the Odin
@@ -6,6 +7,7 @@
 #
 #   vendor/sdl3/lib/<os>_<arch>/libSDL3.a  (SDL3-static.lib on Windows)
 #   vendor/imgui/libimgui_<os>_<arch>.a     (imgui_windows_x86_64.lib on Windows)
+#   vendor/libusb/lib/<os>_<arch>/libusb.a  (libusb.lib on Windows; scripts/libusb.sh)
 #
 # Needs git, CMake, a C/C++ compiler and Python 3 (for dear_bindings).
 # Linux also needs SDL's build dependencies (see docs/guides/app-layer.md).
@@ -26,11 +28,19 @@ vars:
 
 tasks:
   default:
-    desc: Fetch and build every static library the app layer needs (SDL3, then ImGui).
+    desc: Fetch and build every static library the app layer needs (SDL3, then ImGui, libusb).
     cmds:
       - task: sdl3
       - task: imgui
+      - task: libusb
       - task: link
+
+  libusb:
+    desc: Fetch libusb (LGPL-2.1+) at its pinned tag and build it static, for control surfaces' USB devices (a display's, Push 2's).
+    status:
+      - ls {{.ROOT_DIR}}/vendor/libusb/lib/*/libusb.* > /dev/null 2>&1
+    cmds:
+      - bash {{.ROOT_DIR}}/scripts/libusb.sh
 
   link:
     desc: Fetch and build Ableton Link (GPL-2.0+) for Pads (GPL-3.0+); fire:link and its tests use it too.
@@ -84,7 +94,7 @@ tasks:
   clean:
     desc: Remove fetched sources, build trees and the built libraries.
     cmds:
-      - rm -rf {{.DEPS}} {{.ROOT_DIR}}/vendor/sdl3/lib
+      - rm -rf {{.DEPS}} {{.ROOT_DIR}}/vendor/sdl3/lib {{.ROOT_DIR}}/vendor/libusb/lib
       - rm -f {{.ROOT_DIR}}/vendor/imgui/*.a {{.ROOT_DIR}}/vendor/imgui/*.lib
 
   clone:

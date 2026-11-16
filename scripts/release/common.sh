@@ -17,11 +17,13 @@ build_pads() {
 	local MINOS=""
 	[ "$(uname)" = "Darwin" ] && MINOS="-minimum-os-version:13.0"
 	for f in "$ROOT"/third_party/link/lib/*abl_link*; do [ -e "$f" ] && LINKC="on"; done
+	local USB="false" # libusb (task deps:libusb): control surfaces' USB displays
+	for f in "$ROOT"/vendor/libusb/lib/*/libusb.*; do [ -e "$f" ] && USB="true"; done
 	odin build "$ROOT/apps/pads" -collection:fire="$ROOT/f_engine" -collection:app="$ROOT/app" \
 		-collection:deps="$ROOT/vendor" -collection:fsurf="$ROOT/extern/fire-surface" -collection:padslink="$ROOT/apps/pads/link/$LINKC" \
-		-define:PADS_COMMIT="\"$COMMIT\"" -define:PADS_DATE="\"$DATE\"" \
+		-define:PADS_COMMIT="\"$COMMIT\"" -define:PADS_DATE="\"$DATE\"" -define:FIRE_LIBUSB=$USB \
 		${EXTRA_BUILD:-} $MINOS -o:speed -debug -vet -strict-style -out:"$1"
-	echo "built $1 (Link: $LINKC)"
+	echo "built $1 (Link: $LINKC, libusb: $USB)"
 }
 
 # Copies the licences of Pads and what it is built from into $1.
@@ -40,6 +42,10 @@ collect_licenses() {
 	if [ -e "$LS/LICENSE.md" ] && ls "$ROOT"/third_party/link/lib/*abl_link* > /dev/null 2>&1; then
 		cp "$LS/LICENSE.md" "$D/Ableton Link.md"
 		cp "$LS/GNU-GPL-v2.0.md" "$D/Ableton Link (GPL-2.0).md"
+	fi
+	# (libusb: when it is built in; its source is at the tag scripts/libusb.sh names.)
+	if [ -e "$ROOT/vendor/libusb/COPYING.libusb" ] && ls "$ROOT"/vendor/libusb/lib/*/libusb.* > /dev/null 2>&1; then
+		cp "$ROOT/vendor/libusb/COPYING.libusb" "$D/libusb (LGPL-2.1).txt"
 	fi
 }
 

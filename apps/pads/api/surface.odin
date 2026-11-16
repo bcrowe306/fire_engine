@@ -46,14 +46,17 @@ Surface_State :: enum i32 {
 // Starts the control surfaces: the libraries in `folders` (Pads' own), in
 // FSURF_PATH and in the system's surface folders, matched against the MIDI
 // ports. `watch`: rebuilt libraries are loaded again (for a surface's
-// author). The app calls it once, with its host's MIDI open.
-surfaces_start :: proc(api: ^Api, folders: []string = nil, watch := false) {
+// author). `devices` opens their USB and HID devices (a display's; nil:
+// none, displays only mirrored). The app calls it once, with its host's
+// MIDI open.
+surfaces_start :: proc(api: ^Api, folders: []string = nil, watch := false, devices: ^app.Device_Driver = nil) {
 	if api.surfaces_on do return
 	daw_init(api)
 	api.virtuals = make([dynamic]fsurf.Virtual)
 	app.surfaces_init(&api.surfaces, &api.core.host, {
 		folders = folders,
 		watch = watch,
+		devices = devices,
 		user = api,
 		extension = proc(user: rawptr, id: string, version: u32) -> rawptr {
 			api := (^Api)(user)
@@ -281,6 +284,24 @@ surface_ports :: proc(api: ^Api, index: i64) -> (string, Result) {
 	p := d.ports[0]
 	if p.output_name == "" || p.output_name == p.input_name do return p.input_name, .Ok
 	return fmt.tprintf("%s / %s", p.input_name, p.output_name), .Ok
+}
+
+// Surface `index`'s devices other than MIDI (a display over USB, HID) and
+// whether each is open: "display: open", "display: not there" (", "
+// between them; "" for none). Temporary.
+surface_devices :: proc(api: ^Api, index: i64) -> (string, Result) {
+	d, ok := device_at(api, index)
+	if !ok do return "", .Not_Found
+	desc := d.descriptor
+	if desc.struct_size < size_of(abi.Descriptor) || desc.device_count == 0 do return "", .Ok
+	b := strings.builder_make(context.temp_allocator)
+	for i in 0 ..< int(desc.device_count) {
+		open := d.instance != nil && i < len(d.instance.devices) && d.instance.devices[i]
+		if i > 0 do strings.write_string(&b, ", ")
+		strings.write_string(&b, string(desc.devices[i].role))
+		strings.write_string(&b, ": open" if open else ": not there")
+	}
+	return strings.to_string(b), .Ok
 }
 
 // Starts library `lib`'s surface `k` on MIDI ports chosen by hand (by

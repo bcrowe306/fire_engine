@@ -64,6 +64,10 @@ surfaces_are_found_listed_and_played_by_name :: proc(t: ^testing.T) {
 	ports, _ := pa.surface_ports(&r.api, 0)
 	testing.expect_value(t, st, pa.Surface_State.Active)
 	testing.expect_value(t, ports, "Keys 25 MIDI")
+	devs, _ := pa.surface_devices(&r.api, 0)
+	testing.expect_value(t, devs, "") // (MIDI only; a display's: tests/e2e/test_surfaces.py)
+	_, dres := pa.surface_devices(&r.api, 5)
+	testing.expect_value(t, dres, pa.Result.Not_Found)
 
 	// Its controls, by name: Play plays (taken from the engine).
 	nc, _ := pa.surface_control_count(&r.api, 0)

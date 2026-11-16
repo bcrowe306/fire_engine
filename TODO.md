@@ -76,9 +76,8 @@ plan before it is built.
 - **Control surfaces: after the SDK.** fire-surface is in Pads
   (extern/fire-surface, docs/guides/surfaces.md). Next, in order, as in
   fire-surface's docs/design.md ("After version 1"):
-  - USB and HID: libusb for displays, HID through SDL3's hidapi; udev
-    rules on Linux and the Pi; Android through its USB permission; none on
-    iPad.
+  - (Done: USB and HID, libusb and SDL3's hidapi, app/devices; Push 2's
+    display tried. Later: Android through its USB permission; none on iPad.)
   - Surfaces linked into Pads, not only loaded (iOS and Android).
   - Scripted surfaces in Lua (or Luau): user surfaces on iPad and Android,
     MIDI only there; scripts kept off the audio thread by the claim table.

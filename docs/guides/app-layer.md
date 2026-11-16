@@ -5,7 +5,9 @@ description: Building GUI apps on Fire Engine with app:ui (SDL3, SDL_GPU and Dea
 
 The application layer lives outside the engine, in `app/` (the `app`
 collection): `app:ui` is the window and GUI, `app:core` the model, commands
-and engine host (from the next milestone). Apps built with it live in
+and engine host (from the next milestone), and `app:devices` the driver of
+control surfaces' USB and HID devices (libusb and SDL3's hidapi; see
+[Control surfaces](/guides/surfaces/)). Apps built with it live in
 `apps/`; the first is **Pads**, a sampler and sequencer. The engine never
 imports any of it.
 

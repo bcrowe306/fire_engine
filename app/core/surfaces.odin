@@ -3,6 +3,7 @@ package app
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:sync"
 import "core:time"
 
 import "fire:midi"
@@ -37,8 +38,10 @@ port, an output's place in `Host.midi_outputs`.
 	// at the end, after the audio stops:
 	surfaces_destroy(&s)
 
-USB and HID devices (a display's) aren't opened yet: a surface's
-displays are mirrored (its virtual controller shows them), not sent.
+USB and HID devices (a display's, Push 2's) are opened by the app's
+`Surfaces_Config.devices` driver, each on a thread of its own
+(devices.odin); without one, a surface's displays are only mirrored (its
+virtual controller shows them).
 */
 
 // What the app gives the surfaces.
@@ -56,6 +59,10 @@ Surfaces_Config :: struct {
 	load_settings: proc(user: rawptr, key: string) -> []u8,
 	save_settings: proc(user: rawptr, key: string, data: []u8),
 	watch:         bool, // hot reload: rebuilt libraries are loaded again
+	// Opens the surfaces' USB and HID devices (app/devices, or
+	// `devices_fake_create`); nil: none opened. The app frees it after
+	// `surfaces_destroy`.
+	devices:       ^Device_Driver,
 	user:          rawptr,
 }
 
@@ -75,6 +82,9 @@ Surfaces :: struct {
 	filter:    midi.Input_Filter,
 	started:   bool,
 	ports_seen: [dynamic]string, // the port names last given (to see a change)
+	devices:   [dynamic]^Open_Device, // the surfaces' devices (devices.odin)
+	device_mutex: sync.Mutex,
+	device_events: [dynamic]Device_Event, // from their threads, for `surfaces_update`
 }
 
 // Starts the surfaces: scans the folders, loads every library there, and
@@ -85,11 +95,22 @@ surfaces_init :: proc(s: ^Surfaces, h: ^Host, config: Surfaces_Config) {
 	s.config = config
 	s.libraries = make([dynamic]Surface_Library)
 	s.ports_seen = make([dynamic]string)
+	s.devices = make([dynamic]^Open_Device)
+	s.device_events = make([dynamic]Device_Event, HEAP())
 	fsurf.host_init(&s.fs, {
 		name = "Pads", vendor = "fire_engine", url = "https://github.com/bcrowe306/fire_engine",
 		user = s,
 		send_midi = surfaces_send,
 		inject_midi = surfaces_inject,
+		device_open = proc(user: rawptr, inst: ^fsurf.Instance, device: u32, spec: ^abi.Device_Spec) -> bool {
+			return device_open((^Surfaces)(user), inst, int(device), spec)
+		},
+		device_write = proc(user: rawptr, inst: ^fsurf.Instance, device: u32, bytes: []u8) -> bool {
+			return device_write((^Surfaces)(user), inst, int(device), bytes)
+		},
+		device_close = proc(user: rawptr, inst: ^fsurf.Instance, device: u32) {
+			device_close((^Surfaces)(user), inst, int(device))
+		},
 		get_extension = proc(user: rawptr, inst: ^fsurf.Instance, id: string, version: u32) -> rawptr {
 			s := (^Surfaces)(user)
 			return s.config.extension(s.config.user, id, version) if s.config.extension != nil else nil
@@ -201,7 +222,8 @@ lib_error :: proc(e: fsurf.Library_Error) -> string {
 surfaces_library_error :: proc(e: fsurf.Library_Error) -> string { return lib_error(e) }
 
 // Once a frame, on the control thread: ports plugged in or out, SysEx from
-// the controllers, then the surfaces (MIDI for them, timers, displays,
+// the controllers, what their devices sent (or that they went or came
+// back), then the surfaces (MIDI for them, timers, displays,
 // identification).
 surfaces_update :: proc(s: ^Surfaces) {
 	if !s.started do return
@@ -217,6 +239,7 @@ surfaces_update :: proc(s: ^Surfaces) {
 		out: [3]u8
 		fsurf.route_here(&s.fs, u32(msg.port), buf[:], msg.time_ns, &out)
 	}
+	devices_update(s)
 	fsurf.host_update(&s.fs)
 }
 
@@ -243,6 +266,9 @@ surfaces_destroy :: proc(s: ^Surfaces) {
 	midi.input_set_filter(&s.host.midi_in, nil)
 	if s.host.running do time.sleep(50 * time.Millisecond) // (a block or two, for a route in progress)
 	fsurf.host_destroy(&s.fs)
+	devices_stop_all(s)
+	delete(s.devices)
+	delete(s.device_events)
 	for l in s.libraries {
 		if l.lib != nil do fsurf.library_unload(l.lib)
 		delete(l.path)

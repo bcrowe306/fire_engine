@@ -22,6 +22,11 @@ vars:
   LINK:
     sh: 'for f in {{.ROOT_DIR}}/third_party/link/lib/*abl_link*; do if [ -e "$f" ]; then echo 1; exit 0; fi; done; echo 0'
   PADS_LINK: '-collection:padslink={{.ROOT_DIR}}/apps/pads/link/{{if eq .LINK "1"}}on{{else}}off{{end}}'
+  # libusb (control surfaces' USB displays) when `task deps:libusb` built it;
+  # without, USB bulk devices aren't opened (HID still is).
+  LIBUSB:
+    sh: 'for f in {{.ROOT_DIR}}/vendor/libusb/lib/*/libusb.*; do if [ -e "$f" ]; then echo 1; exit 0; fi; done; echo 0'
+  PADS_LIBUSB: '-define:FIRE_LIBUSB={{if eq .LIBUSB "1"}}true{{else}}false{{end}}'
   OPT: '{{.OPT | default "speed"}}'
   # What the build is: its commit (and the day), in the About box and --version.
   PADS_COMMIT:
@@ -45,17 +50,17 @@ tasks:
     # Up to date only if the sources are unchanged and it was built at this OPT
     # (a debug build is not an optimized one).
     status:
-      - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}{{.LINK}}"'
+      - 'test "$(cat {{.OUT}}/pads.opt 2>/dev/null)" = "{{.OPT}}{{.LINK}}{{.LIBUSB}}"'
     cmds:
       - mkdir -p {{.OUT}}
-      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
-      - echo {{.OPT}}{{.LINK}} > {{.OUT}}/pads.opt
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} {{.PADS_LIBUSB}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads{{.EXE}}  # -debug: crash reports name procedures and lines
+      - echo {{.OPT}}{{.LINK}}{{.LIBUSB}} > {{.OUT}}/pads.opt
 
   pads-prof:
     desc: 'Build Pads with profiling zones (-define:FIRE_PROF=true) into .build/app/pads-prof: run it with --trace FILE, summarize with scripts/prof.py (docs/guides/profiling.md).'
     cmds:
       - mkdir -p {{.OUT}}
-      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -define:FIRE_PROF=true -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads-prof{{.EXE}}
+      - odin build {{.ROOT_DIR}}/apps/pads {{.COLLECTIONS}} {{.PADS_LINK}} {{.PADS_LIBUSB}} '-define:PADS_COMMIT="{{.PADS_COMMIT}}"' '-define:PADS_DATE="{{.PADS_DATE}}"' -define:FIRE_PROF=true -o:{{.OPT}} -debug -vet -strict-style -out:{{.OUT}}/pads-prof{{.EXE}}
 
   gallery:
     desc: 'Build and run the widget gallery (args go to it: task app:gallery -- --drive tests/app_ui/drive/gallery.txt --headless).'

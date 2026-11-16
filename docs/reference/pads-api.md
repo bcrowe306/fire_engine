@@ -2401,6 +2401,14 @@ surface_ports :: proc(api: ^Api, index: i64) -> (string, Result)
 
 The MIDI ports surface `index` is on: its first pair's names ("in / out"). Temporary.
 
+### surface_devices
+
+```odin
+surface_devices :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Surface `index`'s devices other than MIDI (a display over USB, HID) and whether each is open: "display: open", "display: not there" (", " between them; "" for none). Temporary.
+
 ### surface_assign
 
 ```odin

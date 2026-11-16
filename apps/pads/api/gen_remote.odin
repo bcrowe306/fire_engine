@@ -2503,6 +2503,14 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := surface_ports(api, index)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_devices":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_devices(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_surface_assign":
 		lib := remote_i64(args, "lib", &ok)
 		k := remote_i64(args, "k", &ok)
@@ -3473,6 +3481,7 @@ REMOTE_METHODS := [?]string{
 	"pads_surface_path",
 	"pads_surface_state",
 	"pads_surface_ports",
+	"pads_surface_devices",
 	"pads_surface_assign",
 	"pads_surface_unload",
 	"pads_surface_monitor",

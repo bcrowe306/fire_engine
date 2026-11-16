@@ -348,6 +348,7 @@ Table_V1 :: struct {
 	surface_log_clear: proc "c" (api: ^Api) -> Result,
 	surface_log_set_debug: proc "c" (api: ^Api, on: bool) -> Result,
 	surface_log_debug: proc "c" (api: ^Api, out: ^bool) -> Result,
+	surface_devices: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -698,6 +699,7 @@ table_fill :: proc(api: ^Api) {
 	t.surface_log_clear = c_surface_log_clear
 	t.surface_log_set_debug = c_surface_log_set_debug
 	t.surface_log_debug = c_surface_log_debug
+	t.surface_devices = c_surface_devices
 }
 
 @(private)
@@ -3293,5 +3295,17 @@ c_surface_log_debug :: proc "c" (api: ^Api, out: ^bool) -> Result {
 	context = runtime.default_context()
 	v, r := surface_log_debug(api)
 	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_devices :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_devices(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
 	return r
 }

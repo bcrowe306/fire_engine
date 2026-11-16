@@ -1,6 +1,6 @@
 ---
 title: Control surfaces
-description: Hardware controllers in Pads through fire-surface - surfaces found on the MIDI ports, their claim tables applied before the engine, fsurf.daw and the Pads API, Settings, the monitor, the log and the virtual controller.
+description: Hardware controllers in Pads through fire-surface - surfaces found on the MIDI ports, their claim tables applied before the engine, their USB displays (Push 2), fsurf.daw and the Pads API, Settings, the monitor, the log and the virtual controller.
 ---
 
 A control surface is a hardware controller (pads, faders, knobs, a
@@ -46,6 +46,63 @@ starts the surface that fits best.
   audio.
 - **Settings:** a surface's own settings are kept between runs, in
   `Surface Settings` beside `settings.ini`.
+
+## Displays and other USB devices
+
+A surface can name devices besides its MIDI ports: a display over USB
+bulk (Push 2's), or HID. Pads opens them when the surface starts, through
+libusb (bulk) and the hidapi built into SDL3 (HID), each on a thread of
+its own (`app/core/devices.odin`, `app/devices`):
+- what the surface writes (its display's frames) is written there, so a
+  slow transfer never holds up Pads
+- what the device sends reaches the surface
+- a device that isn't there yet, or is unplugged, is tried again each
+  second; when it comes back, the surface is told and sends its display
+  whole
+- Settings → Control Surfaces shows each surface's devices ("display:
+  open")
+
+libusb is built by `task deps` (`task deps:libusb`, or
+`./scripts/libusb.sh`), static, at a pinned release (LGPL-2.1). Without
+it Pads still builds, opening HID devices but no USB bulk ones.
+
+Per system:
+- **macOS:** nothing to install.
+- **Linux** (the Raspberry Pi too): a user opens a USB device only if a
+  udev rule lets them. For Push 2, as root:
+
+  ```bash
+  echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2982", ATTR{idProduct}=="1967", MODE="0666"' > /etc/udev/rules.d/60-push2.rules
+  udevadm control --reload-rules && udevadm trigger
+  ```
+
+  The interface Pads claims is taken from its kernel driver while open;
+  MIDI stays with ALSA.
+- **Windows:** a USB bulk interface needs the WinUSB driver bound to it
+  (Push 2's display has it).
+
+### Push 2
+
+fire-surface's [`push2_odin`](https://github.com/bcrowe306/fire-surface/blob/main/examples/push2_odin/push2.odin)
+is a surface for Ableton Push 2, tried on the device. Build it in the
+submodule (`cd extern/fire-surface && ./scripts/build.sh`) and put
+`.build/push2_odin.fsurf` in Pads' Surfaces folder, or start Pads with
+`--surface` and its path.
+- It uses Push 2's **User Port**: Ableton Live keeps the Live Port. To run
+  both, turn Live's Track, Sync and Remote switches for the User Port
+  off.
+- **Display:** the eight tracks in view with their names and volumes, or
+  the selected device's parameters (Device), and the transport. On USB
+  power alone Push 2 dims its display; its power supply brightens it.
+- **Pads:** Note, a keyboard in Keyboard mode's scale (Octave Up and
+  Down); Layout, drum pads (Repeat held: note repeat); Session, the
+  launcher's clips (the arrows move the window).
+- **Encoders:** Mix, the volumes (Shift held: pans); Device, the selected
+  device's parameters (Page < and >); the master encoder, the selected
+  pad's volume; Tempo, the tempo.
+- **Buttons:** Play, Record, Stop, Metronome, Tap Tempo, Undo (Shift:
+  Redo); under the display, the upper row mutes and the lower row
+  selects.
 
 ## MIDI: the claim table
 
@@ -128,7 +185,7 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
 - **The API:**
   - libraries: `surface_load`, `surface_library_*`, `surface_offered_*`
   - the surfaces running: `surface_count`, `surface_name`,
-    `surface_state`, `surface_ports`
+    `surface_state`, `surface_ports`, `surface_devices`
   - `surface_assign`, `surface_unload`, `surface_set_detect`
   - the monitor: `surface_monitor*`
   - the log: `surface_log_count`, `surface_log_line`, `surface_log_level`,
@@ -151,10 +208,15 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
 
   `tests/e2e/test_surfaces.py` and `tests/app_ui/drive/surfaces.txt`
   use the kit's examples this way.
+- **Pretend USB and HID devices:** with `--fake-usb`, the script command
+  `usbdev` drives them:
+  - `usbdev plug ID VID PID [hid PAGE]` plugs one in (hex ids)
+  - `usbdev send ID HEX...` sends from it
+  - `usbdev written ID` shows the bytes and writes it was sent
+  - `usbdev unplug ID` unplugs it
 
 ## Not yet
 
-- **USB and HID devices** (a Push 2's or an MPC's display): a surface's
-  displays are mirrored in its virtual controller, not sent to the device.
-  libusb and hidapi come as their own step.
 - **The ring:** Pads doesn't draw a surface's window on its tracks yet.
+- **Push 2's touch strip LEDs and palette:** the surface uses a few
+  colours of its own; track colours on the pads wait.

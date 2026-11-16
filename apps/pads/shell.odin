@@ -1238,6 +1238,35 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			return false
 		}
 		return true
+	case "usbdev":
+		// Pretend USB and HID devices (--fake-usb):
+		//   usbdev plug ID VID PID [hid PAGE] (hex ids) / usbdev unplug ID
+		//   usbdev send ID HEX... (what it sends) / usbdev written ID (bytes and writes to it)
+		u := a.fake_usb
+		if u == nil do return drive_fail(a, "no pretend USB devices: run with --fake-usb")
+		if len(w) < 3 do return false
+		switch w[1] {
+		case "plug":
+			if len(w) < 5 do return false
+			vid := u16(strconv.parse_uint(w[3], 16) or_else 0)
+			pid := u16(strconv.parse_uint(w[4], 16) or_else 0)
+			hid := len(w) > 5 && w[5] == "hid"
+			page := u16(strconv.parse_uint(w[6], 16) or_else 0) if hid && len(w) > 6 else 0
+			app.devices_fake_plug(u, w[2], vid, pid, hid, page)
+		case "unplug":
+			if !app.devices_fake_unplug(u, w[2]) do return drive_fail(a, "no such device")
+		case "send":
+			bytes := make([dynamic]u8, context.temp_allocator)
+			for x in w[3:] do append(&bytes, u8(strconv.parse_uint(x, 16) or_else 0))
+			if !app.devices_fake_send(u, w[2], bytes[:]) do return drive_fail(a, "no such device")
+		case "written":
+			n, writes, _, ok := app.devices_fake_written(u, w[2])
+			if !ok do return drive_fail(a, "no such device")
+			ui.driver_say(&a.driver, fmt.tprintf("%d bytes in %d writes%s", n, writes, ", open" if app.devices_fake_open(u, w[2]) else ""))
+		case:
+			return false
+		}
+		return true
 	case "setting": // setting NAME VALUE: a setting by its settings.ini name ("project.tempo 100", "midi.sync Midi_Clock")
 		if len(w) < 3 do return false
 		if r := pa.settings_set_text(&a.api, w[1], strings.join(w[2:], " ", context.temp_allocator)); r != .Ok {

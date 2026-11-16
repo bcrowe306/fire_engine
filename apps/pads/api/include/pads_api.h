@@ -1660,6 +1660,10 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*surface_log_set_debug)(Pads_Api* api, bool on);
 	// Whether the surfaces' debug lines are kept.
 	Pads_Result (*surface_log_debug)(Pads_Api* api, bool* out);
+	// Surface `index`'s devices other than MIDI (a display over USB, HID) and
+	// whether each is open: "display: open", "display: not there" (", "
+	// between them; "" for none). Temporary.
+	Pads_Result (*surface_devices)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

@@ -116,6 +116,12 @@ in, when `./scripts/link.sh` or `task deps` has built its library) or
 `apps/pads/link/off` (without it; `task app:pads LINK=0` asks for this).
 Pads is GPL-3.0-or-later (`apps/pads/LICENSE`); Fire Engine stays MIT.
 
+It also takes `-define:FIRE_LIBUSB`: true (the default) links libusb from
+`vendor/libusb/lib/` (`./scripts/libusb.sh` or `task deps` builds it,
+LGPL-2.1, static) for control surfaces' USB displays; false leaves it out
+(HID devices still open, through SDL3). `task app:pads` chooses by whether
+the library is there.
+
 ## Testing the app layer
 
 ```bash

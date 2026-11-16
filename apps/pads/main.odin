@@ -46,6 +46,7 @@ import mfake "fire:midi/fake"
 import "fire:prof"
 
 import app "app:core"
+import "app:devices"
 import "app:ui"
 import pa "api"
 import pc "core"
@@ -116,6 +117,7 @@ App :: struct {
 	about:    About_State,
 	fake_interface: bool, // --fake-interface: the simulated driver has `fake_interfaces`
 	fake_midi: ^midi.Driver, // --fake-midi: pretend MIDI ports (tests plug controllers into it: `midiport`)
+	fake_usb: ^app.Device_Driver, // --fake-usb: pretend USB and HID devices (`usbdev`); else nil
 	surfaces_page: Surfaces_Page, // Settings > Control Surfaces (ui_surfaces.odin)
 	surface_monitor: bool, // its MIDI monitor records
 	control_size:   Control_Size, // --control-size: the size controls are this run, whatever Settings says (Auto: as Settings says)
@@ -140,7 +142,7 @@ main :: proc() {
 	control := -1
 	surfaces: [dynamic]string // --surface PATH: control-surface libraries to load
 	defer delete(surfaces)
-	surface_dev, fake_midi := false, false
+	surface_dev, fake_midi, fake_usb := false, false, false
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
 			if i^ + 1 < len(os.args) {
@@ -162,6 +164,7 @@ main :: proc() {
 		case "--surface":  append(&surfaces, next(&i))
 		case "--surface-dev": surface_dev = true // (a surface's author: rebuilt libraries load again)
 		case "--fake-midi": fake_midi = true // (tests: MIDI ports of pretend controllers, plugged in by `midiport`)
+		case "--fake-usb": fake_usb = true // (tests: pretend USB and HID devices, plugged in by `usbdev`)
 		case "--control-size": control_size = control_size_parse(next(&i)) // (tests: the size their positions were written for)
 		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
@@ -266,9 +269,14 @@ main :: proc() {
 	// Control surfaces (fire-surface): the libraries in Pads' Surfaces
 	// folder, FSURF_PATH and the system's, and --surface's; each gets the API
 	// as "fire.pads" 1 and fsurf.daw. Stopped before the model goes.
+	// Their USB and HID devices (a display's): libusb and hidapi, or pretend
+	// ones (--fake-usb). Freed after the surfaces stop.
+	if fake_usb do a.fake_usb = app.devices_fake_create()
+	drivers := a.fake_usb if fake_usb else devices.create()
+	defer drivers.destroy(drivers)
 	{
 		folder, _ := filepath.join({settings_folder(a), "Surfaces"}, context.temp_allocator)
-		pa.surfaces_start(&a.api, {folder}, watch = surface_dev)
+		pa.surfaces_start(&a.api, {folder}, watch = surface_dev, devices = drivers)
 	}
 	defer pa.surfaces_stop(&a.api)
 	for path in surfaces do if _, r := pa.surface_load(&a.api, path); r != .Ok {

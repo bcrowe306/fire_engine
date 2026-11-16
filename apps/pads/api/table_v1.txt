@@ -338,3 +338,4 @@ surface_log_message
 surface_log_clear
 surface_log_set_debug
 surface_log_debug
+surface_devices

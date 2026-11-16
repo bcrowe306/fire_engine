@@ -56,6 +56,10 @@ page_surfaces :: proc(a: ^App) {
 		im.TextUnformatted(fmt.ctprintf("%s", name))
 		im.SameLine()
 		im.TextDisabled("%s", fmt.ctprintf("on %s: %s", ports, STATE_TEXT[st]))
+		if devs, _ := pa.surface_devices(api, k); devs != "" {
+			im.SameLine()
+			im.TextDisabled("%s", fmt.ctprintf("(%s)", devs))
+		}
 		im.SameLine()
 		if im.SmallButton("Stop") do pa.surface_unload(api, k)
 		ui.name(fmt.tprintf("Stop surface %d", k))
