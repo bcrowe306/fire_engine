@@ -73,12 +73,15 @@ plan before it is built.
 - **MIDI clip** — records and plays MIDI clips, to play external MIDI
   instruments from a sequence.
 
-- **Control surfaces.** (Done: fire-surface, extern/fire-surface; USB/HID for displays waits.) Load a surface script (the engine's `fire:surface`
-  manager), give it MIDI in and out ports, load and unload it from Settings
-  > MIDI. To plan first: what a script can see and do (pads, sequences,
-  transport, the mixer, the selection, LEDs and displays), how it maps to
-  the app's commands, how scripts are found, versioned and reloaded, and
-  how they are tested without hardware.
+- **Control surfaces: after the SDK.** fire-surface is in Pads
+  (extern/fire-surface, docs/guides/surfaces.md). Next, in order, as in
+  fire-surface's docs/design.md ("After version 1"):
+  - USB and HID: libusb for displays, HID through SDL3's hidapi; udev
+    rules on Linux and the Pi; Android through its USB permission; none on
+    iPad.
+  - Surfaces linked into Pads, not only loaded (iOS and Android).
+  - Scripted surfaces in Lua (or Luau): user surfaces on iPad and Android,
+    MIDI only there; scripts kept off the audio thread by the claim table.
 - **One item on macOS.** A `.pads` project shows as a folder in Finder;
   packaging Pads as an `.app` with a document type would show it as one
   file.
