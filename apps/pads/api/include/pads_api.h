@@ -300,6 +300,15 @@ enum {
 	PADS_TOPIC_UI = 11,
 };
 
+// How much a surface's log line says.
+typedef int32_t Pads_Surface_Log_Level;
+enum {
+	PADS_SURFACE_LOG_LEVEL_DEBUG = 0,
+	PADS_SURFACE_LOG_LEVEL_INFO = 1,
+	PADS_SURFACE_LOG_LEVEL_WARNING = 2,
+	PADS_SURFACE_LOG_LEVEL_ERROR = 3,
+};
+
 // Where a surface's controller is.
 typedef int32_t Pads_Surface_State;
 enum {
@@ -1630,6 +1639,27 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*surface_turn)(Pads_Api* api, int64_t index, const char* name, int64_t name_len, int64_t steps);
 	// Moves surface `index`'s fader `name` to `value` (0..1).
 	Pads_Result (*surface_move)(Pads_Api* api, int64_t index, const char* name, int64_t name_len, double value);
+	// The lines in the surfaces' log: what each surface logged, and what Pads
+	// wrote about one (a library that didn't load, a device that didn't open),
+	// oldest first. At most 1024 a surface; a line repeated is counted on one.
+	Pads_Result (*surface_log_count)(Pads_Api* api, int64_t* out);
+	// Log line `i` as text: "12.345  warning  Grid  careful (x3)" (a line
+	// Pads wrote: "host: Grid"). Temporary.
+	Pads_Result (*surface_log_line)(Pads_Api* api, int64_t i, char* out, int64_t out_cap, int64_t* out_len);
+	// Log line `i`'s level.
+	Pads_Result (*surface_log_level)(Pads_Api* api, int64_t i, Pads_Surface_Log_Level* out);
+	// The surface log line `i` is about, by name ("" for none: a library's).
+	// Temporary.
+	Pads_Result (*surface_log_surface)(Pads_Api* api, int64_t i, char* out, int64_t out_cap, int64_t* out_len);
+	// Log line `i`'s text alone, without its time, level or surface. Temporary.
+	Pads_Result (*surface_log_message)(Pads_Api* api, int64_t i, char* out, int64_t out_cap, int64_t* out_len);
+	// Empties the surfaces' log.
+	Pads_Result (*surface_log_clear)(Pads_Api* api);
+	// Keeps the surfaces' debug lines too, or not (off, unless Pads was started
+	// with --surface-dev).
+	Pads_Result (*surface_log_set_debug)(Pads_Api* api, bool on);
+	// Whether the surfaces' debug lines are kept.
+	Pads_Result (*surface_log_debug)(Pads_Api* api, bool* out);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

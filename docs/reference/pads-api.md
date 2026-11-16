@@ -2449,6 +2449,70 @@ surface_monitor_clear :: proc(api: ^Api) -> Result
 
 Empties the monitor.
 
+### surface_log_count
+
+```odin
+surface_log_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+The lines in the surfaces' log: what each surface logged, and what Pads wrote about one (a library that didn't load, a device that didn't open), oldest first. At most 1024 a surface; a line repeated is counted on one.
+
+### surface_log_line
+
+```odin
+surface_log_line :: proc(api: ^Api, i: i64) -> (string, Result)
+```
+
+Log line `i` as text: "12.345  warning  Grid  careful (x3)" (a line Pads wrote: "host: Grid"). Temporary.
+
+### surface_log_level
+
+```odin
+surface_log_level :: proc(api: ^Api, i: i64) -> (Surface_Log_Level, Result)
+```
+
+Log line `i`'s level.
+
+### surface_log_surface
+
+```odin
+surface_log_surface :: proc(api: ^Api, i: i64) -> (string, Result)
+```
+
+The surface log line `i` is about, by name ("" for none: a library's). Temporary.
+
+### surface_log_message
+
+```odin
+surface_log_message :: proc(api: ^Api, i: i64) -> (string, Result)
+```
+
+Log line `i`'s text alone, without its time, level or surface. Temporary.
+
+### surface_log_clear
+
+```odin
+surface_log_clear :: proc(api: ^Api) -> Result
+```
+
+Empties the surfaces' log.
+
+### surface_log_set_debug
+
+```odin
+surface_log_set_debug :: proc(api: ^Api, on: bool) -> Result
+```
+
+Keeps the surfaces' debug lines too, or not (off, unless Pads was started with --surface-dev).
+
+### surface_log_debug
+
+```odin
+surface_log_debug :: proc(api: ^Api) -> (bool, Result)
+```
+
+Whether the surfaces' debug lines are kept.
+
 ### surface_control_count
 
 ```odin
@@ -2870,6 +2934,12 @@ What part of Pads a setting changes (applied when it is set: the audio device re
 What a subscriber hears about. Topics whose module isn't built yet answer `subscribe` with `Unsupported`.
 
 `Transport`, `History`, `Selection`, `Pad`, `Mixer`, `Sequence`, `Song`, `Launcher`, `Project`, `Settings`, `Recording`, `Ui`
+
+### Surface_Log_Level
+
+How much a surface's log line says.
+
+`Debug`, `Info`, `Warning`, `Error`
 
 ### Surface_State
 

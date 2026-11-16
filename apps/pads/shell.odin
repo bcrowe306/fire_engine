@@ -1111,6 +1111,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		//   surface assign LIB K IN-ID [OUT-ID] / surface detect LIB K on|off
 		//   surface press N NAME... [VEL] / release N NAME... / turn N NAME... STEPS / move N NAME... VALUE
 		//   surface monitor on|off|show|clear
+		//   surface log show|clear|debug on|off (show: the surfaces' log lines)
 		if len(w) < 2 do return false
 		fail :: proc(a: ^App) -> bool {
 			why, _ := pa.last_error(&a.api)
@@ -1182,6 +1183,21 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 				n, _ := pa.surface_monitor_count(&a.api)
 				for i in 0 ..< n {
 					line, _ := pa.surface_monitor_line(&a.api, i)
+					ui.driver_say(&a.driver, line)
+				}
+			case: return false
+			}
+		case "log":
+			if len(w) < 3 do return false
+			switch w[2] {
+			case "clear": pa.surface_log_clear(&a.api)
+			case "debug":
+				if len(w) < 4 || (w[3] != "on" && w[3] != "off") do return false
+				pa.surface_log_set_debug(&a.api, w[3] == "on")
+			case "show":
+				n, _ := pa.surface_log_count(&a.api)
+				for i in 0 ..< n {
+					line, _ := pa.surface_log_line(&a.api, i)
 					ui.driver_say(&a.driver, line)
 				}
 			case: return false

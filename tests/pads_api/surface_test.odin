@@ -1,6 +1,6 @@
 // Control surfaces through the API: libraries, the surfaces found on the
 // MIDI ports (a pretend controller), assigning by hand, detection, the
-// monitor, controls by name; and fsurf.daw over the API, through the kit's
+// monitor, the log, controls by name; and fsurf.daw over the API, through the kit's
 // keyboard example (extern/fire-surface/examples/keys_odin), linked in.
 package test_pads_api
 
@@ -11,6 +11,7 @@ import pa "../../apps/pads/api"
 import app "app:core"
 import "fire:midi"
 import mfake "fire:midi/fake"
+import fsurf "fsurf:host"
 import keys "fsurf:examples/keys_odin"
 
 // The surfaces started, the keyboard example linked in, its controller
@@ -164,4 +165,46 @@ fsurf_daw_drives_pads :: proc(t: ^testing.T) {
 	pass(r)
 	back, _ := pa.param_get(&r.api, ref)
 	testing.expectf(t, back != after, "undone: %v", back)
+}
+
+@(test)
+the_log_has_what_surfaces_and_pads_wrote :: proc(t: ^testing.T) {
+	r, d := surfaces_rig(t, "surface_log")
+	defer midi.driver_destroy(d)
+	defer rig_destroy(r)
+	find :: proc(r: ^Rig, text: string) -> i64 {
+		n, _ := pa.surface_log_count(&r.api)
+		for i in 0 ..< n do if m, _ := pa.surface_log_message(&r.api, i); strings.contains(m, text) do return i
+		return -1
+	}
+	// The keyboard's own line, through core:log.
+	i := find(r, "ready")
+	if !testing.expect(t, i >= 0, "the keyboard's line") do return
+	lv, _ := pa.surface_log_level(&r.api, i)
+	who, _ := pa.surface_log_surface(&r.api, i)
+	line, _ := pa.surface_log_line(&r.api, i)
+	testing.expect_value(t, lv, pa.Surface_Log_Level.Info)
+	testing.expect_value(t, who, "Keys 25 (kit example)")
+	testing.expect(t, strings.contains(line, "info     Keys 25 (kit example)  ready"), line)
+	// Pads' own: a library that didn't load.
+	pa.surface_load(&r.api, "no/such/surface.fsurf")
+	i = find(r, "no/such/surface.fsurf")
+	if testing.expect(t, i >= 0, "the library's line") {
+		lv, _ = pa.surface_log_level(&r.api, i)
+		who, _ = pa.surface_log_surface(&r.api, i)
+		testing.expect(t, lv == .Error && who == "")
+	}
+	// Debug lines: dropped, unless kept.
+	on, _ := pa.surface_log_debug(&r.api)
+	testing.expect(t, !on)
+	fsurf.log_add(&r.api.surfaces.fs, nil, .Debug, "dropped")
+	testing.expect_value(t, find(r, "dropped"), -1)
+	testing.expect_value(t, pa.surface_log_set_debug(&r.api, true), pa.Result.Ok)
+	fsurf.log_add(&r.api.surfaces.fs, nil, .Debug, "kept")
+	testing.expect(t, find(r, "kept") >= 0)
+	_, res := pa.surface_log_line(&r.api, 9999)
+	testing.expect_value(t, res, pa.Result.Not_Found)
+	pa.surface_log_clear(&r.api)
+	n, _ := pa.surface_log_count(&r.api)
+	testing.expect_value(t, n, 0)
 }

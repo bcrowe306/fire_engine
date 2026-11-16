@@ -87,3 +87,23 @@ def test_settings_show_it_and_its_virtual_controller_plays(pads):
     pads.api("surface_set_detect", lib=0, k=0, on=True)
     pads.wait(2)
     assert pads.api("surface_count") == 1
+
+
+def test_the_log_shows_what_the_surface_logged(pads):
+    plug_grid(pads)
+    pads.cmd("midiport play grid B0 5B 7F")  # Keys (CC 91): the grid logs "mode: keys"
+    pads.cmd("midiport play grid B0 5B 00")
+    pads.wait(3)
+    n = pads.api("surface_log_count")
+    lines = [pads.api("surface_log_line", i=i) for i in range(n)]
+    assert any("mode: keys" in l for l in lines), lines
+    pads.key("cmd+,")
+    pads.click("Control Surfaces", window="settings")
+    pads.click("Log")
+    pads.expect_item("Copy log")
+    pads.screenshot("surfaces_log")
+    pads.click("Both")
+    pads.screenshot("surfaces_both")
+    pads.click("Clear log")
+    pads.wait(2)
+    assert pads.api("surface_log_count") == 0

@@ -24,6 +24,14 @@ found: `surface_count`). A surface gets this API as the "fire.pads"
 extension, and the standard "fsurf.daw" (daw.odin).
 */
 
+// How much a surface's log line says.
+Surface_Log_Level :: enum i32 {
+	Debug,   // kept only while `surface_log_set_debug` is on
+	Info,
+	Warning,
+	Error,
+}
+
 // Where a surface's controller is.
 Surface_State :: enum i32 {
 	Identifying,    // asked who it is, waiting for its answer
@@ -54,7 +62,12 @@ surfaces_start :: proc(api: ^Api, folders: []string = nil, watch := false) {
 			return nil
 		},
 		has_extension = proc(user: rawptr, id: string) -> bool { return id == EXTENSION_NAME || id == abi.DAW_ID },
-		log = proc(user: rawptr, message: string) { fmt.eprintfln("surface: %s", message) },
+		log = proc(user: rawptr, level: abi.Log_Level, surface: string, message: string) {
+			api := (^Api)(user)
+			if level == .Debug && !fsurf.log_debug(&api.surfaces.fs) do return
+			if surface != "" do fmt.eprintfln("surface %s: %s: %s", fsurf.log_level_name(level), surface, message)
+			else do fmt.eprintfln("surface %s: %s", fsurf.log_level_name(level), message)
+		},
 		notify = proc(user: rawptr, text: string) { ui_message_show((^Api)(user), .Info, text) },
 		load_settings = proc(user: rawptr, key: string) -> []u8 {
 			data, err := os.read_entire_file(settings_file((^Api)(user), key), context.temp_allocator)
@@ -68,6 +81,7 @@ surfaces_start :: proc(api: ^Api, folders: []string = nil, watch := false) {
 		},
 	})
 	api.surfaces_on = true
+	fsurf.log_set_debug(&api.surfaces.fs, watch) // a surface's author keeps its debug lines
 	// Detection turned off before.
 	if off, err := os.read_entire_file(settings_file(api, "off.txt"), context.temp_allocator); err == nil {
 		for id in strings.split_lines(string(off), context.temp_allocator) do if id != "" do fsurf.host_set_auto_detect(&api.surfaces.fs, id, false)
@@ -340,6 +354,75 @@ surface_monitor_clear :: proc(api: ^Api) -> Result {
 	if !surfaces_ok(api) do return .Unsupported
 	fsurf.monitor_clear(&api.surfaces.fs)
 	return .Ok
+}
+
+// ── The surfaces' log ─────────────────────────────────────────────────
+
+// The lines in the surfaces' log: what each surface logged, and what Pads
+// wrote about one (a library that didn't load, a device that didn't open),
+// oldest first. At most 1024 a surface; a line repeated is counted on one.
+surface_log_count :: proc(api: ^Api) -> (i64, Result) {
+	if !surfaces_ok(api) do return 0, .Unsupported
+	return i64(len(fsurf.log_entries(&api.surfaces.fs))), .Ok
+}
+
+@(private)
+log_at :: proc(api: ^Api, i: i64) -> (fsurf.Log_Entry, Result) {
+	if !surfaces_ok(api) do return {}, .Unsupported
+	es := fsurf.log_entries(&api.surfaces.fs)
+	if i < 0 || i >= i64(len(es)) do return {}, fail(api, .Not_Found, "no such log line")
+	return es[i], .Ok
+}
+
+// Log line `i` as text: "12.345  warning  Grid  careful (x3)" (a line
+// Pads wrote: "host: Grid"). Temporary.
+surface_log_line :: proc(api: ^Api, i: i64) -> (string, Result) {
+	e, r := log_at(api, i)
+	if r != .Ok do return "", r
+	return fsurf.log_line(e), .Ok
+}
+
+// Log line `i`'s level.
+surface_log_level :: proc(api: ^Api, i: i64) -> (Surface_Log_Level, Result) {
+	e, r := log_at(api, i)
+	if r != .Ok do return {}, r
+	return Surface_Log_Level(e.level), .Ok
+}
+
+// The surface log line `i` is about, by name ("" for none: a library's).
+// Temporary.
+surface_log_surface :: proc(api: ^Api, i: i64) -> (string, Result) {
+	e, r := log_at(api, i)
+	if r != .Ok do return "", r
+	return e.surface, .Ok
+}
+
+// Log line `i`'s text alone, without its time, level or surface. Temporary.
+surface_log_message :: proc(api: ^Api, i: i64) -> (string, Result) {
+	e, r := log_at(api, i)
+	if r != .Ok do return "", r
+	return e.message, .Ok
+}
+
+// Empties the surfaces' log.
+surface_log_clear :: proc(api: ^Api) -> Result {
+	if !surfaces_ok(api) do return .Unsupported
+	fsurf.log_clear(&api.surfaces.fs)
+	return .Ok
+}
+
+// Keeps the surfaces' debug lines too, or not (off, unless Pads was started
+// with --surface-dev).
+surface_log_set_debug :: proc(api: ^Api, on: bool) -> Result {
+	if !surfaces_ok(api) do return .Unsupported
+	fsurf.log_set_debug(&api.surfaces.fs, on)
+	return .Ok
+}
+
+// Whether the surfaces' debug lines are kept.
+surface_log_debug :: proc(api: ^Api) -> (bool, Result) {
+	if !surfaces_ok(api) do return false, .Unsupported
+	return fsurf.log_debug(&api.surfaces.fs), .Ok
 }
 
 // ── A surface's controls (its virtual controller) ─────────────────────

@@ -330,3 +330,11 @@ surface_press
 surface_release
 surface_turn
 surface_move
+surface_log_count
+surface_log_line
+surface_log_level
+surface_log_surface
+surface_log_message
+surface_log_clear
+surface_log_set_debug
+surface_log_debug

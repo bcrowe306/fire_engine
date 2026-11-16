@@ -340,6 +340,14 @@ Table_V1 :: struct {
 	surface_release: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result,
 	surface_turn: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, steps: i64) -> Result,
 	surface_move: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64, value: f64) -> Result,
+	surface_log_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	surface_log_line: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_log_level: proc "c" (api: ^Api, i: i64, out: ^Surface_Log_Level) -> Result,
+	surface_log_surface: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_log_message: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	surface_log_clear: proc "c" (api: ^Api) -> Result,
+	surface_log_set_debug: proc "c" (api: ^Api, on: bool) -> Result,
+	surface_log_debug: proc "c" (api: ^Api, out: ^bool) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -682,6 +690,14 @@ table_fill :: proc(api: ^Api) {
 	t.surface_release = c_surface_release
 	t.surface_turn = c_surface_turn
 	t.surface_move = c_surface_move
+	t.surface_log_count = c_surface_log_count
+	t.surface_log_line = c_surface_log_line
+	t.surface_log_level = c_surface_log_level
+	t.surface_log_surface = c_surface_log_surface
+	t.surface_log_message = c_surface_log_message
+	t.surface_log_clear = c_surface_log_clear
+	t.surface_log_set_debug = c_surface_log_set_debug
+	t.surface_log_debug = c_surface_log_debug
 }
 
 @(private)
@@ -3206,4 +3222,76 @@ c_surface_move :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64,
 	context = runtime.default_context()
 	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
 	return surface_move(api, index, name_s, value)
+}
+
+@(private)
+c_surface_log_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := surface_log_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_log_line :: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_log_line(api, i)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_log_level :: proc "c" (api: ^Api, i: i64, out: ^Surface_Log_Level) -> Result {
+	context = runtime.default_context()
+	v, r := surface_log_level(api, i)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_surface_log_surface :: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_log_surface(api, i)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_log_message :: proc "c" (api: ^Api, i: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := surface_log_message(api, i)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_surface_log_clear :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return surface_log_clear(api)
+}
+
+@(private)
+c_surface_log_set_debug :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return surface_log_set_debug(api, on)
+}
+
+@(private)
+c_surface_log_debug :: proc "c" (api: ^Api, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := surface_log_debug(api)
+	if out != nil do out^ = v
+	return r
 }

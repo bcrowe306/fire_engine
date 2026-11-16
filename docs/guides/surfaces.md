@@ -1,6 +1,6 @@
 ---
 title: Control surfaces
-description: Hardware controllers in Pads through fire-surface - surfaces found on the MIDI ports, their claim tables applied before the engine, fsurf.daw and the Pads API, Settings, the monitor and the virtual controller.
+description: Hardware controllers in Pads through fire-surface - surfaces found on the MIDI ports, their claim tables applied before the engine, fsurf.daw and the Pads API, Settings, the monitor, the log and the virtual controller.
 ---
 
 A control surface is a hardware controller (pads, faders, knobs, a
@@ -95,12 +95,29 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
   for a controller Pads doesn't recognise by itself.
 - **Surfaces:** each library's surfaces, with detection on or off (kept
   between runs), and why a library didn't load.
-- **MIDI monitor:** each message from a surface's controller (what its
-  claim table did, and which rule), and each it sent, named by the surface:
+- **Monitor and log**, in three tabs:
+  - **MIDI:** each message from a surface's controller (what its claim
+    table did, and which rule), and each it sent, named by the surface:
 
-  ```
-  in  1  99 24 64  remap (rule 7)  Grid (kit example) / Pads 3,0 (Drum)
-  ```
+    ```
+    in  1  99 24 64  remap (rule 7)  Grid (kit example) / Pads 3,0 (Drum)
+    ```
+  - **Log:** what each surface logged (`core:log` in an Odin surface,
+    `log` in fsurf.h) and what Pads wrote about one (a library that didn't
+    load, a device that didn't open), with its time (seconds since the
+    surfaces started), level and surface:
+
+    ```
+    12.345  info     Grid (kit example)  mode: keys
+    ```
+
+    Filter it by level and by surface, copy what's shown, or clear it.
+    **Debug lines** are kept only while their toggle is on, or when Pads
+    was started with `--surface-dev`, so a surface can leave its debug
+    calls in. A surface keeps at most 1024 lines, its oldest going first;
+    a line repeated is counted on one (`(x3)`).
+  - **Both:** the MIDI and the log lines in one timeline, in the order
+    they came: what was pressed, then what the surface made of it.
 - **Virtual controller:** the surface's controls where it placed them,
   lit as it lights them, its displays mirrored. Click, drag an encoder up
   and down, drag a fader along it: what you do reaches the surface as its
@@ -114,12 +131,16 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
     `surface_state`, `surface_ports`
   - `surface_assign`, `surface_unload`, `surface_set_detect`
   - the monitor: `surface_monitor*`
+  - the log: `surface_log_count`, `surface_log_line`, `surface_log_level`,
+    `surface_log_surface`, `surface_log_message`, `surface_log_clear`,
+    `surface_log_set_debug`, `surface_log_debug`
   - a surface's controls by name: `surface_control_*`, `surface_press`,
     `surface_release`, `surface_turn`, `surface_move`
 - **Script commands:**
   - `surface load|libs|list|unload|assign|detect`
   - `surface press|release|turn|move N NAME...`
   - `surface monitor on|off|show|clear`
+  - `surface log show|clear|debug on|off`
 - **Pretend controllers:** Pads started with `--fake-midi` has pretend
   MIDI ports (`fire:midi/fake`). The script command `midiport` drives
   them:

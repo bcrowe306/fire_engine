@@ -2552,6 +2552,67 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := surface_monitor_clear(api)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_log_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_log_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_log_line":
+		i := remote_i64(args, "i", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_log_line(api, i)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_log_level":
+		i := remote_i64(args, "i", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_log_level(api, i)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_log_surface":
+		i := remote_i64(args, "i", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_log_surface(api, i)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_log_message":
+		i := remote_i64(args, "i", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_log_message(api, i)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_surface_log_clear":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_log_clear(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_log_set_debug":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := surface_log_set_debug(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_surface_log_debug":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := surface_log_debug(api)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_surface_control_count":
 		index := remote_i64(args, "index", &ok)
 		if !ok {
@@ -2893,6 +2954,9 @@ Setting_Group_NAMES := [?]string{"Appearance", "Audio", "Midi", "Sync", "Recordi
 
 @(private)
 Topic_NAMES := [?]string{"Transport", "History", "Selection", "Pad", "Mixer", "Sequence", "Song", "Launcher", "Project", "Settings", "Recording", "Ui"}
+
+@(private)
+Surface_Log_Level_NAMES := [?]string{"Debug", "Info", "Warning", "Error"}
 
 @(private)
 Surface_State_NAMES := [?]string{"Identifying", "Waiting", "Active", "Not_Identified", "Passed_Over", "Failed", "Gone"}
@@ -3415,6 +3479,14 @@ REMOTE_METHODS := [?]string{
 	"pads_surface_monitor_count",
 	"pads_surface_monitor_line",
 	"pads_surface_monitor_clear",
+	"pads_surface_log_count",
+	"pads_surface_log_line",
+	"pads_surface_log_level",
+	"pads_surface_log_surface",
+	"pads_surface_log_message",
+	"pads_surface_log_clear",
+	"pads_surface_log_set_debug",
+	"pads_surface_log_debug",
 	"pads_surface_control_count",
 	"pads_surface_control_name",
 	"pads_surface_press",

@@ -186,6 +186,7 @@ main :: proc() {
 	defer {
 		delete(a.surfaces_page.assign_in)
 		delete(a.surfaces_page.assign_out)
+		delete(a.surfaces_page.log_surface)
 	}
 	defer if a.fake_midi != nil do midi.driver_destroy(a.fake_midi)
 	a.control_size = control_size

@@ -47,7 +47,10 @@ Surfaces_Config :: struct {
 	// An extension of the app: "fsurf.daw", "fire.pads"... (nil: none).
 	extension:     proc(user: rawptr, id: string, version: u32) -> rawptr,
 	has_extension: proc(user: rawptr, id: string) -> bool,
-	log:           proc(user: rawptr, message: string),
+	// Each line a surface logs, and the host's about one (`surface`: its
+	// name, or ""), debug ones too; kept besides in the host's log
+	// (`fsurf.log_entries`).
+	log:           proc(user: rawptr, level: abi.Log_Level, surface: string, message: string),
 	notify:        proc(user: rawptr, text: string),
 	// A device's settings blob, kept by the app between runs.
 	load_settings: proc(user: rawptr, key: string) -> []u8,
@@ -97,7 +100,8 @@ surfaces_init :: proc(s: ^Surfaces, h: ^Host, config: Surfaces_Config) {
 		},
 		log = proc(user: rawptr, inst: ^fsurf.Instance, level: abi.Log_Level, message: string) {
 			s := (^Surfaces)(user)
-			if s.config.log != nil do s.config.log(s.config.user, message)
+			name := string(inst.descriptor.name) if inst != nil && inst.descriptor != nil && inst.descriptor.name != nil else ""
+			if s.config.log != nil do s.config.log(s.config.user, level, name, message)
 		},
 		notify = proc(user: rawptr, inst: ^fsurf.Instance, text: string) {
 			s := (^Surfaces)(user)
@@ -153,7 +157,7 @@ surfaces_load :: proc(s: ^Surfaces, path: string) -> (int, fsurf.Library_Error) 
 	}
 	append(&s.libraries, Surface_Library{path = strings.clone(path), lib = lib, error = err})
 	if lib != nil do fsurf.host_add_library(&s.fs, lib)
-	else if s.config.log != nil do s.config.log(s.config.user, strings.concatenate({path, ": ", lib_error(err)}, context.temp_allocator))
+	else do fsurf.log_add(&s.fs, nil, .Error, strings.concatenate({path, ": ", lib_error(err)}, context.temp_allocator))
 	return len(s.libraries) - 1, err
 }
 
