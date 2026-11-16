@@ -202,6 +202,12 @@ engine_init :: proc(e: ^Engine, host: ^app.Host, project: ^Project) -> fc.Error 
 engine_rebuild :: proc(e: ^Engine) -> fc.Error {
 	e.nodes = {}
 	e.clock_out, e.following = false, false // (a new graph and clock: set again by the app)
+	// Every other node of the old graph, gone with it: kept, their ids would
+	// remove the new graph's nodes, and their players (freed) be written to.
+	e.clock_out_id, e.tone_id = {}, {}
+	clear(&e.auto_dests)
+	e.cc_id, e.cc_player = {}, nil
+	e.input_meters = {}
 	return build_fixed(e)
 }
 
