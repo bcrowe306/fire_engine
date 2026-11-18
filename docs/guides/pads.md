@@ -567,6 +567,35 @@ records.
   none), so a kick keys by its click, not its boom. **Listen** plays the
   filtered key on the track instead, to set it by. Keyed, the compressor
   only presses down: a quiet key lifts nothing.
+
+  **SuperFilter** (an insert, a bus slot or main) is an auto filter: a
+  filter moved by an LFO and an envelope.
+  - Type, Circuit, 24 dB and Clip are on its header line. A circuit that
+    doesn't make the type says "plays as Analog" (Diode makes Low-pass
+    only).
+  - The display shows the response at the cutoff as it moves now (each
+    side, with the LFO and the envelope), the knob's own curve faint
+    behind, the sound's spectrum, the LFO's wave and where it is, and the
+    levels in and out. Drag its handle across for Freq, up and down for
+    Res (Shift: fine).
+  - Two rows of knobs: Freq, Res, Morph (Vowel's vowel, Comb's feedback),
+    Drive, Output, Dry/Wet, Envelope, Attack, Release; the LFO's amount,
+    Rate (Hz, a division or sixteenths, as Mode says), Wave, Shape,
+    Mode, Key Gain, Hold, S&H and S&H Rate.
+  - **LFO extras** on the display: Stereo (Phase or Spin), its phase or
+    spin, Offset, Retrigger (Beat, Bar, Play) and Smooth.
+  - **Sidechain** on the display opens its sidechain row (open while it
+    has a key): its source (itself, any pad, a bus it doesn't feed), the
+    key's high-pass and **low-pass**, and Listen. From itself, the
+    envelope follows its own input through the key's filters, so Listen
+    works there too.
+  - On Push 2 it shows the same display over four banks: Filter,
+    Circuit, Envelope (with the key's source and filters) and LFO (with
+    Listen).
+  - Its factory presets are under it in the Library's Effects: Wobble
+    1/8, Wobble 1/4 Triplet, Duck to Kick (choose the kick as its key),
+    DJ Sweep, Talk Box, Comb Shimmer, Random Steps, Slow Pad Sweep,
+    Auto-Wah and Stereo Spin. Double-click one, or drag it onto a pad.
 - **Performance effects** (the Perform tab's right grid): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
@@ -1541,6 +1570,7 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_resample.py` | an audio track's input from main, a track and a bus; Bounce to Pad of a pad, of two selected, of a bus; Bounce in Place, undo |
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
+| `test_superfilter.py` | SuperFilter's panel by the mouse (the display's handle, the type, the sidechain row and LFO extras), its four banks on a pretend Push 2, its presets from the Library |
 | `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a time signature change on its lane, a tempo point on the tempo lane, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |

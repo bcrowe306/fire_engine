@@ -112,14 +112,14 @@ draw_preset_save :: proc(a: ^App) {
 	st := &a.presets
 	if !st.saving do return
 	im.OpenPopup("Save Preset")
-	if im.BeginPopupModal("Save Preset", &st.saving, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Save Preset", &st.saving, {.AlwaysAutoResize}) {
 		im.TextDisabled("Its name")
 		im.SetNextItemWidth(260)
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
-		enter := im.InputText("##presetname", cstring(&st.name[0]), len(st.name), {.EnterReturnsTrue})
+		enter := modal_input(a, "##presetname", st.name[:], {.EnterReturnsTrue})
 		ui.name("preset name")
 		name := strings.trim_space(strings.truncate_to_byte(string(st.name[:]), 0))
-		if (im.Button("Save") || enter) && name != "" {
+		if (modal_button(a, "Save") || enter) && name != "" {
 			if _, r := pa.device_save_preset(&a.api, i64(a.selected), preset_folder(a), name); r == .Ok {
 				ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the preset %s", name))
 			} else {
@@ -130,7 +130,7 @@ draw_preset_save :: proc(a: ^App) {
 		}
 		ui.name("save")
 		im.SameLine()
-		if im.Button("Cancel") {
+		if modal_button(a, "Cancel") {
 			st.saving = false
 			im.CloseCurrentPopup()
 		}

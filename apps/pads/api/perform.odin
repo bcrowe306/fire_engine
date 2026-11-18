@@ -72,11 +72,66 @@ perform_select_pad :: proc(api: ^Api, pad: i64) -> Result {
 	return .Ok
 }
 
+// Every pad hit at full velocity (a controller's Accent: the window's and
+// MIDI's hits alike, recorded so too), or as played. Not saved.
+perform_set_accent :: proc(api: ^Api, on: bool) -> Result {
+	pm.set_accent(&api.core.m.engine, on)
+	return .Ok
+}
+
+// Whether every pad hit plays at full velocity.
+perform_accent :: proc(api: ^Api) -> (bool, Result) {
+	return pm.accent_on(&api.core.m.engine), .Ok
+}
+
 // Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with
 // the project (not an edit).
 perform_set_keys :: proc(api: ^Api, scale: Scale, root: i64, octave: i64, chord: Chord) -> Result {
 	if scale < min(Scale) || scale > max(Scale) || chord < min(Chord) || chord > max(Chord) do return fail(api, .Invalid_Argument, "no such scale or chord")
 	if root < 0 || root > 11 || octave < -3 || octave > 3 do return fail(api, .Invalid_Argument, "the root is 0..11, the octave -3..3")
 	api.core.keys = {scale = pm.Scale(scale), root = int(root), octave = int(octave), chord = pm.Chord(chord)}
+	return .Ok
+}
+
+// One of Keyboard mode's keys: what pressing it plays.
+Perform_Key :: struct {
+	pitch:    i64,  // semitones from the selected pad's own note (a chord's first; a slicer's: its slice)
+	root:     bool, // the scale's root (a slicer's: its first slice)
+	playable: bool, // within what a pad can be pitched to (else it plays nothing)
+}
+
+// Keyboard mode's key `key` (0..127: 0 the shown bank's first pad, 16 the
+// next bank's first...): the note it plays on the selected pad, whatever the
+// play mode now.
+perform_key :: proc(api: ^Api, key: i64) -> (Perform_Key, Result) {
+	if key < 0 || key >= PADS do return {}, fail(api, .Invalid_Argument, "a key is 0..127")
+	out: [4]int
+	ps := pc.keyboard_notes(api.core, int(key), &out)
+	return {pitch = i64(ps[0]) if len(ps) > 0 else 0, root = pc.keyboard_root(api.core, int(key)), playable = pc.keyboard_in_range(ps)}, .Ok
+}
+
+// Plays Keyboard mode's key `key` (as `perform_key` counts them) on the
+// selected pad, at `velocity` (0..1], or lets it go (`on` false), as
+// pressing that pad of Pads' grid in Keyboard mode does: a chord's notes
+// together. A key out of the pad's range plays nothing. What a key played
+// is what its release ends, whatever changed between.
+perform_play_key :: proc(api: ^Api, key: i64, on: bool, velocity: f32 = 1) -> Result {
+	if key < 0 || key >= PADS do return fail(api, .Invalid_Argument, "a key is 0..127")
+	if on && !(velocity > 0 && velocity <= 1) do return fail(api, .Invalid_Argument, "velocity is 0..1")
+	h := &api.keys_held[key]
+	if h.count > 0 { // (pressed again before its release: that one ends first)
+		for p in h.pitches[:h.count] do pm.hit(&api.core.m.engine, h.pad, false, 0, p, keyboard = true)
+		h^ = {}
+	}
+	if !on do return .Ok
+	out: [4]int
+	ps := pc.keyboard_notes(api.core, int(key), &out)
+	if !pc.keyboard_in_range(ps) do return .Ok
+	h.pad = api.core.selected
+	for p, i in ps {
+		h.pitches[i] = i8(clamp(p, -48, 48))
+		pm.hit(&api.core.m.engine, h.pad, true, velocity, h.pitches[i], keyboard = true)
+	}
+	h.count = len(ps)
 	return .Ok
 }

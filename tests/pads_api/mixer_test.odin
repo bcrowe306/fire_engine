@@ -93,6 +93,8 @@ groups_cue_and_the_mixer_topic :: proc(t: ^testing.T) {
 	testing.expect(t, h.transport >= 1, "the Mixer topic heard it")
 	// Cue sends.
 	testing.expect_value(t, pa.mixer_set_pad_cue(api, 0, -6, true), pa.Result.Ok)
+	pc_, _ := pa.mixer_pad_cue(api, 0)
+	testing.expect(t, abs(pc_.db + 6) < 0.01 && pc_.pre, "the pad's cue send read back")
 	testing.expect(t, r.core.m.project.pads[0].cue.pre && r.core.m.project.pads[0].cue.level > 0.49, "the pad's cue")
 	testing.expect_value(t, pa.mixer_set_bus_cue(api, g, -60, false), pa.Result.Ok)
 	bs, _ = pa.mixer_bus_state(api, g)

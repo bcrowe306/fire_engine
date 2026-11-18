@@ -84,7 +84,9 @@ def test_settings_show_it_and_its_virtual_controller_plays(pads):
     pads.click("Stop surface 0")
     pads.wait(2)
     assert pads.api("surface_count") == 0
-    pads.api("surface_set_detect", lib=0, k=0, on=True)
+    # (its library: not Pads' own built in, Push 2's)
+    lib = next(k for k in range(pads.api("surface_library_count")) if "Push 2" not in pads.api("surface_offered_name", lib=k, k=0))
+    pads.api("surface_set_detect", lib=lib, k=0, on=True)
     pads.wait(2)
     assert pads.api("surface_count") == 1
 

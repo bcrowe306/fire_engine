@@ -111,12 +111,16 @@ song_seconds :: proc(p: ^Project) -> f64 {
 	return song_seconds_between(p, 0, song_beats(p))
 }
 
-// Changes clip `i` to `c`, undoably.
-set_song_clip :: proc(m: ^Model, i: int, c: Song_Clip, name: string) {
+// Changes clip `i` to `c`, undoably; the clips it lies over make way
+// (`song_make_way`). Returns where each clip went.
+set_song_clip :: proc(m: ^Model, i: int, c: Song_Clip, name: string) -> (to: Clip_Map) {
 	s := m.project.song
+	for &x, k in to do x = k if k < s.count else -1
 	if i < 0 || i >= s.count do return
 	s.clips[i] = clip_fit(c)
+	to = song_make_way(&s, {i})
 	set_song(m, name, s)
+	return
 }
 
 // Changes clip `i` to `c` as part of a drag (one undo step; seal when it
@@ -213,7 +217,8 @@ lane_end :: proc(s: ^Song, lane: int) -> f64 {
 
 // Puts sequence `slot` into the song: on lane `lane` at song beat `at`
 // (-1: after the lane's last clip), `length` beats long (0: the sequence
-// `repeats` times). Returns its index, or -1 when the song is full.
+// `repeats` times); the clips it lies over make way (`song_make_way`).
+// Returns its index, or -1 when the song is full.
 song_add :: proc(m: ^Model, slot: int, repeats := 1, lane := 0, at := -1.0, length := 0.0, name := "Add to Song") -> int {
 	s := m.project.song
 	if s.count >= SONG_CLIPS || slot < 0 || slot >= SLOTS do return -1
@@ -221,11 +226,13 @@ song_add :: proc(m: ^Model, slot: int, repeats := 1, lane := 0, at := -1.0, leng
 	c := Song_Clip{lane = u8(ln), slot = u8(slot)}
 	c.at = at if at >= 0 else lane_end(&s, ln)
 	c.length = length if length > 0 else seq_beats(&m.project, m.project.sequences[slot]) * f64(clamp(repeats, 1, 64))
-	s.clips[s.count] = clip_fit(c)
+	k := s.count
+	s.clips[k] = clip_fit(c)
 	s.count += 1
 	s.lane_count = max(s.lane_count, ln + 1)
+	to := song_make_way(&s, {k})
 	set_song(m, name, s)
-	return s.count - 1
+	return to[k]
 }
 
 // Removes clip `i`.
@@ -248,7 +255,8 @@ song_remove_clips :: proc(m: ^Model, sel: Clip_Set, name := "Remove from Song") 
 }
 
 // Adds `clips` to the song (as many as fit), `dt` beats later and `dl`
-// lanes down: one undo step. Returns the clips they became.
+// lanes down (the clips they lie over making way): one undo step. Returns
+// the clips they became.
 song_insert_clips :: proc(m: ^Model, clips: []Song_Clip, dt := 0.0, dl := 0, name := "Paste Clips") -> (added: Clip_Set) {
 	s := m.project.song
 	for c in clips {
@@ -261,7 +269,9 @@ song_insert_clips :: proc(m: ^Model, clips: []Song_Clip, dt := 0.0, dl := 0, nam
 		added += {s.count}
 		s.count += 1
 	}
-	if added != {} do set_song(m, name, s)
+	if added == {} do return
+	added = clips_mapped(added, song_make_way(&s, added))
+	set_song(m, name, s)
 	return
 }
 
@@ -517,12 +527,24 @@ plan_end :: proc(pl: Plan) -> f64 {
 	return pl.at + end
 }
 
+// How long plan `pl`'s clips are (from its `at`): to its segments' end,
+// and at least to its loop's end. (A segment's span is reckoned on the
+// timeline, so it can fall a hair short of the loop it fills, as 4 beats
+// from beat 0.2213 can come out at 3.9999999999999996, and a loop ending
+// past its clip's end makes no clip at all: silence.)
+plan_length :: proc(pl: Plan) -> f64 {
+	pl := pl
+	length := 0.0
+	for s in pl.segs[:pl.count] do length = max(length, s.start + s.span)
+	if length > 0 && pl.loop_end > pl.loop_start do length = max(length, pl.loop_end)
+	return length
+}
+
 // The clip that plays plan `pl`: each segment's notes on the pads' keys,
 // swung, with their chance and pitch.
 plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 	pl := pl
-	length := 0.0
-	for s in pl.segs[:pl.count] do length = max(length, s.start + s.span)
+	length := plan_length(pl)
 	if length <= 0 do return nil
 	b: clip.Midi_Builder
 	clip.midi_builder_init(&b, tb.Beats(length))
@@ -557,8 +579,7 @@ plan_clip :: proc(p: ^Project, pl: Plan) -> ^clip.Midi_Clip {
 // and its fader), or nil for any with nothing to play.
 plan_automation :: proc(p: ^Project, pl: Plan, pad: int) -> (voice, eq, fader: ^clip.Automation_Clip) {
 	pl := pl
-	length := 0.0
-	for s in pl.segs[:pl.count] do length = max(length, s.start + s.span)
+	length := plan_length(pl)
 	if length <= 0 do return
 	vb, eb, fb: clip.Automation_Builder
 	clip.automation_builder_init(&vb, tb.Beats(length), context.temp_allocator)

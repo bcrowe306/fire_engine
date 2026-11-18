@@ -164,6 +164,10 @@ draw_toolbar :: proc(user: rawptr) {
 		if !a.auto_rec.armed do record_release(a)
 	}
 	im.SameLine(0, 2)
+	// Accent: every pad hit at full velocity (a controller's Accent too).
+	accent, _ := pa.perform_accent(&a.api)
+	if tool_toggle(ui.ICON_ARROW_BIG_UP, "Accent", "Accent: on (every pad hit plays and records at full velocity)" if accent else "Accent: off (hits play as hard as they're played)", accent, t.warn, big, icon_only = true) do pa.perform_set_accent(&a.api, !accent) // (its icon only: the toolbar's room)
+	im.SameLine(0, 2)
 	draw_sample_control(a, big)
 	im.SameLine(0, 2)
 	draw_play_mode(a)
@@ -456,11 +460,11 @@ draw_repeat_control :: proc(a: ^App, h: f32) {
 // lit in `color` (a tint and an outline) when on, pulsing with `blink`.
 // Named for tests by `tip`, its tooltip.
 @(private = "file")
-tool_toggle :: proc(icon, label: string, tip: cstring, on: bool, color: ui.Color, h: f32, blink := false, time: f64 = 0) -> bool {
+tool_toggle :: proc(icon, label: string, tip: cstring, on: bool, color: ui.Color, h: f32, blink := false, time: f64 = 0, icon_only := false) -> bool {
 	t := ui.theme()
 	ui.text_push(.Label)
 	defer ui.text_pop()
-	text := fmt.ctprintf("%s", icon) if tool_compact else fmt.ctprintf("%s  %s", icon, label)
+	text := fmt.ctprintf("%s", icon) if tool_compact || icon_only else fmt.ctprintf("%s  %s", icon, label)
 	ts := im.CalcTextSize(text)
 	w := ts.x + 2 * t.pad.x
 	pos := im.GetCursorScreenPos()

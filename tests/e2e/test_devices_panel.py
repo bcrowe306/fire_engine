@@ -79,18 +79,18 @@ def test_sequence_pads_launch_and_hold(app, fixtures):
     assert app.state()["slot"] == 2
 
 
-def test_the_synths_presets_are_folded_under_it(app):
-    # One Synth branch: a plain synth, its preset kinds folded under it
-    # (opened one at a time), not a branch of the panel each.
+def test_the_library_lists_each_kind_of_device(app):
+    # The Library's device categories: the instruments (the synth among
+    # them), the synth presets, the effects.
     app.cmd("panel devices")
     app.wait(3)
-    app.expect_item("devices Synth")
     app.expect_item("device Synth")
-    app.expect_item("devices Synth Bass")
     app.expect_no_item("device Wobble Bass")
-    app.screenshot("devices_folded")
-    app.click("devices Synth Bass")
+    app.click("category Synth Presets", window="browser")
     app.expect_item("device Wobble Bass")
+    app.screenshot("devices_presets")
+    app.click("category Effects", window="browser")
+    app.expect_item("device Reverb")
 
 
 def test_hold_plays_however_it_is_pressed(app, fixtures):

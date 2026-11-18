@@ -587,6 +587,62 @@ effect_set_key_filter :: proc(api: ^Api, s: Slot_Ref, hz: f32) -> Result
 
 Sets the key's high-pass (0..2000 Hz; 0: none) of the effect in slot `s`, undoably.
 
+### effect_key_high_cut
+
+```odin
+effect_key_high_cut :: proc(api: ^Api, s: Slot_Ref) -> (f32, Result)
+```
+
+The key's high cut (its low-pass, in Hz; 0: none) of the effect in slot `s`: a SuperFilter's (the others have none).
+
+### effect_set_key_high_cut
+
+```odin
+effect_set_key_high_cut :: proc(api: ^Api, s: Slot_Ref, hz: f32) -> Result
+```
+
+Sets the key's high cut (its low-pass: 200..20000 Hz; 0: none) of the SuperFilter in slot `s`, undoably. Invalid_Argument for another effect.
+
+### effect_preset_count
+
+```odin
+effect_preset_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+How many factory effect presets there are.
+
+### effect_preset_name
+
+```odin
+effect_preset_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Factory effect preset `index`'s name ("Wobble 1/8"). Not_Found past the last.
+
+### effect_preset_kind
+
+```odin
+effect_preset_kind :: proc(api: ^Api, index: i64) -> (i64, Result)
+```
+
+The effect kind factory effect preset `index` is for (as effect_kind_name counts them).
+
+### effect_load_preset
+
+```odin
+effect_load_preset :: proc(api: ^Api, s: Slot_Ref, index: i64) -> Result
+```
+
+Puts factory effect preset `index` (its effect, set as it says) in slot `s`, undoably; the slot's sidechain source stays. Not_Found for no such preset.
+
+### effect_super_filter_state
+
+```odin
+effect_super_filter_state :: proc(api: ^Api, s: Slot_Ref) -> (Super_Filter_State, Result)
+```
+
+What the SuperFilter in slot `s` is doing: its cutoffs as modulated, its LFO and envelope, its peaks. Not_Found if the slot holds no SuperFilter (or it isn't in the graph).
+
 ### effect_set_key_listen
 
 ```odin
@@ -594,6 +650,30 @@ effect_set_key_listen :: proc(api: ^Api, s: Slot_Ref, on: bool) -> Result
 ```
 
 Makes the track play the key of the effect in slot `s` (filtered) instead, to set it by, or not. Undoably.
+
+### effect_press
+
+```odin
+effect_press :: proc(api: ^Api, index: i64, on: bool, intensity: f32 = -1) -> Result
+```
+
+Performance effect `index`'s pad pressed (`on`, at `intensity`: 0..1, -1 its own) or let go, as the Perform tab's: held while held, or, with effects latching, on until the next press.
+
+### effect_pressure
+
+```odin
+effect_pressure :: proc(api: ^Api, index: i64, intensity: f32) -> Result
+```
+
+How hard effect `index` plays while its pad is held (0..1: its pressure), as the press moves. Nothing when it isn't held or latched.
+
+### effect_set_latch
+
+```odin
+effect_set_latch :: proc(api: ^Api, on: bool) -> Result
+```
+
+Effects latch (`on`: a press turns one on until the next), or play while held; turned off, the latched ones not held go off.
 
 ## Export: mixdowns, stems, resampling, bouncing, freezing, MIDI files
 
@@ -953,6 +1033,38 @@ launcher_new_sequence :: proc(api: ^Api, lane: i64) -> (i64, Result)
 
 A new, empty sequence at the end of lane `lane`: its slot. Busy when every slot is used.
 
+### launcher_view
+
+```odin
+launcher_view :: proc(api: ^Api) -> (Launcher_View, Result)
+```
+
+The Perform tab's live state now.
+
+### launcher_set_view
+
+```odin
+launcher_set_view :: proc(api: ^Api, lane: i64, row: i64) -> Result
+```
+
+Moves the launcher's window to lane `lane` and row `row` (kept over the lanes and rows there are).
+
+### launcher_set_keys
+
+```odin
+launcher_set_keys :: proc(api: ^Api, on: bool) -> Result
+```
+
+The computer's pad keys play the launcher window's sequence pads (`on`), or the pads.
+
+### launcher_press
+
+```odin
+launcher_press :: proc(api: ^Api, slot: i64, on: bool, alone: bool = false) -> Result
+```
+
+A sequence pad pressed (`on`) or let go, as the Perform tab's: launched in its lane (`alone`: the other lanes stop), or, in Hold, played while held (let go, its lane goes back to what it played).
+
 ## MIDI: ports, the MIDI map, pads' MIDI in and out
 
 ### midi_port_count
@@ -1165,6 +1277,14 @@ mixer_set_group_folded :: proc(api: ^Api, bus: i64, folded: bool) -> Result
 
 Folds group bus `bus`'s pads away in the Mixer, or shows them (a view: saved, not undone).
 
+### mixer_pad_cue
+
+```odin
+mixer_pad_cue :: proc(api: ^Api, pad: i64) -> (Cue_Send, Result)
+```
+
+Pad `pad`'s send to the cue mix.
+
 ### mixer_set_pad_cue
 
 ```odin
@@ -1311,6 +1431,22 @@ pad_set_pitch :: proc(api: ^Api, pad: i64, semitones: f32) -> Result
 
 Pad `pad`'s transpose (-24..24 semitones), undoably.
 
+### pad_region
+
+```odin
+pad_region :: proc(api: ^Api, pad: i64) -> (Pad_Region, Result)
+```
+
+Pad `pad`'s sample region now.
+
+### pad_set_region
+
+```odin
+pad_set_region :: proc(api: ^Api, pad: i64, start: i64, end: i64) -> Result
+```
+
+Sets pad `pad`'s sample region (frames, start before end, within its sample), undoably. Unsupported without a sample.
+
 ### pad_set_mute
 
 ```odin
@@ -1382,6 +1518,30 @@ pad_copy_to :: proc(api: ^Api, from: i64, to: i64) -> Result
 ```
 
 Copies pad `from` onto pad `to` (all of it: its sound and settings), undoably.
+
+### pad_struck
+
+```odin
+pad_struck :: proc(api: ^Api, pad: i64) -> (i64, Result)
+```
+
+How many times pad `pad` has been struck since the engine started (any hit: a controller's, the sequencer's, the API's): a controller lights a pad when it changes, as the window's pads flash.
+
+### pad_slices
+
+```odin
+pad_slices :: proc(api: ^Api, pad: i64) -> (Pad_Slices, Result)
+```
+
+Pad `pad`'s slices (not a slicer: none).
+
+### pad_select_slice
+
+```odin
+pad_select_slice :: proc(api: ^Api, slice: i64) -> Result
+```
+
+Selects slice `slice` of the selected pad (a slicer): its page shows its settings.
 
 ### pad_play
 
@@ -1515,6 +1675,22 @@ perform_select_pad :: proc(api: ^Api, pad: i64) -> Result
 
 Selects pad `pad` (in Pads mode, its bank shown).
 
+### perform_set_accent
+
+```odin
+perform_set_accent :: proc(api: ^Api, on: bool) -> Result
+```
+
+Every pad hit at full velocity (a controller's Accent: the window's and MIDI's hits alike, recorded so too), or as played. Not saved.
+
+### perform_accent
+
+```odin
+perform_accent :: proc(api: ^Api) -> (bool, Result)
+```
+
+Whether every pad hit plays at full velocity.
+
 ### perform_set_keys
 
 ```odin
@@ -1522,6 +1698,22 @@ perform_set_keys :: proc(api: ^Api, scale: Scale, root: i64, octave: i64, chord:
 ```
 
 Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with the project (not an edit).
+
+### perform_key
+
+```odin
+perform_key :: proc(api: ^Api, key: i64) -> (Perform_Key, Result)
+```
+
+Keyboard mode's key `key` (0..127: 0 the shown bank's first pad, 16 the next bank's first...): the note it plays on the selected pad, whatever the play mode now.
+
+### perform_play_key
+
+```odin
+perform_play_key :: proc(api: ^Api, key: i64, on: bool, velocity: f32 = 1) -> Result
+```
+
+Plays Keyboard mode's key `key` (as `perform_key` counts them) on the selected pad, at `velocity` (0..1], or lets it go (`on` false), as pressing that pad of Pads' grid in Keyboard mode does: a chord's notes together. A key out of the pad's range plays nothing. What a key played is what its release ends, whatever changed between.
 
 ## Project: new, open, save, templates, clean up
 
@@ -1580,6 +1772,14 @@ project_save :: proc(api: ^Api) -> Result
 ```
 
 Saves the project where it is (an untitled one stays untitled, in the unsaved folder: `project_save_as` gives it a place).
+
+### project_save_quick
+
+```odin
+project_save_quick :: proc(api: ^Api) -> (string, Result)
+```
+
+Saves the project where it is; an untitled one into the projects folder (the "project.folder" setting, else Documents) as the first free "Project N" (a controller's quick save). Its folder.
 
 ### project_save_as
 
@@ -1897,6 +2097,38 @@ sequence_remove_point :: proc(api: ^Api, slot: i64, index: i64) -> Result
 
 Removes automation point `index` of sequence `slot`, undoably.
 
+### sequence_quantize_setting
+
+```odin
+sequence_quantize_setting :: proc(api: ^Api) -> (Quantize_Setting, Result)
+```
+
+What Quantize does now.
+
+### sequence_set_quantize_setting
+
+```odin
+sequence_set_quantize_setting :: proc(api: ^Api, grid: Grid, strength: f32) -> Result
+```
+
+Sets what Quantize does: its grid and strength (0..1), undoably.
+
+### sequence_quantize_now
+
+```odin
+sequence_quantize_now :: proc(api: ^Api, slot: i64) -> Result
+```
+
+Quantizes sequence `slot` as the Quantize setting says (note repeat on: to its rate), undoably.
+
+### sequence_input_quantize
+
+```odin
+sequence_input_quantize :: proc(api: ^Api) -> (Input_Quantize, Result)
+```
+
+Input quantize now (what `sequence_set_input_quantize` set).
+
 ### sequence_set_input_quantize
 
 ```odin
@@ -2027,7 +2259,7 @@ Clip `index`'s label ("Verse"; "" none). Temporary.
 song_add :: proc(api: ^Api, slot: i64, lane: i64 = 0, at: f64 = -1, length: f64 = 0, repeats: i64 = 1) -> (i64, Result)
 ```
 
-Adds sequence `slot` to the song on lane `lane`: at beat `at` (-1: after the lane's last clip), `length` beats long (0: the sequence `repeats` times). Its index. Undoably; Busy when the song is full.
+Adds sequence `slot` to the song on lane `lane`: at beat `at` (-1: after the lane's last clip), `length` beats long (0: the sequence `repeats` times); the clips it lies over make way (trimmed, cut in two or taken out: a lane plays one clip at a time). Its index. Undoably; Busy when the song is full.
 
 ### song_set_clip
 
@@ -2035,7 +2267,7 @@ Adds sequence `slot` to the song on lane `lane`: at beat `at` (-1: after the lan
 song_set_clip :: proc(api: ^Api, index: i64, c: Song_Clip) -> Result
 ```
 
-Sets clip `index` (its sequence, place, length, part, transpose, mute), undoably (a gesture's moves merge).
+Sets clip `index` (its sequence, place, length, part, transpose, mute), undoably (a gesture's moves merge); the clips it then lies over make way (as `song_add`'s), so the song's clips may be numbered anew.
 
 ### song_remove_clips
 
@@ -2051,7 +2283,7 @@ Removes the clips `indices`: one undo step.
 song_duplicate_clips :: proc(api: ^Api, indices: []i64) -> (i64, Result)
 ```
 
-Copies the clips `indices` right after themselves (the selection's span later): one undo step. How many were copied (as many as fit): they are the song's last clips now.
+Copies the clips `indices` right after themselves (the selection's span later; the clips they lie over make way): one undo step. How many were copied (as many as fit): they are the song's last clips now (but for a clip they cut in two: its tail is).
 
 ### song_clear
 
@@ -2075,7 +2307,7 @@ Merges sequence `from`'s notes and automation into sequence `to` (as long as the
 song_move_clips :: proc(api: ^Api, indices: []i64, beats: f64, lanes: i64) -> Result
 ```
 
-Moves the clips `indices` by `beats` and `lanes`: one undo step (the earliest stays at 0 or later, the top lane at 0 or lower).
+Moves the clips `indices` by `beats` and `lanes`: one undo step (the earliest stays at 0 or later, the top lane at 0 or lower; the clips they then lie over make way).
 
 ### song_lane
 
@@ -2260,6 +2492,110 @@ song_delete_arrangement :: proc(api: ^Api, index: i64) -> Result
 ```
 
 Deletes arrangement `index`, undoably. Busy for the last one left.
+
+### song_edit_state
+
+```odin
+song_edit_state :: proc(api: ^Api) -> (Song_Edit, Result)
+```
+
+The song's editing now (its cursor, selected lane and clip...).
+
+### song_set_cursor
+
+```odin
+song_set_cursor :: proc(api: ^Api, beat: f64) -> Result
+```
+
+Puts the song's cursor at beat `beat` (0 or more).
+
+### song_select_lane
+
+```odin
+song_select_lane :: proc(api: ^Api, lane: i64) -> Result
+```
+
+Selects song lane `lane` (0..15); the eight lanes shown follow it.
+
+### song_show_lanes
+
+```odin
+song_show_lanes :: proc(api: ^Api, first: i64) -> Result
+```
+
+Shows the eight song lanes from `first` (0 or 8) on a controller.
+
+### song_select_clip
+
+```odin
+song_select_clip :: proc(api: ^Api, index: i64) -> Result
+```
+
+Selects song clip `index` (-1: none); its lane is selected too.
+
+### song_clip_at
+
+```odin
+song_clip_at :: proc(api: ^Api, lane: i64, beat: f64) -> (i64, Result)
+```
+
+The clip on song lane `lane` playing at beat `beat` (the latest to start there, -1: none).
+
+### song_set_add_length
+
+```odin
+song_set_add_length :: proc(api: ^Api, beats: f64) -> Result
+```
+
+Sets how long a clip added at the cursor plays: `beats` (0: its sequence's length).
+
+### song_add_at_cursor
+
+```odin
+song_add_at_cursor :: proc(api: ^Api, lane: i64, slot: i64 = -1) -> (i64, Result)
+```
+
+Inserts sequence `slot` (-1: the current one) at the cursor on song lane `lane` (a cursor inside a clip there: after that clip), as long as the add length says: the lane's clips from there on move later to make room (a ripple edit). It is selected, its lane too, and the cursor moves to its end (the next inserted follows it). Its index. Undoably; Busy when the song is full.
+
+### song_ripple_remove
+
+```odin
+song_ripple_remove :: proc(api: ^Api, indices: []i64) -> Result
+```
+
+Removes the clips `indices`, closing the gaps they leave: their lanes' later clips move earlier (a ripple edit), the cursor with them on the selected lane (back to where a clip it was in began). One undo step; none is selected after.
+
+### song_ripple_duplicate
+
+```odin
+song_ripple_duplicate :: proc(api: ^Api, index: i64) -> (i64, Result)
+```
+
+Copies clip `index` right after itself on its lane, the lane's later clips moving later to make room (a ripple edit); the copy is selected and the cursor goes to its end. Its index. Undoably; Busy when the song is full.
+
+### song_ripple_resize
+
+```odin
+song_ripple_resize :: proc(api: ^Api, index: i64, length: f64) -> Result
+```
+
+Makes clip `index` `length` beats long, its lane's later clips moving with its end (a ripple edit: Double Loop in the song). Undoably.
+
+### song_remove_sequence
+
+```odin
+song_remove_sequence :: proc(api: ^Api, slot: i64) -> (i64, Result)
+```
+
+Removes every clip of sequence `slot` from the song, closing the gaps (as `song_ripple_remove`): one undo step. How many were removed.
+
+### song_set_clip_label
+
+```odin
+song_set_clip_label :: proc(api: ^Api, index: i64, name: string) -> Result
+```
+
+Names clip `index`'s section ("Verse"; up to 15 bytes, "": none), undoably.
 
 ## Changes
 
@@ -2717,6 +3053,22 @@ Sends MIDI clock to the output port, or stops (the setting "midi.clock_out").
 
 ## The window: views, the theme, messages, the pads selected
 
+### ui_dialog
+
+```odin
+ui_dialog :: proc(api: ^Api) -> (Dialog_State, Result)
+```
+
+The dialog the window shows now.
+
+### ui_dialog_title
+
+```odin
+ui_dialog_title :: proc(api: ^Api) -> (string, Result)
+```
+
+The dialog's title ("" when none shows). Temporary.
+
 ### ui_state
 
 ```odin
@@ -2731,7 +3083,87 @@ The window now.
 ui_show :: proc(api: ^Api, name: string) -> Result
 ```
 
-Shows view, panel or device page `name`: a view ("sequence", "song", "mixer", "perform"), the pads ("pads"), the Library ("browser", "devices"), or the selected pad's page ("sample", "global", "env", "filter", "pitch", "lfo", "effect", "eq", "midi"). Not_Found for another name.
+Shows view, panel or device page `name`: a view ("sequence", "song", "mixer", "perform"), the pads ("pads"), the Library ("browser", "devices"), or the selected pad's page ("sample", "global", "env", "filter", "pitch", "lfo", "effect", "eq", "midi"; "device": its chain as it was), performance effect N ("fx 1".."fx 16") in the device panel, a Library category ("library Effects", "library This Project"), the Library for the device shown ("browse device"), the sequencer's Automation tab ("automation"), or a dialog: Sequence Length ("sequence length"), Quantize's settings ("quantize"), Convert ("convert"), Keyboard mode's scale ("scale"), Settings ("settings"), Recording ("recording": the Sample control), Transport ("transport": loop, count-in, the click, the time signature), Copy Bars ("copy bars"), the current sequence's settings ("sequence settings"), launcher lane N's ("lane N", from 1). Not_Found for another name.
+
+### ui_library_load
+
+```odin
+ui_library_load :: proc(api: ^Api, pad: i64) -> Result
+```
+
+The Library's selected item onto pad `pad`, as its last load did (a sample as a sampler, a slicer...; else the item's first action): a controller's Shift + pad. Not_Found when nothing is selected or it can't go onto a pad.
+
+### ui_start_page
+
+```odin
+ui_start_page :: proc(api: ^Api) -> (bool, Result)
+```
+
+Whether the project manager shows: the window's page of recent projects, templates, New and Open (when Pads starts with no project to open, and after New Project). A controller shows its browser on the projects meanwhile.
+
+### ui_set_start_page
+
+```odin
+ui_set_start_page :: proc(api: ^Api, open: bool) -> Result
+```
+
+Shows the project manager (`open`), or closes it (the project open now stays). Opening or making a project closes it too.
+
+### ui_select_notes
+
+```odin
+ui_select_notes :: proc(api: ^Api, indices: []i64) -> Result
+```
+
+Selects the current sequence's notes `indices` in the sequencer (its knobs, the window's and a controller's, edit them); none: nothing selected.
+
+### ui_sequencer_grid
+
+```odin
+ui_sequencer_grid :: proc(api: ^Api) -> (Grid, Result)
+```
+
+The sequencer's grid: where notes snap, a controller's step size.
+
+### ui_set_sequencer_grid
+
+```odin
+ui_set_sequencer_grid :: proc(api: ^Api, grid: Grid) -> Result
+```
+
+Sets the sequencer's grid.
+
+### ui_sample_armed
+
+```odin
+ui_sample_armed :: proc(api: ^Api) -> (bool, Result)
+```
+
+Whether the Sample control is armed (the window's toolbar, the Recording dialog): the next pad pressed records into it.
+
+### ui_quantize
+
+```odin
+ui_quantize :: proc(api: ^Api) -> Result
+```
+
+Quantize, as the window's button does: the sequencer's selected notes, else the current sequence, as the Quantize setting says (`sequence_quantize_setting`); the window says which.
+
+### ui_automation_armed
+
+```odin
+ui_automation_armed :: proc(api: ^Api) -> (bool, Result)
+```
+
+Whether automation recording is armed (the window's Auto): knob and fader moves while recording are written into the sequence.
+
+### ui_set_automation_armed
+
+```odin
+ui_set_automation_armed :: proc(api: ^Api, on: bool) -> Result
+```
+
+Arms automation recording (`on`), or disarms it.
 
 ### ui_set_dark
 
@@ -2782,6 +3214,38 @@ view_frame :: proc(api: ^Api, kind: View_Kind, page: i64, width: i64, height: i6
 ```
 
 The newest frame of view `kind` (`page` of it) at `width` x `height` pixels, copied into `rgba` (`size` bytes: RGBA, rows top to bottom, width x height x 4), asking for it to be drawn from now on. Its frame number (0: none drawn yet, `rgba` untouched; a number not newer than the last: unchanged). Each frame Pads draws the views asked for in the last two seconds.
+
+### view_turn
+
+```odin
+view_turn :: proc(api: ^Api, kind: View_Kind, page: i64, knob: i64, amount: f64) -> Result
+```
+
+Turns knob `knob` (0..7) of view `kind` (`page` of it, any size asked for) by `amount`, a fraction of its travel (+ or -): as the knob turned in Pads, at its next drawing. Not_Found: no such view asked for.
+
+### view_touch
+
+```odin
+view_touch :: proc(api: ^Api, kind: View_Kind, page: i64, knob: i64, on: bool) -> Result
+```
+
+Knob `knob` of a view touched (`on`) or let go: lit while touched; let go, its edit ends (one undo step a touch).
+
+### view_press
+
+```odin
+view_press :: proc(api: ^Api, kind: View_Kind, page: i64, button: i64, on: bool) -> Result
+```
+
+Button `button` (a View_Button) of a view pressed (`on`) or let go: as its button clicked in Pads (some act while held: recording).
+
+### view_state
+
+```odin
+view_state :: proc(api: ^Api, kind: View_Kind, page: i64) -> (View_State, Result)
+```
+
+What view `kind` (`page` of it) offers a controller, as it last drew.
 
 ## Types
 
@@ -2987,7 +3451,7 @@ A message's kind.
 
 A view Pads draws for a display.
 
-`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`
+`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`, `Dialog`, `Song`, `Settings`
 
 ### Part_State
 
@@ -3083,6 +3547,20 @@ What the effect in slot `s` listens to (a compressor's, a gate's), and how.
 | `hpf_hz` | `f32` | the key's high-pass (0: none) |
 | `listen` | `bool` | the track plays the key instead (to set it by) |
 
+### Super_Filter_State
+
+What a SuperFilter is doing as it plays (as of the last block it ran).
+
+| Field | Type | |
+|---|---|---|
+| `cutoff_l` | `f32` | the modulated cutoff (Hz), left |
+| `cutoff_r` | `f32` | and right |
+| `lfo_l` | `f32` | the LFO, left (-1..1) |
+| `lfo_r` | `f32` | and right |
+| `env` | `f32` | the envelope (0..1) |
+| `in_peak` | `f32` | the peak in (linear) |
+| `out_peak` | `f32` | and out |
+
 ### Export_Settings
 
 How to export.
@@ -3150,6 +3628,18 @@ Where a sequence is in the launcher.
 |---|---|---|
 | `lane` | `i64` |  |
 | `row` | `i64` |  |
+
+### Launcher_View
+
+The Perform tab's live state, the window's and a controller's alike.
+
+| Field | Type | |
+|---|---|---|
+| `lane` | `i64` | the launcher's window (4 lanes by 4 rows): its first lane |
+| `row` | `i64` | ... and its first row |
+| `keys` | `bool` | the computer's pad keys play the window's sequence pads |
+| `fx_latch` | `bool` | a press turns an effect on until the next press (Hold effects) |
+| `fx_last` | `i64` | the performance effect pressed last |
 
 ### Midi_Port
 
@@ -3229,6 +3719,15 @@ Main's loudness (EBU R128) and its stereo.
 | `true_peak_db` | `f32` | dBTP |
 | `correlation` | `f32` | -1..1 (1: mono) |
 
+### Cue_Send
+
+A send to the cue mix: its level (-60: off), before the fader or after.
+
+| Field | Type | |
+|---|---|---|
+| `db` | `f32` |  |
+| `pre` | `bool` |  |
+
 ### Pad_State
 
 Pad `pad` now (its name: `pad_name`).
@@ -3249,6 +3748,27 @@ Pad `pad` now (its name: `pad_name`).
 | `armed` | `bool` | to record (its input, or its MIDI) |
 | `monitor` | `Monitor` |  |
 | `frozen` | `bool` | it plays its rendering |
+
+### Pad_Region
+
+Pad `pad`'s sample region: where it starts and ends, in frames of its sample (`frames` long at `rate` frames a second; all 0 without a sample).
+
+| Field | Type | |
+|---|---|---|
+| `start` | `i64` |  |
+| `end` | `i64` |  |
+| `frames` | `i64` |  |
+| `rate` | `f64` |  |
+
+### Pad_Slices
+
+A slicer's slices now: how many, the selected one (whose settings its page shows; Keyboard mode's keys play them, from slice 1), and the one sounding (under its playhead; -1: none).
+
+| Field | Type | |
+|---|---|---|
+| `count` | `i64` |  |
+| `selected` | `i64` |  |
+| `playing` | `i64` |  |
 
 ### Pad_Input
 
@@ -3300,6 +3820,16 @@ How the pads play now.
 | `root` | `i64` | 0..11, semitones above C |
 | `octave` | `i64` | -3..3 |
 | `chord` | `Chord` |  |
+
+### Perform_Key
+
+One of Keyboard mode's keys: what pressing it plays.
+
+| Field | Type | |
+|---|---|---|
+| `pitch` | `i64` | semitones from the selected pad's own note (a chord's first; a slicer's: its slice) |
+| `root` | `bool` | the scale's root (a slicer's: its first slice) |
+| `playable` | `bool` | within what a pad can be pitched to (else it plays nothing) |
 
 ### Project_State
 
@@ -3419,6 +3949,26 @@ A pad's note repeat and arpeggiator (its MIDI effects).
 | `arp_gate` | `f32` | 0.05..1 |
 | `arp_latch` | `bool` | it goes on after the keys are let go |
 
+### Input_Quantize
+
+Input quantize now: on, its grid, strength and swing (0..1).
+
+| Field | Type | |
+|---|---|---|
+| `on` | `bool` |  |
+| `grid` | `Grid` |  |
+| `strength` | `f32` |  |
+| `swing` | `f32` |  |
+
+### Quantize_Setting
+
+What Quantize does (the window's button, a controller's): its grid and strength (0..1), saved with the project.
+
+| Field | Type | |
+|---|---|---|
+| `grid` | `Grid` |  |
+| `strength` | `f32` |  |
+
 ### Setting_Info
 
 What setting `name` is.
@@ -3498,6 +4048,18 @@ A time signature from `beat` on.
 | `num` | `i64` |  |
 | `den` | `i64` |  |
 
+### Song_Edit
+
+Editing the song now, the window's Song tab and a controller's alike: the cursor (where `song_add_at_cursor` puts a clip), the selected lane and clip, the eight lanes a controller shows (`first_lane` on), and how long a clip added at the cursor plays.
+
+| Field | Type | |
+|---|---|---|
+| `cursor` | `f64` | song beats |
+| `lane` | `i64` |  |
+| `first_lane` | `i64` | 0 or 8 |
+| `clip` | `i64` | the selected clip (-1: none) |
+| `length` | `f64` | beats (0: its sequence's length) |
+
 ### Transport_State
 
 The transport now. The playhead (`beat`, `timeline_beat`, the position) moves without a change being reported: poll it.
@@ -3535,6 +4097,27 @@ The window now (Unsupported without one: a headless Pads).
 | `dark` | `bool` | the dark theme |
 | `messages` | `i64` | messages showing (ui_message) |
 | `selected` | `i64` | pads selected together (ui_selected_pad) |
+
+### Dialog_State
+
+The dialog the window shows now (a controller shows it too: View_Kind .Dialog). `choices`: its buttons a controller can press (0: it can't be answered there; its title says what it is).
+
+| Field | Type | |
+|---|---|---|
+| `open` | `bool` |  |
+| `choices` | `i64` |  |
+
+### View_State
+
+What a view offers a controller now, as it last drew: its knobs (one an encoder, 0..knobs-1), its buttons (bit k: View_Button k is there; `lit` bit k: it is on), and its knobs' pages (`page` of `pages`).
+
+| Field | Type | |
+|---|---|---|
+| `knobs` | `i64` |  |
+| `buttons` | `i64` |  |
+| `lit` | `i64` |  |
+| `pages` | `i64` |  |
+| `page` | `i64` |  |
 
 ### View_Request
 

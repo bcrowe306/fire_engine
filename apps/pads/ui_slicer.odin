@@ -17,15 +17,10 @@ import "fire:stretch"
 // (and slicing again), the waveform with a marker a slice to drag (double-
 // click adds one, right-click takes one away) and a level line a slice,
 // and the selected slice's own settings.
-Slicer_State :: struct {
-	selected:  int, // the slice whose settings show
-}
-
 // Pad `i` as a slicer (empty: a place to drop a sample, or record).
 draw_slicer :: proc(a: ^App, i: int) {
 	m := &a.m
 	pad := m.project.pads[i]
-	st := &a.slicer_ui
 	t := ui.theme()
 	s := pm.pad_sample(m, i)
 	if s == nil {
@@ -33,7 +28,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 		return
 	}
 	sl := pad.slicer
-	if st.selected >= sl.count do st.selected = max(sl.count - 1, 0)
+	if a.slice >= sl.count do a.slice = max(sl.count - 1, 0)
 	w := &a.wave
 	wave_peaks(a, i)
 
@@ -106,7 +101,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 	}
 	ui.name("slices to sequence")
 	ui.flow(fh, 2)
-	if ui.icon_button(ui.ICON_GRID_2X2_PLUS, "The selected slice onto the next empty pad") do slice_out(a, i, st.selected)
+	if ui.icon_button(ui.ICON_GRID_2X2_PLUS, "The selected slice onto the next empty pad") do slice_out(a, i, a.slice)
 	ui.name("slice to pad")
 	ui.flow(fh, 2)
 	if ui.icon_button(ui.ICON_AUDIO_WAVEFORM, "Make it a sampler again (its slices kept)") do pa.pad_set_kind(&a.api, i64(i), .Sampler)
@@ -114,7 +109,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 	ui.flow(fh, gap)
 	draw_tools_record(a, i, same_line = false)
 	sl = m.project.pads[i].slicer
-	if st.selected >= sl.count do st.selected = max(sl.count - 1, 0)
+	if a.slice >= sl.count do a.slice = max(sl.count - 1, 0)
 	im.Spacing()
 
 	// The waveform: the region's S and E, a marker a slice, a level a slice.
@@ -124,7 +119,7 @@ draw_slicer :: proc(a: ^App, i: int) {
 	gains := make([dynamic]ui.Wave_Gain, context.temp_allocator)
 	for k in 0 ..< sl.count {
 		x := sl.slices[k]
-		c := t.accent if k == st.selected else ui.mix(t.text, t.text_dim, 0.5)
+		c := t.accent if k == a.slice else ui.mix(t.text, t.text_dim, 0.5)
 		append(&markers, ui.Marker{frame = x.start, color = c, label = fmt.tprintf("%d", k + 1), drag = k > 0})
 		append(&gains, ui.Wave_Gain{from = x.start, to = pm.slice_end(m, i, k), db = x.gain_db})
 	}
@@ -147,29 +142,29 @@ draw_slicer :: proc(a: ^App, i: int) {
 			pm.set_pad(m, i, .Region, "Move Marker", p)
 		case:
 			pm.move_slice(m, i, e.marker - 2, e.marker_to)
-			st.selected = e.marker - 2
+			a.slice = e.marker - 2
 		}
 	}
 	if e.released do app.seal(&m.history)
 	if e.add_at >= 0 && pm.add_slice(m, i, e.add_at) {
-		for k in 0 ..< m.project.pads[i].slicer.count do if m.project.pads[i].slicer.slices[k].start == e.add_at do st.selected = k
+		for k in 0 ..< m.project.pads[i].slicer.count do if m.project.pads[i].slicer.slices[k].start == e.add_at do a.slice = k
 	}
 	if e.remove >= 3 do pm.remove_slice(m, i, e.remove - 2) // (slice 1, S and E stay)
 	if e.gain >= 0 {
 		x := sl.slices[e.gain]
 		x.gain_db = e.gain_db
 		pm.set_slice(m, i, e.gain, x, "Slice Level")
-		st.selected = e.gain
+		a.slice = e.gain
 	}
 	if e.gain_released do app.seal(&m.history)
 	// A click: that slice selected, and heard while held.
 	if e.clicked {
-		for k in 0 ..< sl.count do if e.click_frame >= sl.slices[k].start && e.click_frame < pm.slice_end(m, i, k) do st.selected = k
+		for k in 0 ..< sl.count do if e.click_frame >= sl.slices[k].start && e.click_frame < pm.slice_end(m, i, k) do a.slice = k
 	}
 
 	// The selected slice's own settings.
 	if sl.count > 0 {
-		k := st.selected
+		k := a.slice
 		x := sl.slices[k]
 		im.AlignTextToFramePadding()
 		im.Text("%s", fmt.ctprintf("Slice %d", k + 1))

@@ -38,7 +38,7 @@ OUT_DOC = os.path.join(ROOT, "docs", "reference", "pads-api.md")
 ORDER = os.path.join(PKG, "table_v1.txt")
 
 # The host's procs: not in the table (the app calls them).
-HOST_ONLY = {"api_init", "api_destroy", "api_frame", "remote_connect", "remote_disconnect", "surfaces_start", "surfaces_stop", "surface_play", "surface_virtual", "views_wanted", "views_put"}
+HOST_ONLY = {"api_init", "api_destroy", "api_frame", "remote_connect", "remote_disconnect", "surfaces_start", "surfaces_stop", "surface_play", "surface_virtual", "views_wanted", "views_put", "views_input", "View_Input"}
 # Not over the socket: they take a callback or a pointer of this process.
 NOT_REMOTE_TYPES = {"Change_Proc", "Post_Proc", "rawptr"}
 
@@ -188,7 +188,7 @@ def parse():
             m = re.match(r"^(\w+) :: struct \{", line)
             if m:
                 doc, private = doc_above(lines, i)
-                if private or m.group(1) in ("Api",) or m.group(1).startswith("Table_"):
+                if private or m.group(1) in ("Api",) or m.group(1) in HOST_ONLY or m.group(1).startswith("Table_"):
                     continue
                 fields = []
                 k = i + 1

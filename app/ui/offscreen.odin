@@ -105,7 +105,7 @@ offscreen_collect :: proc(o: ^Offscreen) {
 // filling it), when the last one has finished on the GPU; its pixels are
 // `offscreen_pixels`' by the next call. Call between the window's frames.
 // Whether a frame was started.
-offscreen_draw :: proc(o: ^Offscreen, w, h: int, draw: proc(user: rawptr), user: rawptr) -> bool {
+offscreen_draw :: proc(o: ^Offscreen, w, h: int, draw: proc(user: rawptr), user: rawptr, bg := Color{}) -> bool {
 	if o.ctx == nil || w <= 0 || h <= 0 do return false
 	offscreen_collect(o)
 	if o.fence != nil do return false // (the GPU is still on the last one)
@@ -136,9 +136,10 @@ offscreen_draw :: proc(o: ^Offscreen, w, h: int, draw: proc(user: rawptr), user:
 	im.PushStyleVarVec2(.WindowPadding, {0, 0})
 	im.PushStyleVar(.WindowBorderSize, 0)
 	im.PushStyleVar(.WindowRounding, 0)
-	if im.Begin("##offscreen", nil, {.NoTitleBar, .NoResize, .NoScrollbar, .NoCollapse, .NoMove, .NoSavedSettings, .NoMouseInputs, .NoNavInputs, .NoNavFocus, .NoScrollWithMouse, .NoBringToFrontOnFocus, .NoDocking}) {
-		draw(user)
-	}
+	if bg.a > 0 do im.PushStyleColorVec4(.WindowBg, transmute(im.Vec4)bg) // (taken at Begin)
+	began := im.Begin("##offscreen", nil, {.NoTitleBar, .NoResize, .NoScrollbar, .NoCollapse, .NoMove, .NoSavedSettings, .NoMouseInputs, .NoNavInputs, .NoNavFocus, .NoScrollWithMouse, .NoBringToFrontOnFocus, .NoDocking})
+	if bg.a > 0 do im.PopStyleColor()
+	if began do draw(user)
 	im.End()
 	im.PopStyleVar(3)
 	im.Render()

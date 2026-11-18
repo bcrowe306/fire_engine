@@ -682,7 +682,7 @@ draw_settings :: proc(a: ^App) {
 	im.SetNextWindowSize({min(1040, vp.Size.x - 80), min(max(680, vp.Size.y * 0.85), vp.Size.y - 40)}, .Appearing) // (tall: an interface's channel lists)
 	im.SetNextWindowPos({vp.Pos.x + vp.Size.x / 2, vp.Pos.y + vp.Size.y / 2}, .Appearing, {0.5, 0.5})
 	if !im.IsPopupOpen("Settings###settings") do im.OpenPopup("Settings###settings")
-	if im.BeginPopupModal("Settings###settings", &s.open, {.NoCollapse}) {
+	if modal_begin(a, "Settings###settings", &s.open, {.NoCollapse}) {
 		if im.IsWindowAppearing() do refresh_devices(a)
 		changed := false
 		was_recording := s.recording != "" // (Escape stops that first)
@@ -741,16 +741,16 @@ draw_settings :: proc(a: ^App) {
 draw_keep :: proc(a: ^App) {
 	s := &a.settings
 	im.OpenPopup("Keep these settings?")
-	if im.BeginPopupModal("Keep these settings?", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Keep these settings?", nil, {.AlwaysAutoResize}) {
 		left := max(int(s.keep.until - a.transport.clock + 0.99), 0)
-		im.Text("%s", fmt.ctprintf("The device is open with the new settings.\nThey go back in %d s unless you keep them.", left))
+		modal_text(a, fmt.tprintf("The device is open with the new settings.\nThey go back in %d s unless you keep them.", left))
 		im.Spacing()
-		if im.Button("Keep") {
+		if modal_button(a, "Keep") {
 			audio_keep(a)
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Go back") {
+		if modal_button(a, "Go back") {
 			audio_revert(a)
 			im.CloseCurrentPopup()
 		}

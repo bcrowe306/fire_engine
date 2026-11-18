@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 38 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window; 38: tracks' own loops
+PROJECT_VERSION :: 40 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window; 38: tracks' own loops; 39: Quantize's grid and strength; 40: keys' high cuts (SuperFilter)
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -662,6 +662,24 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 		fc.write_u8(w, u8(pad))
 		fc.write_f32(w, x)
 	}
+	// v39: Quantize's grid and strength.
+	fc.write_u8(w, u8(p.transport.quant.grid))
+	fc.write_f32(w, p.transport.quant.strength)
+	// v40: the slots whose key has a high cut: where (0 a pad's insert, 1 a bus's slot, 2 main's), which, the cut.
+	nk := 0
+	for pad in p.pads do for sl in pad.inserts do if sl.key_lpf > 0 do nk += 1
+	for b in p.buses do for sl in b.slots do if sl.key_lpf > 0 do nk += 1
+	for sl in p.main.slots do if sl.key_lpf > 0 do nk += 1
+	fc.write_int(w, nk)
+	cut :: proc(w: ^fc.State_Writer, where_: u8, index, slot: int, hz: f32) {
+		fc.write_u8(w, where_)
+		fc.write_int(w, index)
+		fc.write_u8(w, u8(slot))
+		fc.write_f32(w, hz)
+	}
+	for pad, i in p.pads do for sl, k in pad.inserts do if sl.key_lpf > 0 do cut(w, 0, i, k, sl.key_lpf)
+	for b, i in p.buses do for sl, k in b.slots do if sl.key_lpf > 0 do cut(w, 1, i, k, sl.key_lpf)
+	for sl, k in p.main.slots do if sl.key_lpf > 0 do cut(w, 2, 0, k, sl.key_lpf)
 }
 
 // v36: the audio parts clips name (only those): where, the takes, the
@@ -1287,6 +1305,25 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 					slot, pad := int(fc.read_u8(r)), int(fc.read_u8(r))
 					x := fc.read_f32(r)
 					if slot < SLOTS && pad < PADS && x > 0 do p.sequences[slot].loops[pad] = x
+				}
+			}
+			if version >= 39 {
+				p.transport.quant.grid = Grid(min(fc.read_u8(r), u8(max(Grid))))
+				p.transport.quant.strength = clamp(fc.read_f32(r), 0, 1)
+			}
+			if version >= 40 {
+				n := fc.read_int(r)
+				if n < 0 || n > PADS * PAD_INSERTS + (BUSES + 1) * BUS_SLOTS do n = 0
+				for _ in 0 ..< n {
+					where_, index, slot := fc.read_u8(r), fc.read_int(r), int(fc.read_u8(r))
+					hz := clamp(fc.read_f32(r), 0, 20_000)
+					sl: ^Effect_Slot
+					switch {
+					case where_ == 0 && index >= 0 && index < PADS && slot < PAD_INSERTS: sl = &p.pads[index].inserts[slot]
+					case where_ == 1 && index >= 0 && index < BUSES && slot < BUS_SLOTS:  sl = &p.buses[index].slots[slot]
+					case where_ == 2 && slot < BUS_SLOTS:                                 sl = &p.main.slots[slot]
+					}
+					if sl != nil do sl.key_lpf = hz
 				}
 			}
 		} else {

@@ -785,7 +785,7 @@ engine_clear :: proc(e: ^Engine) {
 	for b in e.mixer.buses {
 		for f in b.slots do if f.has {
 			graph.remove_node(g, f.id)
-			if f.key_filter != {} do graph.remove_node(g, f.key_filter)
+			remove_key_filters(g, f)
 		}
 		for f in b.perf do if f.has do graph.remove_node(g, f.id)
 		graph.remove_node(g, b.input)

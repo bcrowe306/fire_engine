@@ -20,12 +20,14 @@ Slot_Key :: struct {
 	id:   string,
 	keyed:  bool, // it takes a key (four inputs)
 	listen: bool,
+	own:    bool, // keyed from its own input (through the key's filters)
 }
 
 @(private)
 key_of :: proc(s: Effect_Slot) -> Slot_Key {
-	keyed := keyable(s.kind) && s.key.kind != .None
-	return {s.kind, s.plugin_path, s.plugin_id, keyed, keyed && s.listen}
+	// (SuperFilter is always keyed: from nothing, its own input through the key's filters.)
+	keyed := keyable(s.kind) && (s.key.kind != .None || key_has_high_cut(s.kind))
+	return {s.kind, s.plugin_path, s.plugin_id, keyed, keyed && s.listen, keyed && s.key.kind == .None}
 }
 
 // One effect slot in the graph.
@@ -39,10 +41,27 @@ Fx_Node :: struct {
 	applied: Effect_Slot, // the settings it has
 	plugin:  ^clap.Plugin,
 	failed:  bool, // a plug-in that would not load
-	// Keyed: the key's high-pass (into inputs 3 and 4) and what feeds it.
+	// Keyed: the key's high-pass (what feeds it wired in), its low-pass
+	// (SuperFilter's, after it), and what feeds it.
 	key_filter: graph.Node_Id,
+	key_lp:     graph.Node_Id,
 	key_src:    graph.Node_Id,
 	key_hpf:    f32, // as sent
+	key_lpf:    f32,
+}
+
+// The key's last filter: what goes into a keyed slot's inputs 3 and 4,
+// and what Listen hears.
+@(private)
+key_out :: proc "contextless" (f: Fx_Node) -> graph.Node_Id {
+	return f.key_lp if f.key_lp != {} else f.key_filter
+}
+
+// [control] Takes a slot's key filters out of the graph.
+@(private)
+remove_key_filters :: proc(g: ^graph.Graph, f: Fx_Node) {
+	if f.key_filter != {} do graph.remove_node(g, f.key_filter)
+	if f.key_lp != {} do graph.remove_node(g, f.key_lp)
 }
 
 // A pad's chain after its EQ, as a console's channel strip: its inserts,
@@ -78,7 +97,7 @@ Send_Node :: struct {
 remove_strip :: proc(g: ^graph.Graph, st: ^Strip) {
 	for f in st.inserts do if f.has {
 		graph.remove_node(g, f.id)
-		if f.key_filter != {} do graph.remove_node(g, f.key_filter)
+		remove_key_filters(g, f)
 	}
 	for s in st.sends do if s.has do graph.remove_node(g, s.id)
 	if st.cue.has do graph.remove_node(g, st.cue.id)
@@ -165,6 +184,7 @@ effect_node :: proc(e: ^Engine, s: Effect_Slot) -> (node: fc.Node, plugin: ^clap
 	case .Pitch:      inner = dsp.pitch_shift_create()
 	case .Cutter:     inner = dsp.cutter_create()
 	case .Stutter:    return dsp.stutter_create(), nil, true // always listening: its switch is its own
+	case .Super_Filter: inner, _ = fx.super_filter_create({})
 	case .Plugin:
 		n, p, pok := plugin_node(e, s)
 		if !pok do return {}, nil, false
@@ -187,6 +207,10 @@ apply_slot :: proc(g: ^graph.Graph, f: ^Fx_Node, s: Effect_Slot, fresh: bool, mi
 		graph.set_param(g, f.key_filter, dsp.FILTER_PARAM_CUTOFF_HZ, f64(max(s.key_hpf, 10))) // (10 Hz: as good as none)
 		f.key_hpf = s.key_hpf
 	}
+	if f.key_lp != {} && (fresh || f.key_lpf != s.key_lpf) {
+		graph.set_param(g, f.key_lp, dsp.FILTER_PARAM_CUTOFF_HZ, f64(s.key_lpf if s.key_lpf > 0 else 20_000)) // (20 kHz: as good as none)
+		f.key_lpf = s.key_lpf
+	}
 	if fresh || f.applied.on != s.on || f.mix != mix {
 		if s.kind == .Stutter {
 			graph.set_param(g, f.id, dsp.STUTTER_PARAM_ACTIVE, 1 if s.on else 0)
@@ -207,7 +231,7 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 	g := e.host.graph
 	if f.plugin != nil do clap.plugin_gui_close(f.plugin) // (before its window goes)
 	if f.has do graph.remove_node(g, f.id)
-	if f.key_filter != {} do graph.remove_node(g, f.key_filter)
+	remove_key_filters(g, f^)
 	f^ = {key = k}
 	node, plugin, ok := effect_node(e, s)
 	if !ok {
@@ -220,12 +244,18 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 		return true
 	}
 	f.has, f.id, f.plugin = true, id, plugin
-	// Keyed: its key through a high-pass, into inputs 3 and 4.
+	// Keyed: its key through a high-pass (and SuperFilter's low-pass), into inputs 3 and 4.
 	if k.keyed {
 		if fid, ferr := graph.add_node(g, dsp.filter_create(.Highpass), 2, 2); ferr == .None {
 			f.key_filter = fid
-			for c in 0 ..< 2 do graph.connect(g, fid, c, id, c + 2)
 			f.key_hpf = -1 // (sent by apply_slot)
+			if key_has_high_cut(s.kind) {
+				if lid, lerr := graph.add_node(g, dsp.filter_create(.Lowpass), 2, 2); lerr == .None {
+					f.key_lp = lid
+					f.key_lpf = -1
+				}
+			}
+			for c in 0 ..< 2 do graph.connect(g, key_out(f^), c, id, c + 2)
 		}
 	}
 	// Dynamics say how much they turn down (read by `slot_reduction`).
@@ -233,6 +263,7 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 	case .Gate, .Limiter: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind
 	case .Compressor, .Delay, .Reverb, .Chorus, .Flanger, .Phaser, .Distortion, .Eq, .Filter:
 		f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (a `synth.Effect_Node`)
+	case .Super_Filter: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (an `fx.Super_Filter`)
 	}
 	apply_slot(g, f, s, true)
 	return true
@@ -244,9 +275,12 @@ wire_chain :: proc(g: ^graph.Graph, from: graph.Node_Id, slots: []Fx_Node, to: g
 	at := from
 	for f in slots do if f.has {
 		for c in 0 ..< 2 do graph.connect(g, at, c, f.id, c)
+		// The key's filters, one into the next; keyed from itself, its input feeds them.
+		if f.key_lp != {} && f.key_filter != {} do for c in 0 ..< 2 do graph.connect(g, f.key_filter, c, f.key_lp, c)
+		if f.key.own && f.key_filter != {} do for c in 0 ..< 2 do graph.connect(g, at, c, f.key_filter, c)
 		at = f.id
 		// Listening: what follows hears the key (the effect still runs).
-		if f.key.listen && f.key_filter != {} do at = f.key_filter
+		if f.key.listen && f.key_filter != {} do at = key_out(f)
 	}
 	for c in 0 ..< 2 do graph.connect(g, at, c, to, c)
 }
@@ -260,6 +294,7 @@ unwire_chain :: proc(g: ^graph.Graph, from: graph.Node_Id, slots: []Fx_Node, to:
 	for f in slots do if f.has {
 		append(&nodes, f.id)
 		if f.key_filter != {} do append(&nodes, f.key_filter)
+		if f.key_lp != {} do append(&nodes, f.key_lp)
 	}
 	append(&nodes, to)
 	for a in 0 ..< len(nodes) do for b in a + 1 ..< len(nodes) do for c in 0 ..< 2 {
@@ -504,7 +539,7 @@ sync_freeze_tap :: proc(e: ^Engine) -> bool {
 		i := e.export_solo.index
 		if i >= 0 && i < PADS && mx.strips[i].built {
 			want = e.nodes[i].eq
-			for f in mx.strips[i].inserts do if f.has do want = f.key_filter if f.key.listen && f.key_filter != {} else f.id
+			for f in mx.strips[i].inserts do if f.has do want = key_out(f) if f.key.listen && f.key_filter != {} else f.id
 		}
 	} else if e.export_solo.dry {
 		want = mx.buses[BUSES].input
@@ -539,7 +574,7 @@ sync_keys :: proc(e: ^Engine) -> (changed: bool) {
 		return {}
 	}
 	visit :: proc(g: ^graph.Graph, f: ^Fx_Node, want: graph.Node_Id) -> bool {
-		if f.key_filter == {} || f.key_src == want do return false
+		if f.key_filter == {} || f.key.own || f.key_src == want do return false // (its own: wired with the chain)
 		if f.key_src != {} do for c in 0 ..< 2 do graph.disconnect(g, f.key_src, c, f.key_filter, c)
 		f.key_src = {}
 		if want != {} {
@@ -706,6 +741,14 @@ slot_reduction :: proc(e: ^Engine, t: Fx_Target) -> (db: f64, ok: bool) {
 	case .Limiter:    return dsp.limiter_gain_reduction_db((^dsp.Limiter)(f.inner)), true
 	}
 	return 0, false
+}
+
+// What the SuperFilter in slot `t` is doing (its modulated cutoffs, LFO,
+// envelope and peaks), or false if the slot holds none.
+slot_super_filter :: proc(e: ^Engine, t: Fx_Target) -> (r: fx.Super_Filter_Readout, ok: bool) {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil || f.kind != .Super_Filter do return {}, false
+	return fx.super_filter_readout((^fx.Super_Filter)(f.inner)), true
 }
 
 // Main's loudness (EBU R128): momentary, short-term and integrated in LUFS

@@ -42,6 +42,14 @@ new_save_as_rename_and_open_again :: proc(t: ^testing.T) {
 	ps, _ = pa.project_state(api)
 	testing.expect(t, ps.untitled && !ps.dirty, "saved, still untitled")
 	testing.expect_value(t, pa.project_rename(api, "Beat"), pa.Result.Unsupported)
+	// A quick save: an untitled one into the projects folder, "Project 1".
+	quick, qr := pa.project_save_quick(api)
+	testing.expect_value(t, qr, pa.Result.Ok)
+	testing.expect_value(t, filepath.base(quick), "Project 1.pads")
+	ps, _ = pa.project_state(api)
+	testing.expect(t, !ps.untitled, "given a place")
+	quick2, _ := pa.project_save_quick(api) // (saved: where it is)
+	testing.expect_value(t, quick2, quick)
 	// Save As: it moves out of the unsaved folder, which lets it go.
 	to, _ := filepath.join({r.dir, "Songs", "Beat"}, context.temp_allocator)
 	os.make_directory_all(filepath.dir(to))
@@ -50,9 +58,16 @@ new_save_as_rename_and_open_again :: proc(t: ^testing.T) {
 	testing.expect_value(t, dir, strings.concatenate({to, ".pads"}, context.temp_allocator))
 	name, _ = pa.project_name(api)
 	testing.expect_value(t, name, "Beat")
-	testing.expect(t, !os.exists(untitled_dir), "the unsaved folder's copy gone")
+	testing.expect(t, !os.exists(untitled_dir), "the unsaved folder's copy gone (the quick save moved it)")
 	ps, _ = pa.project_state(api)
-	testing.expect(t, !ps.untitled && ps.recent == 1, "saved somewhere, recent")
+	testing.expect(t, !ps.untitled && ps.recent == 2, "saved somewhere, recent (the quick save's too)")
+	// Quantize's setting goes with it (v39).
+	pa.sequence_set_quantize_setting(api, .Eighth_Triplet, 0.75)
+	pa.project_save(api)
+	pa.sequence_set_quantize_setting(api, .Quarter, 1)
+	testing.expect_value(t, pa.project_open(api, dir, discard_changes = true), pa.Result.Ok)
+	qs, _ := pa.sequence_quantize_setting(api)
+	testing.expect(t, qs.grid == .Eighth_Triplet && qs.strength == 0.75, "Quantize's setting saved and opened")
 	// Not over another project.
 	testing.expect_value(t, pa.project_save_as(api, to), pa.Result.Ok) // (itself: fine)
 	other, _ := filepath.join({r.dir, "Songs", "Other.pads"}, context.temp_allocator)
@@ -81,7 +96,7 @@ new_save_as_rename_and_open_again :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.core.m.project.bpm, 99)
 	ps, _ = pa.project_state(api)
 	testing.expect(t, !ps.untitled, "a saved project")
-	testing.expect_value(t, o.count, 3)
+	testing.expect_value(t, o.count, 4) // (Quantize's setting reopened above too)
 }
 
 @(test)

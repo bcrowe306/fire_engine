@@ -340,11 +340,19 @@ Transport :: struct {
 	metro_rec_only: bool, // it clicks only while recording (and counting in)
 	time_sig:  Time_Sig,
 	quantize:  Input_Quantize,
+	quant:     Quantize_Setting, // what Quantize does (the window's button, a controller's)
+}
+
+// What Quantize does to a sequence's notes: moves them toward `grid` by
+// `strength` (0..1; 1: onto it).
+Quantize_Setting :: struct {
+	grid:     Grid,
+	strength: f32,
 }
 
 // The transport settings a project starts with.
 default_transport :: proc() -> Transport {
-	return {loop = true, count_in = 0, metro_db = -6, time_sig = {4, 4}, quantize = {grid = .Sixteenth, strength = 1}}
+	return {loop = true, count_in = 0, metro_db = -6, time_sig = {4, 4}, quantize = {grid = .Sixteenth, strength = 1}, quant = {grid = .Sixteenth, strength = 1}}
 }
 
 // The default pad: one-shot, full volume, centred.

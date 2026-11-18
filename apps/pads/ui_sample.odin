@@ -50,19 +50,7 @@ draw_sample :: proc(user: rawptr) {
 		return
 	}
 	w := &a.wave
-	if w.sample != pad.sample {
-		delete(w.peaks)
-		w.peaks = nil
-		ui.peak_pyramid_destroy(&w.pyramid)
-		w.sample, w.frames = pad.sample, s.frames
-		w.view, w.selection = {}, {}
-		if audio, ok := pm.pad_audio(m, i); ok && len(audio.channels) > 0 {
-			mono := make([]f32, len(audio.channels[0]), context.temp_allocator)
-			for ch in audio.channels do for &v, k in mono do v += ch[k] / f32(len(audio.channels))
-			w.peaks = ui.peaks_of(mono, 4096)
-		w.pyramid = ui.peak_pyramid_make(mono) // (every zoom, at the pixels' resolution)
-		}
-	}
+	wave_load(a, w, i)
 	// A toolbar on top, the waveform taking the room, the knobs at the foot.
 	draw_sample_bar(a)
 
@@ -129,6 +117,26 @@ draw_sample :: proc(user: rawptr) {
 	// The knobs: what you reach for most.
 	im.SetCursorScreenPos({wave_at.x, wave_at.y + wave_size.y + 8})
 	draw_sample_knobs(a)
+}
+
+// A wave state holding pad `i`'s sample's peaks (loaded again when its
+// sample changed; the view and selection then start over).
+wave_load :: proc(a: ^App, w: ^Wave_State, i: int) {
+	m := &a.m
+	pad := m.project.pads[i]
+	s := pm.pad_sample(m, i)
+	if s == nil || w.sample == pad.sample do return
+	delete(w.peaks)
+	w.peaks = nil
+	ui.peak_pyramid_destroy(&w.pyramid)
+	w.sample, w.frames = pad.sample, s.frames
+	w.view, w.selection = {}, {}
+	if audio, ok := pm.pad_audio(m, i); ok && len(audio.channels) > 0 {
+		mono := make([]f32, len(audio.channels[0]), context.temp_allocator)
+		for ch in audio.channels do for &v, k in mono do v += ch[k] / f32(len(audio.channels))
+		w.peaks = ui.peaks_of(mono, 4096)
+		w.pyramid = ui.peak_pyramid_make(mono) // (every zoom, at the pixels' resolution)
+	}
 }
 
 // How tall the Sample page's knob row is.

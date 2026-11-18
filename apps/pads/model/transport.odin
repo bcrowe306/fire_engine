@@ -17,6 +17,7 @@ Transport_Field :: enum {
 	Quantize,
 	Quantize_Strength,
 	Quantize_Swing,
+	Quant, // Quantize's grid and strength
 }
 
 // Sets the transport's settings to `new` (part `field`, named `name`),

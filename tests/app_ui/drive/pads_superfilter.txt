@@ -1,0 +1,28 @@
+# SuperFilter: its panel in the window and on a controller's display (the
+# device view, 960 x 160), with a loop playing through it.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+set 0 mode 2
+note 0 0 4 1
+play
+insert 0 0 superfilter
+edit_fx pad 0 0
+expect fx superfilter
+fx_param 3 600
+fx_param 4 0.55
+fx_param 8 0.4
+wait 30
+screenshot superfilter
+view device 0 960 160
+wait 6
+view device 0 960 160 .build/app/shots/sf/superfilter_push_0.png
+view device 1 960 160
+wait 6
+view device 1 960 160 .build/app/shots/sf/superfilter_push_1.png
+view device 2 960 160
+wait 6
+view device 2 960 160 .build/app/shots/sf/superfilter_push_2.png
+view device 3 960 160
+wait 6
+view device 3 960 160 .build/app/shots/sf/superfilter_push_3.png

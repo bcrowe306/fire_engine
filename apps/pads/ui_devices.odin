@@ -169,7 +169,7 @@ put_device :: proc(a: ^App, index: int, code: string) -> bool {
 		if n < 0 || n >= len(entries) do return false
 		e := entries[n]
 		pa.device_load_plugin(&a.api, i64(index), e.path, e.id, e.name)
-	case "fx", "clap":
+	case "fx", "fxp", "clap":
 		slot := -1
 		for s, k in m.project.pads[index].inserts do if s.kind == .None {
 			slot = k
@@ -183,6 +183,8 @@ put_device :: proc(a: ^App, index: int, code: string) -> bool {
 		if words[0] == "fx" {
 			if n <= 0 || n > int(max(pm.Effect_Kind)) do return false
 			if pa.effect_set(&a.api, ref, i64(n)) != .Ok do return false
+		} else if words[0] == "fxp" {
+			if pa.effect_load_preset(&a.api, ref, i64(n)) != .Ok do return false
 		} else {
 			entries := plugin_effects(a)
 			if n < 0 || n >= len(entries) do return false

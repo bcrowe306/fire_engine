@@ -255,6 +255,53 @@ stutter follow the clock's grid, 120 BPM without one):
 | `cutter_create` | a trance gate on the grid, with 2 ms edges | rate (beats), duty, depth |
 | `stutter_create` | always listening; switched on, loops the slice that just went by | length (beats), active |
 
+## SuperFilter
+
+`fx.super_filter_create` (in `fire:fx`) is an auto filter: one filter,
+moved by an LFO and an envelope follower, with a drive and clip stage.
+
+- **Types:** Low, High, Band, Notch, Peak, Morph (low → band → high →
+  notch on one knob), DJ (low-pass to the left of its knob, high-pass to
+  the right, flat in the middle), Comb, Vowel and Phaser.
+- **Circuits:** Clean, Analog, Dirty, Ladder and Diode, each `fx` filter
+  model with its own colour. Diode makes Low only; another type on it
+  plays on Analog (`super_filter_circuit_has`). The slope (12 or 24 dB)
+  is for Low, High, Band and Morph (`super_filter_has_slope`).
+- **LFO** (`fx.lfo_render`, usable alone): seven waves with a Morph each
+  (skew, curve, pulse width, glide); its rate in Hz, a tempo division
+  (straight, dotted, triplet) or sixteenths. Synced, it follows the
+  timeline, so it is at the same place in its cycle wherever play starts.
+  The right side runs ahead by a phase, or faster (Spin). It can restart
+  each beat, each bar or when play starts, and be smoothed.
+- **Envelope** (`fx.follower_render`, usable alone): attack, release,
+  Hold (it stays up through a drum's body) and sample-and-hold on a
+  division. Its level is in dB over 48 dB, so a quiet key still moves it.
+  Added with four inputs, the node follows inputs 3 and 4 (a sidechain
+  key) instead of its own.
+- **The cutoff** moves in octaves: the LFO's and the envelope's amounts
+  are each up to ±5 octaves, per frame and per side.
+- **Output:** a soft clip (never over full scale), output gain and
+  Dry/Wet.
+- **Latency:** it filters in 32-frame pieces, each gathered whole, so its
+  output is the same at any block size: 32 frames late, which it reports
+  (`latency`). A parameter change lands at the start of the piece it falls
+  in, or the next.
+- **For drawing it:** `super_filter_readout` gives the modulated cutoff of
+  each side, the LFO, the envelope and the peaks in and out, from any
+  thread. `super_filter_impulse` renders the filter stage's impulse
+  response at settings you give, to measure the curve it makes.
+
+```odin
+node, sf := fx.super_filter_create({})
+graph.add_node(g, node, 4, 2) // (two inputs: it follows itself)
+graph.set_param(g, id, fx.SF_PARAM_TYPE, f64(fx.Sf_Type.Band))
+graph.set_param(g, id, fx.SF_PARAM_ENV_AMOUNT, 0.5)
+cut := fx.super_filter_readout(sf).cutoff_hz // where it is now
+```
+
+One stereo instance, the LFO and envelope moving, takes 0.3 to 1.2 % of a
+core on an Apple-silicon Mac at `-o:speed` (Phaser the dearest).
+
 ## Switching effects in and out
 
 `wet_create(inner)` wraps any effect node with a dry/wet mix,
@@ -262,7 +309,10 @@ stutter follow the clock's grid, 120 BPM without one):
 15 ms on its exact frame, so an effect switches in and out without a
 click. Every other parameter goes to the effect, and its parameter table
 is the effect's plus the mix. Fully dry, the effect isn't run at all; it is
-reset when switched back in, so it starts clean (no old echoes).
+reset when switched back in, so it starts clean (no old echoes). The dry
+signal is delayed by the effect's latency (a limiter's lookahead,
+SuperFilter's 32 frames, a plug-in's), so a late effect fades in and out
+without combing and stays in time switched off.
 
 ```odin
 node := dsp.wet_create(dsp.reverb_create(), mix = 0) // in the graph, off

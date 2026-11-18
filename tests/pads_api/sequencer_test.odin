@@ -136,6 +136,14 @@ cc_automation_input_quantize_and_midi_effects :: proc(t: ^testing.T) {
 	testing.expect_value(t, pa.sequence_remove_point(api, 0, 5), pa.Result.Not_Found)
 	// Input quantize.
 	testing.expect_value(t, pa.sequence_set_input_quantize(api, true, .Eighth, 0.75, 0.2), pa.Result.Ok)
+	// Quantize's setting: what Quantize does.
+	testing.expect_value(t, pa.sequence_set_quantize_setting(api, .Eighth, 0.5), pa.Result.Ok)
+	qs, _ := pa.sequence_quantize_setting(api)
+	testing.expect(t, qs.grid == .Eighth && qs.strength == 0.5, "the Quantize setting read back")
+	testing.expect_value(t, pa.sequence_set_quantize_setting(api, .Eighth, 2), pa.Result.Invalid_Argument)
+	testing.expect_value(t, pa.sequence_quantize_now(api, 0), pa.Result.Ok)
+	iq, _ := pa.sequence_input_quantize(api)
+	testing.expect(t, iq.on && iq.grid == .Eighth && iq.strength == 0.75 && iq.swing == 0.2, "input quantize read back")
 	q := r.core.m.project.transport.quantize
 	testing.expect(t, q.on && q.grid == .Eighth && q.strength == 0.75 && q.swing == 0.2, "input quantize")
 	testing.expect_value(t, pa.sequence_set_input_quantize(api, true, .Eighth, 2, 0), pa.Result.Invalid_Argument)

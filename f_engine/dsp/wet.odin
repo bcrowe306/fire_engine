@@ -18,7 +18,10 @@ WET_MAX_CHANNELS :: 8
 // (or blended) without clicks: `WET_PARAM_MIX` fades between the input and
 // the effect's output. Every other parameter event goes to the effect.
 // While fully dry the effect is not run (it costs nothing), and it is reset
-// when it is switched back in, so it starts clean (no old echoes).
+// when it is switched back in, so it starts clean (no old echoes). The dry
+// signal is delayed by the effect's latency, so a late effect (a limiter's
+// lookahead, a plug-in) fades without combing and stays in time switched
+// off.
 Wet :: struct {
 	inner:    core.Node,
 	mix:      Smoothed_Value,
@@ -26,6 +29,9 @@ Wet :: struct {
 	scratch:  [WET_MAX_CHANNELS][]f32,
 	forward:  []core.Event,
 	idle:     bool, // fully dry: the effect is not running
+	delay:    [WET_MAX_CHANNELS][]f32, // the dry signal's delay line (the effect's latency), or nil
+	dry:      [WET_MAX_CHANNELS][]f32, // the dry signal, delayed (max_block)
+	at:       int, // where the delay lines write next
 }
 
 @(private)
@@ -41,10 +47,16 @@ wet_vtable := core.Node_VTable {
 		}
 		delete(w.forward, a)
 		w.forward = nil
+		for c in 0 ..< WET_MAX_CHANNELS {
+			delete(w.delay[c], a)
+			delete(w.dry[c], a)
+			w.delay[c], w.dry[c] = nil, nil
+		}
 	},
 	reset = proc(self: rawptr) {
 		w := (^Wet)(self)
 		core.node_reset(&w.inner)
+		for d in w.delay do for &v in d do v = 0
 		smoothed_reset(&w.mix, w.mix.target)
 	},
 	process = wet_process,
@@ -80,6 +92,14 @@ wet_prepare :: proc(self: rawptr, cfg: core.Prepare_Config, a: mem.Allocator) ->
 		if w.scratch[c] == nil && cfg.max_block > 0 do return .Out_Of_Memory
 	}
 	w.forward = make([]core.Event, 1024, a)
+	if lat := core.node_latency(&w.inner); lat > 0 {
+		for c in 0 ..< min(max(cfg.in_channels, cfg.out_channels), WET_MAX_CHANNELS) {
+			w.delay[c] = make([]f32, lat, a)
+			w.dry[c] = make([]f32, cfg.max_block, a)
+			if w.delay[c] == nil || (w.dry[c] == nil && cfg.max_block > 0) do return .Out_Of_Memory
+		}
+	}
+	w.at = 0
 	m := w.mix.target
 	smoothed_init(&w.mix, m, .Linear, WET_FADE_MS, cfg.sample_rate)
 	w.idle = m == 0
@@ -105,6 +125,23 @@ wet_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 			n += 1
 		}
 	}
+	// The dry signal: the input, or (a late effect) the input as late.
+	dry: [WET_MAX_CHANNELS][]f32
+	nd := min(len(ctx.inputs), WET_MAX_CHANNELS)
+	for c in 0 ..< nd do dry[c] = ctx.inputs[c][:ctx.frames]
+	if lat := len(w.delay[0]); lat > 0 {
+		for c in 0 ..< nd do if len(w.delay[c]) == lat && len(w.dry[c]) >= ctx.frames {
+			d, o, at := w.delay[c], w.dry[c][:ctx.frames], w.at
+			for x, i in ctx.inputs[c][:ctx.frames] {
+				o[i] = d[at]
+				d[at] = x
+				at += 1
+				if at == lat do at = 0
+			}
+			dry[c] = o
+		}
+		w.at = (w.at + ctx.frames) % lat
+	}
 	// Idle, the effect starts again (clean) on the frame the mix opens.
 	from := 0
 	if w.idle {
@@ -117,7 +154,7 @@ wet_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		}
 		for c in 0 ..< len(ctx.outputs) {
 			out := ctx.outputs[c][:from]
-			if c < len(ctx.inputs) do copy(out, ctx.inputs[c][:from])
+			if c < nd do copy(out, dry[c][:from])
 			else do for &v in out do v = 0
 		}
 		if from == ctx.frames do return
@@ -147,8 +184,8 @@ wet_process :: proc(self: rawptr, ctx: ^core.Process_Context) {
 		}
 		m := f32(smoothed_next(&w.mix))
 		for c in 0 ..< channels {
-			dry: f32 = ctx.inputs[c][i] if c < len(ctx.inputs) else 0
-			ctx.outputs[c][i] = dry + (views[c][i - from] - dry) * m
+			d: f32 = dry[c][i] if c < nd else 0
+			ctx.outputs[c][i] = d + (views[c][i - from] - d) * m
 		}
 	}
 	for c in channels ..< len(ctx.outputs) do for &v in ctx.outputs[c][:ctx.frames] do v = 0

@@ -56,6 +56,10 @@ Song_State :: struct {
 	shown_frame: i32,
 	folded_it:   bool,
 	time:        Song_Time_Ui, // the markers, the loop range, the tempo lane
+	seen_clip:   int, // the core's selected clip (+1) as last matched (a controller's another: taken)
+	section_open: bool, // a controller asked to name clip `section_for`'s section
+	section_for: int,
+	section_buf: [16]u8,
 }
 
 // The Song tab's tools.
@@ -122,7 +126,20 @@ draw_song :: proc(user: rawptr) {
 	for i in p.song.count ..< pm.SONG_CLIPS do ss.sel -= {i}
 	ss.focused = im.IsWindowFocused({.RootWindow, .ChildWindows})
 	fold_pads_while_shown(a, &ss.shown_frame, &ss.folded_it)
+	// The selected clip: the core's (a controller's) and the window's one.
+	if a.song_edit.clip != ss.seen_clip {
+		k := a.song_edit.clip - 1
+		ss.cur = k
+		ss.sel = {k} if k >= 0 && k < p.song.count else {}
+		ss.seen_clip = a.song_edit.clip
+	}
+	defer {
+		want := ss.cur + 1 if ss.cur >= 0 && ss.cur < p.song.count else 0
+		if want != a.song_edit.clip do pa.song_select_clip(&a.api, i64(want - 1)) // (its lane selected too)
+		ss.seen_clip = a.song_edit.clip
+	}
 	song_keys(a)
+	draw_section_name(a)
 
 	draw_arrangement_bar(a)
 	im.Spacing()
@@ -200,17 +217,17 @@ draw_arrangement_bar :: proc(a: ^App) {
 		im.OpenPopup("Rename Arrangement")
 		ss.rename_open = false
 	}
-	if im.BeginPopupModal("Rename Arrangement", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename Arrangement", nil, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
 		im.SetNextItemWidth(240)
-		done := im.InputText("##arr_rename", cstring(&ss.rename_buf[0]), len(ss.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		done := modal_input(a, "##arr_rename", ss.rename_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("arrangement rename")
-		if done || im.Button("Rename") {
+		if done || modal_button(a, "Rename") {
 			pa.song_rename_arrangement(&a.api, i64(p.arrangement), strings.truncate_to_byte(string(ss.rename_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
 	// The tools.
@@ -366,6 +383,11 @@ draw_song_lanes :: proc(a: ^App) {
 		draw_lanes_body(a, v, total)
 	}
 	im.EndChild()
+	// The cursor (where a controller adds a clip), thin, under the playhead.
+	if cx := beat_x(v, a.song_edit.cursor); cx >= v.x0 && cx <= v.x1 {
+		im.DrawList_AddLine(dl, {cx, ruler_y}, {cx, min(origin.y + avail.y, y + f32(pm.song_lanes(&p.song)) * ss.lane_h)}, ui.col(ui.with_alpha(t.accent, 0.7)), 1)
+		im.DrawList_AddTriangleFilled(dl, {cx - 4, ruler_y}, {cx + 4, ruler_y}, {cx, ruler_y + 5}, ui.col(t.accent))
+	}
 	// The playhead (or, stopped in song mode, where it starts) through it all.
 	_, _, beat := pm.song_progress(&m.engine)
 	if beat >= 0 {
@@ -644,7 +666,7 @@ song_drag_update :: proc(a: ^App, v: Song_View, origin: im.Vec2, space_active: b
 		}
 	case .Move:
 		if !held {
-			app.seal(&m.history)
+			song_settle_drag(a, ss.drag_sel, "Copy Clips" if ss.drag_sel != ss.sel else "Move Clips")
 			if ss.drag_sel != ss.sel {
 				ss.sel = ss.drag_sel
 				for k in 0 ..< pm.SONG_CLIPS do if k in ss.sel {
@@ -664,7 +686,7 @@ song_drag_update :: proc(a: ^App, v: Song_View, origin: im.Vec2, space_active: b
 		im.SetTooltip("%s", fmt.ctprintf("%s bar %d%s", "Copy to" if copying else "Move to", bar_of(p, max(lead.at + dt, 0)), fmt.tprintf(", %s", pm.lane_name(&p.song, clamp(int(lead.lane) + dl, 0, pm.SONG_LANES - 1))) if dl != 0 else ""))
 	case .Start, .End:
 		if !held {
-			app.seal(&m.history)
+			song_settle_drag(a, {ss.drag_clip}, "Clip Start" if ss.drag == .Start else "Clip Length")
 			ss.drag = .None
 			return
 		}
@@ -704,8 +726,8 @@ song_drag_update :: proc(a: ^App, v: Song_View, origin: im.Vec2, space_active: b
 		s.lane_count = max(s.lane_count, ss.drag_lane + 1)
 		pm.set_song_drag(m, "Draw Clip", s)
 		if !held {
-			app.seal(&m.history)
 			ss.sel, ss.cur = {s.count - 1}, s.count - 1
+			song_settle_drag(a, {s.count - 1}, "Draw Clip")
 			ss.drag = .None
 			return
 		}
@@ -733,6 +755,19 @@ song_drag_update :: proc(a: ^App, v: Song_View, origin: im.Vec2, space_active: b
 		}
 	}
 	_ = space_active
+}
+
+// A drag of the clips `keep` ends (`name`: its step): the clips they lie
+// over make way (a lane plays one clip at a time; the same undo step),
+// the selection following them.
+@(private)
+song_settle_drag :: proc(a: ^App, keep: pm.Clip_Set, name: string) {
+	ss := &a.song_ui
+	to := pm.song_settle(&a.m, keep, name) // api-lint: the drag's own step (its moves went to the model as they happened)
+	app.seal(&a.m.history)
+	ss.sel = pm.clips_mapped(ss.sel, to)
+	ss.drag_sel = pm.clips_mapped(ss.drag_sel, to)
+	ss.cur = to[ss.cur] if ss.cur >= 0 && ss.cur < pm.SONG_CLIPS else -1
 }
 
 // The bar song beat `b` is in (1-based).
@@ -792,17 +827,42 @@ draw_lane_rename :: proc(a: ^App) {
 			im.OpenPopup("Rename lane")
 		}
 	}
-	if im.BeginPopupModal("Rename lane", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename lane", nil, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
 		im.SetNextItemWidth(200)
-		done := im.InputText("##lanerename", cstring(&ss.lane_buf[0]), len(ss.lane_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		done := modal_input(a, "##lanerename", ss.lane_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("lane name")
-		if done || im.Button("Rename") {
+		if done || modal_button(a, "Rename") {
 			pa.song_rename_lane(&a.api, i64(ss.lane_rename), strings.trim_space(strings.truncate_to_byte(string(ss.lane_buf[:]), 0)))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		im.EndPopup()
+	}
+}
+
+// Names a clip's section, as a controller asked (its name editor types
+// into it; the window's clip strip has the field too).
+@(private)
+draw_section_name :: proc(a: ^App) {
+	ss := &a.song_ui
+	if ss.section_open {
+		ss.section_open = false
+		if ss.section_for >= 0 && ss.section_for < a.m.project.song.count do im.OpenPopup("Name section")
+	}
+	if modal_begin(a, "Name section", nil, {.AlwaysAutoResize}) {
+		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
+		im.SetNextItemWidth(200)
+		done := modal_input(a, "##sectionname", ss.section_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
+		ui.name("section name")
+		if done || modal_button(a, "Name") {
+			pa.song_set_clip_label(&a.api, i64(ss.section_for), strings.truncate_to_byte(string(ss.section_buf[:]), 0))
+			ss.label_for = -1 // (the strip's field: the new name)
+			im.CloseCurrentPopup()
+		}
+		im.SameLine()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
 }

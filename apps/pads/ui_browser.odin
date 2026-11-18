@@ -81,49 +81,29 @@ draw_browser :: proc(user: rawptr) {
 	b := &a.browser
 	v := &a.bview
 	pm.browser_set_project(b, a.m.project.dir)
-
-	// The tabs.
-	if im.BeginTabBar("##library_tabs") {
-		tabs := [2]string{"Browser", "Devices"}
-		icons := [2]string{ui.ICON_FOLDER, ui.ICON_BLOCKS}
-		for name, k in tabs {
-			flags: im.TabItemFlags = {.SetSelected} if v.tab_set && v.tab == k else {}
-			if im.BeginTabItem(fmt.ctprintf("%s  %s###lib%s", icons[k], name, name), nil, flags) {
-				if !v.tab_set do v.tab = k
-				im.EndTabItem()
-			}
-			ui.name(fmt.tprintf("%s tab", name))
-		}
-		v.tab_set = false
-		im.EndTabBar()
-	}
-
-	// The search: files under the folder shown, or devices by name.
+	c := lib_cat(a)
+	folders := lib_folders(c)
+	// The search: files under the folder shown.
 	im.SetNextItemWidth(-1)
-	if v.tab == 0 {
+	if folders {
 		if im.InputTextWithHint("##search", fmt.ctprintf("%s  Search %s", ui.ICON_SEARCH, filepath.base(b.root) if b.root != "" else "sounds"), cstring(&v.query[0]), len(v.query)) {
 			pa.browser_search(&a.api, string(cstring(&v.query[0])))
 		}
 	} else {
-		im.InputTextWithHint("##search", fmt.ctprintf("%s  Find a device", ui.ICON_SEARCH), cstring(&v.device_query[0]), len(v.device_query))
+		im.InputTextWithHint("##search", fmt.ctprintf("%s  Find %s", ui.ICON_SEARCH, "a device" if c.kind >= .Instruments else strings.to_lower(c.name, context.temp_allocator)), cstring(&v.device_query[0]), len(v.device_query))
 	}
-
-	if v.tab == 1 {
-		find := strings.to_lower(string(cstring(&v.device_query[0])), context.temp_allocator)
-		if im.BeginChild("##devices", {0, 0}) do draw_device_sections(a, find)
-		im.EndChild()
-		return
-	}
-	searching := b.search.query != ""
-
-	// The sections (the preview below them).
-	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + 2 * im.GetFrameHeight() + 4 * im.GetStyle().ItemSpacing.y + 6)
-	// No ImGui keyboard navigation in the list: its keys are the browser's
-	// own (Enter would otherwise also press the row last clicked).
+	searching := folders && b.search.query != ""
+	// The categories at the left, the list beside them; the item's actions
+	// and the preview below.
+	list_h := im.GetContentRegionAvail().y - (PREVIEW_H + 4 * im.GetFrameHeight() + 6 * im.GetStyle().ItemSpacing.y + 6)
+	cat_w := clamp(im.GetContentRegionAvail().x * 0.34, 96, 160)
+	if im.BeginChild("##libcats", {cat_w, max(list_h, 80)}) do draw_lib_categories(a)
+	im.EndChild()
+	im.SameLine(0, 6)
+	items := lib_items(a)
 	if im.BeginChild("##list", {0, max(list_h, 80)}, {}, {.NoNavInputs}) {
-		if library_section("Favourites") do draw_favorite_tabs(a)
-		rows := pm.search_results(&b.search) if searching else pm.browser_rows(b)
-		if library_section("Files" if searching else "Folders") {
+		if folders {
+			rows := pm.search_results(&b.search) if searching else pm.browser_rows(b)
 			if !searching do draw_folder_bar(a)
 			draw_rows(a, rows)
 			if len(rows) == 0 {
@@ -136,19 +116,104 @@ draw_browser :: proc(user: rawptr) {
 				}
 			}
 			if searching && pm.search_done(&b.search) && len(rows) >= pm.SEARCH_MAX_RESULTS do im.TextDisabled("(the first %d)", i32(pm.SEARCH_MAX_RESULTS))
-		}
-		if im.IsWindowFocused() {
-			browser_keys(a, rows)
-			a.browser_has_keys = true // (its arrows are its own)
+			if im.IsWindowFocused() {
+				browser_keys(a, rows)
+				a.browser_has_keys = true // (its arrows are its own)
+			}
+		} else {
+			draw_lib_items(a, items)
 		}
 	}
 	im.EndChild()
-	draw_preview(a)
+	// The selected item's actions (the controller's buttons around its list).
+	if k := lib_selected(a, items); k >= 0 {
+		it := items[k]
+		up, low := lib_actions(it)
+		for row in ([2][4]Lib_Act{up, low}) {
+			first := true
+			for act in row {
+				if act == .None do continue
+				if !first do im.SameLine(0, 4)
+				first = false
+				im.BeginDisabled(!lib_can(a, act, it))
+				if im.Button(fmt.ctprintf("%s##libact%d", lib_act_label(act, it), int(act))) do lib_run(a, act, it, shift = im.GetIO().KeyShift)
+				ui.name(fmt.tprintf("library %s", lib_act_label(act, it)))
+				im.EndDisabled()
+			}
+		}
+	}
+	if folders do draw_preview(a)
+	else if k := lib_selected(a, items); k >= 0 && items[k].info != "" do im.TextDisabled("%s", fmt.ctprintf("%s", items[k].info))
+}
+
+// The Library's categories, one a row: a click shows it; a favourite's
+// right-click renames, moves or removes it.
+@(private)
+draw_lib_categories :: proc(a: ^App) {
+	b := &a.browser
+	v := &a.bview
+	cats := lib_categories(a)
+	for c, k in cats {
+		if k > 0 && c.kind != cats[k - 1].kind && c.kind != .Files && c.kind != .Drives do im.Separator()
+		if im.Selectable(fmt.ctprintf("%s  %s###cat%d", c.icon, c.name, k), k == a.lib.cat) && k != a.lib.cat do lib_show(a, k)
+		ui.name(fmt.tprintf("category %s", c.name)) // for a test: "category Documents"
+		if c.kind != .Favorite do continue
+		i := c.fav
+		f := b.favorites[i]
+		if im.IsItemHovered({.DelayNormal}) do im.SetTooltip("%s", fmt.ctprintf("%s (right-click to rename, move or remove)", favorite_where(b, i)))
+		if im.BeginPopupContextItem(fmt.ctprintf("##favmenu%d", i)) {
+			if v.renaming != i {
+				v.renaming = i
+				v.rename = {}
+				copy(v.rename[:len(v.rename) - 1], f.name)
+			}
+			im.SetNextItemWidth(160)
+			if im.InputText("##rename", cstring(&v.rename[0]), len(v.rename), {.EnterReturnsTrue}) {
+				pa.browser_rename_favorite(&a.api, i64(i), string(cstring(&v.rename[0])))
+				im.CloseCurrentPopup()
+			}
+			if im.MenuItem("Move up", nil, false, i > 0) do pa.browser_move_favorite(&a.api, i64(i), i64(i - 1))
+			if im.MenuItem("Move down", nil, false, i < len(b.favorites) - 1) do pa.browser_move_favorite(&a.api, i64(i), i64(i + 1))
+			if im.MenuItem("Remove", nil, false, len(b.favorites) > 1) do pa.browser_remove_favorite(&a.api, i64(i))
+			im.EndPopup()
+			break // (the list may have changed under us)
+		} else if v.renaming == i {
+			v.renaming = -1
+		}
+	}
+}
+
+// A list category's items: a click selects one, a double-click does its
+// first action (Shift: onto the next empty pad); a device drags onto a pad.
+@(private)
+draw_lib_items :: proc(a: ^App, items: []Lib_Item) {
+	sel := lib_selected(a, items)
+	for it, k in items {
+		indent := f32(16 * it.depth) // (an effect's presets under it)
+		if indent > 0 do im.Indent(indent)
+		if im.Selectable(fmt.ctprintf("%s###item%d", it.name, k), k == sel) do lib_select(a, items, k)
+		if indent > 0 do im.Unindent(indent)
+		ui.name(fmt.tprintf("device %s", it.name) if it.code != "" else fmt.tprintf("item %s", it.name))
+		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) do lib_run(a, lib_primary(it), it, shift = im.GetIO().KeyShift)
+		if it.info != "" && im.IsItemHovered({.DelayNormal}) do im.SetTooltip("%s", fmt.ctprintf("%s", it.info))
+		if it.code != "" && im.BeginDragDropSource() {
+			im.SetDragDropPayload(PADS_DEVICE_PAYLOAD, raw_data(it.code), uint(len(it.code)))
+			im.Text("%s", fmt.ctprintf("%s", it.name))
+			im.EndDragDropSource()
+		}
+	}
+	if len(items) == 0 do im.TextDisabled("Nothing here yet")
 }
 
 // Shows the Library's tab `tab` (0 Browser, 1 Devices), and the Library.
 library_show :: proc(a: ^App, tab: int) {
 	a.bview.tab, a.bview.tab_set = tab, true
+	a.lib.fx_replace = false // (browsed for itself: an effect goes in the next empty slot)
+	if tab == 1 { // (the devices: Instruments)
+		for c, k in lib_categories(a) do if c.kind == .Instruments do lib_show(a, k)
+	} else if lib_cat(a).kind != .Favorite {
+		lib_show(a, a.browser.tab)
+	}
 	a.ws.left_shown = true
 }
 

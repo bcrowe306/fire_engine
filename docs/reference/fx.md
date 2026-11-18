@@ -177,6 +177,280 @@ PHASER_STYLES : [2]string : [2]string{"Positive", "Negative"}
 
 Phaser styles (`Filter_Params.style` for the Phaser model).
 
+### FOLLOWER_DEFAULTS
+
+```odin
+FOLLOWER_DEFAULTS : Follower_Params : Follower_Params{attack_ms = 1, release_ms = 250, division = 10}
+```
+
+A follower with the defaults: 1 ms attack, 250 ms release, no hold, no
+sample-and-hold (at 1/16 when turned on).
+
+### FOLLOWER_RANGE_DB
+
+```odin
+FOLLOWER_RANGE_DB :: 48
+```
+
+The range a follower's output spans: a level this far under full scale
+is 0, full scale is 1 (in dB, evenly: a quiet key still moves it).
+
+### LFO_DEFAULTS
+
+```odin
+LFO_DEFAULTS : Lfo_Params : Lfo_Params{wave = .Sine, morph = 0.5, mode = .Sync, hz = 1, division = 8, sixteenths = 4}
+```
+
+An LFO with the defaults: a sine at 1/4 (synced), no stereo, no retrigger.
+
+### SF_PARAM_TYPE
+
+```odin
+SF_PARAM_TYPE : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of SuperFilter's type: a `Sf_Type`.
+
+### SF_PARAM_CIRCUIT
+
+```odin
+SF_PARAM_CIRCUIT : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of SuperFilter's circuit: a `Sf_Circuit`.
+
+### SF_PARAM_FREQ_HZ
+
+```odin
+SF_PARAM_FREQ_HZ : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of SuperFilter's Freq (the cutoff): the cutoff (20..20000).
+
+### SF_PARAM_RESONANCE
+
+```odin
+SF_PARAM_RESONANCE : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of SuperFilter's Res: 0..1.
+
+### SF_PARAM_MORPH
+
+```odin
+SF_PARAM_MORPH : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of SuperFilter's Morph: 0..1: what it does follows the type.
+
+### SF_PARAM_SLOPE
+
+```odin
+SF_PARAM_SLOPE : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of SuperFilter's slope: 0: 12 dB, 1: 24 dB (Low, High, Band, Morph).
+
+### SF_PARAM_DRIVE_DB
+
+```odin
+SF_PARAM_DRIVE_DB : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of SuperFilter's drive: into the circuit (0..24).
+
+### SF_PARAM_LFO_AMOUNT
+
+```odin
+SF_PARAM_LFO_AMOUNT : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of SuperFilter's LFO amount: -1..1: ±5 octaves.
+
+### SF_PARAM_LFO_RATE_HZ
+
+```odin
+SF_PARAM_LFO_RATE_HZ : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of SuperFilter's LFO rate: in Hz mode (0.01..40).
+
+### SF_PARAM_LFO_MODE
+
+```odin
+SF_PARAM_LFO_MODE : core.Param_Id : core.Param_Id(10)
+```
+
+Parameter id of SuperFilter's LFO rate mode: an `Lfo_Mode`.
+
+### SF_PARAM_LFO_DIVISION
+
+```odin
+SF_PARAM_LFO_DIVISION : core.Param_Id : core.Param_Id(11)
+```
+
+Parameter id of SuperFilter's LFO division: Sync, Dotted, Triplet: a `TEMPO_RATIOS` index (1..12).
+
+### SF_PARAM_LFO_SIXTEENTHS
+
+```odin
+SF_PARAM_LFO_SIXTEENTHS : core.Param_Id : core.Param_Id(12)
+```
+
+Parameter id of SuperFilter's LFO length in sixteenths: Sixteenths (1..64).
+
+### SF_PARAM_LFO_WAVE
+
+```odin
+SF_PARAM_LFO_WAVE : core.Param_Id : core.Param_Id(13)
+```
+
+Parameter id of SuperFilter's LFO wave: an `Lfo_Wave`.
+
+### SF_PARAM_LFO_MORPH
+
+```odin
+SF_PARAM_LFO_MORPH : core.Param_Id : core.Param_Id(14)
+```
+
+Parameter id of SuperFilter's LFO wave morph: 0..1 (0.5 plain).
+
+### SF_PARAM_LFO_STEREO
+
+```odin
+SF_PARAM_LFO_STEREO : core.Param_Id : core.Param_Id(15)
+```
+
+Parameter id of SuperFilter's LFO stereo way: an `Lfo_Stereo`.
+
+### SF_PARAM_LFO_PHASE_DEG
+
+```odin
+SF_PARAM_LFO_PHASE_DEG : core.Param_Id : core.Param_Id(16)
+```
+
+Parameter id of SuperFilter's LFO right-side phase: 0..360.
+
+### SF_PARAM_LFO_SPIN_HZ
+
+```odin
+SF_PARAM_LFO_SPIN_HZ : core.Param_Id : core.Param_Id(17)
+```
+
+Parameter id of SuperFilter's LFO spin: 0..2.
+
+### SF_PARAM_LFO_OFFSET_DEG
+
+```odin
+SF_PARAM_LFO_OFFSET_DEG : core.Param_Id : core.Param_Id(18)
+```
+
+Parameter id of SuperFilter's LFO phase offset: 0..360.
+
+### SF_PARAM_LFO_RETRIGGER
+
+```odin
+SF_PARAM_LFO_RETRIGGER : core.Param_Id : core.Param_Id(19)
+```
+
+Parameter id of SuperFilter's LFO retrigger: an `Lfo_Retrigger`.
+
+### SF_PARAM_LFO_SMOOTH
+
+```odin
+SF_PARAM_LFO_SMOOTH : core.Param_Id : core.Param_Id(20)
+```
+
+Parameter id of SuperFilter's LFO smoothing: 0..1.
+
+### SF_PARAM_ENV_AMOUNT
+
+```odin
+SF_PARAM_ENV_AMOUNT : core.Param_Id : core.Param_Id(21)
+```
+
+Parameter id of SuperFilter's envelope amount: -1..1: ±5 octaves.
+
+### SF_PARAM_ENV_ATTACK_MS
+
+```odin
+SF_PARAM_ENV_ATTACK_MS : core.Param_Id : core.Param_Id(22)
+```
+
+Parameter id of SuperFilter's envelope attack: 0.1..100.
+
+### SF_PARAM_ENV_RELEASE_MS
+
+```odin
+SF_PARAM_ENV_RELEASE_MS : core.Param_Id : core.Param_Id(23)
+```
+
+Parameter id of SuperFilter's envelope release: 1..3000.
+
+### SF_PARAM_ENV_HOLD
+
+```odin
+SF_PARAM_ENV_HOLD : core.Param_Id : core.Param_Id(24)
+```
+
+Parameter id of SuperFilter's envelope hold: 0 or 1.
+
+### SF_PARAM_ENV_SH
+
+```odin
+SF_PARAM_ENV_SH : core.Param_Id : core.Param_Id(25)
+```
+
+Parameter id of SuperFilter's envelope sample-and-hold: 0 or 1: sample and hold.
+
+### SF_PARAM_ENV_SH_DIVISION
+
+```odin
+SF_PARAM_ENV_SH_DIVISION : core.Param_Id : core.Param_Id(26)
+```
+
+Parameter id of SuperFilter's envelope sample-and-hold rate: a `TEMPO_RATIOS` index (1..12).
+
+### SF_PARAM_KEY_GAIN_DB
+
+```odin
+SF_PARAM_KEY_GAIN_DB : core.Param_Id : core.Param_Id(27)
+```
+
+Parameter id of SuperFilter's key gain: the key into the follower (-24..24).
+
+### SF_PARAM_CLIP
+
+```odin
+SF_PARAM_CLIP : core.Param_Id : core.Param_Id(28)
+```
+
+Parameter id of SuperFilter's clip: 0 or 1.
+
+### SF_PARAM_OUTPUT_DB
+
+```odin
+SF_PARAM_OUTPUT_DB : core.Param_Id : core.Param_Id(29)
+```
+
+Parameter id of SuperFilter's output gain: -24..24.
+
+### SF_PARAM_MIX
+
+```odin
+SF_PARAM_MIX : core.Param_Id : core.Param_Id(30)
+```
+
+Parameter id of SuperFilter's dry/wet: dry/wet, 0..1.
+
+### SF_PARAMS
+
+```odin
+SF_PARAMS :: len(super_filter_params)
+```
+
+The number of SuperFilter parameters (ids 1 to this).
+
 ## Types
 
 ### Effect
@@ -1012,6 +1286,312 @@ keep its feedback in a band, and its last output.
 | `feedback` |  |
 | `last` | resonance, drive, peak 1, peak 3, peak 5 |
 
+### Follower_Params
+
+```odin
+Follower_Params :: struct {
+	attack_ms: f32,
+	release_ms: f32,
+	hold: bool,
+	sample_hold: bool,
+	division: int,
+}
+```
+
+What an envelope follower does.
+
+| Field | Description |
+|-------|-------------|
+| `attack_ms` | how fast it rises (0.1..100) |
+| `release_ms` | how fast it falls (1..3000) |
+| `hold` | it stays at its peak while the level is above half of it (a drum's whole body, not just its click) |
+| `sample_hold` | its value is taken at each `division` and held (steps, in time) |
+| `division` | the sample-and-hold's rate: an index into `TEMPO_RATIOS` (1..12; 10 is 1/16) |
+
+### Follower
+
+```odin
+Follower :: struct {...}
+```
+
+An envelope follower's state. Zero is ready to run. Fields are internal.
+
+### Beat_Clock
+
+```odin
+Beat_Clock :: struct {
+	playing: bool,
+	beat: f64,
+	beats_per_frame: f64,
+	bar_beats: f64,
+	started: bool,
+}
+```
+
+Where a render sits on the transport: what an LFO synced to the tempo,
+a retrigger, or a sample-and-hold reckons from.
+
+| Field | Description |
+|-------|-------------|
+| `playing` | the transport plays |
+| `beat` | the timeline beat at the render's first frame |
+| `beats_per_frame` | tempo / 60 / sample rate: how far a frame moves (also while stopped: the synced rates still run) |
+| `bar_beats` | beats a bar (4 in 4/4; 0 is taken as 4) |
+| `started` | play started at the render's first frame |
+
+### Lfo_Wave
+
+```odin
+Lfo_Wave :: enum u8 {
+	Sine,
+	Triangle,
+	Ramp_Up,
+	Ramp_Down,
+	Square,
+	Random_Steps,
+	Random_Smooth,
+}
+```
+
+An LFO's wave.
+
+| Value | Description |
+|-------|-------------|
+| `Sine` |  |
+| `Triangle` |  |
+| `Ramp_Up` |  |
+| `Ramp_Down` |  |
+| `Square` |  |
+| `Random_Steps` | a new random value each cycle |
+| `Random_Smooth` | random values each cycle, eased from one to the next |
+
+### Lfo_Mode
+
+```odin
+Lfo_Mode :: enum u8 {
+	Hz,
+	Sync,
+	Dotted,
+	Triplet,
+	Sixteenths,
+}
+```
+
+How an LFO's rate is set: in Hz; a tempo division, straight, dotted or
+triplet (`division`); or a whole number of sixteenths a cycle.
+
+### Lfo_Retrigger
+
+```odin
+Lfo_Retrigger :: enum u8 {
+	Off,
+	Beat,
+	Bar,
+	Play,
+}
+```
+
+What restarts an LFO's cycle: nothing; each beat; each bar; play
+starting. (Synced and playing, Off follows the timeline from beat 0.)
+
+### Lfo_Stereo
+
+```odin
+Lfo_Stereo :: enum u8 {
+	Phase,
+	Spin,
+}
+```
+
+How an LFO's right side differs from its left: by a fixed phase, or by
+a faster rate (they drift apart and back).
+
+### Lfo_Params
+
+```odin
+Lfo_Params :: struct {
+	wave: Lfo_Wave,
+	morph: f32,
+	mode: Lfo_Mode,
+	hz: f32,
+	division: int,
+	sixteenths: int,
+	stereo: Lfo_Stereo,
+	phase_deg: f32,
+	spin_hz: f32,
+	offset_deg: f32,
+	retrigger: Lfo_Retrigger,
+	smooth: f32,
+}
+```
+
+What an LFO does.
+
+| Field | Description |
+|-------|-------------|
+| `wave` |  |
+| `morph` | 0..1, 0.5 plain: the skew (Sine, Triangle), the curve (the ramps), the pulse width (Square), the glide (Random_Steps) |
+| `mode` |  |
+| `hz` | the rate in Hz mode (0.01..40) |
+| `division` | Sync, Dotted, Triplet: an index into `TEMPO_RATIOS` (1..12; 10 is 1/16) |
+| `sixteenths` | Sixteenths: a cycle's length (1..64) |
+| `stereo` |  |
+| `phase_deg` | Phase: the right side ahead of the left (0..360) |
+| `spin_hz` | Spin: the right side faster by this (0..2) |
+| `offset_deg` | both sides' start in the cycle (0..360) |
+| `retrigger` |  |
+| `smooth` | 0..1: a one-pole after the wave, up to a quarter cycle |
+
+### Lfo
+
+```odin
+Lfo :: struct {...}
+```
+
+An LFO's state: where each side is in its cycle. Zero is ready to run.
+Fields are internal.
+
+### Sf_Type
+
+```odin
+Sf_Type :: enum u8 {
+	Low,
+	High,
+	Band,
+	Notch,
+	Peak,
+	Morph,
+	DJ,
+	Comb,
+	Vowel,
+	Phaser,
+}
+```
+
+SuperFilter's filter types.
+
+| Value | Description |
+|-------|-------------|
+| `Low` |  |
+| `High` |  |
+| `Band` |  |
+| `Notch` |  |
+| `Peak` |  |
+| `Morph` | low → band → high → notch as Morph goes 0 → 1 |
+| `DJ` | one knob: Freq under its middle a low-pass coming down, over it a high-pass going up, flat between |
+| `Comb` | a tuned comb: Morph is its feedback, negative to positive |
+| `Vowel` | formants: Morph moves through the vowels (A O E I), Freq transposes them (1 kHz: as they are) |
+| `Phaser` | all-pass stages: Morph blends their peaks |
+
+### Sf_Circuit
+
+```odin
+Sf_Circuit :: enum u8 {
+	Clean,
+	Analog,
+	Dirty,
+	Ladder,
+	Diode,
+}
+```
+
+SuperFilter's circuits: the voicing of the types made of poles (Low,
+High, Band, Notch, Peak, Morph, DJ). Clean is a state-variable filter
+(its 24 dB two in a row); the others saturate.
+
+### Super_Filter_Settings
+
+```odin
+Super_Filter_Settings :: struct {
+	timeline: core.Timeline_Id,
+}
+```
+
+Settings for `super_filter_create`.
+
+| Field | Description |
+|-------|-------------|
+| `timeline` | the timeline synced rates follow (zero: the transport's leader) |
+
+### Super_Filter_Readout
+
+```odin
+Super_Filter_Readout :: struct {
+	cutoff_hz: [2]f32,
+	lfo: [2]f32,
+	env: f32,
+	in_peak: f32,
+	out_peak: f32,
+}
+```
+
+What a SuperFilter is doing, for drawing it (`super_filter_readout`).
+
+| Field | Description |
+|-------|-------------|
+| `cutoff_hz` | the modulated cutoff, each side, at the end of the last block |
+| `lfo` | the LFO, each side (-1..1) |
+| `env` | the envelope (0..1) |
+| `in_peak` | the last block's peak in (linear) |
+| `out_peak` | and out |
+
+### Super_Filter_Values
+
+```odin
+Super_Filter_Values :: [31]f32
+```
+
+A SuperFilter's settings, by parameter id (index 0 unused).
+
+### Super_Filter
+
+```odin
+Super_Filter :: struct {
+	settings: Super_Filter_Settings,
+	values: [31]f32,
+	sample_rate: f64,
+	frame: i64,
+	fill: int,
+	gathered: [4][32]f32,
+	done: [2][32]f32,
+	piece_clock: Beat_Clock,
+	lfo: Lfo,
+	follower: Follower,
+	filters: ^[2][2]Filter_State,
+	scratch: [8][]f32,
+	glide: [3]f32,
+	glide_set: bool,
+	readout: [7]u32,
+	pending: [64]Sf_Change,
+	pending_n: int,
+	allocator: mem.Allocator,
+}
+```
+
+A SuperFilter node's state (from `super_filter_create`). Fields are
+internal.
+
+| Field | Description |
+|-------|-------------|
+| `settings` |  |
+| `values` |  |
+| `sample_rate` |  |
+| `frame` | frames taken in since the last reset (its 32-frame pieces line up with these) |
+| `fill` | frames of the piece being gathered |
+| `gathered` | the piece coming in: left, right, key left, key right |
+| `done` | the last piece, filtered: what goes out while the next comes in |
+| `piece_clock` | the clock at the gathered piece's first frame |
+| `lfo` |  |
+| `follower` |  |
+| `filters` | a side each; the second for Clean at 24 dB |
+| `scratch` | lfo l, lfo r, env, cut l, cut r, dry l, dry r, key |
+| `glide` | freq (a key), output gain, mix: where the last frame left them |
+| `glide_set` |  |
+| `readout` | atomics: a `Super_Filter_Readout`'s floats, as bits |
+| `pending` | changes waiting for their piece (oldest first) |
+| `pending_n` |  |
+| `allocator` |  |
+
 ## Procedures
 
 ### chain_make
@@ -1312,4 +1892,112 @@ filter_render :: proc "contextless"(f: ^Filter_State, p: ^Filter_Params, cutoff:
 the cutoffs in `cutoff` (keys, one a sample: modulation is in them).
 `out` may be `in_`. Settings glide from the last render's across this
 one.
+
+### follower_render
+
+```odin
+follower_render :: proc "contextless"(f: ^Follower, p: ^Follower_Params, clk: Beat_Clock, key: [2][]f32, out: []f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Follows `key` (its sides together: the louder) into `out`
+(0..1: `FOLLOWER_RANGE_DB` under full scale to full scale; the frames
+as `key`'s), for clock `clk`. Allocates nothing.
+
+### follower_level
+
+```odin
+follower_level :: proc "contextless"(level: f64) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). A follower's output (0..1) for a linear level.
+
+### lfo_render
+
+```odin
+lfo_render :: proc "contextless"(l: ^Lfo, p: ^Lfo_Params, clk: Beat_Clock, out: [2][]f32, sample_rate: f64)
+```
+
+**Realtime-safe** (callable on the audio thread). Renders LFO `l` into `out` (its left and right sides, -1..1; the
+right may be the left's slice, then the left is written), for clock
+`clk`. Allocates nothing.
+
+### lfo_cycles_per_beat
+
+```odin
+lfo_cycles_per_beat :: proc "contextless"(p: ^Lfo_Params) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). Cycles a beat LFO settings `p` run at (0 in Hz mode).
+
+### super_filter_defaults
+
+```odin
+super_filter_defaults :: proc "contextless"() -> (v: [31]f32)
+```
+
+SuperFilter's settings at their defaults.
+
+### super_filter_impulse
+
+```odin
+super_filter_impulse :: proc(v: ^[31]f32, out: []f32, sample_rate: f64, at_hz: f32 = 0) -> (base_hz: f32, anchor_hz: f32)
+```
+
+Control thread. The response of SuperFilter's filter stage at settings
+`v`, unmodulated: its impulse into `out` (an impulse of 0.25: the
+circuits that drive stay near their small-signal selves), with DJ's
+fade, the output gain and Dry/Wet (the clip left out), rendered at
+cutoff `at_hz` (0: its own). Returns its own cutoff (`base_hz`: the
+readout's `cutoff_hz` unmodulated) and the cutoff the shape rendered
+sits at (`anchor_hz`): the response at a modulated cutoff `c` is this
+one moved along the frequencies by `c / anchor_hz` (Vowel's formants
+follow no cutoff: its anchor is its own).
+
+### super_filter_create
+
+```odin
+super_filter_create :: proc(settings: Super_Filter_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, sf: ^Super_Filter)
+```
+
+Control thread. A SuperFilter at its defaults. Add it to a graph with 2
+inputs and 2 outputs, or 4 inputs (the last two a sidechain key) and 2
+outputs.
+
+### super_filter_readout
+
+```odin
+super_filter_readout :: proc "contextless"(sf: ^Super_Filter) -> Super_Filter_Readout
+```
+
+Any thread. What SuperFilter `sf` is doing (as of its last block).
+
+### super_filter_circuit_has
+
+```odin
+super_filter_circuit_has :: proc "contextless"(c: Sf_Circuit, t: Sf_Type) -> bool
+```
+
+Whether circuit `c` makes type `t`. Diode makes Low only (it is a
+four-pole low-pass, whatever its blend); Comb, Vowel and Phaser have no
+circuit (any is "yes"). A type a circuit doesn't make plays on Analog.
+
+### super_filter_has_slope
+
+```odin
+super_filter_has_slope :: proc "contextless"(c: Sf_Circuit, t: Sf_Type) -> bool
+```
+
+Whether the slope (12 or 24 dB) means anything for type `t` on circuit
+`c`: Low, High, Band and Morph, but not on Diode (24 dB always).
+
+## Variables
+
+### super_filter_params
+
+```odin
+super_filter_params: [30]core.Param_Info
+```
+
+Parameter table of the SuperFilter node, as `node_params` returns it.
+Read-only.
 

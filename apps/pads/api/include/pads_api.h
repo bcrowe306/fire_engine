@@ -355,6 +355,9 @@ enum {
 	PADS_VIEW_KIND_SEQUENCER = 2,
 	PADS_VIEW_KIND_CLIP = 3,
 	PADS_VIEW_KIND_BROWSER = 4,
+	PADS_VIEW_KIND_DIALOG = 5,
+	PADS_VIEW_KIND_SONG = 6,
+	PADS_VIEW_KIND_SETTINGS = 7,
 };
 
 // Called on the control thread when `topic` changed (`index`: which; -1 all).
@@ -435,6 +438,17 @@ typedef struct Pads_Key_State {
 	bool listen; // the track plays the key instead (to set it by)
 } Pads_Key_State;
 
+// What a SuperFilter is doing as it plays (as of the last block it ran).
+typedef struct Pads_Super_Filter_State {
+	float cutoff_l; // the modulated cutoff (Hz), left
+	float cutoff_r; // and right
+	float lfo_l; // the LFO, left (-1..1)
+	float lfo_r; // and right
+	float env; // the envelope (0..1)
+	float in_peak; // the peak in (linear)
+	float out_peak; // and out
+} Pads_Super_Filter_State;
+
 // How to export.
 typedef struct Pads_Export_Settings {
 	Pads_Export_Source source;
@@ -485,6 +499,15 @@ typedef struct Pads_Place {
 	int64_t lane;
 	int64_t row;
 } Pads_Place;
+
+// The Perform tab's live state, the window's and a controller's alike.
+typedef struct Pads_Launcher_View {
+	int64_t lane; // the launcher's window (4 lanes by 4 rows): its first lane
+	int64_t row; // ... and its first row
+	bool keys; // the computer's pad keys play the window's sequence pads
+	bool fx_latch; // a press turns an effect on until the next press (Hold effects)
+	int64_t fx_last; // the performance effect pressed last
+} Pads_Launcher_View;
 
 // A MIDI port the system has.
 typedef struct Pads_Midi_Port {
@@ -543,6 +566,12 @@ typedef struct Pads_Loudness {
 	float correlation; // -1..1 (1: mono)
 } Pads_Loudness;
 
+// A send to the cue mix: its level (-60: off), before the fader or after.
+typedef struct Pads_Cue_Send {
+	float db;
+	bool pre;
+} Pads_Cue_Send;
+
 // Pad `pad` now (its name: `pad_name`).
 typedef struct Pads_Pad_State {
 	bool used; // it has a sound (a sample, a synth, a plug-in, takes)
@@ -560,6 +589,24 @@ typedef struct Pads_Pad_State {
 	Pads_Monitor monitor;
 	bool frozen; // it plays its rendering
 } Pads_Pad_State;
+
+// Pad `pad`'s sample region: where it starts and ends, in frames of its
+// sample (`frames` long at `rate` frames a second; all 0 without a sample).
+typedef struct Pads_Pad_Region {
+	int64_t start;
+	int64_t end;
+	int64_t frames;
+	double rate;
+} Pads_Pad_Region;
+
+// A slicer's slices now: how many, the selected one (whose settings its
+// page shows; Keyboard mode's keys play them, from slice 1), and the one
+// sounding (under its playhead; -1: none).
+typedef struct Pads_Pad_Slices {
+	int64_t count;
+	int64_t selected;
+	int64_t playing;
+} Pads_Pad_Slices;
 
 // A pad's audio input: what an audio track records, and a sample is
 // recorded from.
@@ -603,6 +650,13 @@ typedef struct Pads_Perform_State {
 	int64_t octave; // -3..3
 	Pads_Chord chord;
 } Pads_Perform_State;
+
+// One of Keyboard mode's keys: what pressing it plays.
+typedef struct Pads_Perform_Key {
+	int64_t pitch; // semitones from the selected pad's own note (a chord's first; a slicer's: its slice)
+	bool root; // the scale's root (a slicer's: its first slice)
+	bool playable; // within what a pad can be pitched to (else it plays nothing)
+} Pads_Perform_Key;
 
 // The project now: where it is, whether it changed, the lists beside it.
 typedef struct Pads_Project_State {
@@ -696,6 +750,21 @@ typedef struct Pads_Midi_Fx {
 	bool arp_latch; // it goes on after the keys are let go
 } Pads_Midi_Fx;
 
+// Input quantize now: on, its grid, strength and swing (0..1).
+typedef struct Pads_Input_Quantize {
+	bool on;
+	Pads_Grid grid;
+	float strength;
+	float swing;
+} Pads_Input_Quantize;
+
+// What Quantize does (the window's button, a controller's): its grid and
+// strength (0..1), saved with the project.
+typedef struct Pads_Quantize_Setting {
+	Pads_Grid grid;
+	float strength;
+} Pads_Quantize_Setting;
+
 // What setting `name` is.
 typedef struct Pads_Setting_Info {
 	Pads_Setting_Kind kind;
@@ -758,6 +827,18 @@ typedef struct Pads_Time_Signature {
 	int64_t den;
 } Pads_Time_Signature;
 
+// Editing the song now, the window's Song tab and a controller's alike:
+// the cursor (where `song_add_at_cursor` puts a clip), the selected lane
+// and clip, the eight lanes a controller shows (`first_lane` on), and how
+// long a clip added at the cursor plays.
+typedef struct Pads_Song_Edit {
+	double cursor; // song beats
+	int64_t lane;
+	int64_t first_lane; // 0 or 8
+	int64_t clip; // the selected clip (-1: none)
+	double length; // beats (0: its sequence's length)
+} Pads_Song_Edit;
+
 // The transport now. The playhead (`beat`, `timeline_beat`, the position)
 // moves without a change being reported: poll it.
 typedef struct Pads_Transport_State {
@@ -790,6 +871,25 @@ typedef struct Pads_Ui_State {
 	int64_t messages; // messages showing (ui_message)
 	int64_t selected; // pads selected together (ui_selected_pad)
 } Pads_Ui_State;
+
+// The dialog the window shows now (a controller shows it too: View_Kind
+// .Dialog). `choices`: its buttons a controller can press (0: it can't be
+// answered there; its title says what it is).
+typedef struct Pads_Dialog_State {
+	bool open;
+	int64_t choices;
+} Pads_Dialog_State;
+
+// What a view offers a controller now, as it last drew: its knobs (one an
+// encoder, 0..knobs-1), its buttons (bit k: View_Button k is there; `lit`
+// bit k: it is on), and its knobs' pages (`page` of `pages`).
+typedef struct Pads_View_State {
+	int64_t knobs;
+	int64_t buttons;
+	int64_t lit;
+	int64_t pages;
+	int64_t page;
+} Pads_View_State;
 
 // A view to draw (`views_wanted`).
 typedef struct Pads_View_Request {
@@ -1440,16 +1540,20 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*song_clip_label)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
 	// Adds sequence `slot` to the song on lane `lane`: at beat `at` (-1: after
 	// the lane's last clip), `length` beats long (0: the sequence `repeats`
-	// times). Its index. Undoably; Busy when the song is full.
+	// times); the clips it lies over make way (trimmed, cut in two or taken
+	// out: a lane plays one clip at a time). Its index. Undoably; Busy when
+	// the song is full.
 	Pads_Result (*song_add)(Pads_Api* api, int64_t slot, int64_t lane, double at, double length, int64_t repeats, int64_t* out);
 	// Sets clip `index` (its sequence, place, length, part, transpose, mute),
-	// undoably (a gesture's moves merge).
+	// undoably (a gesture's moves merge); the clips it then lies over make way
+	// (as `song_add`'s), so the song's clips may be numbered anew.
 	Pads_Result (*song_set_clip)(Pads_Api* api, int64_t index, Pads_Song_Clip c);
 	// Removes the clips `indices`: one undo step.
 	Pads_Result (*song_remove_clips)(Pads_Api* api, const int64_t* indices, int64_t indices_len);
 	// Copies the clips `indices` right after themselves (the selection's span
-	// later): one undo step. How many were copied (as many as fit): they are
-	// the song's last clips now.
+	// later; the clips they lie over make way): one undo step. How many were
+	// copied (as many as fit): they are the song's last clips now (but for a
+	// clip they cut in two: its tail is).
 	Pads_Result (*song_duplicate_clips)(Pads_Api* api, const int64_t* indices, int64_t indices_len, int64_t* out);
 	// Empties the song (its clips; its lanes, tempo, meters and markers too),
 	// undoably.
@@ -1458,7 +1562,8 @@ typedef struct Pads_Api_V1 {
 	// long as the longer), undoably.
 	Pads_Result (*song_merge_sequence)(Pads_Api* api, int64_t from, int64_t to);
 	// Moves the clips `indices` by `beats` and `lanes`: one undo step (the
-	// earliest stays at 0 or later, the top lane at 0 or lower).
+	// earliest stays at 0 or later, the top lane at 0 or lower; the clips they
+	// then lie over make way).
 	Pads_Result (*song_move_clips)(Pads_Api* api, const int64_t* indices, int64_t indices_len, double beats, int64_t lanes);
 	// Song lane `lane`.
 	Pads_Result (*song_lane)(Pads_Api* api, int64_t lane, Pads_Song_Lane* out);
@@ -1587,8 +1692,17 @@ typedef struct Pads_Api_V1 {
 	// Shows view, panel or device page `name`: a view ("sequence", "song",
 	// "mixer", "perform"), the pads ("pads"), the Library ("browser",
 	// "devices"), or the selected pad's page ("sample", "global", "env",
-	// "filter", "pitch", "lfo", "effect", "eq", "midi"). Not_Found for
-	// another name.
+	// "filter", "pitch", "lfo", "effect", "eq", "midi"; "device": its chain
+	// as it was), performance effect N ("fx 1".."fx 16") in the device
+	// panel, a Library category ("library Effects", "library This Project"),
+	// the Library for the device shown ("browse device"), the sequencer's
+	// Automation tab ("automation"), or a dialog: Sequence Length
+	// ("sequence length"), Quantize's settings ("quantize"), Convert
+	// ("convert"), Keyboard mode's scale ("scale"), Settings ("settings"),
+	// Recording ("recording": the Sample control), Transport ("transport":
+	// loop, count-in, the click, the time signature), Copy Bars ("copy
+	// bars"), the current sequence's settings ("sequence settings"), launcher
+	// lane N's ("lane N", from 1). Not_Found for another name.
 	Pads_Result (*ui_show)(Pads_Api* api, const char* name, int64_t name_len);
 	// The dark theme (`dark`), or the light one. Saved with the settings.
 	Pads_Result (*ui_set_dark)(Pads_Api* api, bool dark);
@@ -1690,6 +1804,185 @@ typedef struct Pads_Api_V1 {
 	// last: unchanged). Each frame Pads draws the views asked for in the last
 	// two seconds.
 	Pads_Result (*view_frame)(Pads_Api* api, Pads_View_Kind kind, int64_t page, int64_t width, int64_t height, void* rgba, int64_t size, int64_t* out);
+	// Pad `pad`'s sample region now.
+	Pads_Result (*pad_region)(Pads_Api* api, int64_t pad, Pads_Pad_Region* out);
+	// Sets pad `pad`'s sample region (frames, start before end, within its
+	// sample), undoably. Unsupported without a sample.
+	Pads_Result (*pad_set_region)(Pads_Api* api, int64_t pad, int64_t start, int64_t end);
+	// Turns knob `knob` (0..7) of view `kind` (`page` of it, any size asked
+	// for) by `amount`, a fraction of its travel (+ or -): as the knob turned
+	// in Pads, at its next drawing. Not_Found: no such view asked for.
+	Pads_Result (*view_turn)(Pads_Api* api, Pads_View_Kind kind, int64_t page, int64_t knob, double amount);
+	// Knob `knob` of a view touched (`on`) or let go: lit while touched; let
+	// go, its edit ends (one undo step a touch).
+	Pads_Result (*view_touch)(Pads_Api* api, Pads_View_Kind kind, int64_t page, int64_t knob, bool on);
+	// Button `button` (a View_Button) of a view pressed (`on`) or let go: as
+	// its button clicked in Pads (some act while held: recording).
+	Pads_Result (*view_press)(Pads_Api* api, Pads_View_Kind kind, int64_t page, int64_t button, bool on);
+	// What view `kind` (`page` of it) offers a controller, as it last drew.
+	Pads_Result (*view_state)(Pads_Api* api, Pads_View_Kind kind, int64_t page, Pads_View_State* out);
+	// The dialog the window shows now.
+	Pads_Result (*ui_dialog)(Pads_Api* api, Pads_Dialog_State* out);
+	// The dialog's title ("" when none shows). Temporary.
+	Pads_Result (*ui_dialog_title)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Keyboard mode's key `key` (0..127: 0 the shown bank's first pad, 16 the
+	// next bank's first...): the note it plays on the selected pad, whatever the
+	// play mode now.
+	Pads_Result (*perform_key)(Pads_Api* api, int64_t key, Pads_Perform_Key* out);
+	// Plays Keyboard mode's key `key` (as `perform_key` counts them) on the
+	// selected pad, at `velocity` (0..1], or lets it go (`on` false), as
+	// pressing that pad of Pads' grid in Keyboard mode does: a chord's notes
+	// together. A key out of the pad's range plays nothing. What a key played
+	// is what its release ends, whatever changed between.
+	Pads_Result (*perform_play_key)(Pads_Api* api, int64_t key, bool on, float velocity);
+	// How many times pad `pad` has been struck since the engine started (any
+	// hit: a controller's, the sequencer's, the API's): a controller lights a
+	// pad when it changes, as the window's pads flash.
+	Pads_Result (*pad_struck)(Pads_Api* api, int64_t pad, int64_t* out);
+	// The Perform tab's live state now.
+	Pads_Result (*launcher_view)(Pads_Api* api, Pads_Launcher_View* out);
+	// Moves the launcher's window to lane `lane` and row `row` (kept over the
+	// lanes and rows there are).
+	Pads_Result (*launcher_set_view)(Pads_Api* api, int64_t lane, int64_t row);
+	// The computer's pad keys play the launcher window's sequence pads (`on`),
+	// or the pads.
+	Pads_Result (*launcher_set_keys)(Pads_Api* api, bool on);
+	// A sequence pad pressed (`on`) or let go, as the Perform tab's: launched
+	// in its lane (`alone`: the other lanes stop), or, in Hold, played while
+	// held (let go, its lane goes back to what it played).
+	Pads_Result (*launcher_press)(Pads_Api* api, int64_t slot, bool on, bool alone);
+	// Performance effect `index`'s pad pressed (`on`, at `intensity`: 0..1,
+	// -1 its own) or let go, as the Perform tab's: held while held, or, with
+	// effects latching, on until the next press.
+	Pads_Result (*effect_press)(Pads_Api* api, int64_t index, bool on, float intensity);
+	// How hard effect `index` plays while its pad is held (0..1: its pressure),
+	// as the press moves. Nothing when it isn't held or latched.
+	Pads_Result (*effect_pressure)(Pads_Api* api, int64_t index, float intensity);
+	// Effects latch (`on`: a press turns one on until the next), or play
+	// while held; turned off, the latched ones not held go off.
+	Pads_Result (*effect_set_latch)(Pads_Api* api, bool on);
+	// Saves the project where it is; an untitled one into the projects folder
+	// (the "project.folder" setting, else Documents) as the first free
+	// "Project N" (a controller's quick save). Its folder.
+	Pads_Result (*project_save_quick)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// The Library's selected item onto pad `pad`, as its last load did (a
+	// sample as a sampler, a slicer...; else the item's first action): a
+	// controller's Shift + pad. Not_Found when nothing is selected or it
+	// can't go onto a pad.
+	Pads_Result (*ui_library_load)(Pads_Api* api, int64_t pad);
+	// Pad `pad`'s slices (not a slicer: none).
+	Pads_Result (*pad_slices)(Pads_Api* api, int64_t pad, Pads_Pad_Slices* out);
+	// Selects slice `slice` of the selected pad (a slicer): its page shows its
+	// settings.
+	Pads_Result (*pad_select_slice)(Pads_Api* api, int64_t slice);
+	// The song's editing now (its cursor, selected lane and clip...).
+	Pads_Result (*song_edit_state)(Pads_Api* api, Pads_Song_Edit* out);
+	// Puts the song's cursor at beat `beat` (0 or more).
+	Pads_Result (*song_set_cursor)(Pads_Api* api, double beat);
+	// Selects song lane `lane` (0..15); the eight lanes shown follow it.
+	Pads_Result (*song_select_lane)(Pads_Api* api, int64_t lane);
+	// Shows the eight song lanes from `first` (0 or 8) on a controller.
+	Pads_Result (*song_show_lanes)(Pads_Api* api, int64_t first);
+	// Selects song clip `index` (-1: none); its lane is selected too.
+	Pads_Result (*song_select_clip)(Pads_Api* api, int64_t index);
+	// The clip on song lane `lane` playing at beat `beat` (the latest to start
+	// there, -1: none).
+	Pads_Result (*song_clip_at)(Pads_Api* api, int64_t lane, double beat, int64_t* out);
+	// Sets how long a clip added at the cursor plays: `beats` (0: its
+	// sequence's length).
+	Pads_Result (*song_set_add_length)(Pads_Api* api, double beats);
+	// Inserts sequence `slot` (-1: the current one) at the cursor on song
+	// lane `lane` (a cursor inside a clip there: after that clip), as long as
+	// the add length says: the lane's clips from there on move later to make
+	// room (a ripple edit). It is selected, its lane too, and the cursor moves
+	// to its end (the next inserted follows it). Its index. Undoably; Busy
+	// when the song is full.
+	Pads_Result (*song_add_at_cursor)(Pads_Api* api, int64_t lane, int64_t slot, int64_t* out);
+	// Removes every clip of sequence `slot` from the song, closing the gaps
+	// (as `song_ripple_remove`): one undo step. How many were removed.
+	Pads_Result (*song_remove_sequence)(Pads_Api* api, int64_t slot, int64_t* out);
+	// Names clip `index`'s section ("Verse"; up to 15 bytes, "": none),
+	// undoably.
+	Pads_Result (*song_set_clip_label)(Pads_Api* api, int64_t index, const char* name, int64_t name_len);
+	// Removes the clips `indices`, closing the gaps they leave: their lanes'
+	// later clips move earlier (a ripple edit), the cursor with them on the
+	// selected lane (back to where a clip it was in began). One undo step;
+	// none is selected after.
+	Pads_Result (*song_ripple_remove)(Pads_Api* api, const int64_t* indices, int64_t indices_len);
+	// Copies clip `index` right after itself on its lane, the lane's later
+	// clips moving later to make room (a ripple edit); the copy is selected
+	// and the cursor goes to its end. Its index. Undoably; Busy when the song
+	// is full.
+	Pads_Result (*song_ripple_duplicate)(Pads_Api* api, int64_t index, int64_t* out);
+	// Whether the project manager shows: the window's page of recent
+	// projects, templates, New and Open (when Pads starts with no project to
+	// open, and after New Project). A controller shows its browser on the
+	// projects meanwhile.
+	Pads_Result (*ui_start_page)(Pads_Api* api, bool* out);
+	// Shows the project manager (`open`), or closes it (the project open now
+	// stays). Opening or making a project closes it too.
+	Pads_Result (*ui_set_start_page)(Pads_Api* api, bool open);
+	// Input quantize now (what `sequence_set_input_quantize` set).
+	Pads_Result (*sequence_input_quantize)(Pads_Api* api, Pads_Input_Quantize* out);
+	// Makes clip `index` `length` beats long, its lane's later clips moving
+	// with its end (a ripple edit: Double Loop in the song). Undoably.
+	Pads_Result (*song_ripple_resize)(Pads_Api* api, int64_t index, double length);
+	// Whether automation recording is armed (the window's Auto): knob and
+	// fader moves while recording are written into the sequence.
+	Pads_Result (*ui_automation_armed)(Pads_Api* api, bool* out);
+	// Arms automation recording (`on`), or disarms it.
+	Pads_Result (*ui_set_automation_armed)(Pads_Api* api, bool on);
+	// What Quantize does now.
+	Pads_Result (*sequence_quantize_setting)(Pads_Api* api, Pads_Quantize_Setting* out);
+	// Sets what Quantize does: its grid and strength (0..1), undoably.
+	Pads_Result (*sequence_set_quantize_setting)(Pads_Api* api, Pads_Grid grid, float strength);
+	// Quantizes sequence `slot` as the Quantize setting says (note repeat on:
+	// to its rate), undoably.
+	Pads_Result (*sequence_quantize_now)(Pads_Api* api, int64_t slot);
+	// Quantize, as the window's button does: the sequencer's selected notes,
+	// else the current sequence, as the Quantize setting says
+	// (`sequence_quantize_setting`); the window says which.
+	Pads_Result (*ui_quantize)(Pads_Api* api);
+	// Every pad hit at full velocity (a controller's Accent: the window's and
+	// MIDI's hits alike, recorded so too), or as played. Not saved.
+	Pads_Result (*perform_set_accent)(Pads_Api* api, bool on);
+	// Whether every pad hit plays at full velocity.
+	Pads_Result (*perform_accent)(Pads_Api* api, bool* out);
+	// Selects the current sequence's notes `indices` in the sequencer (its
+	// knobs, the window's and a controller's, edit them); none: nothing
+	// selected.
+	Pads_Result (*ui_select_notes)(Pads_Api* api, const int64_t* indices, int64_t indices_len);
+	// The sequencer's grid: where notes snap, a controller's step size.
+	Pads_Result (*ui_sequencer_grid)(Pads_Api* api, Pads_Grid* out);
+	// Sets the sequencer's grid.
+	Pads_Result (*ui_set_sequencer_grid)(Pads_Api* api, Pads_Grid grid);
+	// Whether the Sample control is armed (the window's toolbar, the Recording
+	// dialog): the next pad pressed records into it.
+	Pads_Result (*ui_sample_armed)(Pads_Api* api, bool* out);
+	// Pad `pad`'s send to the cue mix.
+	Pads_Result (*mixer_pad_cue)(Pads_Api* api, int64_t pad, Pads_Cue_Send* out);
+	// The key's high cut (its low-pass, in Hz; 0: none) of the effect in slot
+	// `s`: a SuperFilter's (the others have none).
+	Pads_Result (*effect_key_high_cut)(Pads_Api* api, Pads_Slot_Ref s, float* out);
+	// Sets the key's high cut (its low-pass: 200..20000 Hz; 0: none) of the
+	// SuperFilter in slot `s`, undoably. Invalid_Argument for another effect.
+	Pads_Result (*effect_set_key_high_cut)(Pads_Api* api, Pads_Slot_Ref s, float hz);
+	// What the SuperFilter in slot `s` is doing: its cutoffs as modulated,
+	// its LFO and envelope, its peaks. Not_Found if the slot holds no
+	// SuperFilter (or it isn't in the graph).
+	Pads_Result (*effect_super_filter_state)(Pads_Api* api, Pads_Slot_Ref s, Pads_Super_Filter_State* out);
+	// How many factory effect presets there are.
+	Pads_Result (*effect_preset_count)(Pads_Api* api, int64_t* out);
+	// Factory effect preset `index`'s name ("Wobble 1/8"). Not_Found past
+	// the last.
+	Pads_Result (*effect_preset_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// The effect kind factory effect preset `index` is for (as
+	// effect_kind_name counts them).
+	Pads_Result (*effect_preset_kind)(Pads_Api* api, int64_t index, int64_t* out);
+	// Puts factory effect preset `index` (its effect, set as it says) in
+	// slot `s`, undoably; the slot's sidechain source stays. Not_Found for no
+	// such preset.
+	Pads_Result (*effect_load_preset)(Pads_Api* api, Pads_Slot_Ref s, int64_t index);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

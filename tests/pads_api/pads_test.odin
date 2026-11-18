@@ -100,11 +100,63 @@ a_pad_changes_kind_plays_and_arms :: proc(t: ^testing.T) {
 	testing.expect_value(t, pa.pad_set_armed(api, 2, true), pa.Result.Ok)
 	s, _ = pa.pad_state(api, 2)
 	testing.expect(t, s.kind == .Audio && s.armed, "armed")
-	// Played: it sounds.
+	// Played: it sounds, and it was struck once more.
+	struck, _ := pa.pad_struck(api, 0)
 	testing.expect_value(t, pa.pad_play(api, 0, true, 2), pa.Result.Invalid_Argument)
 	testing.expect_value(t, pa.pad_play(api, 0, true), pa.Result.Ok)
 	render(r, 2048)
 	_, playing := pm.pad_playhead(&r.core.m.engine, 0)
 	testing.expect(t, playing, "it plays")
+	now, _ := pa.pad_struck(api, 0)
+	testing.expect_value(t, now, struck + 1)
+	_, res := pa.pad_struck(api, pa.PADS)
+	testing.expect_value(t, res, pa.Result.Not_Found)
 	testing.expect_value(t, pa.pad_play(api, 0, false), pa.Result.Ok)
+}
+
+@(test)
+a_pads_region_is_read_and_moved :: proc(t: ^testing.T) {
+	r := rig_make(t, "region")
+	defer rig_destroy(r)
+	api := &r.api
+	g, res := pa.pad_region(api, 2)
+	testing.expect(t, res == .Ok && g == {}, "no sample: none")
+	testing.expect_value(t, pa.pad_set_region(api, 2, 0, 10), pa.Result.Unsupported)
+	testing.expect_value(t, pa.pad_load_sample(api, 2, tone(r)), pa.Result.Ok)
+	g, _ = pa.pad_region(api, 2)
+	testing.expect(t, g.start == 0 && g.end == i64(SR) && g.frames == i64(SR) && g.rate == SR, "the whole sample")
+	testing.expect_value(t, pa.pad_set_region(api, 2, 100, 50), pa.Result.Invalid_Argument)
+	testing.expect_value(t, pa.pad_set_region(api, 2, 0, i64(SR) + 1), pa.Result.Invalid_Argument)
+	testing.expect_value(t, pa.pad_set_region(api, 2, 1000, 20000), pa.Result.Ok)
+	g, _ = pa.pad_region(api, 2)
+	testing.expect(t, g.start == 1000 && g.end == 20000, "moved")
+	testing.expect_value(t, pa.history_undo(api), pa.Result.Ok)
+	g, _ = pa.pad_region(api, 2)
+	testing.expect_value(t, g.end, i64(SR))
+}
+
+@(test)
+a_slicers_slices_are_read_selected_and_played :: proc(t: ^testing.T) {
+	r := rig_make(t, "pads_slices")
+	defer rig_destroy(r)
+	api := &r.api
+	pa.pad_load_sample(api, 0, tone(r))
+	sl, res := pa.pad_slices(api, 0)
+	testing.expect(t, res == .Ok && sl.count == 0 && sl.selected == -1, "a sampler: no slices")
+	pa.perform_select_pad(api, 0)
+	testing.expect_value(t, pa.pad_select_slice(api, 0), pa.Result.Invalid_Argument)
+	pa.pad_set_kind(api, 0, .Slicer)
+	pm.slice_pad(&r.core.m, 0, .Equal) // (16 equal parts)
+	sl, _ = pa.pad_slices(api, 0)
+	testing.expect(t, sl.count == 16 && sl.selected == 0 && sl.playing == -1, "16, the first selected, none sounding")
+	testing.expect_value(t, pa.pad_select_slice(api, 3), pa.Result.Ok)
+	testing.expect_value(t, pa.pad_select_slice(api, 16), pa.Result.Not_Found)
+	// Key 3 of Keyboard mode plays slice 4: it sounds.
+	testing.expect_value(t, pa.perform_play_key(api, 3, true), pa.Result.Ok)
+	render(r, 512)
+	sl, _ = pa.pad_slices(api, 0)
+	testing.expect(t, sl.selected == 3 && sl.playing == 3, "slice 4 selected and sounding")
+	pa.perform_play_key(api, 3, false)
+	_, res = pa.pad_slices(api, pa.PADS)
+	testing.expect_value(t, res, pa.Result.Not_Found)
 }

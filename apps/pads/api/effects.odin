@@ -3,6 +3,7 @@ package pads_api
 import "core:strings"
 
 import fc "fire:core"
+import pc "../core"
 import pm "../model"
 
 // Where an effect slot is.
@@ -205,7 +206,7 @@ effect_set_key :: proc(api: ^Api, s: Slot_Ref, kind: Key_Kind, index: i64) -> Re
 	k := pm.Key_Source{kind = pm.Key_Kind(kind), index = int(index)}
 	if kind != .None && !pm.key_allowed(&api.core.m.project, fx_target(s), k) do return fail(api, .Invalid_Argument, "it can't listen to that (itself, or a bus it feeds)")
 	slot.key = k
-	if kind == .None do slot.listen = false
+	if kind == .None && !pm.key_has_high_cut(slot.kind) do slot.listen = false // (SuperFilter hears itself through its key's filters)
 	pm.set_target_slot(&api.core.m, fx_target(s), slot, "Sidechain")
 	edited(api)
 	return .Ok
@@ -222,6 +223,87 @@ effect_set_key_filter :: proc(api: ^Api, s: Slot_Ref, hz: f32) -> Result {
 	pm.set_target_slot(&api.core.m, fx_target(s), slot, "Key Filter")
 	edited(api)
 	return .Ok
+}
+
+// The key's high cut (its low-pass, in Hz; 0: none) of the effect in slot
+// `s`: a SuperFilter's (the others have none).
+effect_key_high_cut :: proc(api: ^Api, s: Slot_Ref) -> (f32, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return 0, r
+	return slot.key_lpf, .Ok
+}
+
+// Sets the key's high cut (its low-pass: 200..20000 Hz; 0: none) of the
+// SuperFilter in slot `s`, undoably. Invalid_Argument for another effect.
+effect_set_key_high_cut :: proc(api: ^Api, s: Slot_Ref, hz: f32) -> Result {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return r
+	if slot.kind == .None do return fail(api, .Not_Found, "the slot is empty")
+	if !pm.key_has_high_cut(slot.kind) do return fail(api, .Invalid_Argument, "only a SuperFilter's key has a high cut")
+	if !(hz == 0 || (hz >= 200 && hz <= 20_000)) do return fail(api, .Invalid_Argument, "the key's high cut is 200..20000 Hz, or 0")
+	slot.key_lpf = hz
+	pm.set_target_slot(&api.core.m, fx_target(s), slot, "Key High Cut")
+	edited(api)
+	return .Ok
+}
+
+// How many factory effect presets there are.
+effect_preset_count :: proc(api: ^Api) -> (i64, Result) {
+	return i64(len(pm.EFFECT_PRESETS)), .Ok
+}
+
+// Factory effect preset `index`'s name ("Wobble 1/8"). Not_Found past
+// the last.
+effect_preset_name :: proc(api: ^Api, index: i64) -> (string, Result) {
+	if index < 0 || index >= i64(len(pm.EFFECT_PRESETS)) do return "", fail(api, .Not_Found, "no such preset")
+	return pm.EFFECT_PRESETS[index].name, .Ok
+}
+
+// The effect kind factory effect preset `index` is for (as
+// effect_kind_name counts them).
+effect_preset_kind :: proc(api: ^Api, index: i64) -> (i64, Result) {
+	if index < 0 || index >= i64(len(pm.EFFECT_PRESETS)) do return 0, fail(api, .Not_Found, "no such preset")
+	return i64(pm.EFFECT_PRESETS[index].kind), .Ok
+}
+
+// Puts factory effect preset `index` (its effect, set as it says) in
+// slot `s`, undoably; the slot's sidechain source stays. Not_Found for no
+// such preset.
+effect_load_preset :: proc(api: ^Api, s: Slot_Ref, index: i64) -> Result {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return r
+	if index < 0 || index >= i64(len(pm.EFFECT_PRESETS)) do return fail(api, .Not_Found, "no such preset")
+	p := pm.EFFECT_PRESETS[index]
+	t := fx_target(s)
+	if t.kind == .Perf do return fail(api, .Unsupported, "a performance effect takes no presets")
+	n := pm.effect_preset_slot(p)
+	if pm.key_allowed(&api.core.m.project, t, slot.key) do n.key = slot.key
+	pm.set_target_slot(&api.core.m, t, n, "Load Preset")
+	edited(api)
+	return .Ok
+}
+
+// What a SuperFilter is doing as it plays (as of the last block it ran).
+Super_Filter_State :: struct {
+	cutoff_l:  f32, // the modulated cutoff (Hz), left
+	cutoff_r:  f32, // and right
+	lfo_l:     f32, // the LFO, left (-1..1)
+	lfo_r:     f32, // and right
+	env:       f32,    // the envelope (0..1)
+	in_peak:   f32,    // the peak in (linear)
+	out_peak:  f32,    // and out
+}
+
+// What the SuperFilter in slot `s` is doing: its cutoffs as modulated,
+// its LFO and envelope, its peaks. Not_Found if the slot holds no
+// SuperFilter (or it isn't in the graph).
+effect_super_filter_state :: proc(api: ^Api, s: Slot_Ref) -> (Super_Filter_State, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return {}, r
+	if slot.kind != .Super_Filter do return {}, fail(api, .Not_Found, "the slot holds no SuperFilter")
+	x, ok := pm.slot_super_filter(&api.core.m.engine, fx_target(s))
+	if !ok do return {}, fail(api, .Not_Found, "the SuperFilter isn't playing")
+	return {cutoff_l = x.cutoff_hz[0], cutoff_r = x.cutoff_hz[1], lfo_l = x.lfo[0], lfo_r = x.lfo[1], env = x.env, in_peak = x.in_peak, out_peak = x.out_peak}, .Ok
 }
 
 // Makes the track play the key of the effect in slot `s` (filtered)
@@ -264,4 +346,30 @@ slot_of :: proc(api: ^Api, s: Slot_Ref) -> (pm.Effect_Slot, Result) {
 	slot, ok := pm.target_slot(&api.core.m, fx_target(s))
 	if !ok do return {}, fail(api, .Not_Found, "no such slot")
 	return slot, .Ok
+}
+
+// Performance effect `index`'s pad pressed (`on`, at `intensity`: 0..1,
+// -1 its own) or let go, as the Perform tab's: held while held, or, with
+// effects latching, on until the next press.
+effect_press :: proc(api: ^Api, index: i64, on: bool, intensity: f32 = -1) -> Result {
+	if index < 0 || index >= pm.PERF_FX do return fail(api, .Not_Found, "a performance effect is 0..15")
+	if intensity != -1 && !(intensity >= 0 && intensity <= 1) do return fail(api, .Invalid_Argument, "intensity is 0..1 (-1: its own)")
+	pc.fx_press(api.core, int(index), on, intensity)
+	return .Ok
+}
+
+// How hard effect `index` plays while its pad is held (0..1: its pressure),
+// as the press moves. Nothing when it isn't held or latched.
+effect_pressure :: proc(api: ^Api, index: i64, intensity: f32) -> Result {
+	if index < 0 || index >= pm.PERF_FX do return fail(api, .Not_Found, "a performance effect is 0..15")
+	if !(intensity >= 0 && intensity <= 1) do return fail(api, .Invalid_Argument, "intensity is 0..1")
+	pc.fx_pressure(api.core, int(index), intensity)
+	return .Ok
+}
+
+// Effects latch (`on`: a press turns one on until the next), or play
+// while held; turned off, the latched ones not held go off.
+effect_set_latch :: proc(api: ^Api, on: bool) -> Result {
+	pc.fx_set_latch(api.core, on)
+	return .Ok
 }

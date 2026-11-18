@@ -33,12 +33,15 @@ fxv :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, id: fc.Param_Id) -> f32
 	return pm.slot_value(s, id, 0)
 }
 
-// Draws effect slot `t`'s picture (nothing for one that has none).
-draw_effect_view :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
+// Draws effect slot `t`'s picture (nothing for one that has none), `size`
+// big (0: the row's width, FX_VIEW_H tall).
+draw_effect_view :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, size := im.Vec2{}) {
 	m := &a.m
 	th := ui.theme()
-	w := im.GetContentRegionAvail().x
-	size := im.Vec2{w, FX_VIEW_H}
+	size := size
+	if size.x <= 0 do size.x = im.GetContentRegionAvail().x
+	if size.y <= 0 do size.y = FX_VIEW_H
+	w := size.x
 	color := th.accent
 	sr := a.host.graph.settings.sample_rate if a.host.graph.settings.sample_rate > 0 else 48_000
 	// A held performance effect: as hard as it is pressed.
@@ -101,10 +104,10 @@ draw_effect_view :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 		diag := make([]f32, 2, context.temp_allocator)
 		diag[0], diag[1] = -60, 0
 		bar_w: f32 = 54
-		ui.line_plot("effect curve", {{ys = diag, color = ui.with_alpha(th.text, 0.2), width = 1}, {ys = ys, color = color, fill = true, width = 2.5}}, {w - bar_w - 8, FX_VIEW_H}, -60, 6, {0.25, 0.5, 0.75}, {-48, -36, -24, -12, 0})
+		ui.line_plot("effect curve", {{ys = diag, color = ui.with_alpha(th.text, 0.2), width = 1}, {ys = ys, color = color, fill = true, width = 2.5}}, {w - bar_w - 8, size.y}, -60, 6, {0.25, 0.5, 0.75}, {-48, -36, -24, -12, 0})
 		im.SameLine(0, 8)
 		gr, ok := pm.slot_reduction(&m.engine, t)
-		reduction_meter(a, abs(f32(gr)) if ok else 0, {bar_w, FX_VIEW_H})
+		reduction_meter(a, abs(f32(gr)) if ok else 0, {bar_w, size.y})
 
 	case .Saturation:
 		drive := math.pow(10, fxv(a, t, s, dsp.SATURATION_PARAM_DRIVE_DB) / 20)

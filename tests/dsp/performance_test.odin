@@ -5,6 +5,7 @@ import "core:testing"
 
 import "fire:core"
 import "fire:dsp"
+import "fire:fx"
 import kit "fire:testkit"
 import tb "fire:timebase"
 
@@ -177,6 +178,25 @@ wet_dry_mixes_without_steps :: proc(t: ^testing.T) {
 	// Its parameters: the effect's, and the mix.
 	params := core.node_params(&sw)
 	testing.expect_value(t, len(params), len(dsp.ring_params) + 1)
+}
+
+// A late effect (SuperFilter, 32 frames, here passing its input): the dry
+// is delayed as much, so half wet is the input 32 frames late (no comb),
+// and so is fully dry.
+@(test)
+wet_delays_the_dry_for_a_late_effect :: proc(t: ^testing.T) {
+	in_ := sine_input(3000, 0.25)
+	for mix in ([]f64{0.5, 0}) {
+		inner, sf := fx.super_filter_create({})
+		sf.values[fx.SF_PARAM_MIX] = 0 // (it passes its input, late)
+		w := dsp.wet_create(inner, mix)
+		defer core.node_destroy(&w)
+		testing.expect_value(t, core.node_latency(&w), 32)
+		out := render_with(t, &w, in_)
+		worst: f32 = 0
+		for i in 32 ..< len(out.channels[0]) do worst = max(worst, abs(out.channels[0][i] - in_.channels[0][i - 32]))
+		testing.expectf(t, worst < 1e-5, "mix %v: the input, 32 frames late (off by %v)", mix, worst)
+	}
 }
 
 @(test)

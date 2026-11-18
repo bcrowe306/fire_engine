@@ -92,12 +92,22 @@ draw_effect :: proc(user: rawptr) {
 			return
 		}
 	}
+	if s.kind == .Super_Filter {
+		im.SameLine(0, 16)
+		sf_header(a, t, s)
+	}
 	if pm.slot_failed(&m.engine, t.index if t.kind == .Pad else -1, t.index if t.kind == .Bus else -1, t.slot) {
 		im.TextColored(transmute(im.Vec4)ui.theme().danger, "%s", fmt.ctprintf("Could not load %s", s.plugin_path))
 		return
 	}
 	sidechain := pm.keyable(s.kind) && (t.kind == .Pad || t.kind == .Bus)
+	// (SuperFilter's row folds away while it hears itself, unfiltered: its display's Sidechain opens it.)
+	if s.kind == .Super_Filter && !(a.sf_key || s.key.kind != .None || s.listen || s.key_hpf > 0 || s.key_lpf > 0) do sidechain = false
 	if sidechain do draw_sidechain(a, t, s)
+	if s.kind == .Super_Filter {
+		draw_super_filter(a, t, s)
+		return
+	}
 	// The synth's effects: their own page (its choices on this line, then
 	// its picture and knobs).
 	if e, twin := pm.synth_twin(s.kind); twin {
@@ -130,14 +140,7 @@ draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []
 	m := &a.m
 	plugin: ^clap.Plugin
 	if f := pm.target_node(&m.engine, t); f != nil do plugin = f.plugin
-	// Which to show: a delay synced shows a note value, not milliseconds.
-	shown := make([dynamic]fc.Param_Info, 0, len(params), context.temp_allocator)
-	synced := s.kind == .Delay && pm.slot_value(s, dsp.DELAY_PARAM_SYNC, 0) >= 0.5
-	for p in params {
-		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_TIME_MS && synced do continue
-		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_BEATS && !synced do continue
-		append(&shown, p)
-	}
+	shown := shown_params(s, params)
 	// Spread evenly across the width: a cell each, as many to a row as fit.
 	avail := im.GetContentRegionAvail().x
 	x0 := im.GetCursorPosX()
@@ -149,41 +152,68 @@ draw_param_knobs :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, params: []
 		is_toggle := p.min == 0 && p.max == 1 && .Stepped in p.flags
 		w: f32 = 104 if is_toggle else ui.KNOB_SIZE + 24
 		im.SetCursorPosX(x0 + f32(col) * cell + max((cell - w) / 2, 0))
-		v := pm.slot_value(s, p.id, max(f32))
-		if v == max(f32) {
-			v = f32(p.default)
-			if plugin != nil do if x, ok := clap.plugin_param_value(plugin, p.id); ok do v = f32(x)
-		}
-		if is_toggle {
-			im.BeginGroup()
-			im.Dummy({1, im.GetTextLineHeight() + 4}) // level with the knobs' dials
-			on := v >= 0.5
-			if ui.toggle(fmt.ctprintf("%s##p%d", p.name, p.id), &on) do control_effect_param(a, t, i64(p.id), 1 if on else 0, true, true)
-			im.EndGroup()
-			continue
-		}
-		// A synced delay: note values (1/16, dotted, triplets), not beats.
-		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_BEATS {
-			// While dragged it keeps where it is between notes (each frame's
-			// small move would round back otherwise).
-			@(static) dragging: bool
-			@(static) between: f32
-			idx := between if dragging else f32(nearest_note(v))
-			e := ui.knob("Note##pnote", &idx, 0, f32(len(NOTE_VALUES) - 1), f32(nearest_note(0.75)), "%.0f", shown_value = NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].name)
-			dragging, between = e.active && !e.ended, idx
-			control_effect_param(a, t, i64(p.id), f64(NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].beats), e.changed, e.ended)
-			continue
-		}
-		format := param_format(p)
-		log_scale := p.unit == .Hertz && p.min > 0 && p.max / p.min >= 50 // frequencies turn in ratios
-		knob_target(a, fx_auto_target(t, p.id))
-		e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale)
-		knob_target(a, {})
-		if .Stepped in p.flags do v = f32(int(v + 0.5))
-		control_effect_param(a, t, i64(p.id), clamp(f64(v), p.min, p.max), e.changed, e.ended)
-		if t.kind == .Instrument do lane_menu(a, t.index, p)
+		param_knob(a, t, s, p, plugin)
 	}
 	if len(params) == 0 do im.TextDisabled("No settings.")
+}
+
+// The parameters of slot `t` (`s`) its knobs show: a delay synced shows a
+// note value, not milliseconds.
+shown_params :: proc(s: pm.Effect_Slot, params: []fc.Param_Info) -> []fc.Param_Info {
+	shown := make([dynamic]fc.Param_Info, 0, len(params), context.temp_allocator)
+	synced := s.kind == .Delay && pm.slot_value(s, dsp.DELAY_PARAM_SYNC, 0) >= 0.5
+	for p in params {
+		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_TIME_MS && synced do continue
+		if s.kind == .Delay && p.id == dsp.DELAY_PARAM_BEATS && !synced do continue
+		append(&shown, p)
+	}
+	return shown[:]
+}
+
+// Parameter `p` of slot `t` (`s`) at the cursor: a knob (a toggle for an
+// on/off one; `as_knob`: a knob all the same, Off and On its two steps, for
+// a controller's encoder). A plug-in's shows what the plug-in has; an
+// instrument's can be given a lane.
+param_knob :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, p: fc.Param_Info, plugin: ^clap.Plugin, as_knob := false) {
+	is_toggle := p.min == 0 && p.max == 1 && .Stepped in p.flags
+	v := pm.slot_value(s, p.id, max(f32))
+	if v == max(f32) {
+		v = f32(p.default)
+		if plugin != nil do if x, ok := clap.plugin_param_value(plugin, p.id); ok do v = f32(x)
+	}
+	if is_toggle && !as_knob {
+		im.BeginGroup()
+		im.Dummy({1, im.GetTextLineHeight() + 4}) // level with the knobs' dials
+		on := v >= 0.5
+		if ui.toggle(fmt.ctprintf("%s##p%d", p.name, p.id), &on) do control_effect_param(a, t, i64(p.id), 1 if on else 0, true, true)
+		im.EndGroup()
+		return
+	}
+	if is_toggle {
+		e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, 0, 1, f32(p.default), "%.0f", shown_value = "On" if v >= 0.5 else "Off", step = 1)
+		control_effect_param(a, t, i64(p.id), f64(v), e.changed, e.ended)
+		return
+	}
+	// A synced delay: note values (1/16, dotted, triplets), not beats.
+	if s.kind == .Delay && p.id == dsp.DELAY_PARAM_BEATS {
+		// While dragged it keeps where it is between notes (each frame's
+		// small move would round back otherwise).
+		@(static) dragging: bool
+		@(static) between: f32
+		idx := between if dragging else f32(nearest_note(v))
+		e := ui.knob("Note##pnote", &idx, 0, f32(len(NOTE_VALUES) - 1), f32(nearest_note(0.75)), "%.0f", shown_value = NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].name)
+		dragging, between = e.active && !e.ended, idx
+		control_effect_param(a, t, i64(p.id), f64(NOTE_VALUES[clamp(int(idx + 0.5), 0, len(NOTE_VALUES) - 1)].beats), e.changed, e.ended)
+		return
+	}
+	format := param_format(p)
+	log_scale := p.unit == .Hertz && p.min > 0 && p.max / p.min >= 50 // frequencies turn in ratios
+	knob_target(a, fx_auto_target(t, p.id))
+	e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale)
+	knob_target(a, {})
+	if .Stepped in p.flags do v = f32(int(v + 0.5))
+	control_effect_param(a, t, i64(p.id), clamp(f64(v), p.min, p.max), e.changed, e.ended)
+	if t.kind == .Instrument do lane_menu(a, t.index, p)
 }
 
 // How a parameter's value reads under its knob.
@@ -268,7 +298,7 @@ draw_plugin_choice :: proc(a: ^App) {
 	c := &a.plugin_choice
 	if !c.open do return
 	im.OpenPopup("Choose a plug-in")
-	if im.BeginPopupModal("Choose a plug-in", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Choose a plug-in", nil, {.AlwaysAutoResize}) {
 		for name, i in c.names {
 			if im.Selectable(fmt.ctprintf("%s##%d", name, i)) {
 				pa.effect_set_plugin(&a.api, slot_ref(c.target), c.path, c.ids[i], name)
@@ -342,7 +372,7 @@ draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 	}
 	ui.name("sidechain")
 	if im.IsItemHovered() do im.SetTooltip("What it listens to: another pad, or a bus this track doesn't feed (after its fader)")
-	if s.key.kind == .None do return
+	if s.key.kind == .None && !pm.key_has_high_cut(s.kind) do return
 	im.SameLine(0, 12)
 	// (While dragged it shows its own value; the slot is set once, at the end: one step.)
 	@(static) dragging: bool
@@ -352,6 +382,17 @@ draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 	if im.IsItemHovered() do im.SetTooltip("The key's high-pass (0 Hz: none): above the bass, a kick keys by its click")
 	dragging, held = e.active && !e.ended, hpf
 	if e.ended || (e.changed && !e.active) do pa.effect_set_key_filter(&a.api, slot_ref(t), clamp(f32(hpf), 0, 2000))
+	// SuperFilter's key has a high cut too (its low-pass: 20 kHz is none).
+	if pm.key_has_high_cut(s.kind) {
+		im.SameLine(0, 8)
+		@(static) lp_dragging: bool
+		@(static) lp_held: f64
+		lpf := lp_held if lp_dragging else f64(s.key_lpf if s.key_lpf > 0 else 20_000)
+		le := ui.number_drag("key lpf", &lpf, 200, 20_000, 50, 5, "Key low-pass %.0f Hz" if lpf < 19_999 else "Key low-pass off", 170)
+		if im.IsItemHovered() do im.SetTooltip("The key's low-pass (20 kHz: none): under the cymbals, a kick keys by its body")
+		lp_dragging, lp_held = le.active && !le.ended, lpf
+		if le.ended || (le.changed && !le.active) do pa.effect_set_key_high_cut(&a.api, slot_ref(t), 0 if lpf >= 19_999 else clamp(f32(lpf), 200, 20_000))
+	}
 	im.SameLine(0, 12)
 	listen := s.listen
 	if ui.toggle("Listen", &listen) do pa.effect_set_key_listen(&a.api, slot_ref(t), listen)

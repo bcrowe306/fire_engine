@@ -105,8 +105,8 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "metronome", label = "Metronome", icon = ui.ICON_METRONOME, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pa.transport_set_metronome(&a.api, !a.m.engine.metronome) },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).m.engine.metronome }})
-	add(acts, {id = "quantize", label = "Quantize Sequence", icon = ui.ICON_MAGNET, chord = ui.MOD_CMD | i32(im.Key.U), user = a,
-		run = proc(u: rawptr) { a := (^App)(u); pa.sequence_quantize(&a.api, i64(a.m.project.slot), pa.Grid(a.seq.grid)) }})
+	add(acts, {id = "quantize", label = "Quantize", icon = ui.ICON_MAGNET, chord = ui.MOD_CMD | i32(im.Key.U), user = a,
+		run = proc(u: rawptr) { quantize_now((^App)(u)) }})
 	add(acts, {id = "double", label = "Double Sequence", icon = ui.ICON_COPY_PLUS, user = a,
 		run = proc(u: rawptr) { a := (^App)(u); pa.sequence_double(&a.api, i64(a.m.project.slot)) }})
 	add(acts, {id = "duplicate_sequence", label = "Duplicate Sequence", icon = ui.ICON_COPY_PLUS, chord = ui.MOD_CMD | i32(im.Key.D), user = a,
@@ -187,10 +187,52 @@ show_named :: proc(a: ^App, name: string) -> bool {
 	case "effect", "effects": show_device(a, a.fx)
 	case "eq":                show_eq(a)
 	case "midi":              show_midi(a)
+	case "device":
+		show_pad_chain(a, a.selected)
+		a.ws.bottom_folded = false
 	case "pads":              a.ws.bottom_folded = false
+	case "sequence length":    a.controls.length_open = true // (a controller's Fixed Length)
+	case "settings": // Settings (a controller's Setup: its own view of them too)
+		a.settings.open = true
+		a.ctl.settings.refreshed = false
+	case "sequence settings":  a.controls.sequence_open = true // the current sequence's (a controller's Fixed Length held)
+	case "recording":          a.controls.recording_open = true // recording into a pad (a controller's Record held)
+	case "transport":          a.controls.transport_open = true // loop, count-in, the click (a controller's Metronome held)
+	case "scale":              a.controls.scale_open = true // Keyboard mode's scale (a controller's Scale)
+	case "convert":            a.controls.convert_open = true // the selected pad converted or resampled (a controller's Convert)
+	case "copy bars":          begin_copy_bars(a, a.m.project.slot) // (a controller's Clip: Copy Bars)
+	case "quantize":           a.controls.quantize_open = true // Quantize's settings (a controller's Quantize held)
+	case "automation": // the sequencer's Automation tab (a controller's Automate held)
+		a.seq.mode = .Automation
+		ui.panel_focus(&a.ws, "sequence")
 	case "browser", "library": library_show(a, 0)
 	case "devices":            library_show(a, 1)
-	case: return ui.panel_focus(&a.ws, strings.clone_to_cstring(name, context.temp_allocator))
+	case "browse device":      lib_browse_for_device(a)
+	case:
+		// "lane N": launcher lane N's dialog (1-based; a controller's Select + its upper button).
+		if strings.has_prefix(name, "lane ") {
+			n, ok := strconv.parse_int(name[5:])
+			if !ok || n < 1 || n > pm.MAX_LANES do return false
+			a.controls.lane, a.controls.lane_open = n - 1, true
+			return true
+		}
+		// "library NAME": the Library's category NAME ("This Project", "Effects"...).
+		if strings.has_prefix(name, "library ") {
+			for c, k in lib_categories(a) do if c.name == name[8:] {
+				lib_show(a, k)
+				a.ws.left_shown = true
+				return true
+			}
+			return false
+		}
+		// "fx N": performance effect N (1..16) in the device panel.
+		if strings.has_prefix(name, "fx ") {
+			n, ok := strconv.parse_int(name[3:])
+			if !ok || n < 1 || n > pm.PERF_FX do return false
+			show_device(a, {.Perf, n - 1, 0})
+			return true
+		}
+		return ui.panel_focus(&a.ws, strings.clone_to_cstring(name, context.temp_allocator))
 	}
 	return true
 }
@@ -651,8 +693,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 	case "window": // window LANE ROW (1-based): the launcher's window there
 		if len(w) < 3 do return false
-		a.perf.win_lane, a.perf.win_row = num(w, 1) - 1, num(w, 2) - 1
-		clamp_window(a)
+		pa.launcher_set_view(&a.api, i64(num(w, 1) - 1), i64(num(w, 2) - 1))
 		return true
 	case "lanes":
 		// lanes add / delete N / name N NAME / move SLOT LANE ROW (all 1-based)
@@ -1265,6 +1306,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		// Pretend USB and HID devices (--fake-usb):
 		//   usbdev plug ID VID PID [hid PAGE] (hex ids) / usbdev unplug ID
 		//   usbdev send ID HEX... (what it sends) / usbdev written ID (bytes and writes to it)
+		//   usbdev save ID PATH (the newest bytes written to it, to a file: a display's frames)
 		u := a.fake_usb
 		if u == nil do return drive_fail(a, "no pretend USB devices: run with --fake-usb")
 		if len(w) < 3 do return false
@@ -1286,6 +1328,12 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 			n, writes, _, ok := app.devices_fake_written(u, w[2])
 			if !ok do return drive_fail(a, "no such device")
 			ui.driver_say(&a.driver, fmt.tprintf("%d bytes in %d writes%s", n, writes, ", open" if app.devices_fake_open(u, w[2]) else ""))
+		case "save":
+			if len(w) < 4 do return false
+			_, _, recent, ok := app.devices_fake_written(u, w[2])
+			if !ok do return drive_fail(a, "no such device")
+			if os.write_entire_file(w[3], recent) != nil do return drive_fail(a, "can't write the file")
+			ui.driver_say(&a.driver, fmt.tprintf("%d bytes", len(recent)))
 		case:
 			return false
 		}
@@ -1304,7 +1352,7 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		switch w[1] {
 		case "row":
 			if len(w) < 3 do return false
-			pa.launcher_launch_row(&a.api, i64((num(w, 3) - 1) * 4 + num(w, 2) - 1 if len(w) > 3 else a.perf.win_row + num(w, 2) - 1))
+			pa.launcher_launch_row(&a.api, i64((num(w, 3) - 1) * 4 + num(w, 2) - 1 if len(w) > 3 else a.launch.win_row + num(w, 2) - 1))
 		case "stop":
 			if len(w) > 2 && w[2] == "all" do pa.launcher_stop_all(&a.api)
 			else if len(w) > 2 do pa.launcher_stop_lane(&a.api, i64(num(w, 2)) - 1)
@@ -1337,6 +1385,9 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		return pa.sequence_set_swing(&a.api, i64(a.m.project.slot), clamp(numf(w, 1), 0, 1), .Sixteenth) == .Ok
 	case "tempo":
 		return pa.transport_set_tempo(&a.api, clamp(f64(numf(w, 1)), 40, 300)) == .Ok
+	case "about": // the About dialog
+		a.about.open = true
+		return true
 	case "action":
 		return len(w) > 1 && ui.run_action(&a.actions, w[1])
 	case "command": // command ID KIND [INDEX [SLOT]]: a command on a target (pad 3, sequence 2...)

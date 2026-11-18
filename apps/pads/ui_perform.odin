@@ -5,6 +5,7 @@ import "core:math"
 
 import "app:ui"
 import pa "api"
+import pc "core"
 import pm "model"
 import im "deps:imgui"
 import pf "fire:perform"
@@ -21,15 +22,10 @@ Perf_State :: struct {
 	sent, received: u64, // MIDI counts last frame
 	in_lit, out_lit: f32, // seconds the activity lights stay on
 	menu_fx: int, // the performance effect whose menu is open
-	win_lane, win_row: int, // the launcher's window: its first lane and row (see `draw_launcher`)
 	lane_menu: int,    // the lane whose header menu is open
 	lane_naming: bool, // ... renaming it
 	lane_name: [16]u8,
-	holds:     [dynamic]Seq_Hold, // the sequence pads held in Hold (and let go, until their launch has come)
-	hold_from: [pm.MAX_LANES]int, // what each lane played before its first held pad (-1: nothing; to go back to)
-	hold_order: u64, // counts presses (the latest held pad of a lane is the one it plays)
 	key_slot:  [16]int, // the sequence each pad key pressed (+1; 0: none), for its release wherever the window is
-	seq_keys: bool, // the pad keys play the sequence pads shown (the Keys switch)
 	shown_frame: i32, // the frame it last showed (it folds the pads area)
 	folded_it:   bool,
 }
@@ -86,7 +82,6 @@ perf_title :: proc(title: cstring) {
 draw_perform_bar :: proc(a: ^App) {
 	m := &a.m
 	p := &m.project
-	st := &a.perf
 	// The window over the lanes: a lane or a row at a time.
 	nav :: proc(icon: string, tip: cstring, name: string) -> bool {
 		hit := ui.icon_button(icon, tip)
@@ -94,22 +89,22 @@ draw_perform_bar :: proc(a: ^App) {
 		im.SameLine(0, 2)
 		return hit
 	}
-	G := LAUNCH_GRID
-	if nav(ui.ICON_CHEVRON_LEFT, "The lanes before", "window left") do st.win_lane -= 1
-	if nav(ui.ICON_CHEVRON_RIGHT, "The lanes after", "window right") do st.win_lane += 1
-	if nav(ui.ICON_CHEVRON_DOWN, "The rows below", "window down") do st.win_row -= 1
-	if nav(ui.ICON_CHEVRON_UP, "The rows above", "window up") do st.win_row += 1
-	clamp_window(a)
+	G := pc.LAUNCH_GRID
+	if nav(ui.ICON_CHEVRON_LEFT, "The lanes before", "window left") do a.launch.win_lane -= 1
+	if nav(ui.ICON_CHEVRON_RIGHT, "The lanes after", "window right") do a.launch.win_lane += 1
+	if nav(ui.ICON_CHEVRON_DOWN, "The rows below", "window down") do a.launch.win_row -= 1
+	if nav(ui.ICON_CHEVRON_UP, "The rows above", "window up") do a.launch.win_row += 1
+	pc.launch_window_clamp(&a.core)
 	im.AlignTextToFramePadding()
-	im.TextDisabled("%s", fmt.ctprintf("Lanes %d–%d · rows %d–%d", st.win_lane + 1, min(st.win_lane + G, p.lanes.count), st.win_row + 1, st.win_row + G))
+	im.TextDisabled("%s", fmt.ctprintf("Lanes %d–%d · rows %d–%d", a.launch.win_lane + 1, min(a.launch.win_lane + G, p.lanes.count), a.launch.win_row + 1, a.launch.win_row + G))
 	ui.name("launcher window")
 	im.SameLine(0, 4)
 	if ui.icon_button(ui.ICON_PLUS, "Add a lane (up to 16)", disabled = p.lanes.count >= pm.MAX_LANES) {
-		if _, r := pa.launcher_add_lane(&a.api); r == .Ok do st.win_lane = p.lanes.count - LAUNCH_GRID // (shown)
+		if _, r := pa.launcher_add_lane(&a.api); r == .Ok do a.launch.win_lane = p.lanes.count - pc.LAUNCH_GRID // (shown)
 	}
 	ui.name("add a lane")
 	im.SameLine(0, 10)
-	if ui.icon_button(ui.ICON_KEYBOARD, "Keys: the computer's pad keys play these sequence pads (not the pads)", on = st.seq_keys) do st.seq_keys = !st.seq_keys
+	if ui.icon_button(ui.ICON_KEYBOARD, "Keys: the computer's pad keys play these sequence pads (not the pads)", on = a.launch.seq_keys) do pa.launcher_set_keys(&a.api, !a.launch.seq_keys)
 	ui.name("sequence keys")
 	im.SameLine(0, 14)
 	hold := 1 if p.launch_hold else 0
@@ -140,26 +135,9 @@ draw_perform_bar :: proc(a: ^App) {
 	// The effects' Hold, at the right.
 	w := im.CalcTextSize("Hold effects").x + 40
 	im.SameLine(max(im.GetCursorPosX() + 10, im.GetCursorPosX() + im.GetContentRegionAvail().x - w))
-	ui.toggle("Hold effects", &a.perf_hold)
+	latch := a.launch.fx_latch
+	if ui.toggle("Hold effects", &latch) do pa.effect_set_latch(&a.api, latch)
 	if im.IsItemHovered() do im.SetTooltip("A press turns an effect on until the next press")
-	if !a.perf_hold {
-		for i in 0 ..< pm.PERF_FX do if a.perf_latched[i] {
-			a.perf_latched[i] = false
-			if !a.perf_held[i] do pa.effect_hold(&a.api, i64(i), false)
-		}
-	}
-}
-
-// Cells the launcher's window is across and up (a pad controller's 4 × 4).
-LAUNCH_GRID :: 4
-
-// Keeps the launcher's window over the lanes and rows there are (one row
-// past the longest lane: its +).
-clamp_window :: proc(a: ^App) {
-	p := &a.m.project
-	st := &a.perf
-	st.win_lane = clamp(st.win_lane, 0, max(p.lanes.count - LAUNCH_GRID, 0))
-	st.win_row = clamp(st.win_row, 0, max(pm.max_rows(p) + 1 - LAUNCH_GRID, 0))
 }
 
 // The sequence in the window's cell `col`, `row` (from the bottom left),
@@ -167,7 +145,7 @@ clamp_window :: proc(a: ^App) {
 // its last).
 window_cell :: proc(a: ^App, col, row: int) -> (slot, lane, lrow: int, plus: bool) {
 	p := &a.m.project
-	lane, lrow = a.perf.win_lane + col, a.perf.win_row + row
+	lane, lrow = a.launch.win_lane + col, a.launch.win_row + row
 	if lane >= p.lanes.count do return -1, lane, lrow, false
 	slot = pm.lane_slot(p, lane, lrow)
 	plus = slot < 0 && lrow == pm.lane_rows(p, lane)
@@ -190,9 +168,9 @@ draw_launcher :: proc(a: ^App) {
 	p := &m.project
 	st := &a.perf
 	t := ui.theme()
-	clamp_window(a)
+	pc.launch_window_clamp(&a.core)
 	perf_title("Sequences · each column a lane")
-	G :: LAUNCH_GRID
+	G :: pc.LAUNCH_GRID
 	tl, playing := pm.timeline_beat(&m.engine)
 	avail := im.GetContentRegionAvail()
 	gap: f32 = 6
@@ -206,7 +184,7 @@ draw_launcher :: proc(a: ^App) {
 	// The lanes' headers: each its name (its menu), and a + for a new lane.
 	open_menu := false
 	for col in 0 ..< G {
-		lane := st.win_lane + col
+		lane := a.launch.win_lane + col
 		if lane >= p.lanes.count {
 			if lane == p.lanes.count && p.lanes.count < pm.MAX_LANES {
 				im.SetCursorScreenPos({origin.x + f32(col) * (size + gap), origin.y})
@@ -328,7 +306,7 @@ draw_launcher :: proc(a: ^App) {
 		pos := im.Vec2{grid.x + f32(G) * (size + gap), grid.y + f32(row) * (size + gap) + (size - arrow) / 2}
 		im.SetCursorScreenPos(pos)
 		im.PushIDInt(i32(9500 + r))
-		scene := st.win_row + r
+		scene := a.launch.win_row + r
 		if ui.icon_button(ui.ICON_PLAY, fmt.ctprintf("Launch scene %d: row %d of every lane together", scene + 1, scene + 1), size = arrow) do pa.launcher_launch_row(&a.api, i64(scene))
 		ui.name(fmt.tprintf("scene %d", scene + 1))
 		im.PopID()
@@ -336,7 +314,7 @@ draw_launcher :: proc(a: ^App) {
 	// Each lane's stop, and Stop All.
 	y := grid.y + f32(G) * (size + gap)
 	for col in 0 ..< G {
-		lane := st.win_lane + col
+		lane := a.launch.win_lane + col
 		if lane >= p.lanes.count do continue
 		cs, _, next, _, queued := pm.column_state(&m.engine, lane)
 		im.SetCursorScreenPos({grid.x + f32(col) * (size + gap), y})
@@ -380,19 +358,18 @@ seq_drop :: proc(a: ^App, lane, row: int) {
 draw_lane_map :: proc(a: ^App, pos, size: im.Vec2) {
 	m := &a.m
 	p := &m.project
-	st := &a.perf
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
-	rows := max(pm.max_rows(p) + 1, LAUNCH_GRID)
+	rows := max(pm.max_rows(p) + 1, pc.LAUNCH_GRID)
 	cw := min(size.x / f32(p.lanes.count), 24)
 	ch := min(size.y / f32(rows), 10)
 	w, h := cw * f32(p.lanes.count), ch * f32(rows)
 	im.SetCursorScreenPos(pos)
 	if im.InvisibleButton("##lanemap", {max(w, 1), max(h, 1)}) || (im.IsItemActive() && im.IsMouseDragging(.Left)) {
 		mp := im.GetIO().MousePos
-		st.win_lane = int((mp.x - pos.x) / cw) - LAUNCH_GRID / 2
-		st.win_row = int((pos.y + h - mp.y) / ch) - LAUNCH_GRID / 2
-		clamp_window(a)
+		a.launch.win_lane = int((mp.x - pos.x) / cw) - pc.LAUNCH_GRID / 2
+		a.launch.win_row = int((pos.y + h - mp.y) / ch) - pc.LAUNCH_GRID / 2
+		pc.launch_window_clamp(&a.core)
 	}
 	ui.name("lane map")
 	if im.IsItemHovered() do im.SetTooltip("Every lane: click or drag to move the window there")
@@ -411,9 +388,9 @@ draw_lane_map :: proc(a: ^App, pos, size: im.Vec2) {
 			im.DrawList_AddRectFilled(dl, {x + 1, y + 1}, {x + cw - 1, y + ch - 1}, ui.col(c if lit else ui.with_alpha(c, 0.5)))
 		}
 	}
-	wx := pos.x + f32(st.win_lane) * cw
-	wy := pos.y + h - f32(st.win_row + LAUNCH_GRID) * ch
-	im.DrawList_AddRect(dl, {wx, max(wy, pos.y)}, {wx + f32(min(LAUNCH_GRID, p.lanes.count)) * cw, pos.y + h - f32(st.win_row) * ch}, ui.col(t.accent), 2, 1.5)
+	wx := pos.x + f32(a.launch.win_lane) * cw
+	wy := pos.y + h - f32(a.launch.win_row + pc.LAUNCH_GRID) * ch
+	im.DrawList_AddRect(dl, {wx, max(wy, pos.y)}, {wx + f32(min(pc.LAUNCH_GRID, p.lanes.count)) * cw, pos.y + h - f32(a.launch.win_row) * ch}, ui.col(t.accent), 2, 1.5)
 }
 
 // A lane header's menu: rename, colour, stop, delete.
@@ -504,21 +481,10 @@ draw_perf_fx :: proc(a: ^App) {
 		lo, hi := im.GetItemRectMin(), im.GetItemRectMax()
 		press := 1 - clamp((im.GetIO().MousePos.y - lo.y) / max(hi.y - lo.y, 1), 0, 1)
 		press = clamp((press - 0.08) / 0.84, 0, 1) // a margin at each end reaches 0 and 1
-		if hit.pressed {
-			a.perf_held[i] = true
-			if a.perf_hold {
-				a.perf_latched[i] = !a.perf_latched[i]
-				pa.effect_hold(&a.api, i64(i), a.perf_latched[i], press)
-			} else {
-				pa.effect_hold(&a.api, i64(i), true, press)
-			}
-		}
-		if hit.held do pm.perf_intensity_live(m, i, press)
+		if hit.pressed do pa.effect_press(&a.api, i64(i), true, press)
+		if hit.held do pa.effect_pressure(&a.api, i64(i), press)
 		intensity_fill(a, i, lo, hi)
-		if hit.released {
-			a.perf_held[i] = false
-			if !a.perf_hold do pa.effect_hold(&a.api, i64(i), false)
-		}
+		if hit.released do pa.effect_press(&a.api, i64(i), false)
 		if hit.selected && !hit.menu do show_device(a, {.Perf, i, 0}) // Shift- or Cmd-click: edit it
 		if hit.menu {
 			a.perf.menu_fx = i
@@ -648,86 +614,20 @@ intensity_fill :: proc(a: ^App, i: int, lo, hi: im.Vec2) {
 
 // A sequence pad held in Hold: its lane, when it was pressed, and
 // whether it has been let go (it goes once its launch has come: a press
-// shorter than the launch quantize still plays).
-Seq_Hold :: struct {
-	slot:     int,
-	col:      int,
-	order:    u64,
-	released: bool,
-}
-
-// A sequence pad pressed (or its key): launched in its column (a
-// Shift-click launches it alone: see `draw_launcher`), or (Hold) played while held,
-// remembering what its column played to come back to (several held: the
-// latest plays, and letting go of it goes back to the one before).
-// Option-click only goes to a sequence (to edit it), stopped.
+// A sequence pad pressed (or its key): launched in its lane, or (Hold)
+// played while held (the core's: a controller's pads alike).
 seq_pad_press :: proc(a: ^App, slot: int, from_key: bool) {
-	m := &a.m
-	st := &a.perf
-	_, playing := pm.position(&m.engine)
-	io := im.GetIO()
-	if !from_key && io.KeyAlt {
+	_, playing := pm.position(&a.m.engine)
+	if !from_key && im.GetIO().KeyAlt {
 		if !playing do pa.sequence_select(&a.api, i64(slot)) // (Option: go to it, not start it)
 		return
 	}
-	if m.project.launch_hold {
-		col := pm.launch_col(&m.project, slot)
-		first := true
-		for h in st.holds do if h.col == col do first = false
-		if first && col >= 0 && col < pm.MAX_LANES {
-			cs, _, next, _, queued := pm.column_state(&m.engine, col)
-			st.hold_from[col] = (next if queued else cs) if playing else -1
-		}
-		for h, k in st.holds do if h.slot == slot { // (pressed again before it went: held again)
-			ordered_remove(&st.holds, k)
-			break
-		}
-		st.hold_order += 1
-		append(&st.holds, Seq_Hold{slot = slot, col = col, order = st.hold_order})
-	}
-	pa.launcher_launch(&a.api, i64(slot))
+	pa.launcher_press(&a.api, i64(slot), true)
 }
 
-// A sequence pad let go: in Hold, it goes when its launch has come (see
-// `hold_frame`).
+// A sequence pad let go: in Hold, it goes when its launch has come.
 seq_pad_release :: proc(a: ^App, slot: int) {
-	for &h in a.perf.holds do if h.slot == slot do h.released = true
-}
-
-// Each frame, in Hold: a held pad let go goes once its lane plays it (or
-// at once, stopped); its lane then plays the latest pad still held there,
-// or, none, what it played before the first (or stops).
-hold_frame :: proc(a: ^App) {
-	st := &a.perf
-	m := &a.m
-	if len(st.holds) == 0 do return
-	_, playing := pm.position(&m.engine)
-	for k := 0; k < len(st.holds); {
-		h := st.holds[k]
-		if !h.released {
-			k += 1
-			continue
-		}
-		if playing && h.col >= 0 {
-			cs, _, next, _, queued := pm.column_state(&m.engine, h.col)
-			if queued && next == h.slot && cs != h.slot { // (its launch hasn't come yet: it plays first)
-				k += 1
-				continue
-			}
-		}
-		ordered_remove(&st.holds, k)
-		if h.col < 0 || h.col >= pm.MAX_LANES do continue
-		latest := -1
-		at: u64
-		for o in st.holds do if o.col == h.col && o.order > at do latest, at = o.slot, o.order
-		if latest >= 0 {
-			if latest != h.slot do pa.launcher_launch(&a.api, i64(latest)) // (back to the one held before it)
-		} else if st.hold_from[h.col] >= 0 && st.hold_from[h.col] != h.slot {
-			pa.launcher_launch(&a.api, i64(st.hold_from[h.col]))
-		} else if st.hold_from[h.col] < 0 {
-			pa.launcher_stop_lane(&a.api, i64(h.col))
-		}
-	}
+	pa.launcher_press(&a.api, i64(slot), false)
 }
 
 // How the pads play (the API's perform_set_play_mode).

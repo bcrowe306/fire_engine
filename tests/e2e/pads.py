@@ -54,7 +54,7 @@ class Pads:
     written for; None: as Settings says, Comfortable by default).
     """
 
-    def __init__(self, headless=None, fake=True, out_dir=None, project=None, prefs=None, extra=(), size="compact"):
+    def __init__(self, headless=None, fake=True, out_dir=None, project=None, prefs=None, extra=(), size="compact", start_page=False):
         if headless is None:
             headless = os.environ.get("E2E_HEADLESS", "1" if platform.system() != "Darwin" else "0") == "1"
         self.tmp = tempfile.mkdtemp(prefix="pads_e2e_")
@@ -68,6 +68,8 @@ class Pads:
             args.append("--fake")
         if size:
             args += ["--control-size", size]  # (the tests' positions were written at Compact; None: as Settings says)
+        if not start_page:
+            args.append("--no-start-page")  # (the project manager over the window: only the tests of it)
         args += list(extra)
         if not os.path.exists(EXE):
             raise FileNotFoundError(f"{EXE}: build it first (task app:pads OPT=none)")
@@ -207,10 +209,11 @@ class Pads:
         self.click("  " + name)
 
     def library_find(self, text, tab="Browser"):
-        """Shows the Library's tab `tab` ("Browser" or "Devices") and types
-        `text` into its search (what was there replaced): what matches, at
-        the top of its list."""
-        self.click(f"{tab} tab", window="browser")
+        """Types `text` into the Library's search (what was there
+        replaced): the folder shown's files ("Browser"), or every device
+        ("Devices": its Instruments category first)."""
+        if tab == "Devices":
+            self.click("category Instruments", window="browser")
         self.click("##search", window="browser")
         self.key("cmd+a")
         self.type(text)

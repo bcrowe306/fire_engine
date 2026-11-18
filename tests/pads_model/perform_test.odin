@@ -502,3 +502,34 @@ the_toolbars_repeat_records_on_its_own_grid :: proc(t: ^testing.T) {
 	m.engine.repeat_all = false
 	testing.expect_value(t, pm.quantize_grid(&m.engine, .Sixteenth), pm.Grid.Sixteenth)
 }
+
+// PADS_CHANNEL's notes (a controller's pad grid) play the drum map's pad
+// only, even on the port an armed track listens to: the armed track's keys
+// take any other channel's.
+@(test)
+the_pads_channel_plays_only_pads_never_an_armed_tracks_keys :: proc(t: ^testing.T) {
+	r := blips(t, "perf_pads_channel")
+	defer rig_destroy(r)
+	m := &r.m
+	pad := m.project.pads[1]
+	pad.midi_in = {mode = .Port, port = "keys"}
+	pm.set_pad(m, 1, .Midi_In, "MIDI In", pad)
+	pm.sync(&m.engine)
+	m.engine.router.in_port[1] = 2 // (the test host has no ports: "keys" is input 2)
+	pm.arm_track(m, 1, true)
+	pm.sync(&m.engine)
+	render(r, 2400)
+	// Channel 16, key 0: pad A1 (440 Hz), not pad 1 (880 Hz) played by key.
+	app.host_midi_inject(&r.host, {0x90 | (pm.PADS_CHANNEL - 1), 0, 100}, port = 2)
+	out := render(r, 3000)
+	testing.expectf(t, kit.tone_amplitude(out[0][:], SR, 440) > 4 * kit.tone_amplitude(out[0][:], SR, 880), "the pad, not the armed track")
+	received, _ := pm.midi_activity(&m.engine, 1)
+	testing.expect_value(t, received, 0)
+	app.host_midi_inject(&r.host, {0x80 | (pm.PADS_CHANNEL - 1), 0, 0}, port = 2)
+	render(r, 9600)
+	// Channel 1: the armed track's keys.
+	app.host_midi_inject(&r.host, {0x90, 0, 100}, port = 2)
+	render(r, 3000)
+	received, _ = pm.midi_activity(&m.engine, 1)
+	testing.expect_value(t, received, 1)
+}

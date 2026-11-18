@@ -12,6 +12,11 @@ import "fire:rt"
 // MIDI channel (0-based) of the sequencer's notes on their way to the
 // router: they skip the live effects.
 SEQ_CHANNEL :: 15
+// The MIDI channel (1..16) whose notes play only the pads (the drum map),
+// never an armed track's keys: a controller's pad grid (Push 2's) sends on
+// it, so a pad pressed plays that pad and nothing else.
+PADS_CHANNEL :: 16
+
 // Channel of keyboard-mode notes between the live effects and the pads.
 @(private) KEYS_CHANNEL :: 1
 // Keyboard-mode notes are keys around this one (a pitch of 0).
@@ -97,6 +102,7 @@ Router :: struct {
 	sounding: [PADS][KEYED_NOTES]struct { id: fc.Note_Id, key: u8 },
 	sounding_at: [PADS]u8,
 	midi_in_hits:  [PADS]u32, // atomic: MIDI notes that played each pad (activity lights)
+	accent:        bool, // atomic: every pad hit at full velocity (a controller's Accent; see `set_accent`)
 	midi_out_hits: [PADS]u32, // atomic: MIDI notes each pad sent
 	// Audio thread.
 	effects:  [PADS]Perform, // each pad's MIDI effects
@@ -181,8 +187,11 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 
 	// Live notes: the UI's hits (at the start of the block), then MIDI.
 	live := fc.Event_Writer{buffer = r.live[:]}
-	for h in rt.spsc_pop(&r.queue) {
+	accent := intrinsics.atomic_load(&r.accent)
+	for hit in rt.spsc_pop(&r.queue) {
+		h := hit
 		if int(h.pad) >= PADS do continue
+		if accent && h.on do h.velocity = 1
 		if h.keyboard {
 			key := u8(clamp(KEYS_CENTER + int(h.pitch), 0, 127))
 			r.keys_pad[key] = h.pad
@@ -224,11 +233,11 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			if status != 0x90 && status != 0x80 do continue
 			key := v.bytes[1] & 0x7F
 			on := status == 0x90 && v.bytes[2] > 0
-			vel := f32(v.bytes[2]) / 127
+			vel := 1 if accent && on else f32(v.bytes[2]) / 127
 			ch := (v.bytes[0] & 15) + 1
 			// An armed track listening to this port (and channel): it plays,
 			// chromatically (the key's distance from C3 its pitch).
-			if t := armed_listener(r, int(v.port), int(ch)); t >= 0 {
+			if t := armed_listener(r, int(v.port), int(ch)) if ch != PADS_CHANNEL else -1; t >= 0 {
 				h := Hit{pad = u8(t), on = on, velocity = vel, pitch = i8(int(key) - KEYS_CENTER), keyboard = true}
 				r.keys_pad[key] = h.pad
 				fc.event_writer_push(&live, {e.offset, note(on, KEYS_CHANNEL, key, vel)})
@@ -588,4 +597,15 @@ armed_listener :: proc "contextless" (r: ^Router, port, ch: int) -> int {
 	}
 	for i in 0 ..< PADS do if r.armed[i] && (r.kinds[i] == .Synth || r.kinds[i] == .Plugin) && r.in_port[i] == IN_ALL do return i
 	return -1
+}
+
+// Every pad hit at full velocity (`on`: a controller's Accent), the
+// window's and MIDI's alike, recorded so too. Not saved: a way of playing.
+set_accent :: proc(e: ^Engine, on: bool) {
+	if e.router != nil do intrinsics.atomic_store(&e.router.accent, on)
+}
+
+// Whether every pad hit plays at full velocity.
+accent_on :: proc(e: ^Engine) -> bool {
+	return e.router != nil && intrinsics.atomic_load(&e.router.accent)
 }

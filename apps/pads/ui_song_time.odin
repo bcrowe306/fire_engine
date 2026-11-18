@@ -269,17 +269,17 @@ draw_marker_rename :: proc(a: ^App) {
 			im.OpenPopup("Rename marker")
 		}
 	}
-	if im.BeginPopupModal("Rename marker", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename marker", nil, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
 		im.SetNextItemWidth(220)
-		done := im.InputText("##mkname", cstring(&tm.rename_buf[0]), len(tm.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		done := modal_input(a, "##mkname", tm.rename_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("marker name")
-		if done || im.Button("Rename") {
+		if done || modal_button(a, "Rename") {
 			pa.song_rename_marker(&a.api, i64(tm.rename), strings.truncate_to_byte(string(tm.rename_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
 }

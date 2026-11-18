@@ -178,60 +178,7 @@ draw_sequence :: proc(user: rawptr) {
 	draw_mode_bar(a)
 	t := ui.theme()
 
-	// The rows: the bank's pads (the first at the bottom, as on the grid),
-	// or, folded, every pad with notes; in the piano roll, the pad's pitches
-	// (4 octaves each way; folded, the ones it plays).
-	row_pad := make([dynamic]int, context.temp_allocator)
-	row_pitch := make([dynamic]int, context.temp_allocator) // the piano roll's (else 0)
-	slicer := st.piano && m.project.pads[st.piano_pad].kind == .Slicer // (its rows: its slices)
-	if slicer {
-		pad := st.piano_pad
-		n := max(int(m.project.pads[pad].slicer.count), 1)
-		for x in s.notes do if int(x.pad) == pad && int(x.pitch) >= n do n = min(int(x.pitch) + 1, pm.MAX_SLICER_SLICES) // (notes past the last slice: their rows too)
-		for p in 0 ..< n {
-			append(&row_pad, pad)
-			append(&row_pitch, p)
-		}
-	} else if st.piano {
-		pad := st.piano_pad
-		used: [97]bool
-		for n in s.notes do if int(n.pad) == pad && int(n.pitch) >= -48 && int(n.pitch) <= 48 do used[int(n.pitch) + 48] = true
-		for p in -48 ..= 48 do if !st.fold || used[p + 48] {
-			append(&row_pad, pad)
-			append(&row_pitch, p)
-		}
-	} else if st.fold {
-		used: [pm.PADS]bool
-		for n in s.notes do used[n.pad] = true
-		for i in 0 ..< pm.PADS do if used[i] {
-			append(&row_pad, i)
-			append(&row_pitch, 0)
-		}
-	} else {
-		for k in 0 ..< pm.PADS_PER_BANK {
-			append(&row_pad, a.bank * pm.PADS_PER_BANK + k)
-			append(&row_pitch, 0)
-		}
-	}
-	rows := make([]ui.Roll_Row, len(row_pad), context.temp_allocator)
-	for r, k in row_pad {
-		pad := &m.project.pads[r]
-		if slicer {
-			p := row_pitch[k]
-			there := p < int(pad.slicer.count) || (p == 0 && pad.slicer.count == 0)
-			rows[k] = {name = fmt.tprintf("Slice %d  %s", p + 1, ui.note_name(int(pad.slicer.base) + p)), color = ui.rgb(pad.color) if there else ui.mix(t.raised, t.text, 0.18)}
-			continue
-		}
-		if st.piano {
-			p := row_pitch[k]
-			key := 60 + p
-			black := (key %% 12) in bit_set[0 ..< 12]{1, 3, 6, 8, 10}
-			rows[k] = {name = fmt.tprintf("%s%s", ui.note_name(key), "  ·" if p == 0 else ""), color = ui.rgb(pad.color) if p == 0 else (ui.mix(t.raised, t.text, 0.15) if black else ui.mix(t.raised, t.text, 0.45))}
-			continue
-		}
-		used := pm.pad_used(&m.project, r)
-		rows[k] = {name = fmt.tprintf("%s  %s", pm.pad_label(r), pm.pad_name(pad) if used else "—"), color = ui.rgb(pad.color) if used else ui.mix(t.raised, t.text, 0.18)}
-	}
+	row_pad, row_pitch, rows, slicer := seq_rows(a, s)
 	// Played now (pads, keys, MIDI coming in): a row lights while its note
 	// is held, and flashes for a tap.
 	{
@@ -491,6 +438,69 @@ draw_sequence :: proc(user: rawptr) {
 	if le.ended do app.seal(&m.history)
 }
 
+// The editor's rows: the bank's pads (the first at the bottom, as on the
+// grid), or, folded, every pad with notes; in the piano roll, the pad's
+// pitches (4 octaves each way; folded, the ones it plays), a slicer's its
+// slices. Each row's pad and pitch, its name and colour.
+@(private)
+seq_rows :: proc(a: ^App, s: pm.Sequence) -> (row_pad, row_pitch: [dynamic]int, rows: []ui.Roll_Row, slicer: bool) {
+	m := &a.m
+	st := &a.seq
+	t := ui.theme()
+	row_pad = make([dynamic]int, context.temp_allocator)
+	row_pitch = make([dynamic]int, context.temp_allocator) // the piano roll's (else 0)
+	slicer = st.piano && m.project.pads[st.piano_pad].kind == .Slicer // (its rows: its slices)
+	if slicer {
+		pad := st.piano_pad
+		n := max(int(m.project.pads[pad].slicer.count), 1)
+		for x in s.notes do if int(x.pad) == pad && int(x.pitch) >= n do n = min(int(x.pitch) + 1, pm.MAX_SLICER_SLICES) // (notes past the last slice: their rows too)
+		for p in 0 ..< n {
+			append(&row_pad, pad)
+			append(&row_pitch, p)
+		}
+	} else if st.piano {
+		pad := st.piano_pad
+		used: [97]bool
+		for n in s.notes do if int(n.pad) == pad && int(n.pitch) >= -48 && int(n.pitch) <= 48 do used[int(n.pitch) + 48] = true
+		for p in -48 ..= 48 do if !st.fold || used[p + 48] {
+			append(&row_pad, pad)
+			append(&row_pitch, p)
+		}
+	} else if st.fold {
+		used: [pm.PADS]bool
+		for n in s.notes do used[n.pad] = true
+		for i in 0 ..< pm.PADS do if used[i] {
+			append(&row_pad, i)
+			append(&row_pitch, 0)
+		}
+	} else {
+		for k in 0 ..< pm.PADS_PER_BANK {
+			append(&row_pad, a.bank * pm.PADS_PER_BANK + k)
+			append(&row_pitch, 0)
+		}
+	}
+	rows = make([]ui.Roll_Row, len(row_pad), context.temp_allocator)
+	for r, k in row_pad {
+		pad := &m.project.pads[r]
+		if slicer {
+			p := row_pitch[k]
+			there := p < int(pad.slicer.count) || (p == 0 && pad.slicer.count == 0)
+			rows[k] = {name = fmt.tprintf("Slice %d  %s", p + 1, ui.note_name(int(pad.slicer.base) + p)), color = ui.rgb(pad.color) if there else ui.mix(t.raised, t.text, 0.18)}
+			continue
+		}
+		if st.piano {
+			p := row_pitch[k]
+			key := 60 + p
+			black := (key %% 12) in bit_set[0 ..< 12]{1, 3, 6, 8, 10}
+			rows[k] = {name = fmt.tprintf("%s%s", ui.note_name(key), "  ·" if p == 0 else ""), color = ui.rgb(pad.color) if p == 0 else (ui.mix(t.raised, t.text, 0.15) if black else ui.mix(t.raised, t.text, 0.45))}
+			continue
+		}
+		used := pm.pad_used(&m.project, r)
+		rows[k] = {name = fmt.tprintf("%s  %s", pm.pad_label(r), pm.pad_name(pad) if used else "—"), color = ui.rgb(pad.color) if used else ui.mix(t.raised, t.text, 0.18)}
+	}
+	return
+}
+
 // A controller's usual name after its number (" · Cutoff"; "" for most).
 cc_suffix :: proc(cc: int) -> string {
 	switch cc {
@@ -716,9 +726,13 @@ draw_grid_controls :: proc(a: ^App, quantize: bool) {
 	if !quantize do return
 	q: cstring = ui.ICON_MAGNET + "##Quantize" if seq_bar_narrow else ui.ICON_MAGNET + "  Quantize"
 	ui.flow(ui.button_width(q), 8 if seq_bar_narrow else -1)
-	if im.Button(q) do pa.sequence_quantize(&a.api, i64(m.project.slot), pa.Grid(pm.quantize_grid(&m.engine, st.grid)))
+	if im.Button(q) do quantize_now(a)
 	ui.name("Quantize")
-	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Move the sequence's notes to %s", fmt.tprintf("note repeat's %s (it is on)", pm.GRID_NAMES[pm.quantize_grid(&m.engine, st.grid)]) if m.engine.repeat_all else "the grid"))
+	qs := m.project.transport.quant
+	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("Move the %s to %s, %.0f%% of the way (the arrow: Quantize's settings)", "selected notes" if len(st.sel) > 0 else "sequence's notes", fmt.tprintf("note repeat's %s (it is on)", pm.GRID_NAMES[pm.quantize_grid(&m.engine, qs.grid)]) if m.engine.repeat_all else string(pm.GRID_NAMES[qs.grid]), qs.strength * 100))
+	im.SameLine(0, 0)
+	if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Quantize's settings, and input quantize's") do a.controls.quantize_open = true
+	ui.name("quantize settings")
 	// Input quantize: notes recorded from now on, moved as they come in.
 	ui.flow(im.GetFrameHeight() * 2 + im.CalcTextSize("1/16T").x)
 	draw_input_quantize(a)

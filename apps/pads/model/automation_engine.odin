@@ -78,8 +78,7 @@ sync_targets :: proc(e: ^Engine) {
 	p := e.project
 	g := e.host.graph
 	pl := e.plan
-	length := 0.0
-	for s in pl.segs[:pl.count] do length = max(length, s.start + s.span)
+	length := plan_length(pl)
 	// Each node's builder.
 	Build :: struct {
 		node: graph.Node_Id,

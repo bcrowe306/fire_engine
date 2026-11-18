@@ -41,6 +41,7 @@ Folders :: struct {
 	settings: string, // settings.ini's folder: templates, the open-project marker
 	prefs:    string, // the recent list (--prefs's, else `settings`)
 	unsaved:  string, // the default for new projects (Music/Pads/Unsaved; with --prefs, in it)
+	projects: string, // where a quick save puts an untitled project, unless the "project.folder" setting says (Documents; with --prefs, in it)
 }
 
 // What the app does around the core's actions: reset its view to a
@@ -64,6 +65,17 @@ Ui_Hooks :: struct {
 	messages:    proc(user: rawptr) -> []string, // the messages showing (temporary)
 	select_pads: proc(user: rawptr, pads: []int), // the pads selected together (the first the selected one)
 	selected_pads: proc(user: rawptr) -> []int,   // (temporary)
+	dialog:      proc(user: rawptr) -> (title: string, choices: int), // the dialog showing ("": none), its choices a controller can press
+	library_load: proc(user: rawptr, pad: int) -> bool, // the Library's selected item onto pad `pad`, as its last load did
+	start_page:     proc(user: rawptr) -> bool, // the project manager page shows
+	set_start_page: proc(user: rawptr, open: bool),
+	automation_armed:     proc(user: rawptr) -> bool, // the window's Auto: knob moves while recording are written
+	set_automation_armed: proc(user: rawptr, on: bool),
+	select_notes: proc(user: rawptr, indices: []int), // the sequencer's selection: the current sequence's notes `indices`
+	seq_grid:     proc(user: rawptr) -> int,         // the sequencer's grid (a Grid)
+	set_seq_grid: proc(user: rawptr, grid: int),
+	sample_armed: proc(user: rawptr) -> bool, // the Sample control is armed: the next pad pressed records into it
+	quantize: proc(user: rawptr), // Quantize: the sequencer's selected notes, else the sequence (the window says which)
 }
 
 // Frees the files' state.
@@ -76,6 +88,7 @@ files_destroy :: proc(f: ^Files) {
 	delete(f.folders.settings)
 	delete(f.folders.prefs)
 	delete(f.folders.unsaved)
+	delete(f.folders.projects)
 	f^ = {}
 }
 
@@ -275,6 +288,26 @@ project_save :: proc(c: ^Core) -> Outcome {
 	c.files.last_save = time.tick_now()
 	if !c.files.untitled do recent_add(c, c.m.project.dir)
 	return .Ok
+}
+
+// Saves the project wherever it is; an untitled one into the projects
+// folder (the "project.folder" setting, else `folders.projects`) as the
+// first free "Project N". Where it is now.
+project_save_quick :: proc(c: ^Core) -> (string, Outcome) {
+	if !c.files.untitled {
+		o := project_save(c)
+		return c.m.project.dir, o
+	}
+	where_ := c.files.folders.projects
+	if s := setting_find(c, "project.folder"); s != nil && setting_text(s) != "" do where_ = setting_text(s)
+	if where_ == "" do return "", outcome(c, .Invalid, "no projects folder")
+	os.make_directory_all(where_)
+	for n := 1; ; n += 1 {
+		dir, _ := filepath.join({where_, fmt.tprintf("Project %d.pads", n)}, context.temp_allocator)
+		if os.exists(dir) do continue
+		o := project_save_as(c, dir)
+		return c.m.project.dir, o
+	}
 }
 
 // Saves the project as `path` (a "<name>.pads" folder: ".pads" is added

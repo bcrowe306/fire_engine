@@ -631,6 +631,63 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := effect_set_key_filter(api, s, hz)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_key_high_cut":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_key_high_cut(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_set_key_high_cut":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		hz := remote_f32(args, "hz", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_key_high_cut(api, s, hz)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_preset_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_preset_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_preset_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_preset_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_preset_kind":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_preset_kind(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_load_preset":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_load_preset(api, s, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_super_filter_state":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_super_filter_state(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_effect_set_key_listen":
 		s := remote_struct_Slot_Ref(args, "s", &ok)
 		on := remote_bool(args, "on", &ok)
@@ -639,6 +696,33 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := effect_set_key_listen(api, s, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_press":
+		index := remote_i64(args, "index", &ok)
+		on := remote_bool(args, "on", &ok)
+		intensity := remote_f32_or(args, "intensity", -1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_press(api, index, on, intensity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_pressure":
+		index := remote_i64(args, "index", &ok)
+		intensity := remote_f32(args, "intensity", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_pressure(api, index, intensity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_latch":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_latch(api, on)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_export_state":
 		if !ok {
@@ -991,6 +1075,40 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := launcher_new_sequence(api, lane)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_launcher_view":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := launcher_view(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_launcher_set_view":
+		lane := remote_i64(args, "lane", &ok)
+		row := remote_i64(args, "row", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := launcher_set_view(api, lane, row)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_launcher_set_keys":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := launcher_set_keys(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_launcher_press":
+		slot := remote_i64(args, "slot", &ok)
+		on := remote_bool(args, "on", &ok)
+		alone := remote_bool_or(args, "alone", false, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := launcher_press(api, slot, on, alone)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_midi_port_count":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -1216,6 +1334,14 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := mixer_set_group_folded(api, bus, folded)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_mixer_pad_cue":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := mixer_pad_cue(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_mixer_set_pad_cue":
 		pad := remote_i64(args, "pad", &ok)
 		db := remote_f32(args, "db", &ok)
@@ -1367,6 +1493,24 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := pad_set_pitch(api, pad, semitones)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_region":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_region(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_set_region":
+		pad := remote_i64(args, "pad", &ok)
+		start := remote_i64(args, "start", &ok)
+		end := remote_i64(args, "end", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_set_region(api, pad, start, end)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_pad_set_mute":
 		pad := remote_i64(args, "pad", &ok)
 		on := remote_bool(args, "on", &ok)
@@ -1445,6 +1589,30 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := pad_copy_to(api, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_pad_struck":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_struck(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_slices":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := pad_slices(api, pad)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_pad_select_slice":
+		slice := remote_i64(args, "slice", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := pad_select_slice(api, slice)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_pad_play":
 		pad := remote_i64(args, "pad", &ok)
@@ -1580,6 +1748,21 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := perform_select_pad(api, pad)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_perform_set_accent":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := perform_set_accent(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_perform_accent":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_accent(api)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_perform_set_keys":
 		scale := Scale(remote_enum(args, "scale", Scale_NAMES[:], &ok))
 		root := remote_i64(args, "root", &ok)
@@ -1590,6 +1773,24 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := perform_set_keys(api, scale, root, octave, chord)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_perform_key":
+		key := remote_i64(args, "key", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_key(api, key)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_play_key":
+		key := remote_i64(args, "key", &ok)
+		on := remote_bool(args, "on", &ok)
+		velocity := remote_f32_or(args, "velocity", 1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := perform_play_key(api, key, on, velocity)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_project_state":
 		if !ok {
@@ -1645,6 +1846,13 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := project_save(api)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_save_quick":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := project_save_quick(api)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_project_save_as":
 		path := remote_string(args, "path", &ok)
 		replace := remote_bool_or(args, "replace", false, &ok)
@@ -1991,6 +2199,37 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := sequence_remove_point(api, slot, index)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_quantize_setting":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_quantize_setting(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_sequence_set_quantize_setting":
+		grid := Grid(remote_enum(args, "grid", Grid_NAMES[:], &ok))
+		strength := remote_f32(args, "strength", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_set_quantize_setting(api, grid, strength)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_quantize_now":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := sequence_quantize_now(api, slot)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_sequence_input_quantize":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := sequence_input_quantize(api)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_sequence_set_input_quantize":
 		on := remote_bool(args, "on", &ok)
 		grid := Grid(remote_enum(args, "grid", Grid_NAMES[:], &ok))
@@ -2370,6 +2609,113 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := song_delete_arrangement(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_edit_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := song_edit_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_song_set_cursor":
+		beat := remote_f64(args, "beat", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_set_cursor(api, beat)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_select_lane":
+		lane := remote_i64(args, "lane", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_select_lane(api, lane)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_show_lanes":
+		first := remote_i64(args, "first", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_show_lanes(api, first)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_select_clip":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_select_clip(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_clip_at":
+		lane := remote_i64(args, "lane", &ok)
+		beat := remote_f64(args, "beat", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := song_clip_at(api, lane, beat)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_song_set_add_length":
+		beats := remote_f64(args, "beats", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_set_add_length(api, beats)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_add_at_cursor":
+		lane := remote_i64(args, "lane", &ok)
+		slot := remote_i64_or(args, "slot", -1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := song_add_at_cursor(api, lane, slot)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_song_ripple_remove":
+		indices := remote_i64s(args, "indices", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_ripple_remove(api, indices)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_ripple_duplicate":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := song_ripple_duplicate(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_song_ripple_resize":
+		index := remote_i64(args, "index", &ok)
+		length := remote_f64(args, "length", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_ripple_resize(api, index, length)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_song_remove_sequence":
+		slot := remote_i64(args, "slot", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := song_remove_sequence(api, slot)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_song_set_clip_label":
+		index := remote_i64(args, "index", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := song_set_clip_label(api, index, name)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_unsubscribe":
 		sub := remote_sub(args, "sub", &ok)
@@ -2818,6 +3164,20 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := transport_set_clock_out(api, on)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_dialog":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_dialog(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_dialog_title":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_dialog_title(api)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_ui_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -2832,6 +3192,81 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := ui_show(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_library_load":
+		pad := remote_i64(args, "pad", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_library_load(api, pad)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_start_page":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_start_page(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_set_start_page":
+		open := remote_bool(args, "open", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_set_start_page(api, open)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_select_notes":
+		indices := remote_i64s(args, "indices", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_select_notes(api, indices)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_sequencer_grid":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_sequencer_grid(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_set_sequencer_grid":
+		grid := Grid(remote_enum(args, "grid", Grid_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_set_sequencer_grid(api, grid)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_sample_armed":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_sample_armed(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_quantize":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_quantize(api)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_ui_automation_armed":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := ui_automation_armed(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_ui_set_automation_armed":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := ui_set_automation_armed(api, on)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_ui_set_dark":
 		dark := remote_bool(args, "dark", &ok)
@@ -2873,6 +3308,48 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		val, r := ui_selected_pad(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_view_turn":
+		kind := View_Kind(remote_enum(args, "kind", View_Kind_NAMES[:], &ok))
+		page := remote_i64(args, "page", &ok)
+		knob := remote_i64(args, "knob", &ok)
+		amount := remote_f64(args, "amount", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := view_turn(api, kind, page, knob, amount)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_view_touch":
+		kind := View_Kind(remote_enum(args, "kind", View_Kind_NAMES[:], &ok))
+		page := remote_i64(args, "page", &ok)
+		knob := remote_i64(args, "knob", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := view_touch(api, kind, page, knob, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_view_press":
+		kind := View_Kind(remote_enum(args, "kind", View_Kind_NAMES[:], &ok))
+		page := remote_i64(args, "page", &ok)
+		button := remote_i64(args, "button", &ok)
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := view_press(api, kind, page, button, on)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_view_state":
+		kind := View_Kind(remote_enum(args, "kind", View_Kind_NAMES[:], &ok))
+		page := remote_i64(args, "page", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := view_state(api, kind, page)
 		remote_answer(out, r, val, remote_error(api, r))
 	case:
 		if !remote_by_hand(api, method, args, out) do remote_answer(out, .Not_Found, nil, "no such method")
@@ -2979,7 +3456,7 @@ Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
 Message_Kind_NAMES := [?]string{"Info", "Success", "Warning", "Error"}
 
 @(private)
-View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser"}
+View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser", "Dialog", "Song", "Settings"}
 
 @(private)
 remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
@@ -3262,7 +3739,17 @@ REMOTE_METHODS := [?]string{
 	"pads_effect_key",
 	"pads_effect_set_key",
 	"pads_effect_set_key_filter",
+	"pads_effect_key_high_cut",
+	"pads_effect_set_key_high_cut",
+	"pads_effect_preset_count",
+	"pads_effect_preset_name",
+	"pads_effect_preset_kind",
+	"pads_effect_load_preset",
+	"pads_effect_super_filter_state",
 	"pads_effect_set_key_listen",
+	"pads_effect_press",
+	"pads_effect_pressure",
+	"pads_effect_set_latch",
 	"pads_export_state",
 	"pads_export_file",
 	"pads_export_start",
@@ -3307,6 +3794,10 @@ REMOTE_METHODS := [?]string{
 	"pads_launcher_color_lane",
 	"pads_launcher_move_sequence",
 	"pads_launcher_new_sequence",
+	"pads_launcher_view",
+	"pads_launcher_set_view",
+	"pads_launcher_set_keys",
+	"pads_launcher_press",
 	"pads_midi_port_count",
 	"pads_midi_port",
 	"pads_midi_port_name",
@@ -3333,6 +3824,7 @@ REMOTE_METHODS := [?]string{
 	"pads_mixer_group_pads",
 	"pads_mixer_ungroup",
 	"pads_mixer_set_group_folded",
+	"pads_mixer_pad_cue",
 	"pads_mixer_set_pad_cue",
 	"pads_mixer_set_bus_cue",
 	"pads_mixer_pad_meter",
@@ -3351,6 +3843,8 @@ REMOTE_METHODS := [?]string{
 	"pads_pad_set_volume",
 	"pads_pad_set_pan",
 	"pads_pad_set_pitch",
+	"pads_pad_region",
+	"pads_pad_set_region",
 	"pads_pad_set_mute",
 	"pads_pad_set_solo",
 	"pads_pad_set_choke",
@@ -3360,6 +3854,9 @@ REMOTE_METHODS := [?]string{
 	"pads_pad_clear",
 	"pads_pad_duplicate",
 	"pads_pad_copy_to",
+	"pads_pad_struck",
+	"pads_pad_slices",
+	"pads_pad_select_slice",
 	"pads_pad_play",
 	"pads_pad_set_armed",
 	"pads_pad_input",
@@ -3376,7 +3873,11 @@ REMOTE_METHODS := [?]string{
 	"pads_perform_set_play_mode",
 	"pads_perform_set_bank",
 	"pads_perform_select_pad",
+	"pads_perform_set_accent",
+	"pads_perform_accent",
 	"pads_perform_set_keys",
+	"pads_perform_key",
+	"pads_perform_play_key",
 	"pads_project_state",
 	"pads_project_dir",
 	"pads_project_name",
@@ -3384,6 +3885,7 @@ REMOTE_METHODS := [?]string{
 	"pads_project_new_from_template",
 	"pads_project_open",
 	"pads_project_save",
+	"pads_project_save_quick",
 	"pads_project_save_as",
 	"pads_project_rename",
 	"pads_project_recent",
@@ -3423,6 +3925,10 @@ REMOTE_METHODS := [?]string{
 	"pads_sequence_add_point",
 	"pads_sequence_add_pad_point",
 	"pads_sequence_remove_point",
+	"pads_sequence_quantize_setting",
+	"pads_sequence_set_quantize_setting",
+	"pads_sequence_quantize_now",
+	"pads_sequence_input_quantize",
 	"pads_sequence_set_input_quantize",
 	"pads_sequence_midi_fx",
 	"pads_sequence_set_midi_fx",
@@ -3468,6 +3974,19 @@ REMOTE_METHODS := [?]string{
 	"pads_song_add_arrangement",
 	"pads_song_rename_arrangement",
 	"pads_song_delete_arrangement",
+	"pads_song_edit_state",
+	"pads_song_set_cursor",
+	"pads_song_select_lane",
+	"pads_song_show_lanes",
+	"pads_song_select_clip",
+	"pads_song_clip_at",
+	"pads_song_set_add_length",
+	"pads_song_add_at_cursor",
+	"pads_song_ripple_remove",
+	"pads_song_ripple_duplicate",
+	"pads_song_ripple_resize",
+	"pads_song_remove_sequence",
+	"pads_song_set_clip_label",
 	"pads_unsubscribe",
 	"pads_surface_load",
 	"pads_surface_library_count",
@@ -3523,11 +4042,27 @@ REMOTE_METHODS := [?]string{
 	"pads_transport_set_song_mode",
 	"pads_transport_set_sync",
 	"pads_transport_set_clock_out",
+	"pads_ui_dialog",
+	"pads_ui_dialog_title",
 	"pads_ui_state",
 	"pads_ui_show",
+	"pads_ui_library_load",
+	"pads_ui_start_page",
+	"pads_ui_set_start_page",
+	"pads_ui_select_notes",
+	"pads_ui_sequencer_grid",
+	"pads_ui_set_sequencer_grid",
+	"pads_ui_sample_armed",
+	"pads_ui_quantize",
+	"pads_ui_automation_armed",
+	"pads_ui_set_automation_armed",
 	"pads_ui_set_dark",
 	"pads_ui_message_show",
 	"pads_ui_message",
 	"pads_ui_select_pads",
 	"pads_ui_selected_pad",
+	"pads_view_turn",
+	"pads_view_touch",
+	"pads_view_press",
+	"pads_view_state",
 }

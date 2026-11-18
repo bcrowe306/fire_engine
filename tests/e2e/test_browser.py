@@ -94,13 +94,13 @@ def test_favourites_from_the_star_and_the_tab(app, library):
     app.click("Add this folder to favourites", window="browser")
     s = app.state()["browser"]
     assert s["favorites"] == ["Documents", "Project", "library"]
-    app.click("tab Documents", window="browser")
+    app.click("category Documents", window="browser")
     assert app.state()["browser"]["tab"] == 0
-    app.click("tab library", window="browser")
+    app.click("category library", window="browser")
     s = app.state()["browser"]
     assert s["tab"] == 2 and os.path.basename(s["root"]) == "library"
     # Right-click the tab: remove it.
-    app.click("tab library", window="browser", right=True)
+    app.click("category library", window="browser", right=True)
     app.click("Remove")
     assert app.state()["browser"]["favorites"] == ["Documents", "Project"]
 

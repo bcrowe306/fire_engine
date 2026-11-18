@@ -383,6 +383,49 @@ sequence_remove_point :: proc(api: ^Api, slot: i64, index: i64) -> Result {
 	return .Ok
 }
 
+// Input quantize now: on, its grid, strength and swing (0..1).
+Input_Quantize :: struct {
+	on:       bool,
+	grid:     Grid,
+	strength: f32,
+	swing:    f32,
+}
+
+// What Quantize does (the window's button, a controller's): its grid and
+// strength (0..1), saved with the project.
+Quantize_Setting :: struct {
+	grid:     Grid,
+	strength: f32,
+}
+
+// What Quantize does now.
+sequence_quantize_setting :: proc(api: ^Api) -> (Quantize_Setting, Result) {
+	q := api.core.m.project.transport.quant
+	return {grid = Grid(q.grid), strength = q.strength}, .Ok
+}
+
+// Sets what Quantize does: its grid and strength (0..1), undoably.
+sequence_set_quantize_setting :: proc(api: ^Api, grid: Grid, strength: f32) -> Result {
+	if grid < min(Grid) || grid > max(Grid) do return fail(api, .Invalid_Argument, "no such grid")
+	if !(strength >= 0 && strength <= 1) do return fail(api, .Invalid_Argument, "strength is 0..1")
+	n := api.core.m.project.transport
+	n.quant = {grid = pm.Grid(grid), strength = strength}
+	return set_transport(api, .Quant, "Quantize Setting", n)
+}
+
+// Quantizes sequence `slot` as the Quantize setting says (note repeat on:
+// to its rate), undoably.
+sequence_quantize_now :: proc(api: ^Api, slot: i64) -> Result {
+	q := api.core.m.project.transport.quant
+	return sequence_quantize(api, slot, Grid(pm.quantize_grid(&api.core.m.engine, q.grid)), f64(q.strength))
+}
+
+// Input quantize now (what `sequence_set_input_quantize` set).
+sequence_input_quantize :: proc(api: ^Api) -> (Input_Quantize, Result) {
+	q := api.core.m.project.transport.quantize
+	return {on = q.on, grid = Grid(q.grid), strength = q.strength, swing = q.swing}, .Ok
+}
+
 // Input quantize: notes recorded move toward `grid` by `strength` (0..1),
 // its off-beats swung by `swing` (0..1). Undoably.
 sequence_set_input_quantize :: proc(api: ^Api, on: bool, grid: Grid, strength: f32, swing: f32) -> Result {

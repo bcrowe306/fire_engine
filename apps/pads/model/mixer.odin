@@ -24,7 +24,7 @@ DEFAULT_BUSES :: 4
 // Performance effects (applied to main while held).
 PERF_FX :: 16
 // Parameters an effect slot keeps.
-MAX_EFFECT_PARAMS :: 24
+MAX_EFFECT_PARAMS :: 32
 
 // What an effect slot holds.
 Effect_Kind :: enum u8 {
@@ -51,6 +51,7 @@ Effect_Kind :: enum u8 {
 	Distortion, // the synth's (as are Compressor, Delay, Reverb, Chorus, Flanger, Phaser: see `synth_twin`)
 	Eq,
 	Filter,
+	Super_Filter, // `fx.super_filter_create`: types, circuits, an LFO and an envelope (keyable)
 }
 
 // Effect names, as the UI shows them.
@@ -60,6 +61,7 @@ EFFECT_NAMES := [Effect_Kind]cstring{
 	.Delay = "Delay", .Reverb = "Reverb", .Chorus = "Chorus", .Flanger = "Flanger", .Phaser = "Phaser",
 	.Ring_Mod = "Ring mod", .Comb = "Comb", .Pitch = "Pitch shift", .Cutter = "Cutter", .Stutter = "Stutter", .Plugin = "Plug-in",
 	.Distortion = "Distortion", .Eq = "EQ", .Filter = "Filter",
+	.Super_Filter = "SuperFilter",
 }
 
 // One parameter value an effect slot keeps.
@@ -79,8 +81,9 @@ Effect_Slot :: struct {
 	plugin_id:   string, // .Plugin: which of its plug-ins
 	plugin_name: string,
 	state:       string, // .Plugin: its saved state (bytes, interned), put back when it loads
-	key:         Key_Source, // .Compressor, .Gate: what it listens to (none: itself)
+	key:         Key_Source, // .Compressor, .Gate, .Super_Filter: what it listens to (none: itself)
 	key_hpf:     f32,  // Hz: the key's high-pass (0: none)
+	key_lpf:     f32,  // Hz: the key's low-pass, .Super_Filter's (0: none)
 	listen:      bool, // the track hears the key (filtered) instead, to set it by
 }
 
@@ -100,7 +103,13 @@ Key_Kind :: enum u8 {
 
 // Whether a slot's effect can be keyed.
 keyable :: proc "contextless" (k: Effect_Kind) -> bool {
-	return k == .Compressor || k == .Gate
+	return k == .Compressor || k == .Gate || k == .Super_Filter
+}
+
+// Whether a slot's effect filters its key with a high cut as well as a
+// low cut (and hears itself through both when keyed from nothing).
+key_has_high_cut :: proc "contextless" (k: Effect_Kind) -> bool {
+	return k == .Super_Filter
 }
 
 // Whether the slot `t` points at can be keyed from `src` without a loop:
@@ -183,6 +192,7 @@ effect_params :: proc(k: Effect_Kind) -> []fc.Param_Info {
 	case .Pitch:      return dsp.pitch_params[:]
 	case .Cutter:     return dsp.cutter_params[:]
 	case .Stutter:    return dsp.stutter_params[:1] // the length (on is the slot's switch)
+	case .Super_Filter: return fx_pkg.super_filter_params[:]
 	}
 	return nil
 }

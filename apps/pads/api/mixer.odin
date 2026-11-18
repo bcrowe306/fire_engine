@@ -200,6 +200,19 @@ mixer_set_group_folded :: proc(api: ^Api, bus: i64, folded: bool) -> Result {
 	return .Ok
 }
 
+// A send to the cue mix: its level (-60: off), before the fader or after.
+Cue_Send :: struct {
+	db:  f32,
+	pre: bool,
+}
+
+// Pad `pad`'s send to the cue mix.
+mixer_pad_cue :: proc(api: ^Api, pad: i64) -> (Cue_Send, Result) {
+	p, r := pad_of(api, pad)
+	if r != .Ok do return {}, r
+	return {db = pm.send_db(p.cue) if p.cue.level > 0 else pm.SEND_MIN_DB, pre = p.cue.pre}, .Ok
+}
+
 // Sets pad `pad`'s send to the cue mix (a performer's headphones): `db`
 // (-60: off; up to 6), before its fader (`pre`) or after. Undoably.
 mixer_set_pad_cue :: proc(api: ^Api, pad: i64, db: f32, pre: bool) -> Result {

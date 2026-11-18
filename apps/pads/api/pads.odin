@@ -7,6 +7,11 @@ import pm "../model"
 // Pads there are (0 .. PADS-1: eight banks of sixteen).
 PADS :: pm.PADS
 
+// The MIDI channel (1..16) whose notes play only the pads (the drum map:
+// note N plays pad N), never an armed track's keys: what a controller's pad
+// grid sends on.
+PADS_CHANNEL :: pm.PADS_CHANNEL
+
 // What a pad is.
 Pad_Kind :: enum i32 {
 	Sampler, // plays its sample (its region), pitched by key
@@ -135,6 +140,38 @@ pad_set_pitch :: proc(api: ^Api, pad: i64, semitones: f32) -> Result {
 	return set_pad(api, pad, .Pitch, "Set Pitch", n)
 }
 
+// Pad `pad`'s sample region: where it starts and ends, in frames of its
+// sample (`frames` long at `rate` frames a second; all 0 without a sample).
+Pad_Region :: struct {
+	start:  i64,
+	end:    i64,
+	frames: i64,
+	rate:   f64,
+}
+
+// Pad `pad`'s sample region now.
+pad_region :: proc(api: ^Api, pad: i64) -> (Pad_Region, Result) {
+	if _, r := pad_of(api, pad); r != .Ok do return {}, r
+	m := &api.core.m
+	s := pm.pad_sample(m, int(pad))
+	if s == nil do return {}, .Ok
+	start, end := pm.pad_region(m, int(pad))
+	return {start = start, end = end, frames = s.frames, rate = s.rate}, .Ok
+}
+
+// Sets pad `pad`'s sample region (frames, start before end, within its
+// sample), undoably. Unsupported without a sample.
+pad_set_region :: proc(api: ^Api, pad: i64, start, end: i64) -> Result {
+	p, r := pad_of(api, pad)
+	if r != .Ok do return r
+	s := pm.pad_sample(&api.core.m, int(pad))
+	if s == nil do return fail(api, .Unsupported, "the pad has no sample")
+	if !(start >= 0 && start < end && end <= s.frames) do return fail(api, .Invalid_Argument, "the region is 0 <= start < end <= the sample's frames")
+	n := p^
+	n.start, n.end = start, end
+	return set_pad(api, pad, .Region, "Move Marker", n)
+}
+
 // Mutes pad `pad` or not, undoably.
 pad_set_mute :: proc(api: ^Api, pad: i64, on: bool) -> Result {
 	p, r := pad_of(api, pad)
@@ -240,6 +277,47 @@ pad_copy_to :: proc(api: ^Api, from, to: i64) -> Result {
 	if r != .Ok do return r
 	if _, r2 := pad_of(api, to); r2 != .Ok do return r2
 	return set_pad(api, to, .Whole, "Paste Pad", p^)
+}
+
+// How many times pad `pad` has been struck since the engine started (any
+// hit: a controller's, the sequencer's, the API's): a controller lights a
+// pad when it changes, as the window's pads flash.
+pad_struck :: proc(api: ^Api, pad: i64) -> (i64, Result) {
+	if _, r := pad_of(api, pad); r != .Ok do return 0, r
+	return i64(pm.struck(&api.core.m.engine, int(pad))), .Ok
+}
+
+// A slicer's slices now: how many, the selected one (whose settings its
+// page shows; Keyboard mode's keys play them, from slice 1), and the one
+// sounding (under its playhead; -1: none).
+Pad_Slices :: struct {
+	count:    i64,
+	selected: i64,
+	playing:  i64,
+}
+
+// Pad `pad`'s slices (not a slicer: none).
+pad_slices :: proc(api: ^Api, pad: i64) -> (Pad_Slices, Result) {
+	pd, r := pad_of(api, pad)
+	if r != .Ok do return {}, r
+	if pd.kind != .Slicer do return {selected = -1, playing = -1}, .Ok
+	m := &api.core.m
+	sl := pd.slicer
+	out := Pad_Slices{count = i64(sl.count), selected = i64(clamp(api.core.slice, 0, max(sl.count - 1, 0))), playing = -1}
+	if head, playing := pm.pad_playhead(&m.engine, int(pad)); playing {
+		for k in 0 ..< sl.count do if head >= sl.slices[k].start && head < pm.slice_end(m, int(pad), k) do out.playing = i64(k)
+	}
+	return out, .Ok
+}
+
+// Selects slice `slice` of the selected pad (a slicer): its page shows its
+// settings.
+pad_select_slice :: proc(api: ^Api, slice: i64) -> Result {
+	pd := &api.core.m.project.pads[api.core.selected]
+	if pd.kind != .Slicer do return fail(api, .Invalid_Argument, "the selected pad is not a slicer")
+	if slice < 0 || slice >= i64(pd.slicer.count) do return fail(api, .Not_Found, "no such slice")
+	api.core.slice = int(slice)
+	return .Ok
 }
 
 // Plays pad `pad` (`on`) or lets it go, at `velocity` (0..1], as a hit

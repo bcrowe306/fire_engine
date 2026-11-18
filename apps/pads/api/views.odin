@@ -13,11 +13,55 @@ asked for in two seconds is no longer drawn.
 
 // A view Pads draws for a display.
 View_Kind :: enum i32 {
-	Device,    // the selected pad's sound: page 0 its envelope, 1 its filter, 2 its pitch, 3 its LFOs
+	Device,    // the device panel as Pads shows it (its device, its tab), for a controller (see View_Button)
 	Mixer,     // the mixer's strips
 	Sequencer, // the selected pad's sequence
-	Clip,      // the selected pad's sample or clip
-	Browser,   // the browser
+	Clip,      // the Performance view's launcher: lanes of sequences (see View_Button)
+	Browser,   // the Library's browser: its rows, the preview (see View_Button)
+	Dialog,    // the dialog Pads shows (ui_dialog): its title, its words, its choices on the buttons
+	Song,      // the song's lanes around its cursor (`song_edit_state`), its tabs: Song, Clip, Lanes, Arrangement, Markers, Tempo
+	Settings,  // Pads' Settings: Audio, Channels, MIDI, Sync (what a headless Pads needs set from a controller)
+}
+
+// A view's buttons a controller presses (`view_press`): the row of choices
+// under its knobs (Lower_1..8: 0..7), the row of tabs over them
+// (Upper_1..8: 8..15), the page before and after (its knobs' pages), and
+// the next device in the chain; and the controller's modifiers, pressed
+// and let go as they are held (Mute, Solo: the lower row mutes or solos
+// the mixer's strips; Shift; Delete: a knob touched goes back to its
+// default).
+View_Button :: enum i64 {
+	Lower_1, Lower_2, Lower_3, Lower_4, Lower_5, Lower_6, Lower_7, Lower_8,
+	Upper_1, Upper_2, Upper_3, Upper_4, Upper_5, Upper_6, Upper_7, Upper_8,
+	Page_Left,
+	Page_Right,
+	Next_Device,
+	Mute,
+	Solo,
+	Shift,
+	Delete,
+}
+
+// What a view offers a controller now, as it last drew: its knobs (one an
+// encoder, 0..knobs-1), its buttons (bit k: View_Button k is there; `lit`
+// bit k: it is on), and its knobs' pages (`page` of `pages`).
+View_State :: struct {
+	knobs:   i64,
+	buttons: i64,
+	lit:     i64,
+	pages:   i64,
+	page:    i64,
+}
+
+// A controller's input to a view, waiting for its next drawing (the app's:
+// `views_input`), and what it offered when last drawn.
+View_Input :: struct {
+	turn:     [8]f64, // knob k turned (a fraction of its travel)
+	held:     [8]bool, // knob k touched
+	ended:    [8]bool, // knob k let go
+	pressed:  [32]bool, // View_Button k pressed
+	released: [32]bool, // View_Button k let go
+	state:    View_State,
 }
 
 // A view a surface asks for, and its newest pixels.
@@ -29,6 +73,7 @@ View_Want :: struct {
 	asked:         time.Tick,
 	pixels:        [dynamic]u8, // RGBA, rows top to bottom
 	frame:         i64, // how many frames it has had
+	input:         View_Input,
 }
 
 // How long a view is drawn after it was last asked for.
@@ -50,6 +95,58 @@ view_frame :: proc(api: ^Api, kind: View_Kind, page: i64, width: i64, height: i6
 	n := min(i64(len(w.pixels)), size)
 	if rgba != nil && n > 0 do copy(([^]u8)(rgba)[:n], w.pixels[:n])
 	return w.frame, .Ok
+}
+
+// Turns knob `knob` (0..7) of view `kind` (`page` of it, any size asked
+// for) by `amount`, a fraction of its travel (+ or -): as the knob turned
+// in Pads, at its next drawing. Not_Found: no such view asked for.
+view_turn :: proc(api: ^Api, kind: View_Kind, page: i64, knob: i64, amount: f64) -> Result {
+	w, r := view_of(api, kind, page, knob)
+	if r != .Ok do return r
+	w.input.turn[knob] += amount
+	return .Ok
+}
+
+// Knob `knob` of a view touched (`on`) or let go: lit while touched; let
+// go, its edit ends (one undo step a touch).
+view_touch :: proc(api: ^Api, kind: View_Kind, page: i64, knob: i64, on: bool) -> Result {
+	w, r := view_of(api, kind, page, knob)
+	if r != .Ok do return r
+	w.input.held[knob] = on
+	if !on do w.input.ended[knob] = true
+	return .Ok
+}
+
+// Button `button` (a View_Button) of a view pressed (`on`) or let go: as
+// its button clicked in Pads (some act while held: recording).
+view_press :: proc(api: ^Api, kind: View_Kind, page: i64, button: i64, on: bool) -> Result {
+	if button < 0 || button > i64(max(View_Button)) do return fail(api, .Invalid_Argument, "no such button (View_Button)")
+	w, r := view_of(api, kind, page, 0)
+	if r != .Ok do return r
+	if on do w.input.pressed[button] = true
+	else do w.input.released[button] = true
+	return .Ok
+}
+
+// What view `kind` (`page` of it) offers a controller, as it last drew.
+view_state :: proc(api: ^Api, kind: View_Kind, page: i64) -> (View_State, Result) {
+	w, r := view_of(api, kind, page, 0)
+	if r != .Ok do return {}, r
+	return w.input.state, .Ok
+}
+
+// A view's input, for the app to give its drawing (and to say what it
+// offers, in `state`). The host's.
+views_input :: proc(api: ^Api, index: i64) -> ^View_Input {
+	if index < 0 || index >= i64(len(api.views)) do return nil
+	return &api.views[index].input
+}
+
+@(private)
+view_of :: proc(api: ^Api, kind: View_Kind, page, control: i64) -> (^View_Want, Result) {
+	if control < 0 || control >= 8 do return nil, fail(api, .Invalid_Argument, "a view's knobs are 0..7")
+	for &w in api.views do if w.kind == kind && w.page == page do return &w, .Ok
+	return nil, fail(api, .Not_Found, "that view isn't asked for (view_frame)")
 }
 
 @(private)

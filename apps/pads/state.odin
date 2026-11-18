@@ -415,8 +415,8 @@ state_json :: proc(a: ^App) -> string {
 		if n.muted do s.muted_notes += 1
 	}
 	s.launch = enum_name(p.switch_at)
-	s.launch_hold, s.seq_bank = p.launch_hold, a.perf.win_row / 4
-	s.window = {a.perf.win_lane + 1, a.perf.win_row + 1}
+	s.launch_hold, s.seq_bank = p.launch_hold, a.launch.win_row / 4
+	s.window = {a.launch.win_lane + 1, a.launch.win_row + 1}
 	s.lanes = make([]string, p.lanes.count, context.temp_allocator)
 	for k in 0 ..< p.lanes.count do s.lanes[k] = strings.clone(pm.launch_lane_name(p, k), context.temp_allocator)
 	s.seq_lanes = make([]int, pm.SLOTS, context.temp_allocator)
@@ -501,7 +501,7 @@ state_json :: proc(a: ^App) -> string {
 		}
 		if pad.kind == .Slicer {
 			sl := pad.slicer
-			x := State_Slicer{base = int(sl.base), mono = sl.mono, gate = sl.gate, thru = sl.thru, by = enum_name(sl.by), selected = a.slicer_ui.selected}
+			x := State_Slicer{base = int(sl.base), mono = sl.mono, gate = sl.gate, thru = sl.thru, by = enum_name(sl.by), selected = a.slice}
 			x.starts = make([]i64, sl.count, context.temp_allocator)
 			x.gains = make([]f32, sl.count, context.temp_allocator)
 			x.pitches = make([]f32, sl.count, context.temp_allocator)

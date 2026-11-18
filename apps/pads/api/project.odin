@@ -1,5 +1,7 @@
 package pads_api
 
+import "core:strings"
+
 import pc "../core"
 import pm "../model"
 
@@ -80,6 +82,15 @@ project_open :: proc(api: ^Api, dir: string, discard_changes: bool) -> Result {
 // unsaved folder: `project_save_as` gives it a place).
 project_save :: proc(api: ^Api) -> Result {
 	return result(api, pc.project_save(api.core))
+}
+
+// Saves the project where it is; an untitled one into the projects folder
+// (the "project.folder" setting, else Documents) as the first free
+// "Project N" (a controller's quick save). Its folder.
+project_save_quick :: proc(api: ^Api) -> (string, Result) {
+	dir, o := pc.project_save_quick(api.core)
+	if r := result(api, o); r != .Ok do return "", r
+	return strings.clone(dir, context.temp_allocator), .Ok
 }
 
 // Saves the project as folder `path` (".pads" added when missing), which

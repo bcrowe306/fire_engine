@@ -2701,6 +2701,9 @@ Wet :: struct {
 	scratch: [8][]f32,
 	forward: []core.Event,
 	idle: bool,
+	delay: [8][]f32,
+	dry: [8][]f32,
+	at: int,
 }
 ```
 
@@ -2708,7 +2711,10 @@ Wraps an effect node with a dry/wet mix, so it can be switched in and out
 (or blended) without clicks: `WET_PARAM_MIX` fades between the input and
 the effect's output. Every other parameter event goes to the effect.
 While fully dry the effect is not run (it costs nothing), and it is reset
-when it is switched back in, so it starts clean (no old echoes).
+when it is switched back in, so it starts clean (no old echoes). The dry
+signal is delayed by the effect's latency, so a late effect (a limiter's
+lookahead, a plug-in) fades without combing and stays in time switched
+off.
 
 | Field | Description |
 |-------|-------------|
@@ -2718,6 +2724,9 @@ when it is switched back in, so it starts clean (no old echoes).
 | `scratch` |  |
 | `forward` |  |
 | `idle` | fully dry: the effect is not running |
+| `delay` | the dry signal's delay line (the effect's latency), or nil |
+| `dry` | the dry signal, delayed (max_block) |
+| `at` | where the delay lines write next |
 
 ## Procedures
 

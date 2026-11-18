@@ -74,10 +74,10 @@ open_project :: proc(a: ^App, dir: string) -> bool {
 	return true
 }
 
-// A new, empty project (in the unsaved folder until saved somewhere).
-// (`leave` asks to save what was open first.)
+// A new, empty project (in the unsaved folder until saved somewhere),
+// the project manager over it. (`leave` asks to save what was open first.)
 new_project :: proc(a: ^App) {
-	toast_failed(a, pa.project_new(&a.api, discard_changes = true), "Could not start a new project")
+	if toast_failed(a, pa.project_new(&a.api, discard_changes = true), "Could not start a new project") && !a.start.off do start_page_show(a) // (a template or a recent one instead: the project manager)
 }
 
 // A toast saying what failed and why, when `r` isn't Ok; true when it is.
@@ -94,6 +94,7 @@ project_opened :: proc(user: rawptr) {
 	a := (^App)(user)
 	a.selected, a.bank, a.fx = 0, 0, {}
 	a.seq.selected = -1
+	a.start.open = false // (a project chosen: the project manager's work is done)
 	view_restore(a)
 }
 
@@ -224,7 +225,7 @@ draw_export :: proc(a: ^App) {
 	if a.job.busy {
 		x := pc.job_result(&a.core)
 		im.OpenPopup("Exporting")
-		if im.BeginPopupModal("Exporting", nil, {.AlwaysAutoResize, .NoMove}) {
+		if modal_begin(a, "Exporting", nil, {.AlwaysAutoResize, .NoMove}) {
 			im.Text("%s", fmt.ctprintf("Rendering %d of %d…", min(x.pass + 1, len(x.passes)), len(x.passes)))
 			im.ProgressBar(f32(a.job.progress), {320, 0})
 			if !a.job.busy do im.CloseCurrentPopup()
@@ -234,7 +235,7 @@ draw_export :: proc(a: ^App) {
 	}
 	if !st.export_open do return
 	im.OpenPopup("Export")
-	if im.BeginPopupModal("Export", &st.export_open, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Export", &st.export_open, {.AlwaysAutoResize}) {
 		s := &st.settings
 		src := int(s.source)
 		im.TextDisabled("What")
@@ -320,23 +321,23 @@ draw_rename_project :: proc(a: ^App) {
 	st := &a.proj
 	if !st.rename_open do return
 	im.OpenPopup("Rename Project")
-	if im.BeginPopupModal("Rename Project", &st.rename_open, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename Project", &st.rename_open, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() {
 			st.rename_buf = {}
 			copy(st.rename_buf[:len(st.rename_buf) - 1], project_name(a))
 			im.SetKeyboardFocusHere()
 		}
 		im.SetNextItemWidth(280)
-		enter := im.InputText("##projname", cstring(&st.rename_buf[0]), len(st.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		enter := modal_input(a, "##projname", st.rename_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
 		im.TextDisabled("%s", fmt.ctprintf("Its folder: %s.pads", strings.truncate_to_byte(string(st.rename_buf[:]), 0)))
-		if im.Button("Rename") || enter {
+		if modal_button(a, "Rename") || enter {
 			if rename_project(a, strings.truncate_to_byte(string(st.rename_buf[:]), 0)) {
 				st.rename_open = false
 				im.CloseCurrentPopup()
 			}
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) {
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) {
 			st.rename_open = false
 			im.CloseCurrentPopup()
 		}

@@ -26,6 +26,7 @@ Options:
 	--prefs DIR    where preferences go (recent projects, favourites); default: the system's
 	--control PORT take commands live from a test harness on 127.0.0.1:PORT (0: any free
 	               port; the one chosen is printed): see app:ui's Control and tests/e2e
+	--no-start-page  no project manager at start or after New Project (tests; --drive never shows it)
 	--profile N    draw N frames as fast as possible and print the CPU time per frame
 	               (after the drive script, if one is given: profile a loaded project)
 	--trace FILE   record a Spall trace of the run into FILE (a build with
@@ -49,6 +50,7 @@ import app "app:core"
 import "app:devices"
 import "app:ui"
 import pa "api"
+import push2 "surfaces/push2"
 import pc "core"
 import pm "model"
 import im "deps:imgui"
@@ -67,9 +69,15 @@ App :: struct {
 	sample_armed:   bool, // the Sample control is on: the next pad pressed records (Arm, Threshold, Bars)
 	sample_latched: bool, // ... and stays on after each take (Ctrl- or Cmd-click it)
 	wave:     Wave_State,
+	view_wave: Wave_State, // the device view's (a controller's display): its own zoom
+	ctl:      Ctl_State, // the device panel on a controller (ui_ctl.odin)
+	dialog:   Dialog_Mirror, // the dialog showing, for a controller (ui_dialog.odin)
 	device:   Device_State, // the device tabs' LFO traces
 	seq_ops:  Seq_Ops, // renaming, copying bars, the copied part
 	spectrum: Spectrum_State, // an effect's spectrum, drawn on its device
+	sf_curve: Sf_Curve,       // SuperFilter's response, measured (ui_superfilter.odin)
+	sf_more:  bool,           // its LFO's extras shown
+	sf_key:   bool,           // its sidechain's row shown (always, while it has a key or its filters)
 	song_ui:  Song_State, // the Song tab's selected step, renaming
 	commands: [dynamic]Command, // everything that can be done to something (commands.odin)
 	pad_clip: pm.Pad, // a copied pad
@@ -80,6 +88,7 @@ App :: struct {
 	audition_off: struct { pad, pitch, frames: int }, // a pitched audition to let go
 	voice_edit: pm.Voice, // a copy of the selected pad's voice the knobs point into
 	bview:    Browser_View,
+	lib:      Lib_State, // the Library's category, selections, last load (ui_library.odin)
 	knob_target: pm.Auto_Target, // what the knob being drawn moves (see `knob_target`)
 	knob_scale:  f32,
 	auto_rec: Auto_Rec, // recording knob moves (the Automation arm)
@@ -91,7 +100,6 @@ App :: struct {
 	settings: App_Settings, // File > Settings…
 	plugins:  Plugin_Scan,  // the CLAP plug-ins found
 	io:       Track_Io,     // arming, and the MIDI activity lights
-	slicer_ui: Slicer_State, // the slicer page's selected slice
 	wte:       Wave_Editor,  // the wavetable editor's window
 	presets:   Preset_Ui,    // the synth's Save Preset dialog
 	leave:     Leave_State,
@@ -119,6 +127,8 @@ App :: struct {
 	fake_midi: ^midi.Driver, // --fake-midi: pretend MIDI ports (tests plug controllers into it: `midiport`)
 	fake_usb: ^app.Device_Driver, // --fake-usb: pretend USB and HID devices (`usbdev`); else nil
 	surfaces_page: Surfaces_Page, // Settings > Control Surfaces (ui_surfaces.odin)
+	start:     Start_Page,    // the project manager (ui_start.odin)
+	controls:  Controls_Ui,   // dialogs a controller's buttons open (ui_controls.odin)
 	views:    [dynamic]^View_Draw, // Pads' views drawn for surfaces' displays (ui_views.odin)
 	surface_monitor: bool, // its MIDI monitor records
 	control_size:   Control_Size, // --control-size: the size controls are this run, whatever Settings says (Auto: as Settings says)
@@ -127,8 +137,6 @@ App :: struct {
 	proj:     Project_State,
 	detail:   Detail_State,
 	toolbar:  Toolbar_State, // the transport toolbar's rows
-	perf_hold: bool, // performance effects latch
-	perf_held, perf_latched: [pm.PERF_FX]bool,
 	seen:     [pm.PADS]u32, // pm.struck as last seen (to light pads the sequencer plays)
 	fake_due: f64, // frames the simulated device owes (it runs as the frames go by)
 }
@@ -144,6 +152,7 @@ main :: proc() {
 	surfaces: [dynamic]string // --surface PATH: control-surface libraries to load
 	defer delete(surfaces)
 	surface_dev, fake_midi, fake_usb := false, false, false
+	start_page := true
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
 			if i^ + 1 < len(os.args) {
@@ -167,6 +176,7 @@ main :: proc() {
 		case "--fake-midi": fake_midi = true // (tests: MIDI ports of pretend controllers, plugged in by `midiport`)
 		case "--fake-usb": fake_usb = true // (tests: pretend USB and HID devices, plugged in by `usbdev`)
 		case "--control-size": control_size = control_size_parse(next(&i)) // (tests: the size their positions were written for)
+		case "--no-start-page": start_page = false
 		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
 			fmt.println("Pads", version_text())
@@ -264,6 +274,7 @@ main :: proc() {
 	defer pa.api_destroy(&a.api)
 	settings_register(a)
 	defer pc.settings_destroy(&a.core)
+	defer pc.launch_destroy(&a.core)
 	// (After the model is gone, its files let go: an unsaved project left
 	// without saving.)
 	defer if a.files.discard != "" && pc.is_unsaved(&a.core, a.files.discard) do os.remove_all(a.files.discard)
@@ -279,6 +290,8 @@ main :: proc() {
 	{
 		folder, _ := filepath.join({settings_folder(a), "Surfaces"}, context.temp_allocator)
 		pa.surfaces_start(&a.api, {folder}, watch = surface_dev, devices = drivers)
+		// Pads' own Push 2 surface, built in (apps/pads/surfaces/push2).
+		app.surfaces_add_static(&a.api.surfaces, &push2.fsurf_entry, "Push 2 (built in)")
 	}
 	defer pa.surfaces_stop(&a.api)
 	for path in surfaces do if _, r := pa.surface_load(&a.api, path); r != .Ok {
@@ -300,6 +313,8 @@ main :: proc() {
 	}
 	pa.transport_set_metronome(&a.api, true) // (the click on; a new project's clicks only while recording: see Project_Defaults.recording)
 	a.files.untitled = untitled
+	a.start.off = !start_page || drive != ""
+	if untitled && !a.start.off do start_page_show(a) // (no project to open: the project manager)
 	a.files.last_save = time.tick_now()
 	a.files.last_backup = time.tick_now()
 	// Stopped last time without closing: its backup, offered.
@@ -379,6 +394,7 @@ main :: proc() {
 		for ui.frame_begin(p) {
 			frame(a)
 			ui.frame_end(p)
+			dialog_frame(a)
 			views_render(a) // (between frames: their own ImGui context)
 		}
 	}
@@ -441,7 +457,7 @@ frame :: proc(a: ^App) {
 	update_meters(a)
 	if a.settings.recording == "" do ui.handle_shortcuts(&a.actions) // (not while a new shortcut is pressed)
 	if a.settings.recording == "" do play_keys(a)
-	hold_frame(a) // (Hold: the sequence pads let go, once their launch has come)
+	pc.launch_frame(&a.core) // (Hold: the sequence pads let go, once their launch has come)
 	if a.settings.recording == "" do pad_arrows(a)
 	plugins_scan_step(a)
 	track_io_frame(a)
@@ -450,7 +466,7 @@ frame :: proc(a: ^App) {
 	a.seq.focused, a.song_ui.focused = false, false
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
-	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.perf.win_row / 4, seq_lane0 = a.perf.win_lane, seq_row0 = a.perf.win_row, seq_keys = a.perf.seq_keys, seq_mode = a.seq.mode}
+	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.launch.win_row / 4, seq_lane0 = a.launch.win_lane, seq_row0 = a.launch.win_row, seq_keys = a.launch.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	prof.begin("workspace")
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
@@ -462,11 +478,21 @@ frame :: proc(a: ^App) {
 	draw_leave(a)
 	draw_template_save(a)
 	draw_cleanup(a)
+	draw_lib_save_as(a)
 	draw_about(a)
 	draw_export(a)
 	draw_settings(a)
 	draw_rename_project(a)
 	draw_seq_dialogs(a)
+	draw_start_page(a)
+	draw_length_dialog(a)
+	draw_quantize_dialog(a)
+	draw_convert_dialog(a)
+	draw_scale_dialog(a)
+	draw_recording_dialog(a)
+	draw_transport_dialog(a)
+	draw_sequence_dialog(a)
+	draw_lane_dialog(a)
 	prof.begin("project_frame")
 	project_frame(a)
 	prof.end()
@@ -577,12 +603,7 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 // Keyboard mode: the scale's degrees from the bank's start (bank A the
 // first 16 from the root, B the next 16...), or for a slicer its slice.
 keyboard_notes :: proc(a: ^App, k: int, out: ^[4]int) -> []int {
-	degree := a.bank * pm.PADS_PER_BANK + k - keyboard_bottom(a)
-	if a.m.project.pads[a.selected].kind == .Slicer {
-		out[0] = degree
-		return out[:1]
-	}
-	return pm.keyboard_pitches(a.keys, degree, out)
+	return pc.keyboard_notes(&a.core, k, out)
 }
 
 // Keyboard mode's degrees below the pad's own note that bank A's first pad
@@ -600,8 +621,7 @@ keyboard_home_bank :: proc(a: ^App) -> int {
 // Whether every pitch can be played: the MIDI range (the pad's own note
 // is key 60).
 keyboard_in_range :: proc(ps: []int) -> bool {
-	for p in ps do if p < -60 || p > 67 do return false
-	return len(ps) > 0
+	return pc.keyboard_in_range(ps)
 }
 
 // Releases pad `index` (what its press played).
@@ -641,7 +661,7 @@ play_keys :: proc(a: ^App) {
 		a.perf.key_slot[i] = 0
 	}
 	if io.WantTextInput || io.KeyCtrl || io.KeySuper || io.KeyAlt do return
-	if a.perf.seq_keys { // the sequence pads' Keys switch: the keys play them
+	if a.launch.seq_keys { // the sequence pads' Keys switch: the keys play them
 		for k, i in PAD_KEYS {
 			// (The launcher's window: the bottom row Z X C V, each a lane.)
 			slot, _, _, _ := window_cell(a, i % 4, i / 4)
@@ -713,7 +733,7 @@ handle_drops :: proc(a: ^App) {
 // Puts the app as the project was left (after opening one).
 view_restore :: proc(a: ^App) {
 	v := a.m.project.view
-	a.play_mode, a.keys, a.bank, a.selected, a.perf.win_lane, a.perf.win_row, a.perf.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_lane0, v.seq_row0, v.seq_keys
+	a.play_mode, a.keys, a.bank, a.selected, a.launch.win_lane, a.launch.win_row, a.launch.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_lane0, v.seq_row0, v.seq_keys
 	a.seq.mode = v.seq_mode
 }
 
@@ -726,6 +746,9 @@ files_init :: proc(a: ^App) {
 	_ = prefs_file(a, "recent.txt") // (kept elsewhere before settings.ini: brought over the first time)
 	// New projects until saved: Music/Pads/Unsaved (with --prefs: in it, so
 	// a test stays in its own), else beside the settings.
+	// A quick save's untitled projects: Documents (with --prefs: in it).
+	if a.prefs != "" do f.projects, _ = filepath.join({a.prefs, "Projects"})
+	else if d := sdl.GetUserFolder(.DOCUMENTS); d != nil do f.projects = strings.clone(string(d))
 	switch {
 	case a.prefs != "":
 		f.unsaved, _ = filepath.join({a.prefs, "Unsaved"})
@@ -748,6 +771,30 @@ files_init :: proc(a: ^App) {
 		},
 		ui = {
 			show = proc(user: rawptr, name: string) -> bool { return show_named((^App)(user), name) },
+			dialog = dialog_hook,
+			library_load = proc(user: rawptr, pad: int) -> bool { return lib_load_onto((^App)(user), pad) },
+			start_page = proc(user: rawptr) -> bool { return (^App)(user).start.open },
+			automation_armed = proc(user: rawptr) -> bool { return (^App)(user).auto_rec.armed },
+			quantize = proc(user: rawptr) { quantize_now((^App)(user)) },
+			sample_armed = proc(user: rawptr) -> bool { return (^App)(user).sample_armed },
+			select_notes = proc(user: rawptr, indices: []int) {
+				a := (^App)(user)
+				s := pm.current_sequence(&a.m)
+				clear(&a.seq.sel)
+				for i in indices do append(&a.seq.sel, s.notes[i])
+			},
+			seq_grid = proc(user: rawptr) -> int { return int((^App)(user).seq.grid) },
+			set_seq_grid = proc(user: rawptr, grid: int) { (^App)(user).seq.grid = pm.Grid(grid) },
+			set_automation_armed = proc(user: rawptr, on: bool) {
+				a := (^App)(user)
+				a.auto_rec.armed = on
+				if !on do record_release(a)
+			},
+			set_start_page = proc(user: rawptr, open: bool) {
+				a := (^App)(user)
+				if open do start_page_show(a)
+				else do a.start.open = false
+			},
 			set_dark = proc(user: rawptr, dark: bool) { set_dark((^App)(user), dark) },
 			dark = proc(user: rawptr) -> bool { return (^App)(user).dark },
 			toast = proc(user: rawptr, kind: int, text: string) {

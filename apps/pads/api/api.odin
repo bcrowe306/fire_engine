@@ -61,6 +61,15 @@ Api :: struct {
 	next_owner: i64,
 	remote:    Remote_Link, // the remote client's (remote.odin)
 	views:     [dynamic]View_Want, // views surfaces ask Pads to draw (views.odin)
+	keys_held: [PADS]Key_Held,     // what each Keyboard key played (perform_play_key)
+}
+
+// What a Keyboard key's press played, to end it.
+@(private)
+Key_Held :: struct {
+	pad:     int,
+	pitches: [4]i8,
+	count:   int,
 }
 
 // A call posted from another thread: run on the control thread at the

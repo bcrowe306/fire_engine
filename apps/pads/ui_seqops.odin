@@ -142,24 +142,24 @@ draw_seq_dialogs :: proc(a: ^App) {
 		im.OpenPopup("Rename Sequence")
 		o.rename_open = false
 	}
-	if im.BeginPopupModal("Rename Sequence", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename Sequence", nil, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
 		im.SetNextItemWidth(260)
-		done := im.InputText("##seq_rename", cstring(&o.rename_buf[0]), len(o.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		done := modal_input(a, "##seq_rename", o.rename_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("sequence rename")
-		if done || im.Button("Rename") {
+		if done || modal_button(a, "Rename") {
 			pa.sequence_set_name(&a.api, i64(o.rename_slot), strings.truncate_to_byte(string(o.rename_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
 	if o.bars_open {
 		im.OpenPopup("Copy Bars")
 		o.bars_open = false
 	}
-	if im.BeginPopupModal("Copy Bars", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Copy Bars", nil, {.AlwaysAutoResize}) {
 		b := &o.bars
 		from := m.project.sequences[b.from]
 		im.Text("%s", fmt.ctprintf("From %s", pm.sequence_name(&m.project, int(b.from))))
@@ -168,8 +168,13 @@ draw_seq_dialogs :: proc(a: ^App) {
 		im.SameLine()
 		im.SetNextItemWidth(110)
 		im.DragInt("##hi", &b.hi, 0.1, b.lo, i32(from.bars), "to bar %d", {.ClampOnInput})
+		// (a controller's encoders: the same settings)
+		b.lo = clamp(b.lo + i32(modal_knob(a, "From Bar", fmt.tprintf("%d", b.lo))), 1, i32(from.bars))
+		b.hi = clamp(b.hi + i32(modal_knob(a, "To Bar", fmt.tprintf("%d", b.hi))), 1, i32(from.bars))
 		b.hi = max(b.hi, b.lo)
-		ui.segmented("pads", {"Every pad", fmt.tprintf("%s only", pm.pad_label(a.selected)), fmt.tprintf("Bank %c", rune('A' + a.bank))}, &b.pads)
+		pad_names := []string{"Every pad", fmt.tprintf("%s only", pm.pad_label(a.selected)), fmt.tprintf("Bank %c", rune('A' + a.bank))}
+		ui.segmented("pads", pad_names, &b.pads)
+		b.pads = clamp(b.pads + modal_knob(a, "Pads", pad_names[clamp(b.pads, 0, 2)]), 0, 2)
 		im.Spacing()
 		im.SetNextItemWidth(200)
 		if ui.combo("##to", fmt.ctprintf("Into %s", pm.sequence_name(&m.project, int(b.to)))) {
@@ -184,8 +189,18 @@ draw_seq_dialogs :: proc(a: ^App) {
 		im.SetNextItemWidth(110)
 		im.DragInt("##at", &b.at, 0.1, 1, pm.MAX_BARS, "at bar %d", {.ClampOnInput})
 		ui.toggle("Replace what is there", &b.replace)
+		if n := modal_knob(a, "Into", pm.sequence_name(&m.project, int(b.to))); n != 0 {
+			to := int(b.to)
+			for _ in 0 ..< abs(n) {
+				to = (to + (1 if n > 0 else -1) + pm.SLOTS) % pm.SLOTS
+				if to == int(b.from) do to = (to + (1 if n > 0 else -1) + pm.SLOTS) % pm.SLOTS
+			}
+			b.to = i32(to)
+		}
+		b.at = clamp(b.at + i32(modal_knob(a, "At Bar", fmt.tprintf("%d", b.at))), 1, pm.MAX_BARS)
+		if modal_knob(a, "Replace", "Yes" if b.replace else "No") != 0 do b.replace = !b.replace
 		im.Spacing()
-		if im.Button("Copy") {
+		if modal_button(a, "Copy") {
 			pads: [pm.PADS]bool
 			mask: ^[pm.PADS]bool
 			switch b.pads {
@@ -201,7 +216,7 @@ draw_seq_dialogs :: proc(a: ^App) {
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
 }
@@ -305,17 +320,17 @@ draw_pad_rename :: proc(a: ^App) {
 		im.OpenPopup("Rename Pad")
 		o.pad_open = false
 	}
-	if im.BeginPopupModal("Rename Pad", nil, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename Pad", nil, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
 		im.SetNextItemWidth(260)
-		done := im.InputText("##pad_rename", cstring(&o.pad_buf[0]), len(o.pad_buf), {.EnterReturnsTrue, .AutoSelectAll})
+		done := modal_input(a, "##pad_rename", o.pad_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
 		ui.name("pad rename")
-		if done || im.Button("Rename") {
+		if done || modal_button(a, "Rename") {
 			pa.pad_set_name(&a.api, i64(o.rename_pad), strings.truncate_to_byte(string(o.pad_buf[:]), 0))
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) do im.CloseCurrentPopup()
 		im.EndPopup()
 	}
 }

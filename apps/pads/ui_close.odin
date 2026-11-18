@@ -86,11 +86,11 @@ draw_leave :: proc(a: ^App) {
 	}
 	if st.asking {
 		im.OpenPopup("Unsaved changes")
-		if im.BeginPopupModal("Unsaved changes", nil, {.AlwaysAutoResize}) {
-			im.Text("%s", fmt.ctprintf("Save the changes to %s?", project_name(a)))
-			im.TextDisabled("Without saving, they are lost.")
+		if modal_begin(a, "Unsaved changes", nil, {.AlwaysAutoResize}) {
+			modal_text(a, fmt.tprintf("Save the changes to %s?", project_name(a)))
+			modal_text(a, "Without saving, they are lost.", dim = true)
 			im.Spacing()
-			if im.Button("Save", {110, 0}) {
+			if modal_button(a, "Save", {110, 0}) {
 				if a.files.untitled {
 					st.saving_as, st.asking = true, false
 					project_dialog(a, .Save_As) // (then the action, once saved)
@@ -101,13 +101,13 @@ draw_leave :: proc(a: ^App) {
 			}
 			ui.name("save changes")
 			im.SameLine()
-			if im.Button("Don't Save", {110, 0}) {
+			if modal_button(a, "Don't Save", {110, 0}) {
 				leave_go(a)
 				im.CloseCurrentPopup()
 			}
 			ui.name("don't save")
 			im.SameLine()
-			if im.Button("Cancel", {90, 0}) || im.IsKeyPressed(.Escape) {
+			if modal_button(a, "Cancel", {90, 0}) || im.IsKeyPressed(.Escape) {
 				st.asking, st.action = false, .None
 				im.CloseCurrentPopup()
 			}
@@ -117,11 +117,11 @@ draw_leave :: proc(a: ^App) {
 	}
 	if st.recover != "" {
 		im.OpenPopup("Recover")
-		if im.BeginPopupModal("Recover", nil, {.AlwaysAutoResize}) {
-			im.Text("%s", fmt.ctprintf("Pads didn't close properly. Recover the changes to %s it kept?", strings.trim_suffix(filepath.base(st.recover), ".pads")))
-			im.TextDisabled("They were autosaved, but not saved into the project.")
+		if modal_begin(a, "Recover", nil, {.AlwaysAutoResize}) {
+			modal_text(a, fmt.tprintf("Pads didn't close properly. Recover the changes to %s it kept?", strings.trim_suffix(filepath.base(st.recover), ".pads")))
+			modal_text(a, "They were autosaved, but not saved into the project.", dim = true)
 			im.Spacing()
-			if im.Button("Recover", {110, 0}) {
+			if modal_button(a, "Recover", {110, 0}) {
 				if toast_failed(a, pa.project_recover(&a.api, st.recover), "Could not recover") {
 					ui.toast(&a.ws.toasts, .Success, "Recovered: save to keep the changes")
 				}
@@ -131,7 +131,7 @@ draw_leave :: proc(a: ^App) {
 			}
 			ui.name("recover")
 			im.SameLine()
-			if im.Button("Discard", {110, 0}) {
+			if modal_button(a, "Discard", {110, 0}) {
 				pa.project_discard_backup(&a.api, st.recover) // (an unsaved one's folder too: nothing of it to keep)
 				delete(st.recover)
 				st.recover = ""
@@ -154,21 +154,21 @@ draw_template_save :: proc(a: ^App) {
 	st := &a.template
 	if !st.open do return
 	im.OpenPopup("Save as Template")
-	if im.BeginPopupModal("Save as Template", &st.open, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Save as Template", &st.open, {.AlwaysAutoResize}) {
 		im.TextDisabled("New projects can start from it (File > New from Template)")
 		im.SetNextItemWidth(280)
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
-		enter := im.InputText("##tplname", cstring(&st.name[0]), len(st.name), {.EnterReturnsTrue})
+		enter := modal_input(a, "##tplname", st.name[:], {.EnterReturnsTrue})
 		ui.name("template name")
 		name := strings.trim_space(strings.truncate_to_byte(string(st.name[:]), 0))
-		if (im.Button("Save") || enter) && name != "" {
+		if (modal_button(a, "Save") || enter) && name != "" {
 			if toast_failed(a, pa.project_save_template(&a.api, name), "Could not save the template") do ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the template %s", name))
 			st.open = false
 			im.CloseCurrentPopup()
 		}
 		ui.name("save template")
 		im.SameLine()
-		if im.Button("Cancel") {
+		if modal_button(a, "Cancel") {
 			st.open = false
 			im.CloseCurrentPopup()
 		}

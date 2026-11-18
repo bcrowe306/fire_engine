@@ -57,12 +57,12 @@ draw_cleanup :: proc(a: ^App) {
 	st := &a.cleanup
 	if !st.open do return
 	im.OpenPopup("Clean Up Project")
-	if im.BeginPopupModal("Clean Up Project", &st.open, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Clean Up Project", &st.open, {.AlwaysAutoResize}) {
 		dir := a.m.project.dir
 		if len(st.files) == 0 {
-			im.TextUnformatted("Every file in the project is in use.")
+			modal_text(a, "Every file in the project is in use.")
 		} else {
-			im.TextDisabled("Moved to the Trash, from where they can be put back. The project is saved after.")
+			modal_text(a, fmt.tprintf("%d file%s it doesn't use. Moved to the Trash, from where they can be put back; the project is saved after.", len(st.files), "" if len(st.files) == 1 else "s"), dim = true)
 			im.Spacing()
 			total: i64
 			forgets := false
@@ -93,7 +93,7 @@ draw_cleanup :: proc(a: ^App) {
 			if forgets do im.TextColored(transmute(im.Vec4)ui.theme().warn, "%s", cstring("Undo is forgotten: what was ticked couldn't come back."))
 			im.Spacing()
 			im.BeginDisabled(total == 0)
-			if im.Button(fmt.ctprintf("Move %s to the Trash", size_text(total))) {
+			if modal_button(a, fmt.ctprintf("Move %s to the Trash", size_text(total))) {
 				chosen := make([dynamic]pm.Unused_File, context.temp_allocator)
 				for f, k in st.files do if st.ticked[k] do append(&chosen, f)
 				n, bytes := pm.clean_up(&a.m, chosen[:], app.move_to_trash)
@@ -105,7 +105,7 @@ draw_cleanup :: proc(a: ^App) {
 			im.EndDisabled()
 			im.SameLine()
 		}
-		if im.Button("Close") do st.open = false
+		if modal_button(a, "Close") do st.open = false
 		ui.name("close clean up")
 		if !st.open do im.CloseCurrentPopup()
 		im.EndPopup()

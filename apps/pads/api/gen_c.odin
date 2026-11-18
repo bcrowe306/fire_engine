@@ -350,6 +350,64 @@ Table_V1 :: struct {
 	surface_log_debug: proc "c" (api: ^Api, out: ^bool) -> Result,
 	surface_devices: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	view_frame: proc "c" (api: ^Api, kind: View_Kind, page: i64, width: i64, height: i64, rgba: rawptr, size: i64, out: ^i64) -> Result,
+	pad_region: proc "c" (api: ^Api, pad: i64, out: ^Pad_Region) -> Result,
+	pad_set_region: proc "c" (api: ^Api, pad: i64, start: i64, end: i64) -> Result,
+	view_turn: proc "c" (api: ^Api, kind: View_Kind, page: i64, knob: i64, amount: f64) -> Result,
+	view_touch: proc "c" (api: ^Api, kind: View_Kind, page: i64, knob: i64, on: bool) -> Result,
+	view_press: proc "c" (api: ^Api, kind: View_Kind, page: i64, button: i64, on: bool) -> Result,
+	view_state: proc "c" (api: ^Api, kind: View_Kind, page: i64, out: ^View_State) -> Result,
+	ui_dialog: proc "c" (api: ^Api, out: ^Dialog_State) -> Result,
+	ui_dialog_title: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	perform_key: proc "c" (api: ^Api, key: i64, out: ^Perform_Key) -> Result,
+	perform_play_key: proc "c" (api: ^Api, key: i64, on: bool, velocity: f32) -> Result,
+	pad_struck: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result,
+	launcher_view: proc "c" (api: ^Api, out: ^Launcher_View) -> Result,
+	launcher_set_view: proc "c" (api: ^Api, lane: i64, row: i64) -> Result,
+	launcher_set_keys: proc "c" (api: ^Api, on: bool) -> Result,
+	launcher_press: proc "c" (api: ^Api, slot: i64, on: bool, alone: bool) -> Result,
+	effect_press: proc "c" (api: ^Api, index: i64, on: bool, intensity: f32) -> Result,
+	effect_pressure: proc "c" (api: ^Api, index: i64, intensity: f32) -> Result,
+	effect_set_latch: proc "c" (api: ^Api, on: bool) -> Result,
+	project_save_quick: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	ui_library_load: proc "c" (api: ^Api, pad: i64) -> Result,
+	pad_slices: proc "c" (api: ^Api, pad: i64, out: ^Pad_Slices) -> Result,
+	pad_select_slice: proc "c" (api: ^Api, slice: i64) -> Result,
+	song_edit_state: proc "c" (api: ^Api, out: ^Song_Edit) -> Result,
+	song_set_cursor: proc "c" (api: ^Api, beat: f64) -> Result,
+	song_select_lane: proc "c" (api: ^Api, lane: i64) -> Result,
+	song_show_lanes: proc "c" (api: ^Api, first: i64) -> Result,
+	song_select_clip: proc "c" (api: ^Api, index: i64) -> Result,
+	song_clip_at: proc "c" (api: ^Api, lane: i64, beat: f64, out: ^i64) -> Result,
+	song_set_add_length: proc "c" (api: ^Api, beats: f64) -> Result,
+	song_add_at_cursor: proc "c" (api: ^Api, lane: i64, slot: i64, out: ^i64) -> Result,
+	song_remove_sequence: proc "c" (api: ^Api, slot: i64, out: ^i64) -> Result,
+	song_set_clip_label: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result,
+	song_ripple_remove: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64) -> Result,
+	song_ripple_duplicate: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
+	ui_start_page: proc "c" (api: ^Api, out: ^bool) -> Result,
+	ui_set_start_page: proc "c" (api: ^Api, open: bool) -> Result,
+	sequence_input_quantize: proc "c" (api: ^Api, out: ^Input_Quantize) -> Result,
+	song_ripple_resize: proc "c" (api: ^Api, index: i64, length: f64) -> Result,
+	ui_automation_armed: proc "c" (api: ^Api, out: ^bool) -> Result,
+	ui_set_automation_armed: proc "c" (api: ^Api, on: bool) -> Result,
+	sequence_quantize_setting: proc "c" (api: ^Api, out: ^Quantize_Setting) -> Result,
+	sequence_set_quantize_setting: proc "c" (api: ^Api, grid: Grid, strength: f32) -> Result,
+	sequence_quantize_now: proc "c" (api: ^Api, slot: i64) -> Result,
+	ui_quantize: proc "c" (api: ^Api) -> Result,
+	perform_set_accent: proc "c" (api: ^Api, on: bool) -> Result,
+	perform_accent: proc "c" (api: ^Api, out: ^bool) -> Result,
+	ui_select_notes: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64) -> Result,
+	ui_sequencer_grid: proc "c" (api: ^Api, out: ^Grid) -> Result,
+	ui_set_sequencer_grid: proc "c" (api: ^Api, grid: Grid) -> Result,
+	ui_sample_armed: proc "c" (api: ^Api, out: ^bool) -> Result,
+	mixer_pad_cue: proc "c" (api: ^Api, pad: i64, out: ^Cue_Send) -> Result,
+	effect_key_high_cut: proc "c" (api: ^Api, s: Slot_Ref, out: ^f32) -> Result,
+	effect_set_key_high_cut: proc "c" (api: ^Api, s: Slot_Ref, hz: f32) -> Result,
+	effect_super_filter_state: proc "c" (api: ^Api, s: Slot_Ref, out: ^Super_Filter_State) -> Result,
+	effect_preset_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	effect_preset_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	effect_preset_kind: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
+	effect_load_preset: proc "c" (api: ^Api, s: Slot_Ref, index: i64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -702,6 +760,64 @@ table_fill :: proc(api: ^Api) {
 	t.surface_log_debug = c_surface_log_debug
 	t.surface_devices = c_surface_devices
 	t.view_frame = c_view_frame
+	t.pad_region = c_pad_region
+	t.pad_set_region = c_pad_set_region
+	t.view_turn = c_view_turn
+	t.view_touch = c_view_touch
+	t.view_press = c_view_press
+	t.view_state = c_view_state
+	t.ui_dialog = c_ui_dialog
+	t.ui_dialog_title = c_ui_dialog_title
+	t.perform_key = c_perform_key
+	t.perform_play_key = c_perform_play_key
+	t.pad_struck = c_pad_struck
+	t.launcher_view = c_launcher_view
+	t.launcher_set_view = c_launcher_set_view
+	t.launcher_set_keys = c_launcher_set_keys
+	t.launcher_press = c_launcher_press
+	t.effect_press = c_effect_press
+	t.effect_pressure = c_effect_pressure
+	t.effect_set_latch = c_effect_set_latch
+	t.project_save_quick = c_project_save_quick
+	t.ui_library_load = c_ui_library_load
+	t.pad_slices = c_pad_slices
+	t.pad_select_slice = c_pad_select_slice
+	t.song_edit_state = c_song_edit_state
+	t.song_set_cursor = c_song_set_cursor
+	t.song_select_lane = c_song_select_lane
+	t.song_show_lanes = c_song_show_lanes
+	t.song_select_clip = c_song_select_clip
+	t.song_clip_at = c_song_clip_at
+	t.song_set_add_length = c_song_set_add_length
+	t.song_add_at_cursor = c_song_add_at_cursor
+	t.song_remove_sequence = c_song_remove_sequence
+	t.song_set_clip_label = c_song_set_clip_label
+	t.song_ripple_remove = c_song_ripple_remove
+	t.song_ripple_duplicate = c_song_ripple_duplicate
+	t.ui_start_page = c_ui_start_page
+	t.ui_set_start_page = c_ui_set_start_page
+	t.sequence_input_quantize = c_sequence_input_quantize
+	t.song_ripple_resize = c_song_ripple_resize
+	t.ui_automation_armed = c_ui_automation_armed
+	t.ui_set_automation_armed = c_ui_set_automation_armed
+	t.sequence_quantize_setting = c_sequence_quantize_setting
+	t.sequence_set_quantize_setting = c_sequence_set_quantize_setting
+	t.sequence_quantize_now = c_sequence_quantize_now
+	t.ui_quantize = c_ui_quantize
+	t.perform_set_accent = c_perform_set_accent
+	t.perform_accent = c_perform_accent
+	t.ui_select_notes = c_ui_select_notes
+	t.ui_sequencer_grid = c_ui_sequencer_grid
+	t.ui_set_sequencer_grid = c_ui_set_sequencer_grid
+	t.ui_sample_armed = c_ui_sample_armed
+	t.mixer_pad_cue = c_mixer_pad_cue
+	t.effect_key_high_cut = c_effect_key_high_cut
+	t.effect_set_key_high_cut = c_effect_set_key_high_cut
+	t.effect_super_filter_state = c_effect_super_filter_state
+	t.effect_preset_count = c_effect_preset_count
+	t.effect_preset_name = c_effect_preset_name
+	t.effect_preset_kind = c_effect_preset_kind
+	t.effect_load_preset = c_effect_load_preset
 }
 
 @(private)
@@ -3318,4 +3434,421 @@ c_view_frame :: proc "c" (api: ^Api, kind: View_Kind, page: i64, width: i64, hei
 	v, r := view_frame(api, kind, page, width, height, rgba, size)
 	if out != nil do out^ = v
 	return r
+}
+
+@(private)
+c_pad_region :: proc "c" (api: ^Api, pad: i64, out: ^Pad_Region) -> Result {
+	context = runtime.default_context()
+	v, r := pad_region(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_pad_set_region :: proc "c" (api: ^Api, pad: i64, start: i64, end: i64) -> Result {
+	context = runtime.default_context()
+	return pad_set_region(api, pad, start, end)
+}
+
+@(private)
+c_view_turn :: proc "c" (api: ^Api, kind: View_Kind, page: i64, knob: i64, amount: f64) -> Result {
+	context = runtime.default_context()
+	return view_turn(api, kind, page, knob, amount)
+}
+
+@(private)
+c_view_touch :: proc "c" (api: ^Api, kind: View_Kind, page: i64, knob: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return view_touch(api, kind, page, knob, on)
+}
+
+@(private)
+c_view_press :: proc "c" (api: ^Api, kind: View_Kind, page: i64, button: i64, on: bool) -> Result {
+	context = runtime.default_context()
+	return view_press(api, kind, page, button, on)
+}
+
+@(private)
+c_view_state :: proc "c" (api: ^Api, kind: View_Kind, page: i64, out: ^View_State) -> Result {
+	context = runtime.default_context()
+	v, r := view_state(api, kind, page)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_dialog :: proc "c" (api: ^Api, out: ^Dialog_State) -> Result {
+	context = runtime.default_context()
+	v, r := ui_dialog(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_dialog_title :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := ui_dialog_title(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_perform_key :: proc "c" (api: ^Api, key: i64, out: ^Perform_Key) -> Result {
+	context = runtime.default_context()
+	v, r := perform_key(api, key)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_perform_play_key :: proc "c" (api: ^Api, key: i64, on: bool, velocity: f32) -> Result {
+	context = runtime.default_context()
+	return perform_play_key(api, key, on, velocity)
+}
+
+@(private)
+c_pad_struck :: proc "c" (api: ^Api, pad: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := pad_struck(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_view :: proc "c" (api: ^Api, out: ^Launcher_View) -> Result {
+	context = runtime.default_context()
+	v, r := launcher_view(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_launcher_set_view :: proc "c" (api: ^Api, lane: i64, row: i64) -> Result {
+	context = runtime.default_context()
+	return launcher_set_view(api, lane, row)
+}
+
+@(private)
+c_launcher_set_keys :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return launcher_set_keys(api, on)
+}
+
+@(private)
+c_launcher_press :: proc "c" (api: ^Api, slot: i64, on: bool, alone: bool) -> Result {
+	context = runtime.default_context()
+	return launcher_press(api, slot, on, alone)
+}
+
+@(private)
+c_effect_press :: proc "c" (api: ^Api, index: i64, on: bool, intensity: f32) -> Result {
+	context = runtime.default_context()
+	return effect_press(api, index, on, intensity)
+}
+
+@(private)
+c_effect_pressure :: proc "c" (api: ^Api, index: i64, intensity: f32) -> Result {
+	context = runtime.default_context()
+	return effect_pressure(api, index, intensity)
+}
+
+@(private)
+c_effect_set_latch :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return effect_set_latch(api, on)
+}
+
+@(private)
+c_project_save_quick :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := project_save_quick(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_ui_library_load :: proc "c" (api: ^Api, pad: i64) -> Result {
+	context = runtime.default_context()
+	return ui_library_load(api, pad)
+}
+
+@(private)
+c_pad_slices :: proc "c" (api: ^Api, pad: i64, out: ^Pad_Slices) -> Result {
+	context = runtime.default_context()
+	v, r := pad_slices(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_pad_select_slice :: proc "c" (api: ^Api, slice: i64) -> Result {
+	context = runtime.default_context()
+	return pad_select_slice(api, slice)
+}
+
+@(private)
+c_song_edit_state :: proc "c" (api: ^Api, out: ^Song_Edit) -> Result {
+	context = runtime.default_context()
+	v, r := song_edit_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_set_cursor :: proc "c" (api: ^Api, beat: f64) -> Result {
+	context = runtime.default_context()
+	return song_set_cursor(api, beat)
+}
+
+@(private)
+c_song_select_lane :: proc "c" (api: ^Api, lane: i64) -> Result {
+	context = runtime.default_context()
+	return song_select_lane(api, lane)
+}
+
+@(private)
+c_song_show_lanes :: proc "c" (api: ^Api, first: i64) -> Result {
+	context = runtime.default_context()
+	return song_show_lanes(api, first)
+}
+
+@(private)
+c_song_select_clip :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return song_select_clip(api, index)
+}
+
+@(private)
+c_song_clip_at :: proc "c" (api: ^Api, lane: i64, beat: f64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_clip_at(api, lane, beat)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_set_add_length :: proc "c" (api: ^Api, beats: f64) -> Result {
+	context = runtime.default_context()
+	return song_set_add_length(api, beats)
+}
+
+@(private)
+c_song_add_at_cursor :: proc "c" (api: ^Api, lane: i64, slot: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_add_at_cursor(api, lane, slot)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_remove_sequence :: proc "c" (api: ^Api, slot: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_remove_sequence(api, slot)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_set_clip_label :: proc "c" (api: ^Api, index: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return song_set_clip_label(api, index, name_s)
+}
+
+@(private)
+c_song_ripple_remove :: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64) -> Result {
+	context = runtime.default_context()
+	indices_s := indices[:max(indices_len, 0)] if indices != nil else nil
+	return song_ripple_remove(api, indices_s)
+}
+
+@(private)
+c_song_ripple_duplicate :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := song_ripple_duplicate(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_start_page :: proc "c" (api: ^Api, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := ui_start_page(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_set_start_page :: proc "c" (api: ^Api, open: bool) -> Result {
+	context = runtime.default_context()
+	return ui_set_start_page(api, open)
+}
+
+@(private)
+c_sequence_input_quantize :: proc "c" (api: ^Api, out: ^Input_Quantize) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_input_quantize(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_song_ripple_resize :: proc "c" (api: ^Api, index: i64, length: f64) -> Result {
+	context = runtime.default_context()
+	return song_ripple_resize(api, index, length)
+}
+
+@(private)
+c_ui_automation_armed :: proc "c" (api: ^Api, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := ui_automation_armed(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_set_automation_armed :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return ui_set_automation_armed(api, on)
+}
+
+@(private)
+c_sequence_quantize_setting :: proc "c" (api: ^Api, out: ^Quantize_Setting) -> Result {
+	context = runtime.default_context()
+	v, r := sequence_quantize_setting(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_sequence_set_quantize_setting :: proc "c" (api: ^Api, grid: Grid, strength: f32) -> Result {
+	context = runtime.default_context()
+	return sequence_set_quantize_setting(api, grid, strength)
+}
+
+@(private)
+c_sequence_quantize_now :: proc "c" (api: ^Api, slot: i64) -> Result {
+	context = runtime.default_context()
+	return sequence_quantize_now(api, slot)
+}
+
+@(private)
+c_ui_quantize :: proc "c" (api: ^Api) -> Result {
+	context = runtime.default_context()
+	return ui_quantize(api)
+}
+
+@(private)
+c_perform_set_accent :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return perform_set_accent(api, on)
+}
+
+@(private)
+c_perform_accent :: proc "c" (api: ^Api, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := perform_accent(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_select_notes :: proc "c" (api: ^Api, indices: [^]i64, indices_len: i64) -> Result {
+	context = runtime.default_context()
+	indices_s := indices[:max(indices_len, 0)] if indices != nil else nil
+	return ui_select_notes(api, indices_s)
+}
+
+@(private)
+c_ui_sequencer_grid :: proc "c" (api: ^Api, out: ^Grid) -> Result {
+	context = runtime.default_context()
+	v, r := ui_sequencer_grid(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_ui_set_sequencer_grid :: proc "c" (api: ^Api, grid: Grid) -> Result {
+	context = runtime.default_context()
+	return ui_set_sequencer_grid(api, grid)
+}
+
+@(private)
+c_ui_sample_armed :: proc "c" (api: ^Api, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := ui_sample_armed(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_mixer_pad_cue :: proc "c" (api: ^Api, pad: i64, out: ^Cue_Send) -> Result {
+	context = runtime.default_context()
+	v, r := mixer_pad_cue(api, pad)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_key_high_cut :: proc "c" (api: ^Api, s: Slot_Ref, out: ^f32) -> Result {
+	context = runtime.default_context()
+	v, r := effect_key_high_cut(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_set_key_high_cut :: proc "c" (api: ^Api, s: Slot_Ref, hz: f32) -> Result {
+	context = runtime.default_context()
+	return effect_set_key_high_cut(api, s, hz)
+}
+
+@(private)
+c_effect_super_filter_state :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Super_Filter_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_super_filter_state(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_preset_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := effect_preset_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_preset_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := effect_preset_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_effect_preset_kind :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := effect_preset_kind(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_load_preset :: proc "c" (api: ^Api, s: Slot_Ref, index: i64) -> Result {
+	context = runtime.default_context()
+	return effect_load_preset(api, s, index)
 }

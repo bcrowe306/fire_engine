@@ -28,7 +28,7 @@ Fake_Device :: struct {
 	opened:                int, // handles open on it
 	written:               int, // bytes
 	writes:                int,
-	last:                  [dynamic]u8, // the last write
+	recent:                [dynamic]u8, // the newest bytes written (FAKE_RECENT or more)
 	reads:                 [dynamic][]u8, // what it sends, waiting (owned)
 }
 
@@ -72,8 +72,11 @@ devices_fake_create :: proc() -> ^Device_Driver {
 		if !h.dev.plugged do return .Gone
 		h.dev.written += len(bytes)
 		h.dev.writes += 1
-		clear(&h.dev.last)
-		append(&h.dev.last, ..bytes)
+		append(&h.dev.recent, ..bytes)
+		if n := len(h.dev.recent); n > 2 * FAKE_RECENT { // (the oldest let go)
+			copy(h.dev.recent[:], h.dev.recent[n - FAKE_RECENT:])
+			resize(&h.dev.recent, FAKE_RECENT)
+		}
 		return .Ok
 	}
 	f.read = proc(d: ^Device_Driver, handle: rawptr, buf: []u8, timeout_ms: int) -> (int, Device_Io) {
@@ -114,7 +117,7 @@ devices_fake_destroy :: proc(d: ^Device_Driver) {
 	for v in f.devices {
 		for r in v.reads do delete(r, HEAP())
 		delete(v.reads)
-		delete(v.last)
+		delete(v.recent)
 		delete(v.id, HEAP())
 		free(v, HEAP())
 	}
@@ -138,7 +141,7 @@ devices_fake_plug :: proc(d: ^Device_Driver, id: string, vendor_id, product_id: 
 	if v == nil {
 		v = new(Fake_Device, HEAP())
 		v.id = strings.clone(id, HEAP())
-		v.last = make([dynamic]u8, HEAP())
+		v.recent = make([dynamic]u8, HEAP())
 		v.reads = make([dynamic][]u8, HEAP())
 		append(&f.devices, v)
 	}
@@ -170,16 +173,21 @@ devices_fake_send :: proc(d: ^Device_Driver, id: string, bytes: []u8) -> bool {
 	return true
 }
 
+// How much of what was written a pretend device keeps: at least a Push 2
+// display's frame twice over.
+FAKE_RECENT :: 1 << 20
+
 // What was written to a pretend device: its bytes and writes in all, and
-// the last write (a copy in `allocator`).
-devices_fake_written :: proc(d: ^Device_Driver, id: string, allocator := context.temp_allocator) -> (bytes, writes: int, last: []u8, ok: bool) {
+// the newest bytes written (at least FAKE_RECENT of them, or all; a copy in
+// `allocator`).
+devices_fake_written :: proc(d: ^Device_Driver, id: string, allocator := context.temp_allocator) -> (bytes, writes: int, recent: []u8, ok: bool) {
 	f := (^Fake_Devices)(d)
 	sync.mutex_lock(&f.mutex)
 	defer sync.mutex_unlock(&f.mutex)
 	v := fake_find(f, id)
 	if v == nil do return
-	l := make([]u8, len(v.last), allocator)
-	copy(l, v.last[:])
+	l := make([]u8, len(v.recent), allocator)
+	copy(l, v.recent[:])
 	return v.written, v.writes, l, true
 }
 

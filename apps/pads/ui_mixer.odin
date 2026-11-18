@@ -434,17 +434,17 @@ draw_rename_bus :: proc(a: ^App) {
 	if st.rename_bus == 0 do return
 	im.OpenPopup("Rename Bus")
 	open := true
-	if im.BeginPopupModal("Rename Bus", &open, {.AlwaysAutoResize}) {
+	if modal_begin(a, "Rename Bus", &open, {.AlwaysAutoResize}) {
 		if im.IsWindowAppearing() do im.SetKeyboardFocusHere()
 		im.SetNextItemWidth(200)
-		enter := im.InputText("##busname", cstring(&st.rename_buf[0]), len(st.rename_buf), {.EnterReturnsTrue, .AutoSelectAll})
-		if im.Button("Rename") || enter {
+		enter := modal_input(a, "##busname", st.rename_buf[:], {.EnterReturnsTrue, .AutoSelectAll})
+		if modal_button(a, "Rename") || enter {
 			pa.mixer_rename_bus(&a.api, i64(st.rename_bus - 1), strings.truncate_to_byte(string(st.rename_buf[:]), 0))
 			st.rename_bus = 0
 			im.CloseCurrentPopup()
 		}
 		im.SameLine()
-		if im.Button("Cancel") || im.IsKeyPressed(.Escape) {
+		if modal_button(a, "Cancel") || im.IsKeyPressed(.Escape) {
 			st.rename_bus = 0
 			im.CloseCurrentPopup()
 		}
@@ -1119,41 +1119,9 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32, gr_db: f
 	}
 	im.PopFont()
 
-	// The meter, on the fader's scale: green, then amber, then red (dBFS:
-	// above -12 and 0; a K scale: above its 0 and its +4); the peak bar with
-	// the RMS (the average) inside it, the bright one as Settings says; the
-	// held peak a line.
-	ms := a.settings.meters
-	warn_db, hot_db: f32 = -12, 0
-	switch ms.scale {
-	case .Dbfs:
-	case .K12: warn_db, hot_db = -12, -8
-	case .K14: warn_db, hot_db = -14, -10
-	case .K20: warn_db, hot_db = -20, -16
-	}
+	// The meter, on the fader's scale.
 	mx := sx + scale_w
-	for c in 0 ..< 2 {
-		x := mx + f32(c) * (meter_w + 2)
-		im.DrawList_AddRectFilled(dl, {x, top}, {x + meter_w, bottom}, ui.col(well(t)), 1)
-		v := view[c]
-		bar :: proc(dl: ^im.DrawList, x0, x1, top, bottom: f32, level: f32, warn_db, hot_db: f32, alpha: f32) {
-			t := ui.theme()
-			lvl := fader_frac(20 * math.log10(level)) if level > 0 else 0
-			if lvl <= 0 do return
-			yy := bottom - (bottom - top) * lvl
-			yw := bottom - (bottom - top) * fader_frac(warn_db)
-			yh := bottom - (bottom - top) * fader_frac(hot_db)
-			im.DrawList_AddRectFilled(dl, {x0, max(yy, yw)}, {x1, bottom}, ui.col(ui.with_alpha(t.ok, alpha)), 1)
-			if yy < yw do im.DrawList_AddRectFilled(dl, {x0, max(yy, yh)}, {x1, yw}, ui.col(ui.with_alpha(t.warn, alpha)), 1)
-			if yy < yh do im.DrawList_AddRectFilled(dl, {x0, yy}, {x1, yh}, ui.col(ui.with_alpha(t.danger, alpha)), 1)
-		}
-		bar(dl, x, x + meter_w, top, bottom, v.peak, warn_db, hot_db, 0.45 if ms.rms else 1)
-		bar(dl, x + 1, x + meter_w - 1, top, bottom, v.rms, warn_db, hot_db, 1 if ms.rms else 0.55)
-		if v.hold > 0 && ms.hold_s > 0 {
-			hy := y_of(fader_frac(20 * math.log10(v.hold)), top, bottom)
-			im.DrawList_AddLine(dl, {x, hy}, {x + meter_w, hy}, ui.col(t.text), 1.5)
-		}
-	}
+	meter_bars(a, dl, view, mx, top, bottom, meter_w)
 	// The gain reduction: down from the top, 0 to 24 dB.
 	if gr_w > 0 {
 		x := mx + 2 * (meter_w + 2)
@@ -1167,7 +1135,7 @@ fader_meter :: proc(a: ^App, value: ^f32, view: ^[2]Meter_View, h: f32, gr_db: f
 	return
 }
 
-// Mute and Solo (Mute alone without `solo`), as Logic colours them, and
+// Mute (yellow) and Solo (blue; Mute alone without `solo`), and
 // for an audio pad its record arm.
 @(private)
 mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: bool) {
@@ -1178,7 +1146,7 @@ mute_solo :: proc(a: ^App, mute, solo: ^bool, arm: ^bool = nil) -> (changed: boo
 	probes := [3]string{"mute", "solo", "arm"}
 	letters := [3]string{"M", "S", "R"}
 	tips := [3]cstring{"Mute", "Solo", "Arm: it records while you record"}
-	colors := [3]ui.Color{ui.rgb(0x3d9cf5), t.warn, t.danger}
+	colors := [3]ui.Color{t.warn, ui.rgb(0x3d9cf5), t.danger} // (mute yellow, solo blue, arm red)
 	n := 0
 	for x in parts do if x != nil do n += 1
 	w := (inner_w() - 4 * f32(n - 1)) / f32(n)
@@ -1671,4 +1639,44 @@ dest_output :: proc(d: int) -> pa.Output {
 	if pm.is_out_dest(d) do return {kind = .Pair, index = i64(d - pm.OUT_DEST)}
 	if d >= 1 && d <= pm.BUSES do return {kind = .Bus, index = i64(d - 1)}
 	return {kind = .Main}
+}
+
+// A stereo meter's two bars from `x`, `top` to `bottom`, each `meter_w`
+// wide: green, then amber, then red (dBFS: above -12 and 0; a K scale:
+// above its 0 and its +4); the peak bar with the RMS (the average) inside
+// it, the bright one as Settings says; the held peak a line. On the
+// fader's scale.
+meter_bars :: proc(a: ^App, dl: ^im.DrawList, view: ^[2]Meter_View, mx, top, bottom, meter_w: f32) {
+	t := ui.theme()
+	y_of :: proc(frac, top, bottom: f32) -> f32 { return bottom - (bottom - top) * frac }
+	ms := a.settings.meters
+	warn_db, hot_db: f32 = -12, 0
+	switch ms.scale {
+	case .Dbfs:
+	case .K12: warn_db, hot_db = -12, -8
+	case .K14: warn_db, hot_db = -14, -10
+	case .K20: warn_db, hot_db = -20, -16
+	}
+	for c in 0 ..< 2 {
+		x := mx + f32(c) * (meter_w + 2)
+		im.DrawList_AddRectFilled(dl, {x, top}, {x + meter_w, bottom}, ui.col(well(t)), 1)
+		v := view[c]
+		bar :: proc(dl: ^im.DrawList, x0, x1, top, bottom: f32, level: f32, warn_db, hot_db: f32, alpha: f32) {
+			t := ui.theme()
+			lvl := fader_frac(20 * math.log10(level)) if level > 0 else 0
+			if lvl <= 0 do return
+			yy := bottom - (bottom - top) * lvl
+			yw := bottom - (bottom - top) * fader_frac(warn_db)
+			yh := bottom - (bottom - top) * fader_frac(hot_db)
+			im.DrawList_AddRectFilled(dl, {x0, max(yy, yw)}, {x1, bottom}, ui.col(ui.with_alpha(t.ok, alpha)), 1)
+			if yy < yw do im.DrawList_AddRectFilled(dl, {x0, max(yy, yh)}, {x1, yw}, ui.col(ui.with_alpha(t.warn, alpha)), 1)
+			if yy < yh do im.DrawList_AddRectFilled(dl, {x0, yy}, {x1, yh}, ui.col(ui.with_alpha(t.danger, alpha)), 1)
+		}
+		bar(dl, x, x + meter_w, top, bottom, v.peak, warn_db, hot_db, 0.45 if ms.rms else 1)
+		bar(dl, x + 1, x + meter_w - 1, top, bottom, v.rms, warn_db, hot_db, 1 if ms.rms else 0.55)
+		if v.hold > 0 && ms.hold_s > 0 {
+			hy := y_of(fader_frac(20 * math.log10(v.hold)), top, bottom)
+			im.DrawList_AddLine(dl, {x, hy}, {x + meter_w, hy}, ui.col(t.text), 1.5)
+		}
+	}
 }

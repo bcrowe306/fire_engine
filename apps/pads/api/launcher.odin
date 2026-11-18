@@ -2,6 +2,7 @@ package pads_api
 
 import "core:strings"
 
+import pc "../core"
 import pm "../model"
 
 // Launcher lanes there may be.
@@ -187,5 +188,45 @@ launcher_new_sequence :: proc(api: ^Api, lane: i64) -> (i64, Result) {
 @(private)
 lane_ok :: proc(api: ^Api, lane: i64) -> Result {
 	if lane < 0 || lane >= i64(api.core.m.project.lanes.count) do return fail(api, .Not_Found, "no such lane")
+	return .Ok
+}
+
+// The Perform tab's live state, the window's and a controller's alike.
+Launcher_View :: struct {
+	lane:     i64,  // the launcher's window (4 lanes by 4 rows): its first lane
+	row:      i64,  // ... and its first row
+	keys:     bool, // the computer's pad keys play the window's sequence pads
+	fx_latch: bool, // a press turns an effect on until the next press (Hold effects)
+	fx_last:  i64,  // the performance effect pressed last
+}
+
+// The Perform tab's live state now.
+launcher_view :: proc(api: ^Api) -> (Launcher_View, Result) {
+	l := &api.core.launch
+	return {lane = i64(l.win_lane), row = i64(l.win_row), keys = l.seq_keys, fx_latch = l.fx_latch, fx_last = i64(l.fx_last)}, .Ok
+}
+
+// Moves the launcher's window to lane `lane` and row `row` (kept over the
+// lanes and rows there are).
+launcher_set_view :: proc(api: ^Api, lane: i64, row: i64) -> Result {
+	api.core.launch.win_lane, api.core.launch.win_row = int(clamp(lane, 0, pm.MAX_LANES)), int(clamp(row, 0, pm.SLOTS))
+	pc.launch_window_clamp(api.core)
+	return .Ok
+}
+
+// The computer's pad keys play the launcher window's sequence pads (`on`),
+// or the pads.
+launcher_set_keys :: proc(api: ^Api, on: bool) -> Result {
+	api.core.launch.seq_keys = on
+	return .Ok
+}
+
+// A sequence pad pressed (`on`) or let go, as the Perform tab's: launched
+// in its lane (`alone`: the other lanes stop), or, in Hold, played while
+// held (let go, its lane goes back to what it played).
+launcher_press :: proc(api: ^Api, slot: i64, on: bool, alone := false) -> Result {
+	if r := slot_ok(api, slot); r != .Ok do return r
+	if on do pc.launch_press(api.core, int(slot), alone)
+	else do pc.launch_release(api.core, int(slot))
 	return .Ok
 }

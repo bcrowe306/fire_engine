@@ -34,12 +34,15 @@ def png_pixels(path):
     return w, h, [raw[y * (w * 4 + 1) + 1:(y + 1) * (w * 4 + 1)] for y in range(h)]
 
 
-@pytest.mark.parametrize("page", [0, 1, 2, 3])
+@pytest.mark.parametrize("page", [0, 1, 2, 3, 4, 5, 6])
 def test_the_device_view_is_drawn_for_a_display(pads, page):
     pads.cmd(f"view device {page} 960 160")  # asked for: drawn from the next frame
-    pads.wait(4)
     path = os.path.join(pads.out_dir, f"device_{page}.png")
-    said = pads.cmd(f"view device {page} 960 160 {path}")
+    for _ in range(20):  # (read back a frame or more later: longer when the machine is busy)
+        pads.wait(4)
+        said = pads.cmd(f"view device {page} 960 160 {path}")
+        if said.startswith("frame ") and int(said.split()[1]) > 0:
+            break
     assert said.startswith("frame ") and int(said.split()[1]) > 0, said
     w, h, rows = png_pixels(path)
     assert (w, h) == (960, 160)

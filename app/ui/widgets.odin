@@ -85,6 +85,22 @@ live_marker :: proc(dl: ^im.DrawList, a, b: im.Vec2) {
 	im.DrawList_AddCircleFilled(dl, b, 2.5, col(LIVE_COLOR), 10)
 }
 
+// A controller's encoders on the knobs drawn (a view on its display: Pads
+// draws its knobs for Push 2's encoders): knob `k` drawn while it is set is
+// the k-th knob since `drawn` was 0. A turn waits in `turn` (a fraction of
+// the knob's travel, + or -) until the knob draws; `held` lights it (the
+// encoder touched); `ended` ends its edit (let go: an undo step).
+Knob_Input :: struct {
+	turn:  [8]f64,
+	held:  [8]bool,
+	ended: [8]bool,
+	drawn: int,
+	size:  f32, // the knobs' size (0: as each asks)
+}
+
+// The knobs' controller input now (nil: none, the window's own knobs).
+knob_input: ^Knob_Input
+
 // Sizes widgets use by default, in logical points.
 KNOB_SIZE :: 44
 // Default fader size (width × height for a vertical one).
@@ -141,6 +157,8 @@ KNOB_ARC :: [2]f32{math.PI * 0.75, math.PI * 2.25}
 knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, format: cstring = "%.2f", size: f32 = KNOB_SIZE, log_scale := false, shown_value: cstring = nil, step: f32 = 0, overlap := false) -> (e: Edit) {
 	im.PushID(label)
 	defer im.PopID()
+	size := size
+	if knob_input != nil && knob_input.size > 0 && size == KNOB_SIZE do size = knob_input.size
 	t := current
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
@@ -184,6 +202,39 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		frac = (value^ - min_v) / (max_v - min_v) if max_v > min_v else 0
 	}
 
+	// A controller's encoder on it (a view on a display: the knobs drawn
+	// in order, the encoders' turns waiting for them).
+	held := false
+	if ki := knob_input; ki != nil {
+		k := ki.drawn
+		ki.drawn += 1
+		if k < len(ki.turn) {
+			held = ki.held[k]
+			if ki.turn[k] != 0 {
+				u: f32
+				if log_scale && min_v > 0 && max_v > min_v do u = math.ln(clamp(value^, min_v, max_v) / min_v) / math.ln(max_v / min_v)
+				else if max_v > min_v do u = (value^ - min_v) / (max_v - min_v)
+				u = clamp(u + f32(ki.turn[k]), 0, 1)
+				v := min_v * math.exp(u * math.ln(max_v / min_v)) if log_scale && min_v > 0 && max_v > min_v else min_v + u * (max_v - min_v)
+				if step > 0 {
+					v = snap_step(v, step, min_v, max_v)
+					if v == value^ && abs(ki.turn[k]) * f64(max_v - min_v) >= f64(step) / 2 do v = snap_step(value^ + (step if ki.turn[k] > 0 else -step), step, min_v, max_v)
+				}
+				if step <= 0 || v != value^ do ki.turn[k] = 0 // (a step waits until it adds up to one)
+				if v != value^ {
+					value^ = v
+					e.changed = true
+					if log_scale && min_v > 0 && max_v > min_v do frac = math.ln(clamp(v, min_v, max_v) / min_v) / math.ln(max_v / min_v)
+					else if max_v > min_v do frac = (v - min_v) / (max_v - min_v)
+				}
+			}
+			if ki.ended[k] {
+				ki.ended[k] = false
+				e.ended = true
+			}
+		}
+	}
+
 	// Its menu: back to the default, or a value typed.
 	@(static) typed: f32
 	if im.BeginPopupContextItem("##knobmenu") {
@@ -223,7 +274,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		else if max_v > min_v do lf = (lv - min_v) / (max_v - min_v)
 		live_ring(dl, center, r, lf)
 	}
-	hovered := im.IsItemHovered() || im.IsItemActive()
+	hovered := im.IsItemHovered() || im.IsItemActive() || held
 	im.DrawList_AddCircleFilled(dl, center, r - 7, col(t.hover if hovered else t.raised), 32)
 	a := a0 + (a1 - a0) * frac
 	im.DrawList_AddLine(dl, {center.x + math.cos(a) * (r - 14), center.y + math.sin(a) * (r - 14)},
@@ -579,7 +630,7 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 				if which == 0 do hit.mute = true
 				else do hit.solo = true
 			}
-			c := rgb(0x3d9cf5) if which == 0 else t.warn
+			c := t.warn if which == 0 else rgb(0x3d9cf5) // (mute yellow, solo blue)
 			bg := c if on else (with_alpha(t.bg, 0.55) if bh else with_alpha(t.bg, 0.3))
 			im.DrawList_AddRectFilled(dl, at[which], {at[which].x + bs.x, at[which].y + bs.y}, col(bg), 3)
 			lc: cstring = "M" if which == 0 else "S"
