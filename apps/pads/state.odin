@@ -73,6 +73,7 @@ State :: struct {
 	snap:       bool, // the sequence editor snaps to its grid
 	curved:     int, // automation points of the current sequence bending the line after them
 	repeat_all: bool,   // the toolbar's note repeat is on
+	fx_draw_us: [2]f64, // a family's device panel on a controller: its last drawing time and the most since (µs; ui_ctl_fx.odin)
 	mic_access: string, // macOS's microphone permission: Unknown, Not_Asked, Denied, Granted
 	latency:    [3]int, // the device's input, output and round-trip latency (frames)
 	record_latency: int, // what a take is moved earlier by
@@ -401,6 +402,7 @@ state_json :: proc(a: ^App) -> string {
 	for pt in seq.points do if pt.curve != 0 do s.curved += 1
 	s.seq_mode = enum_name(a.seq.mode)
 	s.repeat_all = a.m.engine.repeat_all
+	s.fx_draw_us = {a.ctl.fx_draw_us, a.ctl.fx_draw_max_us}
 	s.mic_access = enum_name(mic_access())
 	li, lo, lr := app.host_latency(&a.host)
 	s.latency, s.record_latency = {li, lo, lr}, pm.record_latency(&a.m.engine)

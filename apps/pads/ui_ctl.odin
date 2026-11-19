@@ -55,6 +55,7 @@ Ctl_State :: struct {
 	route:  int, // the synth's modulation route shown
 	seq_view: ui.Roll_View, // the sequencer's rows shown (its own: the window's are its size)
 	seq_pad:  int,          // the selected pad they were brought to (+1; another: brought to it)
+	fx_draw_us, fx_draw_max_us: f64, // the last family panel's drawing time, and the most since (ui_ctl_fx.odin's probe)
 	seq_row:  int,          // the cursor: its row (the selected pad's, in Drums)
 	seq_beat: f64,          // and the step it's on (a grid step's start, or a note's)
 	seq_transient: bool,    // the selection's last note is there only because the cursor is on it (moved on: let go; Select: kept)
@@ -1016,6 +1017,10 @@ ctl_empty_pad :: proc(ctx: ^View_Ctx, i: int, full: im.Vec2) {
 ctl_eq :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 	a := ctx.a
 	pad := a.m.project.pads[i]
+	{
+		panel := Fx_Panel{ctx = ctx, where_ = .Pad_Eq, pad = i, plot = plot, full = full}
+		if fx_panel(&panel) do return // (ui_ctl_fx_tone.odin)
+	}
 	ctl_tabs(ctx, {"EQ"}, 0)
 	im.SetCursorPos({0, CTL_PLOT_Y})
 	// Its shape: the three bands' gains, low to high.
@@ -1051,6 +1056,10 @@ smooth :: proc(x, a, b: f32) -> f32 {
 @(private)
 ctl_midi :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 	a := ctx.a
+	{
+		panel := Fx_Panel{ctx = ctx, where_ = .Midi, pad = i, plot = plot, full = full}
+		if fx_panel(&panel) do return // (ui_ctl_fx_midi_plugin.odin)
+	}
 	ctl_tabs(ctx, {"MIDI"}, 0)
 	fx, _ := pa.sequence_midi_fx(&a.api, i64(i))
 	ctl_message(fmt.tprintf("Note repeat %s · Arpeggiator %s", "on" if fx.repeat else "off", "on" if fx.arp else "off"), plot)
@@ -1156,6 +1165,11 @@ ctl_effect :: proc(ctx: ^View_Ctx, t: pm.Fx_Target, plot, full: im.Vec2) {
 		return // (On: Mute + Device; Remove: Delete + Device)
 	}
 	twin_e, twin := pm.synth_twin(s.kind)
+	{
+		panel := Fx_Panel{ctx = ctx, where_ = .Slot, kind = s.kind, t = t, s = s, effect = twin_e, twin = twin, plot = plot, full = full, lead = 1 if t.kind == .Perf else 0}
+		if f := pm.target_node(&m.engine, t); f != nil do panel.plugin = f.plugin
+		if fx_panel(&panel) do return // (its family's own: ui_ctl_fx_*.odin)
+	}
 	if !twin do draw_effect_view(a, t, s, plot)
 	else do ctl_message(fmt.tprintf("%s%s", pm.slot_name(s), "" if s.on else " (off)"), plot)
 	knobs := make([dynamic]Ctl_Param, context.temp_allocator)
@@ -1258,6 +1272,7 @@ ctl_plugin :: proc(ctx: ^View_Ctx, t: pm.Fx_Target, plot, full: im.Vec2) {
 		ctl_message("Loading…" if !pm.pad_plugin_failed(&m.engine, i) else fmt.tprintf("Could not load %s", s.plugin_path), plot)
 		return
 	}
+	if panel := (Fx_Panel{ctx = ctx, where_ = .Plugin_Instrument, kind = .Plugin, t = t, s = s, pad = i, plugin = p, plot = plot, full = full}); fx_panel(&panel) do return // (ui_ctl_fx_midi_plugin.odin)
 	knobs := make([dynamic]Ctl_Param, context.temp_allocator)
 	for q in pm.target_params(&m.engine, t) do append(&knobs, Ctl_Param{info = q, is = true})
 	ctl_params(ctx, t, s, p, knobs[:], {}, plot)
@@ -1426,6 +1441,10 @@ ctl_synth :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 		}
 	case .Effects:
 		e := st.effect
+		{
+			panel := Fx_Panel{ctx = ctx, where_ = .Synth, kind = fx_kind_of_synth(e), effect = e, twin = true, pad = i, plot = plot, full = full, lead = 1}
+			if fx_panel(&panel) do break // (its family's own: ui_ctl_fx_*.odin)
+		}
 		order := make([dynamic]string, context.temp_allocator)
 		at := 0
 		for x, k in sy.fx_order {
