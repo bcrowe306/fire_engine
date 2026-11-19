@@ -39,11 +39,13 @@ set_synth_param :: proc(a: ^App, pad: int, id: i64, v: f64, step: string) {
 }
 
 // A control moved effect slot `t`'s parameter `id` to `v` (a performance
-// effect's too: `pa.effect_set_param`). Clamped to its range by the caller.
+// effect's too: `pa.effect_set_param`; a plug-in instrument's: its pad's
+// Sound, `pa.param_set`). Clamped to its range by the caller.
 control_effect_param :: proc(a: ^App, t: pm.Fx_Target, id: i64, v: f64, changed, ended: bool) {
 	if changed {
 		pa.history_gesture_begin(&a.api)
-		pa.effect_set_param(&a.api, slot_ref(t), id, v)
+		if t.kind == .Instrument do pa.param_set(&a.api, {track = .Pad, index = i64(t.index), device = .Sound, param = id}, v)
+		else do pa.effect_set_param(&a.api, slot_ref(t), id, v)
 	}
 	if ended do pa.history_gesture_end(&a.api)
 }
