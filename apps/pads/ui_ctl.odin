@@ -241,7 +241,12 @@ ctl_banks :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	ctl_page_strip(ctx, full, n, a.ctl.page)
 }
 
-// A page strip (ctl_banks): `n` pages, `cur` shown, named by ctx.banks.
+// The most a page strip takes of the picture's width (its pages around
+// the one shown past that).
+CTL_STRIP_W :: 380
+
+// A page strip (ctl_banks): `n` pages, `cur` shown, named by ctx.banks;
+// many pages: those around `cur` (CTL_STRIP_W).
 ctl_page_strip :: proc(ctx: ^View_Ctx, full: im.Vec2, n, cur: int) {
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
@@ -253,9 +258,29 @@ ctl_page_strip :: proc(ctx: ^View_Ctx, full: im.Vec2, n, cur: int) {
 		return ctx.banks[b] if b < len(ctx.banks) && ctx.banks[b] != "" else fmt.tprintf("Page %d", b + 1)
 	}
 	gap: f32 = 10
-	w: f32 = 0
-	for b in 0 ..< n do w += im.CalcTextSize(fmt.ctprintf("%s", name(ctx, b))).x + gap
 	aw := im.CalcTextSize("◀").x
+	more := im.CalcTextSize("…").x + gap
+	// Many pages: only those around the one shown, as many as fit in
+	// CTL_STRIP_W ("…" where there are more either side).
+	width :: proc(ctx: ^View_Ctx, b: int, gap: f32) -> f32 { return im.CalcTextSize(fmt.ctprintf("%s", name(ctx, b))).x + gap }
+	lo, hi := cur, cur // (the pages shown: lo..hi)
+	w := width(ctx, cur, gap)
+	room := CTL_STRIP_W - 2 * (aw + gap) - 2 * more
+	for grew := true; grew; {
+		grew = false
+		if hi < n - 1 && w + width(ctx, hi + 1, gap) <= room {
+			hi += 1
+			w += width(ctx, hi, gap)
+			grew = true
+		}
+		if lo > 0 && w + width(ctx, lo - 1, gap) <= room {
+			lo -= 1
+			w += width(ctx, lo, gap)
+			grew = true
+		}
+	}
+	if lo > 0 do w += more
+	if hi < n - 1 do w += more
 	w += 2 * (aw + gap)
 	lh := im.GetTextLineHeight()
 	x1 := o.x + plot.x - 4
@@ -271,12 +296,20 @@ ctl_page_strip :: proc(ctx: ^View_Ctx, full: im.Vec2, n, cur: int) {
 	}
 	tri(dl, x, y, lh, true, cur > 0)
 	x += aw + gap
-	for b in 0 ..< n {
+	if lo > 0 {
+		im.DrawList_AddText(dl, {x, y}, ui.col(t.text_dim), "…")
+		x += more
+	}
+	for b in lo ..= hi {
 		c := fmt.ctprintf("%s", name(ctx, b))
 		ts := im.CalcTextSize(c)
 		im.DrawList_AddText(dl, {x, y}, ui.col(t.text if b == cur else t.text_dim), c)
 		if b == cur do im.DrawList_AddLine(dl, {x, y + lh + 1}, {x + ts.x, y + lh + 1}, ui.col(t.accent), 2)
 		x += ts.x + gap
+	}
+	if hi < n - 1 {
+		im.DrawList_AddText(dl, {x, y}, ui.col(t.text_dim), "…")
+		x += more
 	}
 	tri(dl, x, y, lh, false, cur < n - 1)
 	ctx.buttons |= 1 << uint(pa.View_Button.Page_Left) | 1 << uint(pa.View_Button.Page_Right)
