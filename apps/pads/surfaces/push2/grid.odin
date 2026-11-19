@@ -381,10 +381,10 @@ grid_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, pads: ^kit.Matrix, sessi
 	return pm, sm
 }
 
-// The arrows: Left and Right select the pad before or after the selected
-// one (the window's selection: its devices, the keyboard's sound), Up and
-// Down the sequence before or after the one shown. Each lit while there is
-// one to go to.
+// The arrows, one rule on every view on the display: ◀ ▶ its pages (the
+// tab's knobs, Mix's pages, the browser's parts), ▲ ▼ its items (the
+// device chain, Mix's eight strips, the rows of a list; the Song lanes;
+// Perform's launcher rows). Lit where there is somewhere to go.
 @(private)
 arrows_setup :: proc(cs: ^kit.Control_Surface, left, right, up, down: ^kit.Control) -> ^kit.Component {
 	c := kit.component_make(cs, "Arrows")
@@ -394,21 +394,18 @@ arrows_setup :: proc(cs: ^kit.Control_Surface, left, right, up, down: ^kit.Contr
 	kit.layer_bind(c.layer, "down", down)
 	c.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) {
 		p := (^Push2)(c.cs.user)
-		if p.pads_api != nil && kit.modes_current(p.pad_modes) == "song" {
+		if p.pads_api == nil do return
+		if (slot == "up" || slot == "down") && kit.modes_current(p.pad_modes) == "song" {
 			kit.light_value(control, W_ON if song_arrow_light(p, slot) else W_DIM)
 			return
 		}
-		if p.pads_api != nil && kit.modes_current(p.pad_modes) == "steps" && (slot == "left" || slot == "right") {
-			kit.light_value(control, W_ON if steps_arrow_light(p, slot) else W_DIM)
-			return
-		}
-		pad, seq := arrows_now(c)
+		st := view_now(p, p.mirror_kind)
 		on: bool
 		switch slot {
-		case "left":  on = pad > 0
-		case "right": on = pad < pa.PADS - 1
-		case "up":    on = seq < pa.SEQUENCES - 1
-		case "down":  on = seq > 0
+		case "left":  on = st.page > 0
+		case "right": on = st.page < st.pages - 1
+		case "up":    on = st.buttons & (1 << uint(pa.View_Button.Up)) != 0
+		case "down":  on = st.buttons & (1 << uint(pa.View_Button.Down)) != 0
 		}
 		kit.light_value(control, W_ON if on else W_DIM)
 	}
@@ -417,31 +414,73 @@ arrows_setup :: proc(cs: ^kit.Control_Surface, left, right, up, down: ^kit.Contr
 	}
 	c.on_event = proc(c: ^kit.Component, e: kit.Event) {
 		if e.kind != .Press do return
-		t := (^Push2)(c.cs.user).pads_api
+		p := (^Push2)(c.cs.user)
+		t := p.pads_api
 		if t == nil do return
-		if kit.modes_current((^Push2)(c.cs.user).pad_modes) == "song" {
-			song_arrow((^Push2)(c.cs.user), e.slot)
-			kit.redraw_owned(c)
-			invalidate(c.cs)
-			return
+		switch {
+		case (e.slot == "up" || e.slot == "down") && kit.modes_current(p.pad_modes) == "song":
+			song_arrow(p, e.slot)
+		case (e.slot == "up" || e.slot == "down") && kit.modes_current(p.pad_modes) == "sequences" && p.mirror_kind == .Clip:
+			// (Perform: the launcher's rows)
+			v: pa.Launcher_View
+			t.launcher_view(t.api, &v)
+			t.launcher_set_view(t.api, v.lane, max(v.row + (1 if e.slot == "down" else -1), 0))
+			render(p)
+		case:
+			b: pa.View_Button
+			switch e.slot {
+			case "left":  b = .Page_Left
+			case "right": b = .Page_Right
+			case "up":    b = .Up
+			case "down":  b = .Down
+			}
+			press(p, p.mirror_kind, b, true)
+			press(p, p.mirror_kind, b, false)
 		}
-		if kit.modes_current((^Push2)(c.cs.user).pad_modes) == "steps" && (e.slot == "left" || e.slot == "right") {
-			steps_arrow((^Push2)(c.cs.user), e.slot)
-			kit.redraw_owned(c)
-			return
+		kit.redraw_owned(c)
+		invalidate(c.cs)
+	}
+	return c
+}
+
+// Page ◀ ▶: the pads' grid scrolled (Clip's steps: their pages; Song: its
+// cursor a bar, Shift a beat), otherwise the selected pad the one before or
+// after (Shift: the sequence).
+@(private)
+grid_page_setup :: proc(cs: ^kit.Control_Surface, left, right: ^kit.Control) -> ^kit.Component {
+	c := kit.component_make(cs, "Grid Page")
+	kit.layer_bind(c.layer, "left", left)
+	kit.layer_bind(c.layer, "right", right)
+	c.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) {
+		p := (^Push2)(c.cs.user)
+		if p.pads_api == nil do return
+		on := true
+		switch kit.modes_current(p.pad_modes) {
+		case "song":  on = song_arrow_light(p, slot)
+		case "steps": on = steps_arrow_light(p, slot)
+		case:
+			pad, seq := arrows_now(c)
+			if p.shift.held do on = seq > 0 if slot == "left" else seq < pa.SEQUENCES - 1
+			else do on = pad > 0 if slot == "left" else pad < pa.PADS - 1
 		}
-		pad, seq := arrows_now(c)
-		switch e.slot {
-		case "left":  t.perform_select_pad(t.api, max(pad - 1, 0))
-		case "right": t.perform_select_pad(t.api, min(pad + 1, pa.PADS - 1))
-		case "up", "down":
-			d: i64 = 1 if e.slot == "up" else -1
-			if kit.modes_current((^Push2)(c.cs.user).pad_modes) == "sequences" { // (Perform: the launcher's rows)
-				v: pa.Launcher_View
-				t.launcher_view(t.api, &v)
-				t.launcher_set_view(t.api, v.lane, max(v.row + d, 0))
-				render((^Push2)(c.cs.user))
-			} else do t.sequence_select(t.api, clamp(seq + d, 0, pa.SEQUENCES - 1))
+		kit.light_value(control, W_ON if on else W_DIM)
+	}
+	c.on_activate = proc(c: ^kit.Component) {
+		kit.task_every(c.cs, 200, proc(data: rawptr) { kit.redraw_owned((^kit.Component)(data)) }, c, c)
+	}
+	c.on_event = proc(c: ^kit.Component, e: kit.Event) {
+		if e.kind != .Press do return
+		p := (^Push2)(c.cs.user)
+		t := p.pads_api
+		if t == nil do return
+		switch kit.modes_current(p.pad_modes) {
+		case "song":  song_arrow(p, e.slot)
+		case "steps": steps_arrow(p, e.slot)
+		case:
+			pad, seq := arrows_now(c)
+			d: i64 = 1 if e.slot == "right" else -1
+			if p.shift.held do t.sequence_select(t.api, clamp(seq + d, 0, pa.SEQUENCES - 1))
+			else do t.perform_select_pad(t.api, clamp(pad + d, 0, pa.PADS - 1))
 		}
 		kit.redraw_owned(c)
 		invalidate(c.cs)

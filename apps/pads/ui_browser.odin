@@ -191,7 +191,12 @@ draw_lib_items :: proc(a: ^App, items: []Lib_Item) {
 	for it, k in items {
 		indent := f32(16 * it.depth) // (an effect's presets under it)
 		if indent > 0 do im.Indent(indent)
-		if im.Selectable(fmt.ctprintf("%s###item%d", it.name, k), k == sel) do lib_select(a, items, k)
+		label := it.name
+		if it.fold > 0 do label = fmt.tprintf("%s  %s", it.name, ui.ICON_CHEVRON_DOWN if it.fold == 2 else ui.ICON_CHEVRON_RIGHT)
+		if im.Selectable(fmt.ctprintf("%s###item%d", label, k), k == sel) {
+			lib_select(a, items, k)
+			if it.fold > 0 do lib_run(a, .Presets, it) // (an effect with presets: a click shows them, or folds them away)
+		}
 		if indent > 0 do im.Unindent(indent)
 		ui.name(fmt.tprintf("device %s", it.name) if it.code != "" else fmt.tprintf("item %s", it.name))
 		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) do lib_run(a, lib_primary(it), it, shift = im.GetIO().KeyShift)

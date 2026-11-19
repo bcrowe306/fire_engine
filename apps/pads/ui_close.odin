@@ -17,7 +17,7 @@ import im "deps:imgui"
 // without closing, and it offers the backup.
 
 // What leaving waits on.
-Leave_Action :: enum u8 {None, Quit, New, New_From, Open_Dialog, Open}
+Leave_Action :: enum u8 {None, Quit, New, New_From, Open_Dialog, Open, New_Empty}
 
 // The prompt's state.
 Leave_State :: struct {
@@ -68,6 +68,8 @@ leave_go :: proc(a: ^App) {
 		project_dialog(a, .Open)
 	case .Open:
 		open_project(a, st.path)
+	case .New_Empty: // (the project page's: an empty project, the page closed)
+		if toast_failed(a, pa.project_new(&a.api, discard_changes = true), "Could not start a new project") do a.start.open = false
 	}
 }
 

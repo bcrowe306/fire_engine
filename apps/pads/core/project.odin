@@ -208,6 +208,19 @@ recent_add :: proc(c: ^Core, dir: string) {
 	}
 }
 
+// Takes `dir` off the recent projects (if it is there), and writes the list.
+recent_remove :: proc(c: ^Core, dir: string) {
+	f := &c.files
+	for r, i in f.recent do if r == dir || strings.trim_prefix(r, "/private") == strings.trim_prefix(dir, "/private") {
+		delete(r)
+		ordered_remove(&f.recent, i)
+		break
+	}
+	if path := recent_path(c); path != "" {
+		_ = os.write_entire_file(path, transmute([]u8)strings.join(f.recent[:], "\n", context.temp_allocator))
+	}
+}
+
 // --- the open-project marker --------------------------------------------------------------------
 
 @(private)
@@ -235,6 +248,51 @@ session_crashed :: proc(c: ^Core) -> string {
 	dir := strings.trim_space(string(data))
 	if dir == "" || !pm.model_backup_newer(dir) do return ""
 	return dir
+}
+
+// Copies project `dir` beside itself as "<name>.pads" (not the open
+// project's unsaved changes: what is saved). Invalid for a name a folder
+// can't have or one taken; Not_Found for no project there.
+project_duplicate :: proc(c: ^Core, dir, new_name: string) -> Outcome {
+	name := strings.trim_space(new_name)
+	if !name_ok(name) do return outcome(c, .Invalid, "not a name a folder can have")
+	f, _ := filepath.join({dir, pm.PROJECT_FILE}, context.temp_allocator)
+	if !os.exists(f) do return outcome(c, .Not_Found, "no project there")
+	to, _ := filepath.join({filepath.dir(dir), strings.concatenate({name, ".pads"}, context.temp_allocator)}, context.temp_allocator)
+	if os.exists(to) do return outcome(c, .Invalid, "a project of that name is there already")
+	if pm.copy_project(dir, to) != .None do return outcome(c, .Io, "could not copy it")
+	return .Ok
+}
+
+// Where `project_trash` moves projects instead of the system's Trash (a
+// test's, in its own folder; "" the system's).
+trash_override: string
+
+// Moves project `dir` to the system's Trash (from where it can be put
+// back), and off the recent projects. Invalid for the open project;
+// Not_Found for no project there; Unsupported where there is no Trash.
+project_trash :: proc(c: ^Core, dir: string) -> Outcome {
+	f, _ := filepath.join({dir, pm.PROJECT_FILE}, context.temp_allocator)
+	if !os.exists(f) do return outcome(c, .Not_Found, "no project there")
+	if strings.trim_prefix(dir, "/private") == strings.trim_prefix(c.m.project.dir, "/private") do return outcome(c, .Invalid, "it is the open project")
+	trash := trash_override
+	if trash == "" {
+		when ODIN_OS == .Darwin {
+			trash, _ = filepath.join({os.get_env("HOME", context.temp_allocator), ".Trash"}, context.temp_allocator)
+		} else when ODIN_OS == .Linux {
+			base := os.get_env("XDG_DATA_HOME", context.temp_allocator)
+			if base == "" do base, _ = filepath.join({os.get_env("HOME", context.temp_allocator), ".local", "share"}, context.temp_allocator)
+			trash, _ = filepath.join({base, "Trash", "files"}, context.temp_allocator)
+		}
+	}
+	if trash == "" do return outcome(c, .Unsupported, "no Trash here")
+	os.make_directory_all(trash)
+	name := filepath.base(dir)
+	to, _ := filepath.join({trash, name}, context.temp_allocator)
+	for k := 2; os.exists(to); k += 1 do to, _ = filepath.join({trash, fmt.tprintf("%s %d", name, k)}, context.temp_allocator)
+	if os.rename(dir, to) != nil do return outcome(c, .Io, "could not move it to the Trash")
+	recent_remove(c, dir)
+	return .Ok
 }
 
 // --- actions ------------------------------------------------------------------------------------

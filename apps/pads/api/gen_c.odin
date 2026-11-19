@@ -408,6 +408,20 @@ Table_V1 :: struct {
 	effect_preset_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	effect_preset_kind: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
 	effect_load_preset: proc "c" (api: ^Api, s: Slot_Ref, index: i64) -> Result,
+	effect_pro_eq_state: proc "c" (api: ^Api, s: Slot_Ref, out: ^Pro_Eq_State) -> Result,
+	effect_set_pro_eq_audition: proc "c" (api: ^Api, s: Slot_Ref, set: i64, band: i64) -> Result,
+	effect_set_pro_eq_mode: proc "c" (api: ^Api, s: Slot_Ref, mode: i64) -> Result,
+	effect_pro_comp_state: proc "c" (api: ^Api, s: Slot_Ref, out: ^Pro_Comp_State) -> Result,
+	effect_pro_comp_moment: proc "c" (api: ^Api, s: Slot_Ref, ago: i64, out: ^Pro_Comp_Moment) -> Result,
+	effect_pro_saturator_state: proc "c" (api: ^Api, s: Slot_Ref, out: ^Pro_Saturator_State) -> Result,
+	effect_proverb_state: proc "c" (api: ^Api, s: Slot_Ref, out: ^Proverb_State) -> Result,
+	effect_imported_preset_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	effect_imported_preset_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	effect_load_imported_preset: proc "c" (api: ^Api, s: Slot_Ref, index: i64) -> Result,
+	project_duplicate: proc "c" (api: ^Api, dir: cstring, dir_len: i64, name: cstring, name_len: i64) -> Result,
+	project_trash: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result,
+	perform_note_repeat: proc "c" (api: ^Api, out: ^bool) -> Result,
+	perform_set_note_repeat: proc "c" (api: ^Api, on: bool) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -818,6 +832,20 @@ table_fill :: proc(api: ^Api) {
 	t.effect_preset_name = c_effect_preset_name
 	t.effect_preset_kind = c_effect_preset_kind
 	t.effect_load_preset = c_effect_load_preset
+	t.effect_pro_eq_state = c_effect_pro_eq_state
+	t.effect_set_pro_eq_audition = c_effect_set_pro_eq_audition
+	t.effect_set_pro_eq_mode = c_effect_set_pro_eq_mode
+	t.effect_pro_comp_state = c_effect_pro_comp_state
+	t.effect_pro_comp_moment = c_effect_pro_comp_moment
+	t.effect_pro_saturator_state = c_effect_pro_saturator_state
+	t.effect_proverb_state = c_effect_proverb_state
+	t.effect_imported_preset_count = c_effect_imported_preset_count
+	t.effect_imported_preset_name = c_effect_imported_preset_name
+	t.effect_load_imported_preset = c_effect_load_imported_preset
+	t.project_duplicate = c_project_duplicate
+	t.project_trash = c_project_trash
+	t.perform_note_repeat = c_perform_note_repeat
+	t.perform_set_note_repeat = c_perform_set_note_repeat
 }
 
 @(private)
@@ -3851,4 +3879,111 @@ c_effect_preset_kind :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
 c_effect_load_preset :: proc "c" (api: ^Api, s: Slot_Ref, index: i64) -> Result {
 	context = runtime.default_context()
 	return effect_load_preset(api, s, index)
+}
+
+@(private)
+c_effect_pro_eq_state :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Pro_Eq_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_pro_eq_state(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_set_pro_eq_audition :: proc "c" (api: ^Api, s: Slot_Ref, set: i64, band: i64) -> Result {
+	context = runtime.default_context()
+	return effect_set_pro_eq_audition(api, s, set, band)
+}
+
+@(private)
+c_effect_set_pro_eq_mode :: proc "c" (api: ^Api, s: Slot_Ref, mode: i64) -> Result {
+	context = runtime.default_context()
+	return effect_set_pro_eq_mode(api, s, mode)
+}
+
+@(private)
+c_effect_pro_comp_state :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Pro_Comp_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_pro_comp_state(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_pro_comp_moment :: proc "c" (api: ^Api, s: Slot_Ref, ago: i64, out: ^Pro_Comp_Moment) -> Result {
+	context = runtime.default_context()
+	v, r := effect_pro_comp_moment(api, s, ago)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_pro_saturator_state :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Pro_Saturator_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_pro_saturator_state(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_proverb_state :: proc "c" (api: ^Api, s: Slot_Ref, out: ^Proverb_State) -> Result {
+	context = runtime.default_context()
+	v, r := effect_proverb_state(api, s)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_imported_preset_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := effect_imported_preset_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_effect_imported_preset_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := effect_imported_preset_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_effect_load_imported_preset :: proc "c" (api: ^Api, s: Slot_Ref, index: i64) -> Result {
+	context = runtime.default_context()
+	return effect_load_imported_preset(api, s, index)
+}
+
+@(private)
+c_project_duplicate :: proc "c" (api: ^Api, dir: cstring, dir_len: i64, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return project_duplicate(api, dir_s, name_s)
+}
+
+@(private)
+c_project_trash :: proc "c" (api: ^Api, dir: cstring, dir_len: i64) -> Result {
+	context = runtime.default_context()
+	dir_s := string(([^]u8)(dir)[:max(dir_len, 0)]) if dir != nil else ""
+	return project_trash(api, dir_s)
+}
+
+@(private)
+c_perform_note_repeat :: proc "c" (api: ^Api, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := perform_note_repeat(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_perform_set_note_repeat :: proc "c" (api: ^Api, on: bool) -> Result {
+	context = runtime.default_context()
+	return perform_set_note_repeat(api, on)
 }

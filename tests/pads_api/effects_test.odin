@@ -6,6 +6,7 @@ import "core:testing"
 
 import pa "../../apps/pads/api"
 import pm "../../apps/pads/model"
+import "fire:fx"
 
 @(private)
 kind_of :: proc(api: ^pa.Api, name: string) -> i64 {
@@ -140,13 +141,13 @@ performance_effects_sends_and_sidechains :: proc(t: ^testing.T) {
 	testing.expect_value(t, sr, pa.Result.Not_Found)
 	// Factory presets: SuperFilter's, loaded into a slot (its key kept).
 	np, _ := pa.effect_preset_count(api)
-	testing.expect(t, np >= 10, "SuperFilter's presets")
+	testing.expect(t, np >= 50, "SuperFilter's and the Pro devices' presets")
 	duck := -1
 	for k in 0 ..< np {
 		name, _ := pa.effect_preset_name(api, k)
 		kind, _ := pa.effect_preset_kind(api, k)
 		kn, _ := pa.effect_kind_name(api, kind)
-		testing.expect(t, name != "" && kn == "SuperFilter", "named, for SuperFilter")
+		testing.expect(t, name != "" && (kn == "SuperFilter" || kn == "ProEq" || kn == "ProComp" || kn == "ProSaturator" || kn == "ProVerb"), "named, for one of the Pro devices or SuperFilter")
 		if name == "Duck to Kick" do duck = int(k)
 	}
 	_, sr = pa.effect_preset_name(api, np)
@@ -199,4 +200,146 @@ devices_presets_and_plugins :: proc(t: ^testing.T) {
 	s, _ = pa.pad_state(api, 7)
 	testing.expect_value(t, s.kind, pa.Pad_Kind.Plugin)
 	testing.expect_value(t, pa.device_load_plugin(api, 7, "", "x", ""), pa.Result.Invalid_Argument)
+}
+
+// ProEq through the API: its bands as parameters (A and B), its mode (B
+// a copy of A on leaving Stereo), its state as it plays and its audition.
+@(test)
+a_pro_eq_through_the_api :: proc(t: ^testing.T) {
+	r := rig_make(t, "effects_pro_eq")
+	defer rig_destroy(r)
+	api := &r.api
+	pa.pad_load_sample(api, 0, tone(r))
+	eq := pa.Slot_Ref{place = .Insert, index = 0, slot = 0}
+	testing.expect_value(t, pa.effect_set(api, eq, kind_of(api, "ProEq")), pa.Result.Ok)
+	gain := i64(fx.pro_eq_band_param(0, 2, .Gain_Db))
+	testing.expect_value(t, pa.effect_set_param(api, eq, gain, 6), pa.Result.Ok)
+	testing.expect_value(t, pa.effect_set_param(api, eq, gain, 40), pa.Result.Invalid_Argument)
+	// The mode: B starts as A.
+	testing.expect_value(t, pa.effect_set_pro_eq_mode(api, eq, 2), pa.Result.Ok)
+	n, _ := pa.history_undo_name(api)
+	testing.expect_value(t, n, "Set EQ Mode")
+	b, _ := pa.effect_get_param(api, eq, i64(fx.pro_eq_band_param(1, 2, .Gain_Db)))
+	testing.expect_value(t, b, 6)
+	testing.expect_value(t, pa.effect_set_pro_eq_mode(api, eq, 3), pa.Result.Invalid_Argument)
+	// Playing: its peaks; auditioning a band.
+	pa.pad_play(api, 0, true)
+	render(r, 4800)
+	st, sr := pa.effect_pro_eq_state(api, eq)
+	testing.expect_value(t, sr, pa.Result.Ok)
+	testing.expectf(t, st.in_peak > 0.1 && st.audition_band == -1, "its state (%v)", st)
+	testing.expect_value(t, pa.effect_set_pro_eq_audition(api, eq, 1, 2), pa.Result.Ok)
+	st, _ = pa.effect_pro_eq_state(api, eq)
+	testing.expect(t, st.audition_set == 1 && st.audition_band == 2, "auditioning B's band 3")
+	testing.expect_value(t, pa.effect_set_pro_eq_audition(api, eq, 0, 8), pa.Result.Invalid_Argument)
+	testing.expect_value(t, pa.effect_set_pro_eq_audition(api, eq, 0, -1), pa.Result.Ok)
+	// Another effect: none of it.
+	comp := pa.Slot_Ref{place = .Insert, index = 0, slot = 1}
+	pa.effect_set(api, comp, kind_of(api, "Compressor"))
+	_, sr = pa.effect_pro_eq_state(api, comp)
+	testing.expect_value(t, sr, pa.Result.Not_Found)
+	testing.expect_value(t, pa.effect_set_pro_eq_audition(api, comp, 0, 1), pa.Result.Not_Found)
+	testing.expect_value(t, pa.effect_set_pro_eq_mode(api, comp, 1), pa.Result.Not_Found)
+}
+
+// ProComp through the API: its state as it plays, its activity, keyed
+// from another pad (its Listen its own).
+@(test)
+a_pro_comp_through_the_api :: proc(t: ^testing.T) {
+	r := rig_make(t, "effects_pro_comp")
+	defer rig_destroy(r)
+	api := &r.api
+	pa.pad_load_sample(api, 0, tone(r))
+	pa.pad_load_sample(api, 1, tone(r, "b.wav"))
+	pc := pa.Slot_Ref{place = .Insert, index = 0, slot = 0}
+	testing.expect_value(t, pa.effect_set(api, pc, kind_of(api, "ProComp")), pa.Result.Ok)
+	testing.expect_value(t, pa.effect_set_param(api, pc, i64(fx.PC_PARAM_THRESHOLD_DB), -40), pa.Result.Ok)
+	pa.pad_play(api, 0, true)
+	render(r, 9600)
+	st, sr := pa.effect_pro_comp_state(api, pc)
+	testing.expect_value(t, sr, pa.Result.Ok)
+	testing.expectf(t, st.in_peak > 0.1 && st.gr_db < -3 && st.level_db > -30, "its state (%v)", st)
+	m, mr := pa.effect_pro_comp_moment(api, pc, 0)
+	testing.expect_value(t, mr, pa.Result.Ok)
+	testing.expectf(t, m.gr_db < -3 && m.in_db > -30, "its newest moment (%v)", m)
+	_, mr = pa.effect_pro_comp_moment(api, pc, 1024)
+	testing.expect_value(t, mr, pa.Result.Invalid_Argument)
+	// Keyed from pad 1, listening: still its own Listen.
+	testing.expect_value(t, pa.effect_set_key(api, pc, .Pad, 1), pa.Result.Ok)
+	testing.expect_value(t, pa.effect_set_key_listen(api, pc, true), pa.Result.Ok)
+	testing.expect_value(t, pa.effect_set_key(api, pc, .None, 0), pa.Result.Ok)
+	k, _ := pa.effect_key(api, pc)
+	testing.expect(t, k.listen, "listening to itself (through its EQ)")
+	comp := pa.Slot_Ref{place = .Insert, index = 0, slot = 1}
+	pa.effect_set(api, comp, kind_of(api, "Compressor"))
+	_, sr = pa.effect_pro_comp_state(api, comp)
+	testing.expect_value(t, sr, pa.Result.Not_Found)
+	_, mr = pa.effect_pro_comp_moment(api, comp, 0)
+	testing.expect_value(t, mr, pa.Result.Not_Found)
+}
+
+// ProSaturator through the API: its peaks and harmonics as it plays (Tube
+// adding a second one), another effect none of it.
+@(test)
+a_pro_saturator_through_the_api :: proc(t: ^testing.T) {
+	r := rig_make(t, "effects_pro_saturator")
+	defer rig_destroy(r)
+	api := &r.api
+	pa.pad_load_sample(api, 0, tone(r))
+	ps := pa.Slot_Ref{place = .Insert, index = 0, slot = 0}
+	testing.expect_value(t, pa.effect_set(api, ps, kind_of(api, "ProSaturator")), pa.Result.Ok)
+	pa.effect_set_param(api, ps, i64(fx.PS_PARAM_TYPE), f64(fx.Pro_Saturator_Type.Tube))
+	pa.effect_set_param(api, ps, i64(fx.PS_PARAM_DRIVE_DB), 12)
+	pa.pad_play(api, 0, true)
+	render(r, 9600)
+	st, sr := pa.effect_pro_saturator_state(api, ps)
+	testing.expect_value(t, sr, pa.Result.Ok)
+	testing.expectf(t, st.in_peak > 0.5 && st.h1 == 0 && st.h2 > -50, "its state (%v)", st)
+	comp := pa.Slot_Ref{place = .Insert, index = 0, slot = 1}
+	pa.effect_set(api, comp, kind_of(api, "Compressor"))
+	_, sr = pa.effect_pro_saturator_state(api, comp)
+	testing.expect_value(t, sr, pa.Result.Not_Found)
+}
+
+// ProVerb through the API: its tail as it plays, another effect none of it.
+@(test)
+a_proverb_through_the_api :: proc(t: ^testing.T) {
+	r := rig_make(t, "effects_proverb")
+	defer rig_destroy(r)
+	api := &r.api
+	pa.pad_load_sample(api, 0, tone(r))
+	pv := pa.Slot_Ref{place = .Insert, index = 0, slot = 0}
+	testing.expect_value(t, pa.effect_set(api, pv, kind_of(api, "ProVerb")), pa.Result.Ok)
+	testing.expect_value(t, pa.effect_set_param(api, pv, i64(fx.PV_PARAM_MIX), 1), pa.Result.Ok)
+	pa.pad_play(api, 0, true)
+	render(r, 9600)
+	st, sr := pa.effect_proverb_state(api, pv)
+	testing.expect_value(t, sr, pa.Result.Ok)
+	testing.expectf(t, st.in_peak > 0.1 && st.tail > 0.001, "its state (%v)", st)
+	comp := pa.Slot_Ref{place = .Insert, index = 0, slot = 1}
+	pa.effect_set(api, comp, kind_of(api, "Compressor"))
+	_, sr = pa.effect_proverb_state(api, comp)
+	testing.expect_value(t, sr, pa.Result.Not_Found)
+}
+
+// Presets from an installed ValhallaRoom through the API: counted, named,
+// loaded (whatever this machine has; out of range, Not_Found).
+@(test)
+imported_presets_through_the_api :: proc(t: ^testing.T) {
+	r := rig_make(t, "effects_imported")
+	defer rig_destroy(r)
+	api := &r.api
+	n, _ := pa.effect_imported_preset_count(api)
+	_, nr := pa.effect_imported_preset_name(api, n)
+	testing.expect_value(t, nr, pa.Result.Not_Found)
+	slot := pa.Slot_Ref{place = .Insert, index = 0, slot = 0}
+	testing.expect_value(t, pa.effect_load_imported_preset(api, slot, n), pa.Result.Not_Found)
+	if n == 0 do return // (not installed here)
+	name, _ := pa.effect_imported_preset_name(api, 0)
+	testing.expect(t, name != "", "named")
+	testing.expect_value(t, pa.effect_load_imported_preset(api, slot, 0), pa.Result.Ok)
+	kn, _ := pa.effect_name(api, slot)
+	testing.expect_value(t, kn, "ProVerb")
+	u, _ := pa.history_undo_name(api)
+	testing.expect_value(t, u, "Load Preset")
 }

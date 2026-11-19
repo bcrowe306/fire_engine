@@ -81,6 +81,34 @@ ctl_browser :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	cats := lib_categories(a)
 	c := lib_cat(a)
 	if d := ctl_list_steps(0); d != 0 do lib_show(a, clamp(a.lib.cat + d, 0, len(cats) - 1))
+	// The arrows: ▲ ▼ the part in focus's rows (the categories, or the
+	// list); ▶ into the list, a folder or a device's presets opened; ◀ one
+	// closed again, or back to the categories.
+	part := &a.ctl.browse_part
+	arrow_items := lib_items(a)
+	arrow_sel := lib_selected(a, arrow_items)
+	step := (1 if pressed(inp, .Down) else 0) - (1 if pressed(inp, .Up) else 0)
+	if part^ == 0 && step != 0 do lib_show(a, clamp(a.lib.cat + step, 0, len(cats) - 1))
+	if part^ == 1 && step != 0 && len(arrow_items) > 0 do lib_select(a, arrow_items, clamp(arrow_sel + step if arrow_sel >= 0 else 0, 0, len(arrow_items) - 1))
+	if pressed(inp, .Page_Right) {
+		if part^ == 0 do part^ = 1
+		else if arrow_sel >= 0 {
+			it := arrow_items[arrow_sel]
+			if it.kind == .Folder && !b.expanded[it.path] do pa.browser_expand(&a.api, it.path, true)
+			else if it.fold == 1 do lib_run(a, .Presets, it)
+		}
+	}
+	if pressed(inp, .Page_Left) && part^ == 1 {
+		it: Lib_Item
+		if arrow_sel >= 0 do it = arrow_items[arrow_sel]
+		switch {
+		case arrow_sel >= 0 && it.kind == .Folder && b.expanded[it.path]: pa.browser_expand(&a.api, it.path, false)
+		case arrow_sel >= 0 && it.fold == 2: lib_run(a, .Presets, it)
+		case: part^ = 0
+		}
+	}
+	ctx.pages, ctx.page = 2, part^
+	ctx.buttons |= 1 << uint(pa.View_Button.Up) | 1 << uint(pa.View_Button.Down)
 	c = lib_cat(a)
 	folders := lib_folders(c)
 	cats_list: {
@@ -89,6 +117,7 @@ ctl_browser :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		rh := (bottom - top) / f32(rows)
 		first := clamp(a.lib.cat - rows / 2, 0, max(len(cats) - rows, 0))
 		im.DrawList_AddRectFilled(dl, {x0, top}, {x1, bottom}, ui.col(ui.mix(t.surface, t.raised, 0.4)), t.radius)
+		if a.ctl.browse_part == 0 do im.DrawList_AddRect(dl, {x0, top}, {x1, bottom}, ui.col(t.accent), t.radius, 1.5) // (the arrows' part)
 		for k in first ..< min(first + rows, len(cats)) {
 			y := top + f32(k - first) * rh
 			if k == a.lib.cat do im.DrawList_AddRectFilled(dl, {x0 + 2, y + 1}, {x1 - 2, y + rh - 1}, ui.col(t.accent), 4)
@@ -123,6 +152,7 @@ ctl_browser :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		rh := (bottom - top) / f32(rows)
 		first := clamp(sel - rows / 2, 0, max(len(items) - rows, 0))
 		im.DrawList_AddRectFilled(dl, {x0, top}, {x1, bottom}, ui.col(ui.PLOT_BG), t.radius)
+		if a.ctl.browse_part == 1 do im.DrawList_AddRect(dl, {x0, top}, {x1, bottom}, ui.col(t.accent), t.radius, 1.5)
 		budget := LENGTHS_A_FRAME
 		if v.lengths == nil do v.lengths = make(map[string]f64)
 		for k in first ..< min(first + rows, len(items)) {
@@ -162,7 +192,9 @@ ctl_browser :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 				}
 			}
 			im.DrawList_PushClipRect(dl, {x, y}, {right, y + rh}, true)
-			im.DrawList_AddText(dl, {x + 22, ty}, ui.col(t.text), fmt.ctprintf("%s", it.name))
+			name := it.name
+			if it.fold > 0 do name = fmt.tprintf("%s  %s", it.name, ui.ICON_CHEVRON_DOWN if it.fold == 2 else ui.ICON_CHEVRON_RIGHT) // (its presets: Presets on the upper row)
+			im.DrawList_AddText(dl, {x + 22, ty}, ui.col(t.text), fmt.ctprintf("%s", name))
 			im.DrawList_PopClipRect(dl)
 		}
 		// Where it is: a bar at the right, the place.
@@ -478,7 +510,7 @@ ctl_sequencer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	modes := []string{"Notes", "Automation", "Audio"}
 	if k := ctl_tabs(ctx, modes, int(st.mode)); k >= 0 && k < len(modes) do st.mode = pm.Seq_Mode(k)
 	// (the knob row slim: values in boxes, the notes the room)
-	plot := im.Vec2{full.x - CTL_METER_W - 6, full.y - CTL_PLOT_Y - 46 - CTL_BUTTONS_H - 2}
+	plot := im.Vec2{full.x - CTL_METER_W - 6, full.y - CTL_PLOT_Y - CTL_KNOBS_H - CTL_BUTTONS_H - 4} // (the knobs: a row of value bars)
 	if st.mode == .Automation {
 		ctl_automation(ctx, full, plot)
 		return

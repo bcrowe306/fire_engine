@@ -50,6 +50,8 @@ Detail_State :: struct {
 	pads_width:  f32, // 0: as wide as the pads are tall
 	selected_was: int, // the selected pad last frame (choosing a pad shows its chain)
 	opened:      bool, // the chain's tabs have shown (the first time, the sound in front, not MIDI)
+	last:        [pm.PADS]Device, // each pad's device last in front (shown again when it is chosen)
+	last_set:    [pm.PADS]bool,
 }
 
 DETAIL_NAMES := [Detail_Tab]string{.Sample = "Sample", .Env = "Env", .Filter = "Filter", .Pitch = "Pitch", .Lfo = "LFO", .Global = "Global"}
@@ -90,6 +92,16 @@ show_pad_chain :: proc(a: ^App, index: int) {
 	st.track = {.Pad, index}
 	if st.device.kind == .Slot || st.device.kind == .Midi do st.device = {.Instrument, 0}
 	st.show = 2
+}
+
+// Shows bus `b`'s chain (BUSES: Main's): its first effect, or its first
+// empty slot (to add one).
+show_bus_chain :: proc(a: ^App, b: int) {
+	st := &a.detail
+	slot := 0
+	for k := pm.BUS_SLOTS - 1; k >= 0; k -= 1 do if s, ok := pm.target_slot(&a.m, {.Bus, b, k}); ok && s.kind != .None do slot = k
+	if st.track == {.Bus, b} && st.device.kind == .Slot do slot = st.device.slot
+	show_device(a, {.Bus, b, slot})
 }
 
 // Brings the selected pad's MIDI page to the front (how the pads play,
@@ -197,6 +209,15 @@ draw_pad_bar :: proc(a: ^App) {
 	if ui.icon_button(ui.ICON_CHEVRON_UP, "Unfold the pads and the sound (Cmd+J)") do a.ws.bottom_folded = false
 }
 
+// Whether pad `i` still has device `d` (an effect slot still holding one).
+@(private)
+device_present :: proc(a: ^App, i: int, d: Device) -> bool {
+	#partial switch d.kind {
+	case .Slot: return d.slot >= 0 && d.slot < pm.PAD_INSERTS && a.m.project.pads[i].inserts[d.slot].kind != .None
+	}
+	return true
+}
+
 // The bottom panel, as Ableton's detail view: the pad grid on the left,
 // the selected pad in tabs (its sample, its settings, its effects, how it
 // plays), and its channel strip at the far right. The divider between the
@@ -204,14 +225,20 @@ draw_pad_bar :: proc(a: ^App) {
 draw_detail :: proc(user: rawptr) {
 	a := (^App)(user)
 	st := &a.detail
-	// Choosing a pad shows its chain, its sound in front (its MIDI page, or
-	// an insert the other pad had, would hide it).
+	// Choosing a pad shows its chain with the device it last had in front
+	// (its sound the first time, or when that device has gone).
 	if a.selected != st.selected_was {
 		st.selected_was = a.selected
 		if st.track.kind != .Pad || st.track.index != a.selected {
 			st.track = {.Pad, a.selected}
-			if st.device.kind == .Slot || st.device.kind == .Midi do st.device, st.show = {.Instrument, 0}, 2
+			d := Device{.Instrument, 0}
+			if i := a.selected; i >= 0 && i < pm.PADS && st.last_set[i] && device_present(a, i, st.last[i]) do d = st.last[i]
+			st.device, st.show = d, 2
 		}
+	}
+	// (What is in front, kept for this pad.)
+	if st.track.kind == .Pad && st.track.index >= 0 && st.track.index < pm.PADS && st.show == 0 {
+		st.last[st.track.index], st.last_set[st.track.index] = st.device, true
 	}
 	t := ui.theme()
 	// Along the top, where a panel's tab would be: the track's devices
@@ -307,7 +334,7 @@ device_tabs :: proc(a: ^App) {
 		if s.kind == .None do return false
 		label := fmt.ctprintf("%s  %s%s###dev%d", ui.ICON_WAND_SPARKLES, pm.slot_name(s), "" if s.on else " (off)", fx.slot)
 		tab(st, label, {.Slot, fx.slot})
-		item_menu(a, {kind = .Slot, fx = fx}, "##devmenu")
+		item_menu(a, {kind = .Slot, fx = fx}, fmt.ctprintf("##devmenu%d", fx.slot)) // (a popup each tab)
 		return true
 	}
 	add_tab :: proc(st: ^Detail_State, slot: int) {

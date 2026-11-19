@@ -33,6 +33,8 @@ setup_actions :: proc(a: ^App) {
 		enabled = proc(u: rawptr) -> bool { h, _ := pa.history_state(&(^App)(u).api); return h.redo_steps > 0 }})
 	add(acts, {id = "new", label = "New Project", icon = ui.ICON_FILE_PLUS, chord = ui.MOD_CMD | i32(im.Key.N), user = a,
 		run = proc(u: rawptr) { leave((^App)(u), .New) }})
+	add(acts, {id = "projects", label = "Projects…", icon = ui.ICON_FOLDER, chord = ui.MOD_CMD | ui.MOD_SHIFT | i32(im.Key.P), user = a,
+		run = proc(u: rawptr) { start_page_show((^App)(u)) }})
 	add(acts, {id = "open", label = "Open Project…", icon = ui.ICON_FOLDER_OPEN, chord = ui.MOD_CMD | i32(im.Key.O), user = a,
 		run = proc(u: rawptr) { project_dialog((^App)(u), .Open) }})
 	add(acts, {id = "save", label = "Save", icon = ui.ICON_SAVE, chord = ui.MOD_CMD | i32(im.Key.S), user = a,
@@ -187,8 +189,8 @@ show_named :: proc(a: ^App, name: string) -> bool {
 	case "effect", "effects": show_device(a, a.fx)
 	case "eq":                show_eq(a)
 	case "midi":              show_midi(a)
-	case "device":
-		show_pad_chain(a, a.selected)
+	case "device": // (the selected pad's chain; a bus's while one is shown: Mix's Buses chose it)
+		if a.detail.track.kind != .Bus do show_pad_chain(a, a.selected)
 		a.ws.bottom_folded = false
 	case "pads":              a.ws.bottom_folded = false
 	case "sequence length":    a.controls.length_open = true // (a controller's Fixed Length)
@@ -198,6 +200,7 @@ show_named :: proc(a: ^App, name: string) -> bool {
 	case "sequence settings":  a.controls.sequence_open = true // the current sequence's (a controller's Fixed Length held)
 	case "recording":          a.controls.recording_open = true // recording into a pad (a controller's Record held)
 	case "transport":          a.controls.transport_open = true // loop, count-in, the click (a controller's Metronome held)
+	case "note repeat":        a.controls.repeat_open = true // the toolbar's note repeat (a controller's Repeat held)
 	case "scale":              a.controls.scale_open = true // Keyboard mode's scale (a controller's Scale)
 	case "convert":            a.controls.convert_open = true // the selected pad converted or resampled (a controller's Convert)
 	case "copy bars":          begin_copy_bars(a, a.m.project.slot) // (a controller's Clip: Copy Bars)
@@ -247,6 +250,7 @@ draw_menu :: proc(user: rawptr) {
 	a := (^App)(user)
 	if im.BeginMenu("File") {
 		ui.menu_action(&a.actions, "new")
+		ui.menu_action(&a.actions, "projects")
 		ps, _ := pa.project_state(&a.api)
 		if im.BeginMenu("New from Template", ps.templates > 0) {
 			for k in 0 ..< ps.templates {

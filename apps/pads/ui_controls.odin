@@ -11,6 +11,7 @@ import app "app:core"
 import "app:ui"
 import pa "api"
 import pm "model"
+import pf "fire:perform"
 import im "deps:imgui"
 
 // The dialogs' state.
@@ -21,6 +22,7 @@ Controls_Ui :: struct {
 	scale_open:    bool, // Scale: Keyboard mode's scale, root, octave and chord
 	recording_open: bool, // Recording: the Sample control (recording into a pad)
 	transport_open: bool, // Transport: loop, count-in, the click, the time signature
+	repeat_open:    bool, // Note Repeat: on, its rate, its gate (a controller's Repeat held)
 	sequence_open:  bool, // Sequence: the current sequence's colour, tempo, bars, the pad's loop, when one takes over
 	lane_open:      bool, // Lane: a launcher lane's colour (its name: Rename)
 	lane:           int,
@@ -376,6 +378,35 @@ draw_recording_dialog :: proc(a: ^App) {
 	im.SameLine()
 	if modal_button(a, "Close") || im.IsKeyPressed(.Escape) {
 		st.recording_open = false
+		im.CloseCurrentPopup()
+	}
+}
+
+// Note Repeat, the toolbar's: on, its rate, its gate (a controller's
+// Repeat held a while).
+draw_repeat_dialog :: proc(a: ^App) {
+	st := &a.controls
+	if !st.repeat_open do return
+	im.OpenPopup("Note Repeat")
+	if !modal_begin(a, "Note Repeat", &st.repeat_open, {.AlwaysAutoResize}) do return
+	defer im.EndPopup()
+	s := &a.settings
+	modal_text(a, "Every pad held repeats at this rate (hold Repeat, or Shift + Repeat to latch it).", dim = true)
+	on, _ := pa.perform_note_repeat(&a.api)
+	if ui.toggle("On##nrpon", &on) do pa.perform_set_note_repeat(&a.api, on)
+	if modal_knob(a, "Repeat", "On" if on else "Off") != 0 do pa.perform_set_note_repeat(&a.api, !on)
+	rate := int(s.repeat_rate)
+	im.SetNextItemWidth(110)
+	if rate_combo("##nrprate", &s.repeat_rate) do pa.settings_set_number(&a.api, "note_repeat.rate", f64(s.repeat_rate))
+	rate = clamp(rate + modal_knob(a, "Rate", string(RATE_NAMES[s.repeat_rate])), 0, len(pf.Rate) - 1)
+	if rate != int(s.repeat_rate) do pa.settings_set_number(&a.api, "note_repeat.rate", f64(rate))
+	g := f64(s.repeat_gate * 100)
+	if ui.number_drag("note repeat gate", &g, 5, 100, 5, 1, "Gate %.0f%%", 140).ended do pa.settings_set_number(&a.api, "note_repeat.gate", g / 100)
+	if n := modal_knob(a, "Gate", fmt.tprintf("%.0f%%", s.repeat_gate * 100)); n != 0 do pa.settings_set_number(&a.api, "note_repeat.gate", f64(clamp(s.repeat_gate + f32(n) * 0.05, 0.05, 1)))
+	a.m.engine.repeat_all_settings = {rate = s.repeat_rate, gate = s.repeat_gate}
+	im.Spacing()
+	if modal_button(a, "Close") || im.IsKeyPressed(.Escape) {
+		st.repeat_open = false
 		im.CloseCurrentPopup()
 	}
 }

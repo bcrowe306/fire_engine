@@ -2,6 +2,7 @@ package pads
 
 import "base:runtime"
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 
 import app "app:core"
@@ -92,9 +93,25 @@ draw_effect :: proc(user: rawptr) {
 			return
 		}
 	}
+	if t.kind != .Perf && effect_preset_total(s.kind) > 0 {
+		im.SameLine(0, 12)
+		draw_slot_presets(a, t, s)
+	}
 	if s.kind == .Super_Filter {
 		im.SameLine(0, 16)
 		sf_header(a, t, s)
+	}
+	if s.kind == .Pro_Eq {
+		im.SameLine(0, 16)
+		pe_header(a, t, s)
+	}
+	if s.kind == .Pro_Comp {
+		im.SameLine(0, 16)
+		pc_header(a, t, s)
+	}
+	if s.kind == .Proverb {
+		im.SameLine(0, 16)
+		pv_header(a, t, s)
 	}
 	if pm.slot_failed(&m.engine, t.index if t.kind == .Pad else -1, t.index if t.kind == .Bus else -1, t.slot) {
 		im.TextColored(transmute(im.Vec4)ui.theme().danger, "%s", fmt.ctprintf("Could not load %s", s.plugin_path))
@@ -103,9 +120,26 @@ draw_effect :: proc(user: rawptr) {
 	sidechain := pm.keyable(s.kind) && (t.kind == .Pad || t.kind == .Bus)
 	// (SuperFilter's row folds away while it hears itself, unfiltered: its display's Sidechain opens it.)
 	if s.kind == .Super_Filter && !(a.sf_key || s.key.kind != .None || s.listen || s.key_hpf > 0 || s.key_lpf > 0) do sidechain = false
+	if s.kind == .Pro_Comp do sidechain = false // (its own row, in its panel: its EQ with the source)
 	if sidechain do draw_sidechain(a, t, s)
 	if s.kind == .Super_Filter {
 		draw_super_filter(a, t, s)
+		return
+	}
+	if s.kind == .Pro_Eq {
+		draw_pro_eq(a, t, s)
+		return
+	}
+	if s.kind == .Pro_Comp {
+		draw_pro_comp(a, t, s)
+		return
+	}
+	if s.kind == .Pro_Saturator {
+		draw_pro_saturator(a, t, s)
+		return
+	}
+	if s.kind == .Proverb {
+		draw_pro_verb(a, t, s)
 		return
 	}
 	// The synth's effects: their own page (its choices on this line, then
@@ -333,10 +367,9 @@ nearest_note :: proc(beats: f32) -> int {
 	return best
 }
 
-// A compressor's or gate's sidechain: what it listens to (any pad, or a
-// bus it doesn't feed), the key's high-pass, and Listen (the track hears
-// the key, to set it by).
-draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
+// "Sidechain" and the menu of what slot `t`'s effect can listen to (none:
+// itself; any other pad; a bus its track doesn't feed).
+draw_key_source :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 	m := &a.m
 	p := &m.project
 	name :: proc(p: ^pm.Project, k: pm.Key_Source) -> string {
@@ -372,6 +405,62 @@ draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
 	}
 	ui.name("sidechain")
 	if im.IsItemHovered() do im.SetTooltip("What it listens to: another pad, or a bus this track doesn't feed (after its fader)")
+}
+
+// Slot `t`'s effect's presets as a menu on its header line: the factory's,
+// and (ProVerb) an installed ValhallaRoom's, by its folders. One undo step
+// each.
+draw_slot_presets :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
+	if ui.icon_button(ui.ICON_BOOKMARK, "Presets") do im.OpenPopup("##slot presets")
+	ui.name("fx presets")
+	if im.BeginPopup("##slot presets") {
+		item :: proc(a: ^App, t: pm.Fx_Target, p: pm.Effect_Preset, i: int) {
+			if im.MenuItem(fmt.ctprintf("%s##fxp%d", p.name, i)) do pa.effect_load_preset(&a.api, slot_ref(t), i64(i))
+			ui.name(fmt.tprintf("fx preset %s", p.name))
+			if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("%s", p.info))
+		}
+		// The device's own: by category, a submenu each (in the order they
+		// first come); those without one, plain.
+		cats := make([dynamic]string, context.temp_allocator)
+		for p in pm.EFFECT_PRESETS do if p.kind == s.kind && p.category != "" && !slice.contains(cats[:], p.category) do append(&cats, p.category)
+		for c in cats {
+			if im.BeginMenu(fmt.ctprintf("%s##fxc", c)) {
+				for p, i in pm.EFFECT_PRESETS do if p.kind == s.kind && p.category == c do item(a, t, p, i)
+				im.EndMenu()
+			}
+			ui.name(fmt.tprintf("fx preset folder %s", c))
+		}
+		for p, i in pm.EFFECT_PRESETS do if p.kind == s.kind && p.category == "" do item(a, t, p, i)
+		if s.kind == .Proverb {
+			list := pm.imported_presets()
+			if len(list) > 0 {
+				im.SeparatorText("From your ValhallaRoom")
+				folder := ""
+				open := false
+				for p, i in list {
+					if p.folder != folder || i == 0 {
+						if open do im.EndMenu()
+						folder = p.folder
+						open = im.BeginMenu(fmt.ctprintf("%s##fxf%d", folder if folder != "" else "Presets", i))
+						ui.name(fmt.tprintf("fx preset folder %s", folder))
+					}
+					if open {
+						if im.MenuItem(fmt.ctprintf("%s##fxi%d", p.name, i)) do pa.effect_load_imported_preset(&a.api, slot_ref(t), i64(i))
+						ui.name(fmt.tprintf("fx preset %s", p.name))
+					}
+				}
+				if open do im.EndMenu()
+			}
+		}
+		im.EndPopup()
+	}
+}
+
+// A compressor's or gate's sidechain: what it listens to (any pad, or a
+// bus it doesn't feed), the key's high-pass, and Listen (the track hears
+// the key, to set it by).
+draw_sidechain :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot) {
+	draw_key_source(a, t, s)
 	if s.key.kind == .None && !pm.key_has_high_cut(s.kind) do return
 	im.SameLine(0, 12)
 	// (While dragged it shows its own value; the slot is set once, at the end: one step.)

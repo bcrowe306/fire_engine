@@ -635,6 +635,30 @@ effect_load_preset :: proc(api: ^Api, s: Slot_Ref, index: i64) -> Result
 
 Puts factory effect preset `index` (its effect, set as it says) in slot `s`, undoably; the slot's sidechain source stays. Not_Found for no such preset.
 
+### effect_imported_preset_count
+
+```odin
+effect_imported_preset_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+How many presets ProVerb has from an installed ValhallaRoom (its own preset files on this machine, read when first asked; 0 where it isn't installed).
+
+### effect_imported_preset_name
+
+```odin
+effect_imported_preset_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Imported preset `index`'s name, with its folder ("Halls / Big Hall"). Not_Found for no such preset.
+
+### effect_load_imported_preset
+
+```odin
+effect_load_imported_preset :: proc(api: ^Api, s: Slot_Ref, index: i64) -> Result
+```
+
+Loads imported preset `index` (a ProVerb at its settings) into slot `s`, undoably. Not_Found for no such preset; Unsupported for a performance effect.
+
 ### effect_super_filter_state
 
 ```odin
@@ -642,6 +666,62 @@ effect_super_filter_state :: proc(api: ^Api, s: Slot_Ref) -> (Super_Filter_State
 ```
 
 What the SuperFilter in slot `s` is doing: its cutoffs as modulated, its LFO and envelope, its peaks. Not_Found if the slot holds no SuperFilter (or it isn't in the graph).
+
+### effect_pro_eq_state
+
+```odin
+effect_pro_eq_state :: proc(api: ^Api, s: Slot_Ref) -> (Pro_Eq_State, Result)
+```
+
+What the ProEq in slot `s` is doing: its peaks and the band it is auditioning. Not_Found if the slot holds no ProEq (or it isn't in the graph).
+
+### effect_set_pro_eq_audition
+
+```odin
+effect_set_pro_eq_audition :: proc(api: ^Api, s: Slot_Ref, set: i64, band: i64) -> Result
+```
+
+Auditions band `band` (0..7) of set `set` (0: A, 1: B) of the ProEq in slot `s`: the slot plays only what that band touches until it is called with `band` -1. Not an edit (not saved, not undone). Not_Found if the slot holds no ProEq playing; Invalid_Argument for no such band.
+
+### effect_set_pro_eq_mode
+
+```odin
+effect_set_pro_eq_mode :: proc(api: ^Api, s: Slot_Ref, mode: i64) -> Result
+```
+
+Sets the mode of the ProEq in slot `s` (0: Stereo, 1: L/R, 2: M/S), undoably. Leaving Stereo while set B is as it started, B becomes a copy of A first. Not_Found if the slot holds no ProEq.
+
+### effect_pro_comp_state
+
+```odin
+effect_pro_comp_state :: proc(api: ^Api, s: Slot_Ref) -> (Pro_Comp_State, Result)
+```
+
+What the ProComp in slot `s` is doing: its levels in and out, its detector's level and its gain reduction. Not_Found if the slot holds no ProComp (or it isn't in the graph).
+
+### effect_pro_comp_moment
+
+```odin
+effect_pro_comp_moment :: proc(api: ^Api, s: Slot_Ref, ago: i64) -> (Pro_Comp_Moment, Result)
+```
+
+The ProComp in slot `s`'s activity `ago` moments back (0: the newest; each 256 frames, up to 1023 back), for a picture of it over time. Not_Found if the slot holds no ProComp playing; Invalid_Argument past what it keeps.
+
+### effect_pro_saturator_state
+
+```odin
+effect_pro_saturator_state :: proc(api: ^Api, s: Slot_Ref) -> (Pro_Saturator_State, Result)
+```
+
+What the ProSaturator in slot `s` is doing: its peaks and the harmonics in its output. Not_Found if the slot holds no ProSaturator (or it isn't in the graph).
+
+### effect_proverb_state
+
+```odin
+effect_proverb_state :: proc(api: ^Api, s: Slot_Ref) -> (Proverb_State, Result)
+```
+
+What the ProVerb in slot `s` is doing: its peaks and its tail's level. Not_Found if the slot holds no ProVerb (or it isn't in the graph).
 
 ### effect_set_key_listen
 
@@ -1651,6 +1731,22 @@ perform_state :: proc(api: ^Api) -> (Perform_State, Result)
 
 How the pads play now.
 
+### perform_note_repeat
+
+```odin
+perform_note_repeat :: proc(api: ^Api) -> (bool, Result)
+```
+
+Whether the toolbar's note repeat is on (every pad held repeats at its rate and gate: the settings "note_repeat.rate" and "note_repeat.gate").
+
+### perform_set_note_repeat
+
+```odin
+perform_set_note_repeat :: proc(api: ^Api, on: bool) -> Result
+```
+
+Turns the toolbar's note repeat on or off (a controller's Repeat: held, on while it is; Shift + Repeat latches it).
+
 ### perform_set_play_mode
 
 ```odin
@@ -1796,6 +1892,22 @@ project_rename :: proc(api: ^Api, name: string) -> Result
 ```
 
 Renames the project's folder to "<name>.pads", where it is. Unsupported for an untitled project (save it as); Invalid_Argument for a name a folder can't have, or one taken.
+
+### project_duplicate
+
+```odin
+project_duplicate :: proc(api: ^Api, dir: string, name: string) -> Result
+```
+
+Copies project `dir` beside itself as "<name>.pads" (what it has saved). Invalid_Argument for a name a folder can't have or one taken; Not_Found for no project there.
+
+### project_trash
+
+```odin
+project_trash :: proc(api: ^Api, dir: string) -> Result
+```
+
+Moves project `dir` to the system's Trash (it can be put back from there) and off the recent projects. Invalid_Argument for the open project; Not_Found for no project there; Unsupported where there is no Trash.
 
 ### project_recent
 
@@ -3451,7 +3563,7 @@ A message's kind.
 
 A view Pads draws for a display.
 
-`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`, `Dialog`, `Song`, `Settings`
+`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`, `Dialog`, `Song`, `Settings`, `Projects`
 
 ### Part_State
 
@@ -3560,6 +3672,66 @@ What a SuperFilter is doing as it plays (as of the last block it ran).
 | `env` | `f32` | the envelope (0..1) |
 | `in_peak` | `f32` | the peak in (linear) |
 | `out_peak` | `f32` | and out |
+
+### Pro_Eq_State
+
+What a ProEq is doing as it plays (as of the last block it ran).
+
+| Field | Type | |
+|---|---|---|
+| `in_peak` | `f32` | the peak in (linear) |
+| `out_peak` | `f32` | and out |
+| `audition_set` | `i64` | the set (0: A, 1: B) of the band being auditioned, or -1 |
+| `audition_band` | `i64` | and the band (0..7), or -1 |
+
+### Pro_Comp_State
+
+What a ProComp is doing as it plays (as of the last block it ran).
+
+| Field | Type | |
+|---|---|---|
+| `in_peak` | `f32` | the peak in (linear) |
+| `in_rms` | `f32` | its RMS |
+| `level_db` | `f32` | the detector's level (dB): where the signal is on the curve |
+| `gr_db` | `f32` | the gain reduction (dB, at most 0) |
+| `out_peak` | `f32` | the peak out (linear) |
+
+### Pro_Comp_Moment
+
+A moment of a ProComp's activity: over 256 frames, the peaks in and out and the deepest gain reduction (dB).
+
+| Field | Type | |
+|---|---|---|
+| `in_db` | `f32` |  |
+| `out_db` | `f32` |  |
+| `gr_db` | `f32` |  |
+
+### Pro_Saturator_State
+
+What a ProSaturator is doing as it plays: its peaks, and the harmonics it puts out of the loudest partial it takes in (each in dB against that partial: h1 is 0; -120 for none).
+
+| Field | Type | |
+|---|---|---|
+| `in_peak` | `f32` | the peak into its curve, after Drive (linear) |
+| `out_peak` | `f32` | the peak out (linear) |
+| `h1` | `f32` |  |
+| `h2` | `f32` |  |
+| `h3` | `f32` |  |
+| `h4` | `f32` |  |
+| `h5` | `f32` |  |
+| `h6` | `f32` |  |
+| `h7` | `f32` |  |
+| `h8` | `f32` |  |
+
+### Proverb_State
+
+What a ProVerb is doing as it plays (as of the last block it ran).
+
+| Field | Type | |
+|---|---|---|
+| `in_peak` | `f32` | the peak in (linear) |
+| `out_peak` | `f32` | the peak out (linear) |
+| `tail` | `f32` | the wet's RMS (linear): how much tail is ringing |
 
 ### Export_Settings
 

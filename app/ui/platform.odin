@@ -239,6 +239,7 @@ frame_begin :: proc(p: ^Platform) -> bool {
 	}
 	if !p.running do return false
 	im.probe_frame() // the frame just drawn's items become the ones a test reads
+	probe_report_conflicts()
 	imgpu.NewFrame()
 	imsdl.NewFrame()
 	// Zoomed: ImGui sees a window `z` times smaller at `z` times the pixel

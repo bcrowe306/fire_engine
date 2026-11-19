@@ -1,0 +1,19 @@
+# ProVerb: its panel in the window and on a controller's display (the
+# device view, 960 x 160), with a loop playing through it.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+set 0 mode 2
+note 0 0 4 1
+play
+insert 0 0 proverb
+edit_fx pad 0 0
+expect fx proverb
+fx_param 1 0.5
+fx_param 2 30
+fx_param 3 3
+wait 60
+screenshot proverb
+view device 0 960 160
+wait 6
+view device 0 960 160 .build/app/shots/pv/proverb_push.png

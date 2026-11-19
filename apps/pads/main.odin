@@ -78,6 +78,10 @@ App :: struct {
 	sf_curve: Sf_Curve,       // SuperFilter's response, measured (ui_superfilter.odin)
 	sf_more:  bool,           // its LFO's extras shown
 	sf_key:   bool,           // its sidechain's row shown (always, while it has a key or its filters)
+	pe:       Pe_Ui,          // ProEq's panel: the band selected, the set edited, Audition (ui_proeq.odin)
+	pc:       Pc_Ui,          // ProComp's panel: its view, its sidechain row, the meters' held peaks (ui_procomp.odin)
+	ps:       Ps_Ui,          // ProSaturator's panel: the meters' held peaks (ui_prosaturator.odin)
+	pv:       Pv_Ui,          // ProVerb's panel: its page, its focus, its decay picture (ui_proverb.odin)
 	song_ui:  Song_State, // the Song tab's selected step, renaming
 	commands: [dynamic]Command, // everything that can be done to something (commands.odin)
 	pad_clip: pm.Pad, // a copied pad
@@ -408,6 +412,10 @@ main :: proc() {
 	if drive != "" {
 		for s in a.driver.shots do fmt.println("screenshot:", s)
 		if a.driver.failed do os.exit(1)
+		if ui.probe_conflicts_seen > 0 { // (said on stderr as they came: "imgui: conflicting ID")
+			fmt.eprintfln("%d ImGui ID conflict(s)", ui.probe_conflicts_seen)
+			os.exit(1)
+		}
 	}
 }
 
@@ -485,12 +493,14 @@ frame :: proc(a: ^App) {
 	draw_rename_project(a)
 	draw_seq_dialogs(a)
 	draw_start_page(a)
+	draw_start_dialogs(a)
 	draw_length_dialog(a)
 	draw_quantize_dialog(a)
 	draw_convert_dialog(a)
 	draw_scale_dialog(a)
 	draw_recording_dialog(a)
 	draw_transport_dialog(a)
+	draw_repeat_dialog(a)
 	draw_sequence_dialog(a)
 	draw_lane_dialog(a)
 	prof.begin("project_frame")

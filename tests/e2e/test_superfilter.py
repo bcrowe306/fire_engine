@@ -77,22 +77,21 @@ def test_push2_drives_superfilter_by_its_banks(pads, fixtures):
     turn(pads, 7, -20)
     assert p(MIX) < 1
     display_png(pads, os.path.join(pads.out_dir, "push2_superfilter_filter.png"))
-    # The banks are the lower row's buttons, from the right of On: Circuit, Envelope, LFO.
-    lower = [k for k in range(8) if st["buttons"] & (1 << k)]
-    assert 0 in lower and 7 in lower, st  # On, Remove
-    press(pads, 20 + 4)  # Circuit
+    # Its pages (Filter, Circuit, Envelope, LFO): ◀ ▶, the lower row free of them.
+    assert st["pages"] == 4 and (st["buttons"] >> 16) & 3 == 3, st
+    press(pads, 45)  # ▶: Circuit
     pads.wait(5)
     assert pads.api("view_state", kind="Device", page=0)["page"] == 1
     turn(pads, 1, 6)  # Circuit: two on (Analog → Ladder)
     assert p(CIRCUIT) == 3
     display_png(pads, os.path.join(pads.out_dir, "push2_superfilter_circuit.png"))
-    press(pads, 20 + 5)  # Envelope
+    press(pads, 45)  # ▶: Envelope
     pads.wait(5)
     attack = p(ENV_ATTACK)
     turn(pads, 0, 20)
     assert p(ENV_ATTACK) > attack
     display_png(pads, os.path.join(pads.out_dir, "push2_superfilter_envelope.png"))
-    press(pads, 20 + 6)  # LFO
+    press(pads, 45)  # ▶: LFO
     pads.wait(5)
     turn(pads, 0, 3)  # Stereo: Spin
     assert p(LFO_STEREO) == 1
@@ -106,7 +105,8 @@ def test_superfilters_presets_are_in_the_library(app, fixtures):
     app.cmd("select 0")
     app.wait(2)
     app.click("category Effects", window="browser")
-    app.expect_item("device SuperFilter", window="browser")
+    app.reveal("device SuperFilter", "browser", over="device SuperFilter", tries=60)
+    app.click("device SuperFilter", window="browser")  # (its presets, folded under it: a click shows them)
     app.reveal("device Wobble 1/8", "browser", over="device SuperFilter")
     app.click("device Wobble 1/8", window="browser", double=True)  # onto the selected pad's first empty insert
     app.wait(3)

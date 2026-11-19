@@ -195,6 +195,13 @@ play_modes_banks_and_keys :: proc(t: ^testing.T) {
 	testing.expect(t, s.selected == 20 && s.bank == 1, "pad 20, bank B")
 	testing.expect_value(t, pa.perform_set_bank(api, 6), pa.Result.Ok)
 	testing.expect_value(t, pa.perform_set_bank(api, 8), pa.Result.Invalid_Argument)
+	// The toolbar's note repeat, on and off.
+	testing.expect_value(t, pa.perform_set_note_repeat(api, true), pa.Result.Ok)
+	nr, _ := pa.perform_note_repeat(api)
+	testing.expect(t, nr && r.core.m.engine.repeat_all, "note repeat on")
+	pa.perform_set_note_repeat(api, false)
+	nr, _ = pa.perform_note_repeat(api)
+	testing.expect(t, !nr, "note repeat off")
 	testing.expect_value(t, pa.perform_set_play_mode(api, .Keyboard), pa.Result.Ok)
 	testing.expect_value(t, released, 1)
 	s, _ = pa.perform_state(api)

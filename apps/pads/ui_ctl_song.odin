@@ -72,7 +72,7 @@ ctl_song :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		if inp.released[int(pa.View_Button.Shift)] do cs.shift = false
 	}
 	if k := ctl_tabs(ctx, SONG_TABS, cs.tab); k >= 0 && k < len(SONG_TABS) do cs.tab = k
-	plot := im.Vec2{full.x, full.y - CTL_PLOT_Y - 46 - CTL_BUTTONS_H - 2}
+	plot := im.Vec2{full.x, full.y - CTL_PLOT_Y - CTL_KNOBS_H - CTL_BUTTONS_H - 4} // (the knobs: a row of value bars)
 	e, _ := pa.song_edit_state(&a.api)
 	cs.caption = ""
 	// Every tab: the position on the first knob.

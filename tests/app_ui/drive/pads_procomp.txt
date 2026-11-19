@@ -1,0 +1,19 @@
+# ProComp: its panel in the window (each view) and on a controller's
+# display (the device view, 960 x 160), with a loop playing through it.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+set 0 mode 2
+note 0 0 4 1
+play
+insert 0 0 procomp
+edit_fx pad 0 0
+expect fx procomp
+fx_param 1 -30
+fx_param 2 6
+fx_param 3 5
+wait 40
+screenshot procomp
+view device 0 960 160
+wait 6
+view device 0 960 160 .build/app/shots/pc/procomp_push.png

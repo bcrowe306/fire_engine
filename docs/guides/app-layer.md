@@ -237,8 +237,14 @@ Coordinates break when a layout changes; tests should click what a person
 sees. The **probe** (`ui.probe_on`) records every item each frame draws —
 its label, its window, the part of it that shows — through ImGui's
 test-engine hooks (`vendor/imgui/probe.cpp`, built into the static
-library by `task deps`). Commands that use it wait up to a second for
-their item to show:
+library by `task deps`). It also catches ImGui's **conflicting IDs** (two
+items with one id: clicks go to the wrong one, a popup's items are drawn
+twice): each is said on stderr, `imgui: conflicting ID: "<label>" in
+window "<window>"`, and a scripted run (`--drive`) exits 1; the e2e
+harness fails a test whose app said one (`Pads.expect_no_id_conflicts`).
+In a loop, give each row its own id (`PushID`, or the index in the "##"
+part). Commands that use the probe wait up to a second for their item to
+show:
 
 ```text
 click_item "Kick 808.wav" in browser          # the item's centre; "in" names a panel by its id

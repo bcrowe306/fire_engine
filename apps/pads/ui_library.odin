@@ -64,6 +64,8 @@ Lib_Item :: struct {
 	depth: int,
 	code:  string,
 	info:  string,
+	fold:  int, // an effect with presets: 1 its presets folded, 2 shown (0: none)
+	fx:    pm.Effect_Kind, // which effect (an effect's row or one of its presets)
 }
 
 // What an item's button does.
@@ -83,13 +85,14 @@ Lib_Act :: enum {
 	Open_Project,
 	From_Template,
 	Run, // a command (its name the button's)
+	Presets, // an effect's presets: shown under it, or folded away
 }
 
 LIB_ACT_NAMES := [Lib_Act]string{
 	.None = "", .Open = "Open", .Favorite = ui.ICON_STAR + " Favourite", .Kit = "Kit " + ui.ICON_ARROW_RIGHT + " Bank",
 	.Sampler = "Sampler", .Slicer = "Slicer", .Slices = "Slices " + ui.ICON_ARROW_RIGHT + " Pads", .Synth_Osc = "Synth Osc",
 	.Next_Empty = "Next Empty", .Notes = "Notes", .Load = "Load", .Insert = "Insert",
-	.Open_Project = "Open", .From_Template = "New", .Run = "",
+	.Open_Project = "Open", .From_Template = "New", .Run = "", .Presets = "Presets",
 }
 
 // An action's button label (a command's: its own name).
@@ -105,6 +108,7 @@ Lib_State :: struct {
 	last: Lib_Act,
 	fx_slot: [2]int, // browsing from an effect slot (`fx_replace`): its pad and slot, an effect loaded replaces it
 	fx_replace: bool,
+	open:       bit_set[pm.Effect_Kind], // the effects whose presets show (folded, the rest)
 	shift:      bool, // a controller's Shift held (in its browser): loads go onto the next empty pad
 	save_as_open: bool, // the Save As by name dialog
 	save_as_name: [64]u8,
@@ -233,10 +237,18 @@ lib_items_of :: proc(a: ^App, c: Lib_Cat) -> []Lib_Item {
 	case .Effects:
 		for k in pm.Effect_Kind {
 			if k == .None || k == .Plugin || pm.effect_kind_legacy(k) do continue
-			append(&out, Lib_Item{name = string(pm.EFFECT_NAMES[k]), kind = .Effect, code = fmt.tprintf("fx %d", int(k)), info = "An insert effect"})
-			// Its factory presets, under it.
-			for p, n in pm.EFFECT_PRESETS do if p.kind == k {
-				append(&out, Lib_Item{name = p.name, kind = .Effect, code = fmt.tprintf("fxp %d", n), info = p.info, depth = 1})
+			n := effect_preset_total(k)
+			fold := 0 if n == 0 else (2 if k in a.lib.open else 1)
+			info := "An insert effect" if n == 0 else fmt.tprintf("An insert effect, %d presets", n)
+			append(&out, Lib_Item{name = string(pm.EFFECT_NAMES[k]), kind = .Effect, code = fmt.tprintf("fx %d", int(k)), info = info, fold = fold, fx = k})
+			if fold != 2 do continue
+			// Its presets, under it: the factory's, then (ProVerb) an installed ValhallaRoom's.
+			for p, i in pm.EFFECT_PRESETS do if p.kind == k {
+				append(&out, Lib_Item{name = p.name, kind = .Effect, code = fmt.tprintf("fxp %d", i), info = p.info, depth = 1, fx = k})
+			}
+			if k == .Proverb do for p, i in pm.imported_presets() {
+				name := p.name if p.folder == "" else fmt.tprintf("%s / %s", p.folder, p.name)
+				append(&out, Lib_Item{name = name, kind = .Effect, code = fmt.tprintf("fxi %d", i), info = "From your ValhallaRoom, as ProVerb's", depth = 1, fx = k})
 			}
 		}
 	case .Plugins:
@@ -277,13 +289,22 @@ lib_actions :: proc(it: Lib_Item) -> (upper, lower: [4]Lib_Act) {
 	case .Audio:      upper, lower = {.Sampler, .Slicer, .Slices, .Synth_Osc}, {.Next_Empty, .None, .None, .None}
 	case .Midi:       upper, lower = {.Notes, .None, .None, .None}, {.Next_Empty, .None, .None, .None}
 	case .Instrument: upper, lower = {.Load, .None, .None, .None}, {.Next_Empty, .None, .None, .None}
-	case .Effect:     upper = {.Insert, .None, .None, .None}
+	case .Effect:     upper = {.Insert, .Presets if it.fold > 0 else .None, .None, .None}
 	case .Project:    upper = {.Open_Project, .None, .None, .None}
 	case .Template:   upper = {.From_Template, .None, .None, .None}
 	case .Command:    upper = {.Run, .None, .None, .None}
 	case .Other:
 	}
 	return
+}
+
+// How many presets effect `k` has: its factory ones (and, for ProVerb, an
+// installed ValhallaRoom's).
+effect_preset_total :: proc(k: pm.Effect_Kind) -> int {
+	n := 0
+	for p in pm.EFFECT_PRESETS do if p.kind == k do n += 1
+	if k == .Proverb do n += len(pm.imported_presets())
+	return n
 }
 
 // What an item's first button does (a double-click, Enter, Shift + a pad).
@@ -311,11 +332,18 @@ lib_run :: proc(a: ^App, act: Lib_Act, it: Lib_Item, pad := -1, shift := false) 
 	if act == .Next_Empty {
 		return lib_run(a, lib_primary(it), it, next_empty_target(a))
 	}
-	if act == .Insert && a.lib.fx_replace && (strings.has_prefix(it.code, "fx ") || strings.has_prefix(it.code, "fxp ")) { // (browsed from an effect slot: it replaced)
-		preset := strings.has_prefix(it.code, "fxp ")
+	if act == .Presets {
+		if it.fx in a.lib.open do a.lib.open -= {it.fx}
+		else do a.lib.open += {it.fx}
+		return true
+	}
+	if act == .Insert && a.lib.fx_replace && (strings.has_prefix(it.code, "fx ") || strings.has_prefix(it.code, "fxp ") || strings.has_prefix(it.code, "fxi ")) { // (browsed from an effect slot: it replaced)
+		preset := strings.has_prefix(it.code, "fxp ") || strings.has_prefix(it.code, "fxi ")
 		n, _ := strconv.parse_int(it.code[4:] if preset else it.code[3:])
 		s := pa.Slot_Ref{place = .Insert, index = i64(a.lib.fx_slot[0]), slot = i64(a.lib.fx_slot[1])}
-		if preset {
+		if strings.has_prefix(it.code, "fxi ") {
+			if pa.effect_load_imported_preset(&a.api, s, i64(n)) != .Ok do return false
+		} else if preset {
 			if pa.effect_load_preset(&a.api, s, i64(n)) != .Ok do return false
 		} else if pa.effect_set(&a.api, s, i64(n)) != .Ok do return false
 		ui.toast(&a.ws.toasts, .Success, fmt.tprintf("%s onto %s, slot %d", it.name, pm.pad_label(a.lib.fx_slot[0]), a.lib.fx_slot[1] + 1))
@@ -502,6 +530,14 @@ lib_browse_for_device :: proc(a: ^App) {
 			show_kind(a, .Effects)
 			a.lib.last = .Insert
 			a.lib.fx_slot, a.lib.fx_replace = {i, st.device.slot}, true
+			// The slot's own effect, its presets unfolded and its row selected.
+			if k := pad.inserts[st.device.slot].kind; k != .None && effect_preset_total(k) > 0 {
+				a.lib.open += {k}
+				for it, n in lib_items(a) do if it.fold > 0 && it.fx == k {
+					a.lib.sel[.Effects] = n
+					break
+				}
+			}
 		case:
 			switch {
 			case !pm.pad_used(&a.m.project, i): show_kind(a, .Instruments); a.lib.last = .Load

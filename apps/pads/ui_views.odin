@@ -35,7 +35,6 @@ View_Ctx :: struct {
 	pages:   int, // its knobs' pages, and the one shown
 	page:    int,
 	banks:   [16]string, // each page's name (its first knob's)
-	bank_end: int, // the last of the lower row the banks may take (0: the row's last)
 }
 
 // After the window's frame: the views surfaces want, drawn; their finished
@@ -62,7 +61,7 @@ views_render :: proc(a: ^App) {
 			v.put = n
 		}
 		ctx := View_Ctx{a = a, want = w, input = pa.views_input(&a.api, w.index)}
-		if ctx.input != nil do ctx.knobs = {turn = ctx.input.turn, held = ctx.input.held, ended = ctx.input.ended, size = CTL_KNOB}
+		if ctx.input != nil do ctx.knobs = {turn = ctx.input.turn, held = ctx.input.held, ended = ctx.input.ended, size = CTL_KNOB, bar_w = CTL_BAR_W}
 		if inp := ctx.input; inp != nil {
 			if inp.pressed[int(pa.View_Button.Shift)] do a.ctl.shift = true
 			if inp.released[int(pa.View_Button.Shift)] do a.ctl.shift = false
@@ -103,22 +102,34 @@ views_destroy :: proc(a: ^App) {
 	delete(a.views)
 }
 
-// Draws a view, filling the offscreen window.
+// The status line's height at the top of every view (a controller's
+// display): what is true wherever you are (view_status).
+CTL_STATUS_H :: 16
+
+// Draws a view, filling the offscreen window: the status line across the
+// top, the view itself under it (a child window: its own coordinates, its
+// size the rest).
 @(private)
 view_draw :: proc(ctx: ^View_Ctx) {
 	w := ctx.want
-	size := im.Vec2{f32(w.width), f32(w.height)}
-	switch w.kind {
-	case .Device: ctl_device(ctx, size)
-	case .Dialog: view_dialog(ctx, size)
-	case .Browser: ctl_browser(ctx, size)
-	case .Clip:    ctl_perform(ctx, size)
-	case .Sequencer: ctl_sequencer(ctx, size)
-	case .Mixer:     ctl_mixer(ctx, size)
-	case .Song:      ctl_song(ctx, size)
-	case .Settings:  ctl_settings(ctx, size)
+	full := im.Vec2{f32(w.width), f32(w.height)}
+	view_status(ctx, full)
+	im.SetCursorPos({0, CTL_STATUS_H})
+	size := im.Vec2{full.x, full.y - CTL_STATUS_H}
+	if im.BeginChild("##view", size, {}, {.NoScrollbar, .NoScrollWithMouse, .NoBackground}) {
+		switch w.kind {
+		case .Device: ctl_device(ctx, size)
+		case .Dialog: view_dialog(ctx, size)
+		case .Browser: ctl_browser(ctx, size)
+		case .Clip:    ctl_perform(ctx, size)
+		case .Sequencer: ctl_sequencer(ctx, size)
+		case .Mixer:     ctl_mixer(ctx, size)
+		case .Song:      ctl_song(ctx, size)
+		case .Settings:  ctl_settings(ctx, size)
+		case .Projects:  ctl_projects(ctx, size)
+		}
 	}
-	view_overlay(ctx, size)
+	im.EndChild()
 }
 
 // A controller's display is black behind Pads' widgets (its own look:
@@ -142,81 +153,104 @@ view_meter :: proc(a: ^App, i: int, pos, size: im.Vec2) {
 	meter_bars(a, dl, &a.mixer.pads[i], o.x + pos.x, o.y + pos.y + 2, o.y + pos.y + size.y - 2, mw)
 }
 
-// Over every view: Pads' newest message as a banner that closes by itself
-// (the window's toast: saved, loaded, an error), and a dot in the corner
-// while the project has changes not saved.
+// The status line over every view, always in the same places, never over
+// the view: at the left Shift (held), the sequence (its number and name),
+// where it plays (bar.beat; counting in, the beats to the top, red), the
+// tempo, then the device chain (Device: the one shown bright, an off one
+// dim) or the selected pad; at the right Pads' newest message (a while),
+// input quantize, the unsaved dot, and Main's meter.
 @(private)
-view_overlay :: proc(ctx: ^View_Ctx, size: im.Vec2) {
+view_status :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	a := ctx.a
 	t := ui.theme()
-	dl := im.GetForegroundDrawList()
+	dl := im.GetWindowDrawList()
 	o := im.GetWindowPos()
-	if pm.model_dirty(&a.m) do im.DrawList_AddCircleFilled(dl, {o.x + size.x - 7, o.y + 7}, 3.5, ui.col(t.warn), 12)
-	// Shift held on the controller: a badge at the top left (its knobs'
-	// names say "fine"; what else it does, the lit buttons say).
-	if a.ctl.shift {
-		ui.text_push(.Label)
-		text: cstring = "SHIFT"
-		ts := im.CalcTextSize(text)
-		im.DrawList_AddRectFilled(dl, {o.x + 2, o.y + 2}, {o.x + ts.x + 12, o.y + 20}, ui.col(t.warn), 4)
-		im.DrawList_AddText(dl, {o.x + 7, o.y + 11 - ts.y / 2}, ui.col(t.bg), text)
-		ui.text_pop()
+	h := f32(CTL_STATUS_H)
+	im.DrawList_AddRectFilled(dl, o, {o.x + full.x, o.y + h}, ui.col(ui.mix(VIEW_BG, t.surface, 0.6)))
+	ui.text_push(.Caption)
+	defer ui.text_pop()
+	mid := o.y + h / 2
+	x := o.x + 6
+	put :: proc(dl: ^im.DrawList, x: ^f32, mid: f32, text: string, c: ui.Color, gap: f32 = 12) {
+		ct := fmt.ctprintf("%s", text)
+		ts := im.CalcTextSize(ct)
+		im.DrawList_AddText(dl, {x^, mid - ts.y / 2}, ui.col(c), ct)
+		x^ += ts.x + gap
 	}
-	// Input quantize on: a badge at the top right ("IQ 1/16"), left of
-	// where it plays.
-	right := o.x + size.x - 14
-	if iq, _ := pa.sequence_input_quantize(&a.api); iq.on {
-		ui.text_push(.Label)
-		text := fmt.ctprintf("IQ %s", pm.GRID_NAMES[pm.Grid(iq.grid)])
-		ts := im.CalcTextSize(text)
-		x1 := right
-		if tr, _ := pa.transport_state(&a.api); tr.playing do x1 -= 46 // (bar.beat's room)
-		x0 := x1 - ts.x - 10
-		im.DrawList_AddRectFilled(dl, {x0, o.y + 2}, {x1, o.y + 20}, ui.col(ui.with_alpha(t.accent, 0.85)), 4)
-		im.DrawList_AddText(dl, {x0 + 5, o.y + 11 - ts.y / 2}, ui.col(t.bg), text)
-		ui.text_pop()
+	badge :: proc(dl: ^im.DrawList, x0, mid: f32, text: string, bg, fg: ui.Color) -> f32 {
+		ct := fmt.ctprintf("%s", text)
+		ts := im.CalcTextSize(ct)
+		im.DrawList_AddRectFilled(dl, {x0, mid - 7}, {x0 + ts.x + 8, mid + 7}, ui.col(bg), 3)
+		im.DrawList_AddText(dl, {x0 + 4, mid - ts.y / 2}, ui.col(fg), ct)
+		return ts.x + 8
 	}
-	// Where it plays (bar.beat), at the top right; counting in, the beats
-	// to the top, red.
-	if tr, _ := pa.transport_state(&a.api); tr.playing {
-		text := fmt.ctprintf("%d.%d", tr.bar, tr.beat_in_bar)
-		c := t.text
-		if tr.counting_in {
-			text = fmt.ctprintf("-%d", int(math.ceil(-tr.timeline_beat)))
-			c = t.danger
+	if a.ctl.shift do x += badge(dl, x, mid, "SHIFT", t.warn, t.bg) + 10
+	// The sequence, where it plays, the tempo.
+	p := &a.m.project
+	put(dl, &x, mid, fmt.tprintf("S%d %s", p.slot + 1, pm.sequence_name(p, p.slot)), t.text)
+	if tr, _ := pa.transport_state(&a.api); true {
+		if tr.counting_in do put(dl, &x, mid, fmt.tprintf("-%d", int(math.ceil(-tr.timeline_beat))), t.danger)
+		else do put(dl, &x, mid, fmt.tprintf("%d.%d", max(tr.bar, 1), max(tr.beat_in_bar, 1)), t.text if tr.playing else t.text_dim)
+		put(dl, &x, mid, fmt.tprintf("%.1f BPM", tr.bpm), t.text_dim, 18)
+	}
+	// The device chain (Device), or the selected pad.
+	if ctx.want.kind == .Device {
+		chain := ctl_chain(a)
+		for d, k in chain {
+			name := ctl_device_name(a, d)
+			off := false
+			if d.kind == .Slot do if s, ok := pm.target_slot(&a.m, ctl_device_fx(a, d)); ok && s.kind != .None && !s.on do off = true
+			c := t.text if d == a.detail.device else t.text_dim
+			if off do c = ui.with_alpha(c, 0.5)
+			put(dl, &x, mid, fmt.tprintf("%s%s", name, " (off)" if off else ""), c, 4)
+			if k < len(chain) - 1 do put(dl, &x, mid, "›", t.text_dim, 4)
 		}
-		ui.text_push(.Label)
-		ts := im.CalcTextSize(text)
-		x1 := o.x + size.x - 14
-		x0 := x1 - ts.x - 10
-		im.DrawList_AddRectFilled(dl, {x0, o.y + 2}, {x1, o.y + 20}, ui.col(ui.with_alpha(t.bg, 0.9)), 4)
-		im.DrawList_AddText(dl, {x0 + 5, o.y + 11 - ts.y / 2}, ui.col(c), text)
-		ui.text_pop()
+	} else {
+		put(dl, &x, mid, fmt.tprintf("%s %s", pm.pad_label(a.selected), pm.pad_name(&p.pads[a.selected])), t.text_dim)
+	}
+	// From the right: Main's meter, the unsaved dot, IQ, the message.
+	right := o.x + full.x - 4
+	mw: f32 = 110
+	view := &a.mixer.buses[pm.BUSES]
+	for c in 0 ..< 2 {
+		y := o.y + 3 + f32(c) * 6
+		im.DrawList_AddRectFilled(dl, {right - mw, y}, {right, y + 4}, ui.col(well(t)), 1)
+		lvl := fader_frac(20 * math.log10(view[c].peak)) if view[c].peak > 0 else 0
+		cc := t.ok if lvl < fader_frac(-12) else (t.warn if lvl < fader_frac(0) else t.danger)
+		if lvl > 0 do im.DrawList_AddRectFilled(dl, {right - mw, y}, {right - mw + mw * clamp(lvl, 0, 1), y + 4}, ui.col(cc), 1)
+	}
+	right -= mw + 8
+	if pm.model_dirty(&a.m) {
+		im.DrawList_AddCircleFilled(dl, {right - 4, mid}, 3.5, ui.col(t.warn), 12)
+		right -= 14
+	}
+	if iq, _ := pa.sequence_input_quantize(&a.api); iq.on {
+		text := fmt.tprintf("IQ %s", pm.GRID_NAMES[pm.Grid(iq.grid)])
+		ts := im.CalcTextSize(fmt.ctprintf("%s", text))
+		right -= ts.x + 8
+		badge(dl, right, mid, text, t.accent, t.bg)
+		right -= 10
 	}
 	items := a.ws.toasts.items
-	if len(items) == 0 do return
-	toast := items[len(items) - 1]
-	if toast.age > BANNER_S do return
-	fade := clamp((BANNER_S - toast.age) / 0.3, 0, 1) * clamp(toast.age / 0.12, 0, 1)
-	c := t.raised
-	switch toast.kind {
-	case .Info:    c = t.raised
-	case .Success: c = t.ok
-	case .Warning: c = t.warn
-	case .Error:   c = t.danger
+	if len(items) > 0 {
+		toast := items[len(items) - 1]
+		if toast.age <= BANNER_S {
+			c := t.text
+			switch toast.kind {
+			case .Info:    c = t.text
+			case .Success: c = t.ok
+			case .Warning: c = t.warn
+			case .Error:   c = t.danger
+			}
+			ct := fmt.ctprintf("%s", toast.text)
+			ts := im.CalcTextSize(ct)
+			x0 := max(right - ts.x, x + 8)
+			im.DrawList_PushClipRect(dl, {x0, o.y}, {right, o.y + h}, true)
+			im.DrawList_AddRectFilled(dl, {x0 - 6, o.y}, {right + 2, o.y + h}, ui.col(ui.mix(VIEW_BG, t.surface, 0.6))) // (over the chain, if it is long)
+			im.DrawList_AddText(dl, {x0, mid - ts.y / 2}, ui.col(c), ct)
+			im.DrawList_PopClipRect(dl)
+		}
 	}
-	im.PushFontFloat(a.platform.fonts.semibold, 18)
-	defer im.PopFont()
-	text := fmt.ctprintf("%s", toast.text)
-	ts := im.CalcTextSize(text)
-	w := min(max(ts.x + 40, 300), size.x - 40)
-	x0 := o.x + (size.x - w) / 2
-	y0 := o.y + (size.y - 44) / 2
-	im.DrawList_AddRectFilled(dl, {x0, y0}, {x0 + w, y0 + 44}, ui.col(ui.with_alpha(ui.mix(t.bg, c, 0.85), 0.96 * fade)), 8)
-	im.DrawList_AddRect(dl, {x0, y0}, {x0 + w, y0 + 44}, ui.col(ui.with_alpha(t.text, 0.35 * fade)), 8, 1.5)
-	im.DrawList_PushClipRect(dl, {x0 + 12, y0}, {x0 + w - 12, y0 + 44}, true)
-	im.DrawList_AddText(dl, {x0 + max((w - ts.x) / 2, 12), y0 + (44 - ts.y) / 2}, ui.col(ui.with_alpha(t.bg if toast.kind != .Info else t.text, fade)), text)
-	im.DrawList_PopClipRect(dl)
 }
 
 // How long a message shows on a controller's display (seconds).

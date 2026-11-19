@@ -31,6 +31,8 @@ Seq_State :: struct {
 	selected: int,     // the note the lanes edit (an index into the sequence), or -1
 	sel:      [dynamic]pm.Seq_Note, // the selected notes (by value: they survive edits that keep them)
 	slot_was: int,
+	bank_was: int, // the bank last drawn (another: its rows brought into view)
+	selected_was: int, // and the pad selected (another, out of view: its bank's rows)
 	bars_was: int,
 	tool:     ui.Grid_Tool,
 	quiet:    bool, // the headphones off: clicking a row's name doesn't play it
@@ -149,7 +151,7 @@ draw_editor_tools :: proc(a: ^App) {
 }
 
 // Transport and sequence settings above; the editor's tools; the current
-// bank's pads as rows of notes (or one pad's piano roll; folded, only the
+// pads as rows of notes, every bank's, scrolled (or one pad's piano roll; folded, only the
 // rows that have notes), and a lane for the notes' velocity or chance.
 draw_sequence :: proc(user: rawptr) {
 	a := (^App)(user)
@@ -265,6 +267,15 @@ draw_sequence :: proc(user: rawptr) {
 			break
 		}
 	}
+	// Another bank chosen: its rows in view; another pad chosen out of
+	// view: its bank's rows.
+	if !st.piano && !slicer && !st.fold {
+		if a.bank != st.bank_was do st.view.key0 = a.bank * pm.PADS_PER_BANK
+		if a.selected != st.selected_was && (a.selected < st.view.key0 || a.selected >= st.view.key0 + keys) {
+			st.view.key0 = a.selected / pm.PADS_PER_BANK * pm.PADS_PER_BANK
+		}
+	}
+	st.bank_was, st.selected_was = a.bank, a.selected
 	st.view.key0 = clamp(st.view.key0, 0, max(n_rows - keys, 0))
 	roll_h = f32(keys) * (roll_h / f32(keys))
 	st.view.beat0, st.view.beats = 0, length
@@ -438,8 +449,8 @@ draw_sequence :: proc(user: rawptr) {
 	if le.ended do app.seal(&m.history)
 }
 
-// The editor's rows: the bank's pads (the first at the bottom, as on the
-// grid), or, folded, every pad with notes; in the piano roll, the pad's
+// The editor's rows: every pad, bank after bank (the first at the bottom,
+// as on the grid), or, folded, every pad with notes; in the piano roll, the pad's
 // pitches (4 octaves each way; folded, the ones it plays), a slicer's its
 // slices. Each row's pad and pitch, its name and colour.
 @(private)
@@ -474,8 +485,10 @@ seq_rows :: proc(a: ^App, s: pm.Sequence) -> (row_pad, row_pitch: [dynamic]int, 
 			append(&row_pitch, 0)
 		}
 	} else {
-		for k in 0 ..< pm.PADS_PER_BANK {
-			append(&row_pad, a.bank * pm.PADS_PER_BANK + k)
+		// Every pad, A1 to H16: the wheel scrolls through the banks (a bank
+		// chosen is brought into view, the selection left as it is).
+		for i in 0 ..< pm.PADS {
+			append(&row_pad, i)
 			append(&row_pitch, 0)
 		}
 	}

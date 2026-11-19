@@ -11,8 +11,9 @@ same state as the window's, so each follows the other:
 
 - the display: the panel as Pads lays it out for Push 2 (its tabs, its
   picture, its knobs, its choices; the pad's meters)
-- the upper row: its tabs; the lower row: its choices; Page < and >: its
-  knobs' pages; Device again: the next device in the chain
+- the upper row: its tabs; the lower row: its choices; ◀ ▶ (the arrows):
+  its knobs' pages; ▲ ▼ and Device again: the device chain; Delete +
+  Device: the device removed; Mute + Device: off or on
 - the encoders: its knobs (Shift: finer); touched, lit; a touch an undo step
 
 Browse and Clip are the same, on Pads' browser and its launcher (View_Kind
@@ -60,8 +61,7 @@ mirror_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, page_l, page_r: ^kit.C
 	rows := kit.component_make(cs, "Panel Buttons")
 	for b in p.upper do kit.layer_bind(rows.layer, "upper", b)
 	for b in p.lower do kit.layer_bind(rows.layer, "lower", b)
-	kit.layer_bind(rows.layer, "page_left", page_l)
-	kit.layer_bind(rows.layer, "page_right", page_r)
+	_, _ = page_l, page_r // (◀ ▶ page a view now: the arrows, grid.odin; Page ◀ ▶ scroll the grid)
 	rows.on_activate = proc(c: ^kit.Component) {
 		kit.task_every(c.cs, 80, proc(data: rawptr) { kit.redraw_owned((^kit.Component)(data)) }, c, c)
 	}
@@ -71,8 +71,6 @@ mirror_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, page_l, page_r: ^kit.C
 		switch slot {
 		case "upper": light_button(control, st, pa.View_Button(int(pa.View_Button.Upper_1) + row_index(p.upper, control)))
 		case "lower": light_button(control, st, pa.View_Button(row_index(p.lower, control)))
-		case "page_left": kit.light_value(control, W_ON if st.page > 0 else W_DIM)
-		case "page_right": kit.light_value(control, W_ON if st.page < st.pages - 1 else W_DIM)
 		}
 	}
 	rows.on_event = proc(c: ^kit.Component, e: kit.Event) {
@@ -100,8 +98,6 @@ mirror_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, page_l, page_r: ^kit.C
 				app_show(p, "sequence")
 			}
 		case "lower": press(p, p.mirror_kind, pa.View_Button(row_index(p.lower, e.control)), on)
-		case "page_left": press(p, p.mirror_kind, .Page_Left, on)
-		case "page_right": press(p, p.mirror_kind, .Page_Right, on)
 		}
 		invalidate(c.cs)
 	}
@@ -182,17 +178,18 @@ dialog_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2) {
 				invalidate(c.cs)
 			}
 			if d.open do for x in p.dialog_modes.modes[1].components do kit.redraw_owned(x)
-			// Pads' project manager showing: Browse, on the projects (the
-			// Library's: Pads chose them); gone (a project chosen): Mix.
+			// Pads' project page showing: Projects on the display; gone (a
+			// project chosen, or closed): Mix.
 			start: bool
 			t.ui_start_page(t.api, &start)
 			if start != p.start_shown {
 				p.start_shown = start
-				browsing := kit.modes_current(p.enc_modes) == "browse"
-				if start && !browsing {
-					p.mirror_kind = .Browser
-					kit.modes_select(p.enc_modes, kit.modes_find(p.enc_modes, "browse"))
-				} else if !start && browsing {
+				here := kit.modes_current(p.enc_modes) == "projects"
+				if start && !here {
+					setup_close(p)
+					p.mirror_kind = .Projects
+					kit.modes_select(p.enc_modes, kit.modes_find(p.enc_modes, "projects"))
+				} else if !start && here {
 					mix_select(p, p.mix_page)
 				}
 				if p.mode_buttons != nil do kit.redraw_owned(p.mode_buttons)

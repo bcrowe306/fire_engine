@@ -74,6 +74,7 @@ draw_synth_effects :: proc(a: ^App) {
 	// The chain, in order (scrolling, if the panel is short).
 	im.BeginChild("##fxchain", {list_w, avail.y})
 	ctop := im.GetCursorScreenPos()
+	drop_e, drop_at := fx.Effect(0), -1 // (a drop moved after the list: not while it is drawn, a row twice)
 	for e, k in sy.fx_order {
 		name := synth.EFFECT_NAMES[e]
 		im.PushIDInt(i32(e))
@@ -98,13 +99,14 @@ draw_synth_effects :: proc(a: ^App) {
 		}
 		if im.BeginDragDropTarget() {
 			if pl := im.AcceptDragDropPayload(SYNTH_FX_PAYLOAD); pl != nil {
-				pm.move_synth_effect(m, i, fx.Effect((^u8)(pl.Data)^), k)
+				drop_e, drop_at = fx.Effect((^u8)(pl.Data)^), k
 			}
 			im.EndDragDropTarget()
 		}
 		im.PopID()
 	}
 	im.EndChild()
+	if drop_at >= 0 do pm.move_synth_effect(m, i, drop_e, drop_at)
 	// The one chosen.
 	x0 := top.x + list_w + 16
 	w := avail.x - list_w - 16 - im.GetStyle().ScrollbarSize

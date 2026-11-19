@@ -45,8 +45,13 @@ extern "C" bool fire_probe_get(int i, Fire_Probe_Item* out) {
 	return true;
 }
 
-static Fire_Probe_Item* probe_find(ImGuiID id) {
-	for (int i = probe_items.Size - 1; i >= 0 && i >= probe_items.Size - 8; i--)
+// An item the probe made up for a name given to something ImGui gives no
+// id (a Dummy, a Text): its id the name's hash, not ImGui's, so never a
+// conflict (status bit, past ImGuiItemStatusFlags').
+#define FIRE_PROBE_NAMED (1u << 31)
+
+static Fire_Probe_Item* probe_find(ImGuiID id, int back = 8) {
+	for (int i = probe_items.Size - 1; i >= 0 && (back < 0 || i >= probe_items.Size - back); i--)
 		if (probe_items[i].id == id) return &probe_items[i];
 	return NULL;
 }
@@ -114,7 +119,9 @@ const char* ImGuiTestEngine_FindItemDebugLabel(ImGuiContext*, ImGuiID id) {
 extern "C" void fire_probe_name_last(const char* label) {
 	if (!probe_on || !GImGui || !label) return;
 	ImGuiContext& g = *GImGui;
-	Fire_Probe_Item* it = probe_find(g.LastItemData.ID);
+	// (The whole frame's, for an item with an id: a combo's popup items come
+	// between it and its name.)
+	Fire_Probe_Item* it = probe_find(g.LastItemData.ID, g.LastItemData.ID ? -1 : 8);
 	if (!it) {
 		// Not added (e.g. a Dummy): record it from the last item's rect.
 		ImRect r = g.LastItemData.Rect;
@@ -124,6 +131,7 @@ extern "C" void fire_probe_name_last(const char* label) {
 		ImGuiTestEngineHook_ItemAdd(&g, g.LastItemData.ID ? g.LastItemData.ID : ImHashStr(label), g.LastItemData.Rect, &g.LastItemData);
 		if (probe_items.Size == before) return;
 		it = &probe_items.back();
+		it->status |= FIRE_PROBE_NAMED;
 	}
 	strncpy(it->label, label, sizeof(it->label) - 1);
 }

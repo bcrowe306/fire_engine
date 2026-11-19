@@ -358,6 +358,7 @@ enum {
 	PADS_VIEW_KIND_DIALOG = 5,
 	PADS_VIEW_KIND_SONG = 6,
 	PADS_VIEW_KIND_SETTINGS = 7,
+	PADS_VIEW_KIND_PROJECTS = 8,
 };
 
 // Called on the control thread when `topic` changed (`index`: which; -1 all).
@@ -448,6 +449,54 @@ typedef struct Pads_Super_Filter_State {
 	float in_peak; // the peak in (linear)
 	float out_peak; // and out
 } Pads_Super_Filter_State;
+
+// What a ProEq is doing as it plays (as of the last block it ran).
+typedef struct Pads_Pro_Eq_State {
+	float in_peak; // the peak in (linear)
+	float out_peak; // and out
+	int64_t audition_set; // the set (0: A, 1: B) of the band being auditioned, or -1
+	int64_t audition_band; // and the band (0..7), or -1
+} Pads_Pro_Eq_State;
+
+// What a ProComp is doing as it plays (as of the last block it ran).
+typedef struct Pads_Pro_Comp_State {
+	float in_peak; // the peak in (linear)
+	float in_rms; // its RMS
+	float level_db; // the detector's level (dB): where the signal is on the curve
+	float gr_db; // the gain reduction (dB, at most 0)
+	float out_peak; // the peak out (linear)
+} Pads_Pro_Comp_State;
+
+// A moment of a ProComp's activity: over 256 frames, the peaks in and out
+// and the deepest gain reduction (dB).
+typedef struct Pads_Pro_Comp_Moment {
+	float in_db;
+	float out_db;
+	float gr_db;
+} Pads_Pro_Comp_Moment;
+
+// What a ProSaturator is doing as it plays: its peaks, and the harmonics
+// it puts out of the loudest partial it takes in (each in dB against that
+// partial: h1 is 0; -120 for none).
+typedef struct Pads_Pro_Saturator_State {
+	float in_peak; // the peak into its curve, after Drive (linear)
+	float out_peak; // the peak out (linear)
+	float h1;
+	float h2;
+	float h3;
+	float h4;
+	float h5;
+	float h6;
+	float h7;
+	float h8;
+} Pads_Pro_Saturator_State;
+
+// What a ProVerb is doing as it plays (as of the last block it ran).
+typedef struct Pads_Proverb_State {
+	float in_peak; // the peak in (linear)
+	float out_peak; // the peak out (linear)
+	float tail; // the wet's RMS (linear): how much tail is ringing
+} Pads_Proverb_State;
 
 // How to export.
 typedef struct Pads_Export_Settings {
@@ -1983,6 +2032,61 @@ typedef struct Pads_Api_V1 {
 	// slot `s`, undoably; the slot's sidechain source stays. Not_Found for no
 	// such preset.
 	Pads_Result (*effect_load_preset)(Pads_Api* api, Pads_Slot_Ref s, int64_t index);
+	// What the ProEq in slot `s` is doing: its peaks and the band it is
+	// auditioning. Not_Found if the slot holds no ProEq (or it isn't in the
+	// graph).
+	Pads_Result (*effect_pro_eq_state)(Pads_Api* api, Pads_Slot_Ref s, Pads_Pro_Eq_State* out);
+	// Auditions band `band` (0..7) of set `set` (0: A, 1: B) of the ProEq in
+	// slot `s`: the slot plays only what that band touches until it is called
+	// with `band` -1. Not an edit (not saved, not undone). Not_Found if the
+	// slot holds no ProEq playing; Invalid_Argument for no such band.
+	Pads_Result (*effect_set_pro_eq_audition)(Pads_Api* api, Pads_Slot_Ref s, int64_t set, int64_t band);
+	// Sets the mode of the ProEq in slot `s` (0: Stereo, 1: L/R, 2: M/S),
+	// undoably. Leaving Stereo while set B is as it started, B becomes a copy
+	// of A first. Not_Found if the slot holds no ProEq.
+	Pads_Result (*effect_set_pro_eq_mode)(Pads_Api* api, Pads_Slot_Ref s, int64_t mode);
+	// What the ProComp in slot `s` is doing: its levels in and out, its
+	// detector's level and its gain reduction. Not_Found if the slot holds no
+	// ProComp (or it isn't in the graph).
+	Pads_Result (*effect_pro_comp_state)(Pads_Api* api, Pads_Slot_Ref s, Pads_Pro_Comp_State* out);
+	// The ProComp in slot `s`'s activity `ago` moments back (0: the newest;
+	// each 256 frames, up to 1023 back), for a picture of it over time.
+	// Not_Found if the slot holds no ProComp playing; Invalid_Argument past
+	// what it keeps.
+	Pads_Result (*effect_pro_comp_moment)(Pads_Api* api, Pads_Slot_Ref s, int64_t ago, Pads_Pro_Comp_Moment* out);
+	// What the ProSaturator in slot `s` is doing: its peaks and the harmonics
+	// in its output. Not_Found if the slot holds no ProSaturator (or it isn't
+	// in the graph).
+	Pads_Result (*effect_pro_saturator_state)(Pads_Api* api, Pads_Slot_Ref s, Pads_Pro_Saturator_State* out);
+	// What the ProVerb in slot `s` is doing: its peaks and its tail's level.
+	// Not_Found if the slot holds no ProVerb (or it isn't in the graph).
+	Pads_Result (*effect_proverb_state)(Pads_Api* api, Pads_Slot_Ref s, Pads_Proverb_State* out);
+	// How many presets ProVerb has from an installed ValhallaRoom (its own
+	// preset files on this machine, read when first asked; 0 where it isn't
+	// installed).
+	Pads_Result (*effect_imported_preset_count)(Pads_Api* api, int64_t* out);
+	// Imported preset `index`'s name, with its folder ("Halls / Big Hall").
+	// Not_Found for no such preset.
+	Pads_Result (*effect_imported_preset_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Loads imported preset `index` (a ProVerb at its settings) into slot `s`,
+	// undoably. Not_Found for no such preset; Unsupported for a performance
+	// effect.
+	Pads_Result (*effect_load_imported_preset)(Pads_Api* api, Pads_Slot_Ref s, int64_t index);
+	// Copies project `dir` beside itself as "<name>.pads" (what it has saved).
+	// Invalid_Argument for a name a folder can't have or one taken; Not_Found
+	// for no project there.
+	Pads_Result (*project_duplicate)(Pads_Api* api, const char* dir, int64_t dir_len, const char* name, int64_t name_len);
+	// Moves project `dir` to the system's Trash (it can be put back from
+	// there) and off the recent projects. Invalid_Argument for the open
+	// project; Not_Found for no project there; Unsupported where there is no
+	// Trash.
+	Pads_Result (*project_trash)(Pads_Api* api, const char* dir, int64_t dir_len);
+	// Whether the toolbar's note repeat is on (every pad held repeats at its
+	// rate and gate: the settings "note_repeat.rate" and "note_repeat.gate").
+	Pads_Result (*perform_note_repeat)(Pads_Api* api, bool* out);
+	// Turns the toolbar's note repeat on or off (a controller's Repeat: held,
+	// on while it is; Shift + Repeat latches it).
+	Pads_Result (*perform_set_note_repeat)(Pads_Api* api, bool on);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

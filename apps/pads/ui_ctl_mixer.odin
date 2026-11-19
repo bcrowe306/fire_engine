@@ -148,9 +148,13 @@ ctl_mixer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	if pressed(inp, .Upper_8) {
 		mx.buses = !mx.buses
 		mx.page = 0
+		if !mx.buses && a.detail.track.kind == .Bus do show_pad_chain(a, a.selected) // (back to the pads: the device panel too)
 	}
 	pages := mix_pages(a, mx.buses)
 	if pressed(inp, .Upper_1) do mx.page += -1 if .Shift in mx.held else 1
+	// ◀ ▶: the pages (as Upper 1, but to the ends); ▲ ▼: the strips, eight at a time.
+	if pressed(inp, .Page_Left) do mx.page = max(mx.page - 1, 0)
+	if pressed(inp, .Page_Right) do mx.page = min(mx.page + 1, len(pages) - 1)
 	mx.page = (mx.page % len(pages) + len(pages)) % len(pages)
 	page := pages[mx.page]
 	// The strips.
@@ -159,27 +163,28 @@ ctl_mixer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	first := a.selected / 8 * 8
 	if mx.buses {
 		mx.bus_first = clamp(mx.bus_first, 0, max(p.bus_count - 1, 0))
-		if pressed(inp, .Page_Left) do mx.bus_first = max(mx.bus_first - 7, 0)
-		if pressed(inp, .Page_Right) && mx.bus_first + 7 < p.bus_count do mx.bus_first += 7
+		if pressed(inp, .Up) do mx.bus_first = max(mx.bus_first - 7, 0)
+		if pressed(inp, .Down) && mx.bus_first + 7 < p.bus_count do mx.bus_first += 7
 		for k in 0 ..< 7 do if b := mx.bus_first + k; b < p.bus_count {
 			strips[k] = bus_strip_of(a, b)
 			shown[k] = true
 		}
 		strips[7] = bus_strip_of(a, pm.BUSES)
 		shown[7] = true
-		ctx.pages = max((p.bus_count + 6) / 7, 1)
-		ctx.page = mx.bus_first / 7
+		if mx.bus_first > 0 do ctx.buttons |= 1 << uint(pa.View_Button.Up)
+		if mx.bus_first + 7 < p.bus_count do ctx.buttons |= 1 << uint(pa.View_Button.Down)
 	} else {
-		if pressed(inp, .Page_Left) && a.selected >= 8 do pa.perform_select_pad(&a.api, i64(a.selected - 8))
-		if pressed(inp, .Page_Right) && a.selected + 8 < pm.PADS do pa.perform_select_pad(&a.api, i64(a.selected + 8))
+		if pressed(inp, .Up) && a.selected >= 8 do pa.perform_select_pad(&a.api, i64(a.selected - 8))
+		if pressed(inp, .Down) && a.selected + 8 < pm.PADS do pa.perform_select_pad(&a.api, i64(a.selected + 8))
+		if first > 0 do ctx.buttons |= 1 << uint(pa.View_Button.Up)
+		if first + 8 < pm.PADS do ctx.buttons |= 1 << uint(pa.View_Button.Down)
 		for k in 0 ..< 8 do if i := first + k; i < pm.PADS {
 			pad := p.pads[i]
 			strips[k] = {pad = i, name = fmt.tprintf("%s %s", pm.pad_label(i), pm.pad_name(&p.pads[i])) if pm.pad_used(p, i) else pm.pad_label(i), color = ui.rgb(pad.color), used = pm.pad_used(p, i), volume = pad.volume, pan = pad.pan, mute = pad.mute, solo = pad.solo, armed = pm.track_armed(m, i), selected = i == a.selected, view = &a.mixer.pads[i]}
 			shown[k] = true
 		}
-		ctx.pages = pm.PADS / 8
-		ctx.page = first / 8
 	}
+	ctx.pages, ctx.page = len(pages), mx.page
 	// The upper row.
 	ctl_upper(ctx, 0, fmt.tprintf("%s ›", mix_page_name(a, page)), true)
 	if !mx.buses do ctl_upper(ctx, 1, "Arm", pm.track_armed(m, a.selected) || .Arm in mx.held, ui.theme().danger)
@@ -206,7 +211,8 @@ ctl_mixer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		if page.kind == .Cue && mx.held == {} { // (the Cue page: pre or post)
 			on = cue_of(a, s).pre
 		}
-		offered := s.pad >= 0 || .Mute in mx.held || (.Solo in mx.held && s.bus < pm.BUSES) || page.kind == .Cue
+		if s.pad < 0 && a.detail.track == {.Bus, s.bus} && mx.held == {} && page.kind != .Cue do ctx.lit |= 1 << uint(b) // (its chain on the device panel)
+		offered := s.pad >= 0 || mx.buses || .Mute in mx.held || (.Solo in mx.held && s.bus < pm.BUSES) || page.kind == .Cue
 		if offered do ctx.buttons |= 1 << uint(b)
 		if offered && on do ctx.lit |= 1 << uint(b)
 		if !pressed(inp, b) do continue
@@ -226,7 +232,10 @@ ctl_mixer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 			c := cue_of(a, s)
 			set_cue(a, s, pm.send_db(c) if c.level > 0 else pm.SEND_MIN_DB, !c.pre)
 		case:
-			if s.pad >= 0 do pa.perform_select_pad(&a.api, i64(s.pad))
+			if s.pad >= 0 {
+				pa.perform_select_pad(&a.api, i64(s.pad))
+				show_pad_chain(a, s.pad)
+			} else do show_bus_chain(a, s.bus)
 		}
 	}
 	ui.knob_input.drawn = 8
@@ -423,7 +432,7 @@ mix_strip :: proc(ctx: ^View_Ctx, k: int, s: Mix_Strip, page: Mix_Page, held: bo
 	x0 := o.x + f32(k * CTL_COL) + 3
 	x1 := x0 + CTL_COL - 6
 	color := s.color
-	bg := ui.mix(t.surface, t.raised, 0.55)
+	bg := ui.PLOT_BG // (black, as the window's strips)
 	if held do bg = ui.mix(bg, color, 0.18)
 	im.DrawList_AddRectFilled(dl, {x0, top}, {x1, bottom}, ui.col(bg), t.radius)
 	if s.selected do im.DrawList_AddRect(dl, {x0, top}, {x1, bottom}, ui.col(color), t.radius, 1.5)

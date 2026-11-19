@@ -680,6 +680,30 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := effect_load_preset(api, s, index)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_imported_preset_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_imported_preset_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_imported_preset_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_imported_preset_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_load_imported_preset":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_load_imported_preset(api, s, index)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_effect_super_filter_state":
 		s := remote_struct_Slot_Ref(args, "s", &ok)
 		if !ok {
@@ -687,6 +711,66 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		val, r := effect_super_filter_state(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_pro_eq_state":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_pro_eq_state(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_set_pro_eq_audition":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		set := remote_i64(args, "set", &ok)
+		band := remote_i64(args, "band", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_pro_eq_audition(api, s, set, band)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_set_pro_eq_mode":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		mode := remote_i64(args, "mode", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := effect_set_pro_eq_mode(api, s, mode)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_effect_pro_comp_state":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_pro_comp_state(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_pro_comp_moment":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		ago := remote_i64(args, "ago", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_pro_comp_moment(api, s, ago)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_pro_saturator_state":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_pro_saturator_state(api, s)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_effect_proverb_state":
+		s := remote_struct_Slot_Ref(args, "s", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := effect_proverb_state(api, s)
 		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_effect_set_key_listen":
 		s := remote_struct_Slot_Ref(args, "s", &ok)
@@ -1724,6 +1808,21 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := perform_state(api)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_note_repeat":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_note_repeat(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_set_note_repeat":
+		on := remote_bool(args, "on", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := perform_set_note_repeat(api, on)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_perform_set_play_mode":
 		mode := Play_Mode(remote_enum(args, "mode", Play_Mode_NAMES[:], &ok))
 		if !ok {
@@ -1869,6 +1968,23 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 			return
 		}
 		r := project_rename(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_duplicate":
+		dir := remote_string(args, "dir", &ok)
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_duplicate(api, dir, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_project_trash":
+		dir := remote_string(args, "dir", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := project_trash(api, dir)
 		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_project_recent":
 		index := remote_i64(args, "index", &ok)
@@ -3456,7 +3572,7 @@ Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
 Message_Kind_NAMES := [?]string{"Info", "Success", "Warning", "Error"}
 
 @(private)
-View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser", "Dialog", "Song", "Settings"}
+View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser", "Dialog", "Song", "Settings", "Projects"}
 
 @(private)
 remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
@@ -3745,7 +3861,17 @@ REMOTE_METHODS := [?]string{
 	"pads_effect_preset_name",
 	"pads_effect_preset_kind",
 	"pads_effect_load_preset",
+	"pads_effect_imported_preset_count",
+	"pads_effect_imported_preset_name",
+	"pads_effect_load_imported_preset",
 	"pads_effect_super_filter_state",
+	"pads_effect_pro_eq_state",
+	"pads_effect_set_pro_eq_audition",
+	"pads_effect_set_pro_eq_mode",
+	"pads_effect_pro_comp_state",
+	"pads_effect_pro_comp_moment",
+	"pads_effect_pro_saturator_state",
+	"pads_effect_proverb_state",
 	"pads_effect_set_key_listen",
 	"pads_effect_press",
 	"pads_effect_pressure",
@@ -3870,6 +3996,8 @@ REMOTE_METHODS := [?]string{
 	"pads_param_text",
 	"pads_param_touch",
 	"pads_perform_state",
+	"pads_perform_note_repeat",
+	"pads_perform_set_note_repeat",
 	"pads_perform_set_play_mode",
 	"pads_perform_set_bank",
 	"pads_perform_select_pad",
@@ -3888,6 +4016,8 @@ REMOTE_METHODS := [?]string{
 	"pads_project_save_quick",
 	"pads_project_save_as",
 	"pads_project_rename",
+	"pads_project_duplicate",
+	"pads_project_trash",
 	"pads_project_recent",
 	"pads_project_template_name",
 	"pads_project_save_template",

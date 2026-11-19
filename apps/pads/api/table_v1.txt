@@ -398,3 +398,17 @@ effect_preset_count
 effect_preset_name
 effect_preset_kind
 effect_load_preset
+effect_pro_eq_state
+effect_set_pro_eq_audition
+effect_set_pro_eq_mode
+effect_pro_comp_state
+effect_pro_comp_moment
+effect_pro_saturator_state
+effect_proverb_state
+effect_imported_preset_count
+effect_imported_preset_name
+effect_load_imported_preset
+project_duplicate
+project_trash
+perform_note_repeat
+perform_set_note_repeat

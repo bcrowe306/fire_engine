@@ -130,6 +130,8 @@ State :: struct {
 	loudness:   [4]f32, // main's momentary, short-term, integrated (LUFS) and true peak (dBTP)
 	correlation: f32,    // main's phase correlation
 	fx_params:  [dynamic][2]f32, // the effect being edited: its settings, (id, value) each
+	device:     string, // the device panel's device in front: Instrument, Eq, Slot or Midi
+	device_slot: int,   // its slot (an effect's)
 	pads:       [dynamic]State_Pad, // the ones with a sound
 	buses:      [dynamic]State_Bus, // those in use (A...), then main
 	browser:    State_Browser,
@@ -457,6 +459,7 @@ state_json :: proc(a: ^App) -> string {
 	s.selected_notes = len(a.seq.sel)
 	s.tool = enum_name(a.seq.tool)
 	s.piano_roll = a.seq.piano
+	s.device, s.device_slot = fmt.tprint(a.detail.device.kind), a.detail.device.slot
 	s.fx_params = make([dynamic][2]f32, context.temp_allocator)
 	if fx, ok := pm.target_slot(m, a.fx); ok do for prm in fx.params[:fx.count] do append(&s.fx_params, [2]f32{f32(prm.id), prm.value})
 	for fx, k in p.perf_fx do s.perf_on[k] = fx.on

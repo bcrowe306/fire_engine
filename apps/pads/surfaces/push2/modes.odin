@@ -57,7 +57,7 @@ in_device :: proc(p: ^Push2) -> bool {
 // mirror.odin).
 in_mirror :: proc(p: ^Push2) -> bool {
 	m := kit.modes_current(p.enc_modes)
-	return m == "mirror" || m == "browse" || m == "clip" || m == "perform" || m == "mix" || m == "song" || m == "settings"
+	return m == "mirror" || m == "browse" || m == "clip" || m == "perform" || m == "mix" || m == "song" || m == "settings" || m == "projects"
 }
 
 // Mix: Pads' mixer view (Pads is there), or the surface's own pages.
@@ -315,13 +315,39 @@ modes_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, master, mix_b, device_b
 	kit.modes_add(p.enc_modes, "pan", {p.pans, pages, rows, &mute.component, &solo.component})
 	for k in 0 ..< MIX_SENDS do kit.modes_add(p.enc_modes, "send", {p.sends[k], pages, rows, &mute.component, &solo.component})
 	kit.modes_add(p.enc_modes, "device", {p.device, banks, chain, rows})
-	kit.modes_add(p.enc_modes, "mirror", mirror_parts)
+	// Device: Mute held (with Device: the device shown off or on).
+	dmods := kit.component_make(cs, "Device Modifiers")
+	kit.layer_bind(dmods.layer, "mute", mute_b)
+	dmods.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) {
+		kit.light_value(control, W_ON if (^Push2)(c.cs.user).mute_held else W_DIM)
+	}
+	dmods.on_event = proc(c: ^kit.Component, e: kit.Event) {
+		if e.kind != .Press && e.kind != .Release do return
+		(^Push2)(c.cs.user).mute_held = e.kind == .Press
+		kit.redraw_owned(c)
+	}
+	dmods.on_deactivate = proc(c: ^kit.Component) { (^Push2)(c.cs.user).mute_held = false }
+	device_parts := make([dynamic]^kit.Component)
+	append(&device_parts, ..mirror_parts)
+	append(&device_parts, dmods)
+	kit.modes_add(p.enc_modes, "mirror", device_parts[:])
 	kit.modes_add(p.enc_modes, "browse", browse_parts) // (Pads' browser: mirror.odin)
 	kit.modes_add(p.enc_modes, "clip", mirror_parts)   // (Pads' sequencer)
 	kit.modes_add(p.enc_modes, "perform", mirror_parts) // (Pads' launcher: Session's Sequences)
 	kit.modes_add(p.enc_modes, "mix", mix_parts)        // (Pads' mixer strips)
 	kit.modes_add(p.enc_modes, "song", song_parts)      // (Pads' Song view: song.odin)
-	kit.modes_add(p.enc_modes, "settings", mirror_parts) // (Pads' Settings: Setup)
+	// Pads' Settings (Setup): the upper row's last button, Controller ›, the Push's own (setup.odin).
+	own := kit.component_make(cs, "Push Settings Button")
+	kit.layer_bind(own.layer, "own", p.upper[7])
+	own.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) { kit.light_value(control, W_DIM) }
+	own.on_event = proc(c: ^kit.Component, e: kit.Event) {
+		if e.kind == .Press do setup_show((^Push2)(c.cs.user))
+	}
+	settings_parts := make([]^kit.Component, len(mirror_parts) + 1)
+	copy(settings_parts, mirror_parts)
+	settings_parts[len(mirror_parts)] = own
+	kit.modes_add(p.enc_modes, "settings", settings_parts)
+	kit.modes_add(p.enc_modes, "projects", mirror_parts) // (Pads' project page: Shift + Setup, and at start)
 	p.enc_modes.on_change = proc(m: ^kit.Modes, from, to: int) {
 		p := (^Push2)(m.cs.user)
 		p.touched = {}
@@ -351,7 +377,13 @@ modes_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, master, mix_b, device_b
 		if e.slot != "clip" do steps_leave(p) // (Clip's pads: the ones before)
 		switch e.slot {
 		case "device":
-			if in_device(p) && in_mirror(p) do press(p, .Device, .Next_Device, true) // (again: the next device)
+			if in_device(p) && in_mirror(p) { // (again: the next device; Delete held: it removed; Mute held: off or on)
+				mod: pa.View_Button = .Delete if p.delete_held else .Mute
+				held := p.delete_held || p.mute_held
+				if held do press(p, .Device, mod, true)
+				press(p, .Device, .Next_Device, true)
+				if held do press(p, .Device, mod, false)
+			}
 			p.mirror_kind = .Device
 			if !in_device(p) do bank_select(p, p.dev_bank, force = true)
 			app_show(p, "device")

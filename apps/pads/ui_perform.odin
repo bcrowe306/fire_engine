@@ -525,6 +525,7 @@ draw_perf_levels :: proc(a: ^App) {
 	top := im.GetCursorScreenPos()
 	strip_begin(total, false)
 	strip_name = "Main" // (its fader: "Main fader", as in the mixer)
+	im.PushID("main") // (each strip's fader its own id)
 	if e := fader_meter(a, &vol, &a.mixer.buses[pm.BUSES], h); e.changed || e.ended {
 		if e.changed {
 			pa.history_gesture_begin(&a.api)
@@ -533,6 +534,7 @@ draw_perf_levels :: proc(a: ^App) {
 		if e.ended do pa.history_gesture_end(&a.api)
 	}
 	label(fmt.ctprintf("Main %.1f", vol))
+	im.PopID()
 	strip_end(top, total)
 	im.SameLine(0, STRIP_GAP)
 	top = im.GetCursorScreenPos()
@@ -540,6 +542,7 @@ draw_perf_levels :: proc(a: ^App) {
 	cue := a.settings.audio.cue_db
 	has_cue := m.engine.outputs.cue >= 0
 	strip_name = "Cue"
+	im.PushID("cue")
 	if e := fader_meter(a, &cue, &a.mixer.cue, h); e.changed || e.ended {
 		if e.changed {
 			a.settings.audio.cue_db = clamp(cue, -60, 6)
@@ -549,6 +552,7 @@ draw_perf_levels :: proc(a: ^App) {
 	}
 	if im.IsItemHovered() do im.SetTooltip("%s", fmt.ctprintf("The cue (headphones) level%s", "" if has_cue else ": set a cue output in Settings to hear it"))
 	label(fmt.ctprintf("Cue %.1f", cue) if has_cue else "Cue (off)")
+	im.PopID()
 	strip_end(top, total)
 }
 

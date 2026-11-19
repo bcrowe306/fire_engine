@@ -203,6 +203,631 @@ LFO_DEFAULTS : Lfo_Params : Lfo_Params{wave = .Sine, morph = 0.5, mode = .Sync, 
 
 An LFO with the defaults: a sine at 1/4 (synced), no stereo, no retrigger.
 
+### PC_PARAM_THRESHOLD_DB
+
+```odin
+PC_PARAM_THRESHOLD_DB : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of ProComp's threshold: dB, −60..0.
+
+### PC_PARAM_RATIO
+
+```odin
+PC_PARAM_RATIO : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of ProComp's ratio: 1..100 (100: ∞, a limiter; in Expand, a gate).
+
+### PC_PARAM_ATTACK_MS
+
+```odin
+PC_PARAM_ATTACK_MS : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of ProComp's attack: ms, 0.01..1000.
+
+### PC_PARAM_RELEASE_MS
+
+```odin
+PC_PARAM_RELEASE_MS : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of ProComp's release: ms, 1..3000.
+
+### PC_PARAM_AUTO
+
+```odin
+PC_PARAM_AUTO : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of ProComp's Auto release: 0 or 1 (on: Release unused).
+
+### PC_PARAM_KNEE_DB
+
+```odin
+PC_PARAM_KNEE_DB : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of ProComp's knee: dB, 0..18.
+
+### PC_PARAM_LOOKAHEAD
+
+```odin
+PC_PARAM_LOOKAHEAD : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of ProComp's lookahead: a `Pro_Comp_Lookahead`. Read when the
+node is made (`Pro_Comp_Settings.lookahead`): it sets the latency.
+
+### PC_PARAM_MODE
+
+```odin
+PC_PARAM_MODE : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of ProComp's mode: a `Pro_Comp_Mode`.
+
+### PC_PARAM_ENV_LOG
+
+```odin
+PC_PARAM_ENV_LOG : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of ProComp's envelope: 0 Lin (in linear gain), 1 Log (in dB).
+
+### PC_PARAM_MAKEUP
+
+```odin
+PC_PARAM_MAKEUP : core.Param_Id : core.Param_Id(10)
+```
+
+Parameter id of ProComp's Makeup: 0 or 1 (on: up by the reduction at 0 dBFS).
+
+### PC_PARAM_OUTPUT_DB
+
+```odin
+PC_PARAM_OUTPUT_DB : core.Param_Id : core.Param_Id(11)
+```
+
+Parameter id of ProComp's output gain: dB, −36..36.
+
+### PC_PARAM_MIX
+
+```odin
+PC_PARAM_MIX : core.Param_Id : core.Param_Id(12)
+```
+
+Parameter id of ProComp's Dry/Wet: 0..1.
+
+### PC_PARAM_EQ_ON
+
+```odin
+PC_PARAM_EQ_ON : core.Param_Id : core.Param_Id(13)
+```
+
+Parameter id of ProComp's key EQ switch: 0 or 1.
+
+### PC_PARAM_EQ_TYPE
+
+```odin
+PC_PARAM_EQ_TYPE : core.Param_Id : core.Param_Id(14)
+```
+
+Parameter id of ProComp's key EQ type: a `Pro_Comp_Eq_Type`.
+
+### PC_PARAM_EQ_HZ
+
+```odin
+PC_PARAM_EQ_HZ : core.Param_Id : core.Param_Id(15)
+```
+
+Parameter id of ProComp's key EQ frequency: Hz, 30..15000.
+
+### PC_PARAM_EQ_Q
+
+```odin
+PC_PARAM_EQ_Q : core.Param_Id : core.Param_Id(16)
+```
+
+Parameter id of ProComp's key EQ Q: 0.1..12.
+
+### PC_PARAM_EQ_GAIN_DB
+
+```odin
+PC_PARAM_EQ_GAIN_DB : core.Param_Id : core.Param_Id(17)
+```
+
+Parameter id of ProComp's key EQ gain (Peak and the shelves): dB, −15..15.
+
+### PC_PARAM_KEY_GAIN_DB
+
+```odin
+PC_PARAM_KEY_GAIN_DB : core.Param_Id : core.Param_Id(18)
+```
+
+Parameter id of ProComp's key gain: dB, −24..24.
+
+### PC_PARAM_KEY_MIX
+
+```odin
+PC_PARAM_KEY_MIX : core.Param_Id : core.Param_Id(19)
+```
+
+Parameter id of ProComp's key mix: 0 (its own input) .. 1 (the key alone).
+
+### PC_PARAM_KEYED
+
+```odin
+PC_PARAM_KEYED : core.Param_Id : core.Param_Id(20)
+```
+
+Parameter id of whether ProComp's key inputs (3 and 4) are wired: 0 or 1
+(the host's to say; off, it detects its own input).
+
+### PC_PARAM_LISTEN
+
+```odin
+PC_PARAM_LISTEN : core.Param_Id : core.Param_Id(21)
+```
+
+Parameter id of ProComp's Listen: 0 or 1 (on: it puts out what its
+detector hears).
+
+### PC_PARAMS
+
+```odin
+PC_PARAMS :: len(pro_comp_params)
+```
+
+The number of ProComp parameters (ids 1 to this).
+
+### PC_RATIO_INF
+
+```odin
+PC_RATIO_INF :: 100
+```
+
+The ratio at which ProComp's is ∞.
+
+### PC_HISTORY_FRAMES
+
+```odin
+PC_HISTORY_FRAMES :: 256
+```
+
+Frames each entry of ProComp's history covers.
+
+### PC_HISTORY
+
+```odin
+PC_HISTORY :: 1024
+```
+
+Entries ProComp's history keeps (a power of two).
+
+### PE_BANDS
+
+```odin
+PE_BANDS :: 8
+```
+
+Bands in each of ProEq's sets.
+
+### PE_SETS
+
+```odin
+PE_SETS :: 2
+```
+
+ProEq's sets of bands (A and B).
+
+### PE_PARAM_MODE
+
+```odin
+PE_PARAM_MODE : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of ProEq's mode: a `Pro_Eq_Mode`.
+
+### PE_PARAM_ADAPTIVE_Q
+
+```odin
+PE_PARAM_ADAPTIVE_Q : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of ProEq's Adaptive Q: 0 or 1 (on: a bell narrows as its gain grows).
+
+### PE_PARAM_SCALE
+
+```odin
+PE_PARAM_SCALE : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of ProEq's Scale: −2..2, every shelf's, bell's and tilt's gain multiplied by it.
+
+### PE_PARAM_GAIN_DB
+
+```odin
+PE_PARAM_GAIN_DB : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of ProEq's output gain: dB, −24..24.
+
+### PE_PARAM_OVERSAMPLE
+
+```odin
+PE_PARAM_OVERSAMPLE : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of ProEq's oversampling: 0 or 1. Read when the node is
+made (`Pro_Eq_Settings.oversample`): it sets the node's latency, which a
+graph reads only as it builds, so a change means a new node.
+
+### PE_PARAMS
+
+```odin
+PE_PARAMS :: PE_FIRST_BAND - 1 + PE_SETS * PE_BANDS * len(Pro_Eq_Field)
+```
+
+The number of ProEq parameters (ids 1 to this).
+
+### PS_PARAM_TYPE
+
+```odin
+PS_PARAM_TYPE : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of ProSaturator's type: a `Pro_Saturator_Type`.
+
+### PS_PARAM_DRIVE_DB
+
+```odin
+PS_PARAM_DRIVE_DB : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of ProSaturator's drive: dB, −36..36.
+
+### PS_PARAM_DC
+
+```odin
+PS_PARAM_DC : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of ProSaturator's DC filter: 0 or 1.
+
+### PS_PARAM_COLOR
+
+```odin
+PS_PARAM_COLOR : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of ProSaturator's Color switch: 0 or 1.
+
+### PS_PARAM_BASE
+
+```odin
+PS_PARAM_BASE : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of Color's Base: −1..1 (a low shelf at 200 Hz, ±12 dB).
+
+### PS_PARAM_FREQ_HZ
+
+```odin
+PS_PARAM_FREQ_HZ : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of Color's bell frequency: Hz, 30..18000.
+
+### PS_PARAM_WIDTH
+
+```odin
+PS_PARAM_WIDTH : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of Color's bell width: 0..1.
+
+### PS_PARAM_DEPTH
+
+```odin
+PS_PARAM_DEPTH : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of Color's bell depth: −1..1 (±12 dB).
+
+### PS_PARAM_WS_DRIVE
+
+```odin
+PS_PARAM_WS_DRIVE : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of the Waveshaper's drive: 0..1.
+
+### PS_PARAM_WS_LIN
+
+```odin
+PS_PARAM_WS_LIN : core.Param_Id : core.Param_Id(10)
+```
+
+Parameter id of the Waveshaper's linear part: −1..1.
+
+### PS_PARAM_WS_CURVE
+
+```odin
+PS_PARAM_WS_CURVE : core.Param_Id : core.Param_Id(11)
+```
+
+Parameter id of the Waveshaper's cubic part: −1..1.
+
+### PS_PARAM_WS_DAMP
+
+```odin
+PS_PARAM_WS_DAMP : core.Param_Id : core.Param_Id(12)
+```
+
+Parameter id of the Waveshaper's damping of small signals: 0..1.
+
+### PS_PARAM_WS_DEPTH
+
+```odin
+PS_PARAM_WS_DEPTH : core.Param_Id : core.Param_Id(13)
+```
+
+Parameter id of the Waveshaper's sine part: −1..1.
+
+### PS_PARAM_WS_PERIOD
+
+```odin
+PS_PARAM_WS_PERIOD : core.Param_Id : core.Param_Id(14)
+```
+
+Parameter id of the Waveshaper's sine density: 0..1.
+
+### PS_PARAM_SOFT_CLIP
+
+```odin
+PS_PARAM_SOFT_CLIP : core.Param_Id : core.Param_Id(15)
+```
+
+Parameter id of ProSaturator's Soft Clip: 0 or 1.
+
+### PS_PARAM_OUTPUT_DB
+
+```odin
+PS_PARAM_OUTPUT_DB : core.Param_Id : core.Param_Id(16)
+```
+
+Parameter id of ProSaturator's output gain: dB, −36..12.
+
+### PS_PARAM_MIX
+
+```odin
+PS_PARAM_MIX : core.Param_Id : core.Param_Id(17)
+```
+
+Parameter id of ProSaturator's Dry/Wet: 0..1.
+
+### PS_PARAM_QUALITY
+
+```odin
+PS_PARAM_QUALITY : core.Param_Id : core.Param_Id(18)
+```
+
+Parameter id of ProSaturator's Quality: a `Pro_Saturator_Quality`. Read
+when the node is made (`Pro_Saturator_Settings.quality`): it sets the
+latency.
+
+### PS_PARAMS
+
+```odin
+PS_PARAMS :: len(pro_saturator_params)
+```
+
+The number of ProSaturator parameters (ids 1 to this).
+
+### PS_SIGNAL
+
+```odin
+PS_SIGNAL :: 256
+```
+
+Points ProSaturator's signal ring keeps (a power of two), one every
+`PS_SIGNAL_EVERY` frames.
+
+### PS_SIGNAL_EVERY
+
+```odin
+PS_SIGNAL_EVERY :: 8
+```
+
+Frames between the signal ring's points.
+
+### PV_PARAM_MIX
+
+```odin
+PV_PARAM_MIX : core.Param_Id : core.Param_Id(1)
+```
+
+Parameter id of ProVerb's Mix: 0 (dry) .. 1 (wet).
+
+### PV_PARAM_PREDELAY_MS
+
+```odin
+PV_PARAM_PREDELAY_MS : core.Param_Id : core.Param_Id(2)
+```
+
+Parameter id of ProVerb's predelay: ms, 0..500.
+
+### PV_PARAM_DECAY_S
+
+```odin
+PV_PARAM_DECAY_S : core.Param_Id : core.Param_Id(3)
+```
+
+Parameter id of ProVerb's decay (the middle's RT60): s, 0.1..100.
+
+### PV_PARAM_HIGH_CUT_HZ
+
+```odin
+PV_PARAM_HIGH_CUT_HZ : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of ProVerb's High Cut: Hz, 100..15000.
+
+### PV_PARAM_DEPTH
+
+```odin
+PV_PARAM_DEPTH : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of ProVerb's Depth: 0 (early only) .. 1 (late only).
+
+### PV_PARAM_EARLY_SIZE
+
+```odin
+PV_PARAM_EARLY_SIZE : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of ProVerb's early size: 0..1.
+
+### PV_PARAM_EARLY_CROSS
+
+```odin
+PV_PARAM_EARLY_CROSS : core.Param_Id : core.Param_Id(7)
+```
+
+Parameter id of ProVerb's early cross (its sides mixed): 0..1.
+
+### PV_PARAM_EARLY_MOD_RATE
+
+```odin
+PV_PARAM_EARLY_MOD_RATE : core.Param_Id : core.Param_Id(8)
+```
+
+Parameter id of ProVerb's early modulation rate: Hz, 0.05..5.
+
+### PV_PARAM_EARLY_MOD_DEPTH
+
+```odin
+PV_PARAM_EARLY_MOD_DEPTH : core.Param_Id : core.Param_Id(9)
+```
+
+Parameter id of ProVerb's early modulation depth: 0..1.
+
+### PV_PARAM_EARLY_SEND
+
+```odin
+PV_PARAM_EARLY_SEND : core.Param_Id : core.Param_Id(10)
+```
+
+Parameter id of ProVerb's early send (the early section into the late): 0..1.
+
+### PV_PARAM_LATE_SIZE
+
+```odin
+PV_PARAM_LATE_SIZE : core.Param_Id : core.Param_Id(11)
+```
+
+Parameter id of ProVerb's late size: 0..1.
+
+### PV_PARAM_LATE_CROSS
+
+```odin
+PV_PARAM_LATE_CROSS : core.Param_Id : core.Param_Id(12)
+```
+
+Parameter id of ProVerb's late cross (its sides spread into each other): 0..1.
+
+### PV_PARAM_LATE_MOD_RATE
+
+```odin
+PV_PARAM_LATE_MOD_RATE : core.Param_Id : core.Param_Id(13)
+```
+
+Parameter id of ProVerb's late modulation rate: Hz, 0.05..5.
+
+### PV_PARAM_LATE_MOD_DEPTH
+
+```odin
+PV_PARAM_LATE_MOD_DEPTH : core.Param_Id : core.Param_Id(14)
+```
+
+Parameter id of ProVerb's late modulation depth: 0..1.
+
+### PV_PARAM_BASS_MULT
+
+```odin
+PV_PARAM_BASS_MULT : core.Param_Id : core.Param_Id(15)
+```
+
+Parameter id of ProVerb's bass multiplier (the decay below Bass Xover): 0.5..2.
+
+### PV_PARAM_BASS_XOVER_HZ
+
+```odin
+PV_PARAM_BASS_XOVER_HZ : core.Param_Id : core.Param_Id(16)
+```
+
+Parameter id of ProVerb's bass crossover: Hz, 100..10000.
+
+### PV_PARAM_HIGH_MULT
+
+```odin
+PV_PARAM_HIGH_MULT : core.Param_Id : core.Param_Id(17)
+```
+
+Parameter id of ProVerb's high multiplier (the decay above High Xover): 0.1..1.
+
+### PV_PARAM_HIGH_XOVER_HZ
+
+```odin
+PV_PARAM_HIGH_XOVER_HZ : core.Param_Id : core.Param_Id(18)
+```
+
+Parameter id of ProVerb's high crossover: Hz, 100..15000.
+
+### PV_PARAM_DIFFUSION
+
+```odin
+PV_PARAM_DIFFUSION : core.Param_Id : core.Param_Id(19)
+```
+
+Parameter id of ProVerb's diffusion (how fast it becomes smooth): 0..1.
+
+### PV_PARAM_MODE
+
+```odin
+PV_PARAM_MODE : core.Param_Id : core.Param_Id(20)
+```
+
+Parameter id of ProVerb's mode: 0..11.
+
+### PV_PARAM_QUALITY
+
+```odin
+PV_PARAM_QUALITY : core.Param_Id : core.Param_Id(21)
+```
+
+Parameter id of ProVerb's Quality: a `Proverb_Quality`. Read when the
+node is made (`Proverb_Settings.quality`): a new node when it changes.
+
+### PV_PARAMS
+
+```odin
+PV_PARAMS :: len(proverb_params)
+```
+
+The number of ProVerb parameters (ids 1 to this).
+
+### PV_EARLY_TAPS
+
+```odin
+PV_EARLY_TAPS :: 16
+```
+
+Taps in ProVerb's early pattern (each side).
+
 ### SF_PARAM_TYPE
 
 ```odin
@@ -1451,6 +2076,398 @@ Lfo :: struct {...}
 An LFO's state: where each side is in its cycle. Zero is ready to run.
 Fields are internal.
 
+### Pro_Comp_Mode
+
+```odin
+Pro_Comp_Mode :: enum u8 {
+	Peak,
+	RMS,
+	Expand,
+}
+```
+
+What ProComp detects.
+
+### Pro_Comp_Lookahead
+
+```odin
+Pro_Comp_Lookahead :: enum u8 {
+	Off,
+	Ms_1,
+	Ms_10,
+}
+```
+
+How long ProComp looks ahead (its latency).
+
+### Pro_Comp_Eq_Type
+
+```odin
+Pro_Comp_Eq_Type :: enum u8 {
+	Low_Pass,
+	Band_Pass,
+	High_Pass,
+	Notch,
+	Peak,
+	Low_Shelf,
+	High_Shelf,
+}
+```
+
+The filter on ProComp's key.
+
+### Pro_Comp_Settings
+
+```odin
+Pro_Comp_Settings :: struct {
+	lookahead: Pro_Comp_Lookahead,
+}
+```
+
+Settings for `pro_comp_create`.
+
+### Pro_Comp_Values
+
+```odin
+Pro_Comp_Values :: [22]f32
+```
+
+A ProComp's settings, by parameter id (index 0 unused).
+
+### Pro_Comp_Readout
+
+```odin
+Pro_Comp_Readout :: struct {
+	in_peak: f32,
+	in_rms: f32,
+	level_db: f32,
+	gr_db: f32,
+	out_peak: f32,
+}
+```
+
+What a ProComp is doing, for its meters (`pro_comp_readout`).
+
+| Field | Description |
+|-------|-------------|
+| `in_peak` | the last block's peak in (linear) |
+| `in_rms` | and its RMS |
+| `level_db` | the detector's loudest in the last block (dB): where the dot sits on the curve |
+| `gr_db` | the gain reduction then (dB, ≤ 0) |
+| `out_peak` | the last block's peak out (linear) |
+
+### Pro_Comp_Moment
+
+```odin
+Pro_Comp_Moment :: struct {
+	in_db: f32,
+	out_db: f32,
+	gr_db: f32,
+}
+```
+
+One entry of ProComp's history: over `PC_HISTORY_FRAMES` frames, the
+input's and output's peaks and the deepest gain reduction (dB).
+
+### Pro_Comp
+
+```odin
+Pro_Comp :: struct {...}
+```
+
+A ProComp node's state (from `pro_comp_create`). Fields are internal.
+
+### Pro_Eq_Type
+
+```odin
+Pro_Eq_Type :: enum u8 {
+	Low_Cut,
+	Low_Shelf,
+	Bell,
+	Notch,
+	High_Shelf,
+	High_Cut,
+	Band_Pass,
+	Tilt,
+}
+```
+
+The shape of a ProEq band.
+
+| Value | Description |
+|-------|-------------|
+| `Low_Cut` | a high-pass; Slope says how steep |
+| `Low_Shelf` | Gain below Freq |
+| `Bell` | Gain around Freq, Q its width |
+| `Notch` | nothing at Freq, Q its width |
+| `High_Shelf` | Gain above Freq |
+| `High_Cut` | a low-pass; Slope says how steep |
+| `Band_Pass` | only around Freq (0 dB at its peak) |
+| `Tilt` | Gain/2 above Freq, −Gain/2 below (first order) |
+
+### Pro_Eq_Slope
+
+```odin
+Pro_Eq_Slope :: enum u8 {
+	S12,
+	S24,
+	S36,
+	S48,
+	S96,
+}
+```
+
+How steep a ProEq cut is, in dB an octave.
+
+### Pro_Eq_Mode
+
+```odin
+Pro_Eq_Mode :: enum u8 {
+	Stereo,
+	Left_Right,
+	Mid_Side,
+}
+```
+
+What ProEq's two sets of bands filter.
+
+| Value | Description |
+|-------|-------------|
+| `Stereo` | A both sides (B unused) |
+| `Left_Right` | A the left, B the right |
+| `Mid_Side` | A the mid, B the side |
+
+### Pro_Eq_Field
+
+```odin
+Pro_Eq_Field :: enum u8 {
+	On,
+	Type,
+	Slope,
+	Freq_Hz,
+	Gain_Db,
+	Q,
+}
+```
+
+A ProEq band's settings, in `pro_eq_band_param` order.
+
+| Value | Description |
+|-------|-------------|
+| `On` | 0 or 1 |
+| `Type` | a `Pro_Eq_Type` |
+| `Slope` | a `Pro_Eq_Slope` (cuts only) |
+| `Freq_Hz` | 10..22000 |
+| `Gain_Db` | −15..15 (shelves, bells, tilt) |
+| `Q` | 0.1..18 |
+
+### Pro_Eq_Settings
+
+```odin
+Pro_Eq_Settings :: struct {
+	oversample: bool,
+}
+```
+
+Settings for `pro_eq_create`.
+
+| Field | Description |
+|-------|-------------|
+| `oversample` | 2×: steep high bands and boosts near Nyquist cleaner, `oversampler_latency` frames late, about twice the work |
+
+### Pro_Eq_Values
+
+```odin
+Pro_Eq_Values :: [102]f32
+```
+
+A ProEq's settings, by parameter id (index 0 unused).
+
+### Pro_Eq_Readout
+
+```odin
+Pro_Eq_Readout :: struct {
+	in_peak: f32,
+	out_peak: f32,
+}
+```
+
+What a ProEq is doing, for its meters (`pro_eq_readout`).
+
+| Field | Description |
+|-------|-------------|
+| `in_peak` | the last block's peak in (linear) |
+| `out_peak` | and out |
+
+### Pro_Eq
+
+```odin
+Pro_Eq :: struct {...}
+```
+
+A ProEq node's state (from `pro_eq_create`). Fields are internal.
+
+### Pro_Saturator_Type
+
+```odin
+Pro_Saturator_Type :: enum u8 {
+	Analog_Clip,
+	Soft_Sine,
+	Bass_Shaper,
+	Medium_Curve,
+	Hard_Curve,
+	Sinoid_Fold,
+	Digital_Clip,
+	Tube,
+	Tape,
+	Waveshaper,
+}
+```
+
+ProSaturator's curves.
+
+| Value | Description |
+|-------|-------------|
+| `Analog_Clip` | a smooth knee into a hard ceiling |
+| `Soft_Sine` | a sine's quarter: the gentlest |
+| `Bass_Shaper` | soft when quiet, harder as it rises |
+| `Medium_Curve` | tanh |
+| `Hard_Curve` | a steeper knee than tanh |
+| `Sinoid_Fold` | a sine: past the top, the wave folds back |
+| `Digital_Clip` | a hard clip at ±1 |
+| `Tube` | asymmetric: even harmonics |
+| `Tape` | soft, its treble lost as it is driven |
+| `Waveshaper` | built from the Waveshaper's six knobs |
+
+### Pro_Saturator_Quality
+
+```odin
+Pro_Saturator_Quality :: enum u8 {
+	Off,
+	X2,
+	X4,
+}
+```
+
+ProSaturator's oversampling.
+
+### Pro_Saturator_Settings
+
+```odin
+Pro_Saturator_Settings :: struct {
+	quality: Pro_Saturator_Quality,
+}
+```
+
+Settings for `pro_saturator_create`.
+
+### Pro_Saturator_Values
+
+```odin
+Pro_Saturator_Values :: [19]f32
+```
+
+A ProSaturator's settings, by parameter id (index 0 unused).
+
+### Pro_Saturator_Readout
+
+```odin
+Pro_Saturator_Readout :: struct {
+	in_peak: f32,
+	out_peak: f32,
+}
+```
+
+What a ProSaturator is doing, for its meters (`pro_saturator_readout`).
+
+| Field | Description |
+|-------|-------------|
+| `in_peak` | the last block's peak in (linear) |
+| `out_peak` | and out |
+
+### Pro_Saturator
+
+```odin
+Pro_Saturator :: struct {...}
+```
+
+A ProSaturator node's state (from `pro_saturator_create`). Fields are internal.
+
+### Proverb_Quality
+
+```odin
+Proverb_Quality :: enum u8 {
+	Eco,
+	Normal,
+	High,
+}
+```
+
+ProVerb's quality: how many late lines, how finely they are read.
+
+| Value | Description |
+|-------|-------------|
+| `Eco` | 4 lines, two input diffusers: for small machines |
+| `Normal` | 8 lines, cubic reads |
+| `High` | 16 lines, cubic reads, all four input diffusers |
+
+### Proverb_Settings
+
+```odin
+Proverb_Settings :: struct {
+	quality: Proverb_Quality,
+}
+```
+
+Settings for `proverb_create`.
+
+### Proverb_Values
+
+```odin
+Proverb_Values :: [22]f32
+```
+
+A ProVerb's settings, by parameter id (index 0 unused).
+
+### Proverb_Readout
+
+```odin
+Proverb_Readout :: struct {
+	in_peak: f32,
+	out_peak: f32,
+	tail: f32,
+}
+```
+
+What a ProVerb is doing, for its meters (`proverb_readout`).
+
+| Field | Description |
+|-------|-------------|
+| `in_peak` | the last block's peak in (linear) |
+| `out_peak` | and out |
+| `tail` | the wet's RMS over the last block (linear) |
+
+### Proverb_Tap
+
+```odin
+Proverb_Tap :: struct {
+	ms: f32,
+	left: f32,
+	right: f32,
+}
+```
+
+One early reflection as ProVerb makes it: when, and how loud on each
+side (signed).
+
+### Proverb
+
+```odin
+Proverb :: struct {...}
+```
+
+A ProVerb node's state (from `proverb_create`). Fields are internal.
+
 ### Sf_Type
 
 ```odin
@@ -1929,6 +2946,269 @@ lfo_cycles_per_beat :: proc "contextless"(p: ^Lfo_Params) -> f64
 
 **Realtime-safe** (callable on the audio thread). Cycles a beat LFO settings `p` run at (0 in Hz mode).
 
+### pro_comp_defaults
+
+```odin
+pro_comp_defaults :: proc "contextless"() -> (v: [22]f32)
+```
+
+ProComp's settings at their defaults.
+
+### pro_comp_create
+
+```odin
+pro_comp_create :: proc(settings: Pro_Comp_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, pc: ^Pro_Comp)
+```
+
+Control thread. A ProComp at its defaults (and `settings.lookahead` as
+its Lookahead). Add it with 2 inputs and 2 outputs, or 4 inputs (the
+last two its key: say so with `PC_PARAM_KEYED`) and 2 outputs.
+
+### pro_comp_readout
+
+```odin
+pro_comp_readout :: proc "contextless"(pc: ^Pro_Comp) -> Pro_Comp_Readout
+```
+
+Any thread. What ProComp `pc` is doing (as of its last block).
+
+### pro_comp_history
+
+```odin
+pro_comp_history :: proc "contextless"(pc: ^Pro_Comp, out: []Pro_Comp_Moment) -> u64
+```
+
+Any thread. ProComp `pc`'s last `len(out)` history entries (at most
+`PC_HISTORY`), oldest first (silence before any), and how many it has
+written in all. A reader racing the audio thread may see an entry
+half-written: it is for drawing.
+
+### pro_comp_curve
+
+```odin
+pro_comp_curve :: proc "contextless"(v: ^[22]f32, in_db: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). ProComp's static curve at settings `v`: what a steady level `in_db`
+comes out at (before makeup and the output gain).
+
+### pro_comp_makeup_db
+
+```odin
+pro_comp_makeup_db :: proc "contextless"(v: ^[22]f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). The gain Makeup adds at settings `v` (dB): the reduction the curve
+gives a 0 dBFS level, back.
+
+### pro_eq_band_param
+
+```odin
+pro_eq_band_param :: proc "contextless"(set: int, band: int, field: Pro_Eq_Field) -> core.Param_Id
+```
+
+**Realtime-safe** (callable on the audio thread). The parameter id of set `set`'s (0: A, 1: B) band `band`'s (0..7)
+`field`: 6 + 48 × set + 6 × band + field.
+
+### pro_eq_defaults
+
+```odin
+pro_eq_defaults :: proc "contextless"() -> (v: [102]f32)
+```
+
+ProEq's settings at their defaults.
+
+### pro_eq_create
+
+```odin
+pro_eq_create :: proc(settings: Pro_Eq_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, eq: ^Pro_Eq, err: core.Error)
+```
+
+Control thread. A ProEq at its defaults (and `settings.oversample` as
+its Oversampling). Add it to a graph with 2 inputs and 2 outputs (1
+input: both sides from it).
+
+### pro_eq_readout
+
+```odin
+pro_eq_readout :: proc "contextless"(eq: ^Pro_Eq) -> Pro_Eq_Readout
+```
+
+Any thread. What ProEq `eq` is doing (as of its last block).
+
+### pro_eq_audition
+
+```odin
+pro_eq_audition :: proc "contextless"(eq: ^Pro_Eq, set: int, band: int)
+```
+
+Any thread. Auditions set `set`'s band `band` of ProEq `eq`: the output
+is only what the band touches (a band-pass at its Freq and Q; at a cut's
+corner, a shelf's middle) until it is called with `band` −1.
+
+### pro_eq_auditioning
+
+```odin
+pro_eq_auditioning :: proc "contextless"(eq: ^Pro_Eq) -> (set: int, band: int)
+```
+
+Any thread. The band ProEq `eq` is auditioning (`pro_eq_audition`), or
+−1 for none.
+
+### pro_eq_read_input
+
+```odin
+pro_eq_read_input :: proc "contextless"(eq: ^Pro_Eq, out: []f32) -> u64
+```
+
+Any thread. The last `len(out)` frames ProEq `eq` took in (the sides
+averaged, at most `dsp.TAP_FRAMES`), oldest first, for a spectrum of its
+input; as `dsp.tap_read`.
+
+### pro_eq_curve
+
+```odin
+pro_eq_curve :: proc(v: ^[102]f32, set: int, sample_rate: f64, hz: []f32, out_db: []f32, band: int = -1)
+```
+
+Control thread. Set `set`'s response at settings `v`, in dB, at each
+frequency of `hz` into `out_db` (as long as `hz`): every band on (Scale
+and Adaptive Q as `v` says, the output gain left out), or band `band`
+alone. As the node runs it at `sample_rate` (doubled when `v` says
+oversampling).
+
+### pro_saturator_defaults
+
+```odin
+pro_saturator_defaults :: proc "contextless"() -> (v: [19]f32)
+```
+
+ProSaturator's settings at their defaults.
+
+### pro_saturator_create
+
+```odin
+pro_saturator_create :: proc(settings: Pro_Saturator_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, ps: ^Pro_Saturator, err: core.Error)
+```
+
+Control thread. A ProSaturator at its defaults (and `settings.quality`
+as its Quality). Add it with 2 inputs and 2 outputs.
+
+### pro_saturator_readout
+
+```odin
+pro_saturator_readout :: proc "contextless"(ps: ^Pro_Saturator) -> Pro_Saturator_Readout
+```
+
+Any thread. What ProSaturator `ps` is doing (as of its last block).
+
+### pro_saturator_signal
+
+```odin
+pro_saturator_signal :: proc "contextless"(ps: ^Pro_Saturator, out: []f32) -> u64
+```
+
+Any thread. The last `len(out)` points of what went into ProSaturator
+`ps`'s curve (before Drive, the left side; at most `PS_SIGNAL`, one
+every `PS_SIGNAL_EVERY` frames), oldest first, and how many it has
+written in all.
+
+### pro_saturator_read_taps
+
+```odin
+pro_saturator_read_taps :: proc "contextless"(ps: ^Pro_Saturator, input: []f32, output: []f32)
+```
+
+Any thread. The last `len(input)` and `len(output)` frames ProSaturator
+`ps` took in and put out (the sides averaged; at most `dsp.TAP_FRAMES`),
+for the harmonics it adds.
+
+### pro_saturator_curve
+
+```odin
+pro_saturator_curve :: proc "contextless"(v: ^[19]f32, x: f32) -> f32
+```
+
+**Realtime-safe** (callable on the audio thread). ProSaturator's curve at settings `v` for an input `x` (before Drive:
+the curve as drawn steepens with Drive), without Color, Tape's filter,
+DC or Soft Clip.
+
+### pro_saturator_color_response
+
+```odin
+pro_saturator_color_response :: proc "contextless"(v: ^[19]f32, hz: f64, sample_rate: f64) -> f32
+```
+
+Control thread. Color's pre-emphasis at settings `v`, in dB at `hz` (0
+when Color is off), as the node runs it at `sample_rate`.
+
+### proverb_defaults
+
+```odin
+proverb_defaults :: proc "contextless"() -> (v: [22]f32)
+```
+
+ProVerb's settings at their defaults (and Normal quality).
+
+### proverb_create
+
+```odin
+proverb_create :: proc(settings: Proverb_Settings, allocator: mem.Allocator = context.allocator) -> (node: core.Node, pv: ^Proverb, err: core.Error)
+```
+
+Control thread. A ProVerb at its defaults (and `settings.quality` as its
+Quality). Add it with 2 inputs and 2 outputs (1 input: both sides).
+
+### proverb_readout
+
+```odin
+proverb_readout :: proc "contextless"(pv: ^Proverb) -> Proverb_Readout
+```
+
+Any thread. What ProVerb `pv` is doing (as of its last block).
+
+### proverb_read_wet
+
+```odin
+proverb_read_wet :: proc "contextless"(pv: ^Proverb, out: []f32) -> u64
+```
+
+Any thread. The last `len(out)` frames of ProVerb `pv`'s wet (the sides
+averaged; at most `dsp.TAP_FRAMES`), oldest first, for a picture of the
+tail.
+
+### proverb_rt60
+
+```odin
+proverb_rt60 :: proc "contextless"(v: ^[22]f32, hz: f64, sample_rate: f64) -> f64
+```
+
+**Realtime-safe** (callable on the audio thread). The decay time (s) ProVerb at settings `v` gives frequency `hz`:
+its middle line's loop, shelves and all, at `sample_rate`.
+
+### proverb_early_taps
+
+```odin
+proverb_early_taps :: proc "contextless"(v: ^[22]f32, out: ^[16]Proverb_Tap)
+```
+
+**Realtime-safe** (callable on the audio thread). ProVerb's early pattern at settings `v` into `out` (each side's
+taps: times in ms after the predelay, gains signed), as the node makes
+it.
+
+### proverb_reference_values
+
+```odin
+proverb_reference_values :: proc(p: map[string]f64) -> [22]f32
+```
+
+Control thread. A reference room reverb's settings (its parameters, by
+their names, each 0..1, as ValhallaRoom's presets and host interface
+have them) as ProVerb's, each in ProVerb's own range: what's missing
+stays at ProVerb's default. The ranges are inferred from the reference's
+panel (docs/design/proverb.md); its Type picks ProVerb's mode tuned
+against it.
+
 ### super_filter_defaults
 
 ```odin
@@ -1991,6 +3271,39 @@ Whether the slope (12 or 24 dB) means anything for type `t` on circuit
 `c`: Low, High, Band and Morph, but not on Diode (24 dB always).
 
 ## Variables
+
+### pro_comp_params
+
+```odin
+pro_comp_params: [21]core.Param_Info
+```
+
+Parameter table of the ProComp node, as `node_params` returns it. Read-only.
+
+### pro_eq_params
+
+```odin
+pro_eq_params: [101]core.Param_Info
+```
+
+Parameter table of the ProEq node, as `node_params` returns it, by id
+(id k at index k − 1). Read-only.
+
+### pro_saturator_params
+
+```odin
+pro_saturator_params: [18]core.Param_Info
+```
+
+Parameter table of the ProSaturator node, as `node_params` returns it. Read-only.
+
+### proverb_params
+
+```odin
+proverb_params: [21]core.Param_Info
+```
+
+Parameter table of the ProVerb node, as `node_params` returns it. Read-only.
 
 ### super_filter_params
 

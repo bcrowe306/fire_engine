@@ -48,6 +48,19 @@ perform_state :: proc(api: ^Api) -> (Perform_State, Result) {
 	return {play_mode = Play_Mode(c.play_mode), bank = i64(c.bank), selected = i64(c.selected), scale = Scale(c.keys.scale), root = i64(c.keys.root), octave = i64(c.keys.octave), chord = Chord(c.keys.chord)}, .Ok
 }
 
+// Whether the toolbar's note repeat is on (every pad held repeats at its
+// rate and gate: the settings "note_repeat.rate" and "note_repeat.gate").
+perform_note_repeat :: proc(api: ^Api) -> (bool, Result) {
+	return api.core.m.engine.repeat_all, .Ok
+}
+
+// Turns the toolbar's note repeat on or off (a controller's Repeat: held,
+// on while it is; Shift + Repeat latches it).
+perform_set_note_repeat :: proc(api: ^Api, on: bool) -> Result {
+	api.core.m.engine.repeat_all = on
+	return .Ok
+}
+
 // Plays the pads as `mode` (the pads held let go first; Keyboard opens on
 // the bank holding the pad's own note).
 perform_set_play_mode :: proc(api: ^Api, mode: Play_Mode) -> Result {

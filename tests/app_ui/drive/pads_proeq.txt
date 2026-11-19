@@ -1,0 +1,25 @@
+# ProEq: its panel in the window and on a controller's display (the
+# device view, 960 x 160), with a loop playing through it.
+size 1440 900
+load 0 tests/app_ui/fixtures/loop.wav
+select 0
+set 0 mode 2
+note 0 0 4 1
+play
+insert 0 0 proeq
+edit_fx pad 0 0
+expect fx proeq
+fx_param 6 1
+fx_param 8 1
+fx_param 9 80
+fx_param 16 4
+fx_param 21 320
+fx_param 22 -6
+fx_param 23 2.5
+fx_param 28 3
+fx_param 46 5
+wait 30
+screenshot proeq
+view device 0 960 160
+wait 6
+view device 0 960 160 .build/app/shots/pe/proeq_push_0.png

@@ -96,6 +96,7 @@ Knob_Input :: struct {
 	ended: [8]bool,
 	drawn: int,
 	size:  f32, // the knobs' size (0: as each asks)
+	bar_w: f32, // > 0: knobs drawn as a value bar this wide (the name and value on a line, a bar under them: a display's compact row)
 }
 
 // The knobs' controller input now (nil: none, the window's own knobs).
@@ -130,6 +131,7 @@ col :: proc "contextless" (c: Color) -> u32 {
 // How wide `knob(label, ...)` is, `size` across: the knob or its label,
 // whichever is wider (to lay knobs out before drawing them).
 knob_width :: proc(label: cstring, size: f32 = KNOB_SIZE) -> f32 {
+	if knob_input != nil && knob_input.bar_w > 0 do return knob_input.bar_w
 	text_push(.Label)
 	defer text_pop()
 	return max(size, im.CalcTextSize(shown_label(label)).x)
@@ -171,10 +173,15 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 
 	// Label.
 	ls := im.CalcTextSize(shown)
-	im.DrawList_AddText(dl, {pos.x + (w - ls.x) / 2, pos.y}, col(t.text_dim), shown)
+	if knob_input == nil || knob_input.bar_w <= 0 do im.DrawList_AddText(dl, {pos.x + (w - ls.x) / 2, pos.y}, col(t.text_dim), shown) // (a value bar draws its own)
 
-	im.SetCursorScreenPos({pos.x + (w - size) / 2, pos.y + label_h + 4})
-	im.InvisibleButton("##knob", {size, size}, {.MouseButtonLeft, .AllowOverlap} if overlap else {.MouseButtonLeft})
+	if knob_input != nil && knob_input.bar_w > 0 { // (the bar: the whole of it takes the mouse)
+		im.SetCursorScreenPos(pos)
+		im.InvisibleButton("##knob", {knob_input.bar_w, KNOB_BAR_H()}, {.MouseButtonLeft, .AllowOverlap} if overlap else {.MouseButtonLeft})
+	} else {
+		im.SetCursorScreenPos({pos.x + (w - size) / 2, pos.y + label_h + 4})
+		im.InvisibleButton("##knob", {size, size}, {.MouseButtonLeft, .AllowOverlap} if overlap else {.MouseButtonLeft})
+	}
 	name(string(shown))
 	frac: f32
 	if log_scale && min_v > 0 && max_v > min_v {
@@ -257,6 +264,10 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 		im.EndPopup()
 	}
 	knob_report(e, value^)
+	if knob_input != nil && knob_input.bar_w > 0 {
+		knob_bar(dl, pos, knob_input.bar_w, shown, value^, frac, min_v, max_v, format, shown_value, held || im.IsItemActive())
+		return
+	}
 	// Arc from 7:30 to 4:30 (270°): track, then the value.
 	r := size / 2 - 3
 	a0, a1 := f32(math.PI) * 0.75, f32(math.PI) * 2.25
@@ -289,6 +300,52 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	im.SetCursorScreenPos(pos)
 	im.Dummy({w, label_h + 4 + size + 2 + label_h})
 	return
+}
+
+// How tall a knob drawn as a value bar is (`Knob_Input.bar_w`): a line
+// of the label's text, a gap, the bar.
+KNOB_BAR_H :: proc() -> f32 {
+	text_push(.Label)
+	defer text_pop()
+	return im.GetTextLineHeight() + 3 + KNOB_BAR_THICK
+}
+
+// The value bar's thickness.
+KNOB_BAR_THICK :: 4
+
+// A knob as a value bar at `pos`, `w` wide: its name at the left, its
+// value at the right, a bar under them filled to `frac` (from the middle
+// when the range is either side of 0: a pan, a gain); `hot` (the encoder
+// touched, dragged) brighter.
+@(private)
+knob_bar :: proc(dl: ^im.DrawList, pos: im.Vec2, w: f32, label: cstring, value, frac, min_v, max_v: f32, format, shown_value: cstring, hot: bool) {
+	t := current
+	lh := im.GetTextLineHeight()
+	buf: [32]u8
+	text := fmt.bprintf(buf[:], string(format), value)
+	vt := shown_value if shown_value != nil else strings.clone_to_cstring(text, context.temp_allocator)
+	vs := im.CalcTextSize(vt)
+	im.DrawList_PushClipRect(dl, pos, {pos.x + w - vs.x - 4, pos.y + lh}, true)
+	im.DrawList_AddText(dl, pos, col(t.text if hot else t.text_dim), label)
+	im.DrawList_PopClipRect(dl)
+	im.DrawList_AddText(dl, {pos.x + w - vs.x, pos.y}, col(t.text), vt)
+	y := pos.y + lh + 3
+	im.DrawList_AddRectFilled(dl, {pos.x, y}, {pos.x + w, y + KNOB_BAR_THICK}, col(t.raised), 2)
+	f := clamp(frac, 0, 1)
+	c := t.accent if hot else mix(t.accent, t.text_dim, 0.25)
+	if min_v < 0 && max_v > 0 { // (from 0)
+		z := -min_v / (max_v - min_v)
+		x0, x1 := pos.x + w * min(z, f), pos.x + w * max(z, f)
+		im.DrawList_AddRectFilled(dl, {x0, y}, {max(x1, x0 + 2), y + KNOB_BAR_THICK}, col(c), 2)
+	} else if f > 0.001 {
+		im.DrawList_AddRectFilled(dl, {pos.x, y}, {pos.x + w * f, y + KNOB_BAR_THICK}, col(c), 2)
+	}
+	if lv, ok := live_value(); ok && max_v > min_v {
+		lx := pos.x + w * clamp((lv - min_v) / (max_v - min_v), 0, 1)
+		im.DrawList_AddLine(dl, {lx, y - 2}, {lx, y + KNOB_BAR_THICK + 2}, col(LIVE_COLOR), 2)
+	}
+	im.SetCursorScreenPos(pos)
+	im.Dummy({w, lh + 3 + KNOB_BAR_THICK})
 }
 
 // `v` to the nearest multiple of `step`, within min_v..max_v.

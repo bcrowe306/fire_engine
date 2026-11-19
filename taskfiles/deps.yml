@@ -69,7 +69,7 @@ tasks:
     status:
       - test -f {{.ROOT_DIR}}/vendor/imgui/{{.IMGUI_LIB}}
       - test -f {{.DEPS}}/generated/dcimgui_internal.cpp  # libraries built before the internal API was added rebuild
-      - test -f {{.DEPS}}/build/imgui/.probe_v1  # ...and before the item probe (the test-engine hooks) was added
+      - test -f {{.DEPS}}/build/imgui/.probe_v2  # ...and before the item probe (the test-engine hooks) was added, or last changed (v2: made-up items marked)
     cmds:
       - task: clone
         vars: {URL: 'https://github.com/ocornut/imgui.git', REF: '{{.IMGUI_VERSION}}', DIR: '{{.DEPS}}/src/imgui'}
@@ -87,7 +87,7 @@ tasks:
         -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY={{.ROOT_DIR}}/vendor/imgui
         -DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE={{.ROOT_DIR}}/vendor/imgui
       - cmake --build {{.DEPS}}/build/imgui --config Release --parallel {{numCPU}}
-      - touch {{.DEPS}}/build/imgui/.probe_v1
+      - touch {{.DEPS}}/build/imgui/.probe_v2
       - '{{.PYTHON}} -m pip install --quiet pytest==8.3.5 pytest-xdist==3.6.1'  # for the e2e harness (tests/e2e; xdist runs it in parallel)
       - '{{if eq OS "darwin"}}{{.PYTHON}} -m pip install --quiet dmgbuild==1.6.7{{else}}true{{end}}'  # macOS: task release:macos's disk image
 

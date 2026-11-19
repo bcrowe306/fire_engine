@@ -3,6 +3,7 @@ package pads_api
 import "core:strings"
 
 import fc "fire:core"
+import "fire:fx"
 import pc "../core"
 import pm "../model"
 
@@ -206,7 +207,7 @@ effect_set_key :: proc(api: ^Api, s: Slot_Ref, kind: Key_Kind, index: i64) -> Re
 	k := pm.Key_Source{kind = pm.Key_Kind(kind), index = int(index)}
 	if kind != .None && !pm.key_allowed(&api.core.m.project, fx_target(s), k) do return fail(api, .Invalid_Argument, "it can't listen to that (itself, or a bus it feeds)")
 	slot.key = k
-	if kind == .None && !pm.key_has_high_cut(slot.kind) do slot.listen = false // (SuperFilter hears itself through its key's filters)
+	if kind == .None && !pm.key_has_high_cut(slot.kind) && !pm.listens_itself(slot.kind) do slot.listen = false // (SuperFilter hears itself through its key's filters; ProComp through its EQ)
 	pm.set_target_slot(&api.core.m, fx_target(s), slot, "Sidechain")
 	edited(api)
 	return .Ok
@@ -283,6 +284,37 @@ effect_load_preset :: proc(api: ^Api, s: Slot_Ref, index: i64) -> Result {
 	return .Ok
 }
 
+// How many presets ProVerb has from an installed ValhallaRoom (its own
+// preset files on this machine, read when first asked; 0 where it isn't
+// installed).
+effect_imported_preset_count :: proc(api: ^Api) -> (i64, Result) {
+	return i64(len(pm.imported_presets())), .Ok
+}
+
+// Imported preset `index`'s name, with its folder ("Halls / Big Hall").
+// Not_Found for no such preset.
+effect_imported_preset_name :: proc(api: ^Api, index: i64) -> (string, Result) {
+	list := pm.imported_presets()
+	if index < 0 || index >= i64(len(list)) do return "", fail(api, .Not_Found, "no such preset")
+	p := list[index]
+	if p.folder == "" do return p.name, .Ok
+	return strings.concatenate({p.folder, " / ", p.name}, context.temp_allocator), .Ok
+}
+
+// Loads imported preset `index` (a ProVerb at its settings) into slot `s`,
+// undoably. Not_Found for no such preset; Unsupported for a performance
+// effect.
+effect_load_imported_preset :: proc(api: ^Api, s: Slot_Ref, index: i64) -> Result {
+	if _, r := slot_of(api, s); r != .Ok do return r
+	list := pm.imported_presets()
+	if index < 0 || index >= i64(len(list)) do return fail(api, .Not_Found, "no such preset")
+	t := fx_target(s)
+	if t.kind == .Perf do return fail(api, .Unsupported, "a performance effect takes no presets")
+	pm.set_target_slot(&api.core.m, t, pm.imported_preset_slot(list[index]), "Load Preset")
+	edited(api)
+	return .Ok
+}
+
 // What a SuperFilter is doing as it plays (as of the last block it ran).
 Super_Filter_State :: struct {
 	cutoff_l:  f32, // the modulated cutoff (Hz), left
@@ -304,6 +336,146 @@ effect_super_filter_state :: proc(api: ^Api, s: Slot_Ref) -> (Super_Filter_State
 	x, ok := pm.slot_super_filter(&api.core.m.engine, fx_target(s))
 	if !ok do return {}, fail(api, .Not_Found, "the SuperFilter isn't playing")
 	return {cutoff_l = x.cutoff_hz[0], cutoff_r = x.cutoff_hz[1], lfo_l = x.lfo[0], lfo_r = x.lfo[1], env = x.env, in_peak = x.in_peak, out_peak = x.out_peak}, .Ok
+}
+
+// What a ProEq is doing as it plays (as of the last block it ran).
+Pro_Eq_State :: struct {
+	in_peak:       f32, // the peak in (linear)
+	out_peak:      f32, // and out
+	audition_set:  i64, // the set (0: A, 1: B) of the band being auditioned, or -1
+	audition_band: i64, // and the band (0..7), or -1
+}
+
+// What the ProEq in slot `s` is doing: its peaks and the band it is
+// auditioning. Not_Found if the slot holds no ProEq (or it isn't in the
+// graph).
+effect_pro_eq_state :: proc(api: ^Api, s: Slot_Ref) -> (Pro_Eq_State, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return {}, r
+	if slot.kind != .Pro_Eq do return {}, fail(api, .Not_Found, "the slot holds no ProEq")
+	eq := pm.slot_pro_eq(&api.core.m.engine, fx_target(s))
+	if eq == nil do return {}, fail(api, .Not_Found, "the ProEq isn't playing")
+	x := fx.pro_eq_readout(eq)
+	set, band := fx.pro_eq_auditioning(eq)
+	return {in_peak = x.in_peak, out_peak = x.out_peak, audition_set = i64(set), audition_band = i64(band)}, .Ok
+}
+
+// Auditions band `band` (0..7) of set `set` (0: A, 1: B) of the ProEq in
+// slot `s`: the slot plays only what that band touches until it is called
+// with `band` -1. Not an edit (not saved, not undone). Not_Found if the
+// slot holds no ProEq playing; Invalid_Argument for no such band.
+effect_set_pro_eq_audition :: proc(api: ^Api, s: Slot_Ref, set, band: i64) -> Result {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return r
+	if slot.kind != .Pro_Eq do return fail(api, .Not_Found, "the slot holds no ProEq")
+	if band >= i64(fx.PE_BANDS) || band < -1 || set < 0 || set >= i64(fx.PE_SETS) do return fail(api, .Invalid_Argument, "no such band")
+	eq := pm.slot_pro_eq(&api.core.m.engine, fx_target(s))
+	if eq == nil do return fail(api, .Not_Found, "the ProEq isn't playing")
+	fx.pro_eq_audition(eq, int(set), int(band))
+	return .Ok
+}
+
+// Sets the mode of the ProEq in slot `s` (0: Stereo, 1: L/R, 2: M/S),
+// undoably. Leaving Stereo while set B is as it started, B becomes a copy
+// of A first. Not_Found if the slot holds no ProEq.
+effect_set_pro_eq_mode :: proc(api: ^Api, s: Slot_Ref, mode: i64) -> Result {
+	if _, r := slot_of(api, s); r != .Ok do return r
+	if mode < 0 || mode > i64(max(fx.Pro_Eq_Mode)) do return fail(api, .Invalid_Argument, "no such mode")
+	if !pm.pro_eq_set_mode(&api.core.m, fx_target(s), fx.Pro_Eq_Mode(mode)) do return fail(api, .Not_Found, "the slot holds no ProEq")
+	edited(api)
+	return .Ok
+}
+
+// What a ProComp is doing as it plays (as of the last block it ran).
+Pro_Comp_State :: struct {
+	in_peak:  f32, // the peak in (linear)
+	in_rms:   f32, // its RMS
+	level_db: f32, // the detector's level (dB): where the signal is on the curve
+	gr_db:    f32, // the gain reduction (dB, at most 0)
+	out_peak: f32, // the peak out (linear)
+}
+
+// What the ProComp in slot `s` is doing: its levels in and out, its
+// detector's level and its gain reduction. Not_Found if the slot holds no
+// ProComp (or it isn't in the graph).
+effect_pro_comp_state :: proc(api: ^Api, s: Slot_Ref) -> (Pro_Comp_State, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return {}, r
+	if slot.kind != .Pro_Comp do return {}, fail(api, .Not_Found, "the slot holds no ProComp")
+	pc := pm.slot_pro_comp(&api.core.m.engine, fx_target(s))
+	if pc == nil do return {}, fail(api, .Not_Found, "the ProComp isn't playing")
+	x := fx.pro_comp_readout(pc)
+	return {in_peak = x.in_peak, in_rms = x.in_rms, level_db = x.level_db, gr_db = x.gr_db, out_peak = x.out_peak}, .Ok
+}
+
+// A moment of a ProComp's activity: over 256 frames, the peaks in and out
+// and the deepest gain reduction (dB).
+Pro_Comp_Moment :: struct {
+	in_db:  f32,
+	out_db: f32,
+	gr_db:  f32,
+}
+
+// The ProComp in slot `s`'s activity `ago` moments back (0: the newest;
+// each 256 frames, up to 1023 back), for a picture of it over time.
+// Not_Found if the slot holds no ProComp playing; Invalid_Argument past
+// what it keeps.
+effect_pro_comp_moment :: proc(api: ^Api, s: Slot_Ref, ago: i64) -> (Pro_Comp_Moment, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return {}, r
+	if slot.kind != .Pro_Comp do return {}, fail(api, .Not_Found, "the slot holds no ProComp")
+	if ago < 0 || ago >= fx.PC_HISTORY do return {}, fail(api, .Invalid_Argument, "past what it keeps")
+	pc := pm.slot_pro_comp(&api.core.m.engine, fx_target(s))
+	if pc == nil do return {}, fail(api, .Not_Found, "the ProComp isn't playing")
+	h: [fx.PC_HISTORY]fx.Pro_Comp_Moment
+	fx.pro_comp_history(pc, h[:ago + 1])
+	m := h[0]
+	return {in_db = m.in_db, out_db = m.out_db, gr_db = m.gr_db}, .Ok
+}
+
+// What a ProSaturator is doing as it plays: its peaks, and the harmonics
+// it puts out of the loudest partial it takes in (each in dB against that
+// partial: h1 is 0; -120 for none).
+Pro_Saturator_State :: struct {
+	in_peak:  f32, // the peak into its curve, after Drive (linear)
+	out_peak: f32, // the peak out (linear)
+	h1, h2, h3, h4, h5, h6, h7, h8: f32,
+}
+
+// What the ProSaturator in slot `s` is doing: its peaks and the harmonics
+// in its output. Not_Found if the slot holds no ProSaturator (or it isn't
+// in the graph).
+effect_pro_saturator_state :: proc(api: ^Api, s: Slot_Ref) -> (Pro_Saturator_State, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return {}, r
+	if slot.kind != .Pro_Saturator do return {}, fail(api, .Not_Found, "the slot holds no ProSaturator")
+	ps := pm.slot_pro_saturator(&api.core.m.engine, fx_target(s))
+	if ps == nil do return {}, fail(api, .Not_Found, "the ProSaturator isn't playing")
+	x := fx.pro_saturator_readout(ps)
+	st := Pro_Saturator_State{in_peak = x.in_peak, out_peak = x.out_peak}
+	h := [8]f32{-120, -120, -120, -120, -120, -120, -120, -120}
+	if _, out, ok := pm.pro_saturator_harmonics(ps, ps.sample_rate); ok do h = out
+	st.h1, st.h2, st.h3, st.h4, st.h5, st.h6, st.h7, st.h8 = h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]
+	return st, .Ok
+}
+
+// What a ProVerb is doing as it plays (as of the last block it ran).
+Proverb_State :: struct {
+	in_peak:  f32, // the peak in (linear)
+	out_peak: f32, // the peak out (linear)
+	tail:     f32, // the wet's RMS (linear): how much tail is ringing
+}
+
+// What the ProVerb in slot `s` is doing: its peaks and its tail's level.
+// Not_Found if the slot holds no ProVerb (or it isn't in the graph).
+effect_proverb_state :: proc(api: ^Api, s: Slot_Ref) -> (Proverb_State, Result) {
+	slot, r := slot_of(api, s)
+	if r != .Ok do return {}, r
+	if slot.kind != .Proverb do return {}, fail(api, .Not_Found, "the slot holds no ProVerb")
+	pv := pm.slot_proverb(&api.core.m.engine, fx_target(s))
+	if pv == nil do return {}, fail(api, .Not_Found, "the ProVerb isn't playing")
+	x := fx.proverb_readout(pv)
+	return {in_peak = x.in_peak, out_peak = x.out_peak, tail = x.tail}, .Ok
 }
 
 // Makes the track play the key of the effect in slot `s` (filtered)

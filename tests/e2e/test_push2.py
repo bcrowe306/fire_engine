@@ -325,13 +325,17 @@ def test_device_is_pads_own_panel_each_following_the_other(pads, fixtures):
     press(pads, 0x6E)
     pads.wait(5)
     display_png(pads, os.path.join(pads.out_dir, "push2_reverb.png"))
-    press(pads, 20)  # On: off
+    pads.cmd("midiport play push B0 3C 7F")  # Mute + Device: off
+    press(pads, 0x6E)
+    pads.cmd("midiport play push B0 3C 00")
     pads.wait(5)
     assert pads.api("effect_state", s={"place": "Insert", "index": 0, "slot": 0})["on"] is False
-    # Global's last: Clear Pad.
+    # Delete + Device on the sampler: the pad cleared.
     pads.api("ui_show", name="global")
     pads.wait(5)
-    press(pads, 27)
+    pads.cmd("midiport play push B0 76 7F")
+    press(pads, 0x6E)
+    pads.cmd("midiport play push B0 76 00")
     pads.wait(5)
     assert not pads.api("pad_state", pad=0)["used"]
 
@@ -395,7 +399,7 @@ def test_a_tabs_banks_are_on_the_lower_row_its_choices_dropdowns(pads, fixtures)
     pads.wait(8)
     st = pads.api("view_state", kind="Device", page=0)
     assert st["pages"] == 3 and st["page"] == 0, st
-    press(pads, 26)  # the lower row's seventh: the second bank (Fade In...; the last: Warp)
+    press(pads, 45)  # ▶: the second page (Fade In...; the last: Warp)
     pads.wait(5)
     assert pads.api("view_state", kind="Device", page=0)["page"] == 1
     # Its seventh: Choke, a dropdown; touched, it opens; three detents, the next.
@@ -543,19 +547,110 @@ def test_note_is_pads_keyboard_mode_and_follows_it(pads, fixtures):
     assert pads.api("sequence_current") == 9
 
 
-def test_arrows_select_the_pad_and_the_sequence(pads):
+def test_page_steps_the_pad_and_shift_page_the_sequence(pads):
     plug(pads)
-    press(pads, 45)  # Right: the next pad
+    press(pads, 63)  # Page >: the next pad
     pads.wait(3)
     assert pads.api("perform_state")["selected"] == 1
-    press(pads, 46)  # Up: the next sequence
+    pads.cmd("midiport play push B0 31 7F")  # Shift held, Page >: the next sequence
+    press(pads, 63)
+    pads.cmd("midiport play push B0 31 00")
     pads.wait(3)
     assert pads.api("sequence_current") == 1
-    press(pads, 44)  # Left
-    press(pads, 47)  # Down
+    press(pads, 62)  # Page <
+    pads.cmd("midiport play push B0 31 7F")
+    press(pads, 62)
+    pads.cmd("midiport play push B0 31 00")
     pads.wait(3)
     assert pads.api("perform_state")["selected"] == 0
     assert pads.api("sequence_current") == 0
+
+
+def test_the_arrows_page_the_view_and_step_its_items(pads, fixtures):
+    """One rule on every view: ◀ ▶ its pages, ▲ ▼ its items."""
+    plug(pads)
+    pads.api("pad_load_sample", pad=0, path=os.path.join(fixtures, "kick.wav"))
+    pads.cmd("insert 0 0 compressor")
+    press(pads, 0x6E)  # Device: the sampler's Sample tab, its first page
+    pads.wait(10)
+    pads.api("ui_show", name="sample")
+    pads.wait(5)
+    st = pads.api("view_state", kind="Device", page=0)
+    assert st["pages"] > 1 and st["page"] == 0, st
+    press(pads, 45)  # ▶: its next page
+    pads.wait(5)
+    assert pads.api("view_state", kind="Device", page=0)["page"] == 1
+    press(pads, 44)  # ◀: back to the first (Warp's, Fade's, any: always a way back)
+    pads.wait(5)
+    assert pads.api("view_state", kind="Device", page=0)["page"] == 0
+    display_png(pads, os.path.join(pads.out_dir, "push2_status_line.png"))
+    # ▼: the next device in the chain (the EQ), ▲ back.
+    press(pads, 47)
+    pads.wait(5)
+    assert pads.state()["device"] == "Eq", pads.state()
+    press(pads, 46)
+    pads.wait(5)
+    assert pads.state()["device"] == "Instrument", pads.state()
+    # Mute + Device: the compressor off; Delete + Device: removed.
+    press(pads, 47)
+    press(pads, 47)
+    pads.wait(5)
+    slot = {"place": "Insert", "index": 0, "slot": 0}
+    pads.cmd("midiport play push B0 3C 7F")
+    press(pads, 0x6E)
+    pads.cmd("midiport play push B0 3C 00")
+    pads.wait(5)
+    assert pads.api("effect_state", s=slot)["on"] is False
+    pads.cmd("midiport play push B0 76 7F")
+    press(pads, 0x6E)
+    pads.cmd("midiport play push B0 76 00")
+    pads.wait(5)
+    assert pads.api("effect_state", s=slot)["kind"] == 0
+    # Mix: ▶ its pages, ▼ the next eight strips.
+    press(pads, 0x70)
+    pads.wait(5)
+    press(pads, 45)
+    pads.wait(5)
+    assert pads.api("view_state", kind="Mixer", page=0)["page"] == 1
+    press(pads, 47)
+    pads.wait(5)
+    assert pads.api("perform_state")["selected"] == 8
+    # Browse: ▼ the categories, ▶ into the list, ▼ its rows.
+    press(pads, 0x6F)
+    pads.wait(8)
+    press(pads, 45)
+    pads.wait(5)
+    assert pads.api("view_state", kind="Browser", page=0)["page"] == 1
+
+
+def test_repeat_is_pads_note_repeat_held_latched_and_its_settings(pads):
+    plug(pads)
+    pads.cmd("midiport play push B0 38 7F")  # Repeat held: on
+    pads.wait(3)
+    assert pads.api("perform_note_repeat")
+    pads.cmd("midiport play push 90 24 64")  # a pad played meanwhile: no settings on its hold
+    pads.cmd("midiport play push 80 24 00")
+    pads.wait(40)
+    pads.cmd("midiport play push B0 38 00")  # let go: off
+    pads.wait(3)
+    assert not pads.api("perform_note_repeat")
+    assert not pads.api("ui_dialog")["open"]
+    pads.cmd("midiport play push B0 31 7F")  # Shift + Repeat: latched
+    press(pads, 0x38)
+    pads.cmd("midiport play push B0 31 00")
+    pads.wait(3)
+    assert pads.api("perform_note_repeat")
+    pads.cmd("midiport play push B0 31 7F")  # again: off
+    press(pads, 0x38)
+    pads.cmd("midiport play push B0 31 00")
+    pads.wait(3)
+    assert not pads.api("perform_note_repeat")
+    pads.cmd("midiport play push B0 38 7F")  # held a while, no pad: its settings
+    pads.wait(45)
+    pads.cmd("midiport play push B0 38 00")
+    pads.wait(5)
+    assert pads.api("ui_dialog")["open"]
+    display_png(pads, os.path.join(pads.out_dir, "push2_note_repeat.png"))
 
 
 def test_a_synth_oscillators_wavetable_is_a_dropdown(pads):
@@ -590,8 +685,8 @@ def test_mix_is_pads_mixer_strips_for_the_selected_pads_eight(pads, fixtures):
     pads.cmd("midiport play push B0 76 00")
     pads.wait(5)
     assert pads.api("pad_state", pad=1)["volume"] == 0
-    # Page >: the next eight (pad 9 selected).
-    press(pads, 63)
+    # ▼: the next eight (pad 9 selected).
+    press(pads, 47)
     pads.wait(5)
     assert pads.api("perform_state")["selected"] == 8
     display_png(pads, os.path.join(pads.out_dir, "push2_mix_9.png"))
@@ -669,6 +764,50 @@ def test_mix_arms_mutes_and_solos_and_shows_the_buses_with_main(pads, fixtures):
     pads.cmd("midiport play push 90 08 00")
     pads.wait(3)
     assert pads.api("mixer_bus_state", bus=16)["volume"] < before
+
+
+def test_buses_and_main_get_devices_added_edited_and_removed_from_the_push(pads):
+    plug(pads)
+    pads.api("mixer_add_bus")
+    slot = lambda place, index, k: pads.api("effect_state", s={"place": place, "index": index, "slot": k})
+
+    def with_held(cc, then):
+        pads.cmd(f"midiport play push B0 {cc:02X} 7F")
+        then()
+        pads.cmd(f"midiport play push B0 {cc:02X} 00")
+        pads.wait(8)
+
+    press(pads, 0x70)  # Mix
+    press(pads, 109)  # Buses
+    pads.wait(5)
+    press(pads, 20)  # Bus A selected: the device panel shows its chain
+    press(pads, 0x6E)  # Device: its first slot, empty: Add an Effect
+    pads.wait(8)
+    press(pads, 20)  # Add (the first encoder's effect)
+    pads.wait(8)
+    assert slot("Bus", 0, 0)["kind"] != 0
+    display_png(pads, os.path.join(pads.out_dir, "push2_bus_device.png"))
+    with_held(0x3C, lambda: press(pads, 0x6E))  # Mute + Device: off
+    assert slot("Bus", 0, 0)["on"] is False
+    with_held(0x3C, lambda: press(pads, 0x6E))  # and on again
+    press(pads, 47)  # ▼: the chain's next, its next empty slot
+    pads.wait(8)
+    press(pads, 20)  # Add
+    pads.wait(8)
+    assert slot("Bus", 0, 1)["kind"] != 0
+    with_held(0x76, lambda: press(pads, 0x6E))  # Delete + Device: removed
+    assert slot("Bus", 0, 1)["kind"] == 0
+    # Main: the buses' last strip.
+    press(pads, 0x70)  # Mix (still the buses)
+    pads.wait(5)
+    press(pads, 27)  # Main
+    press(pads, 0x6E)
+    pads.wait(8)
+    press(pads, 20)  # Add
+    pads.wait(8)
+    assert slot("Main", 0, 0)["kind"] != 0
+    with_held(0x76, lambda: press(pads, 0x6E))
+    assert slot("Main", 0, 0)["kind"] == 0
 
 
 def test_a_playing_sequences_pad_blinks_in_time(pads, fixtures):
@@ -1047,7 +1186,7 @@ def test_a_slicer_has_its_slicer_and_slice_tabs_and_slice_pads(pads, fixtures):
     pads.wait(3)
     assert pads.api("pad_slices", pad=0)["selected"] == 2, pads.api("pad_slices", pad=0)
     pads.api("pad_select_slice", slice=0)
-    press(pads, 27)  # the last: the next bank (its sound)
+    press(pads, 45)  # ▶: the next page (its sound)
     pads.wait(5)
     assert pads.api("view_state", kind="Device", page=0)["page"] == 1
     display_png(pads, os.path.join(pads.out_dir, "push2_slicer_sound.png"))
@@ -1129,8 +1268,8 @@ def test_master_arranges_the_song_from_the_grid_and_the_lane_buttons(pads):
     sh = push_state(pads)
     assert sh.get(37) == (255, 255, 255), sh.get(37)  # (the current sequence white)
     display_png(pads, os.path.join(pads.out_dir, "push2_song.png"))
-    # Left: a bar back; Select + the second lane: the clip there.
-    press(pads, 44)
+    # Page <: a bar back; Select + the second lane: the clip there.
+    press(pads, 62)
     pads.wait(3)
     assert pads.api("song_edit_state")["cursor"] == 8
     pads.api("song_select_clip", index=-1)
@@ -1280,7 +1419,7 @@ def test_song_lanes_ripple_and_the_clip_knob_steps_through_them(pads):
     display_png(pads, os.path.join(pads.out_dir, "push2_song_clip_tab.png"))
 
 
-def test_the_project_manager_opens_at_start_and_the_push_browses_the_projects(request):
+def test_the_project_manager_opens_at_start_and_the_push_shows_it(request):
     out = os.path.join(ROOT, ".build", "app", "e2e", request.node.name)
     p = Pads(out_dir=out, extra=["--fake-midi", "--fake-usb"], start_page=True)
     try:
@@ -1290,8 +1429,8 @@ def test_the_project_manager_opens_at_start_and_the_push_browses_the_projects(re
         plug(p)
         settle(p)
         display_png(p, os.path.join(out, "push2_start.png"))
-        assert p.api("view_state", kind="Browser", page=0)  # (Browse on the display)
-        # Empty Project: it goes, the Push back to Mix.
+        assert p.api("view_state", kind="Projects", page=0)  # (Projects on the display)
+        # New Empty Project: it goes, the Push back to Mix.
         p.click("start empty")
         p.wait(5)
         assert not p.api("ui_start_page")
@@ -1550,8 +1689,10 @@ def test_scale_accent_add_device_add_track_and_setup(pads, fixtures):
     pads.wait(8)
     settle(pads)
     display_png(pads, os.path.join(pads.out_dir, "push2_add_device.png"))
-    # Setup: Pads' Settings; Shift: the Push's own, encoder 1 the LEDs.
-    held(pads, 49, lambda: press(pads, 30))
+    # Setup: Pads' Settings; its last tab (Controller ›): the Push's own, encoder 1 the LEDs.
+    press(pads, 30)
+    pads.wait(6)
+    press(pads, 102 + 7)
     pads.wait(4)
     turn(pads, 0, -20)
     pads.wait(4)
@@ -1559,11 +1700,18 @@ def test_scale_accent_add_device_add_track_and_setup(pads, fixtures):
     assert "F0 00 21 1D 01 01 06" in sent
     settle(pads)
     display_png(pads, os.path.join(pads.out_dir, "push2_setup.png"))
-    press(pads, 27)  # Close
-    pads.wait(4)
-    press(pads, 30)
+    press(pads, 27)  # Close: back in Pads' Settings
     pads.wait(6)
     pads.screenshot("settings_from_setup")
+    # Shift + Setup: the project page (Pads' and the display's); again: closed.
+    held(pads, 49, lambda: press(pads, 30))
+    pads.wait(6)
+    assert pads.api("ui_start_page")
+    settle(pads)
+    display_png(pads, os.path.join(pads.out_dir, "push2_projects.png"))
+    held(pads, 49, lambda: press(pads, 30))
+    pads.wait(6)
+    assert not pads.api("ui_start_page")
 
 
 def test_shift_lights_its_buttons_and_the_display_says_so(pads):
@@ -1671,8 +1819,8 @@ def test_clip_steps_add_edit_remove_copy_and_page(pads, fixtures):
     pads.wait(3)
     assert 15.5 in [n["start"] for n in notes_of(pads)]
     press(pads, 40)  # back to 1/16
-    # Right: the next page (steps 33..64: beats 8..16).
-    press(pads, 45)
+    # Page >: the next page (steps 33..64: beats 8..16).
+    press(pads, 63)
     pads.wait(3)
     hit(pads, step_note(0))
     pads.wait(3)

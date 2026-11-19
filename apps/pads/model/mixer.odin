@@ -24,7 +24,7 @@ DEFAULT_BUSES :: 4
 // Performance effects (applied to main while held).
 PERF_FX :: 16
 // Parameters an effect slot keeps.
-MAX_EFFECT_PARAMS :: 32
+MAX_EFFECT_PARAMS :: 112 // (ProEq has 101)
 
 // What an effect slot holds.
 Effect_Kind :: enum u8 {
@@ -52,6 +52,10 @@ Effect_Kind :: enum u8 {
 	Eq,
 	Filter,
 	Super_Filter, // `fx.super_filter_create`: types, circuits, an LFO and an envelope (keyable)
+	Pro_Eq,       // `fx.pro_eq_create`: eight bands, two sets (L/R, M/S), oversampling
+	Pro_Comp,     // `fx.pro_comp_create`: a clean compressor, its key's EQ its own (keyable)
+	Pro_Saturator, // `fx.pro_saturator_create`: ten curves, Color, Quality (oversampling)
+	Proverb,       // `fx.proverb_create`: an algorithmic room reverb, twelve modes, Quality
 }
 
 // Effect names, as the UI shows them.
@@ -61,7 +65,7 @@ EFFECT_NAMES := [Effect_Kind]cstring{
 	.Delay = "Delay", .Reverb = "Reverb", .Chorus = "Chorus", .Flanger = "Flanger", .Phaser = "Phaser",
 	.Ring_Mod = "Ring mod", .Comb = "Comb", .Pitch = "Pitch shift", .Cutter = "Cutter", .Stutter = "Stutter", .Plugin = "Plug-in",
 	.Distortion = "Distortion", .Eq = "EQ", .Filter = "Filter",
-	.Super_Filter = "SuperFilter",
+	.Super_Filter = "SuperFilter", .Pro_Eq = "ProEq", .Pro_Comp = "ProComp", .Pro_Saturator = "ProSaturator", .Proverb = "ProVerb",
 }
 
 // One parameter value an effect slot keeps.
@@ -103,13 +107,20 @@ Key_Kind :: enum u8 {
 
 // Whether a slot's effect can be keyed.
 keyable :: proc "contextless" (k: Effect_Kind) -> bool {
-	return k == .Compressor || k == .Gate || k == .Super_Filter
+	return k == .Compressor || k == .Gate || k == .Super_Filter || k == .Pro_Comp
 }
 
 // Whether a slot's effect filters its key with a high cut as well as a
 // low cut (and hears itself through both when keyed from nothing).
 key_has_high_cut :: proc "contextless" (k: Effect_Kind) -> bool {
 	return k == .Super_Filter
+}
+
+// Whether a slot's effect listens itself (its node puts out what its
+// detector hears, its own input or its key: ProComp), rather than the
+// graph playing its key in its place.
+listens_itself :: proc "contextless" (k: Effect_Kind) -> bool {
+	return k == .Pro_Comp
 }
 
 // Whether the slot `t` points at can be keyed from `src` without a loop:
@@ -193,6 +204,10 @@ effect_params :: proc(k: Effect_Kind) -> []fc.Param_Info {
 	case .Cutter:     return dsp.cutter_params[:]
 	case .Stutter:    return dsp.stutter_params[:1] // the length (on is the slot's switch)
 	case .Super_Filter: return fx_pkg.super_filter_params[:]
+	case .Pro_Eq:       return fx_pkg.pro_eq_params[:]
+	case .Pro_Comp:     return fx_pkg.pro_comp_params[:]
+	case .Pro_Saturator: return fx_pkg.pro_saturator_params[:]
+	case .Proverb:       return fx_pkg.proverb_params[:]
 	}
 	return nil
 }

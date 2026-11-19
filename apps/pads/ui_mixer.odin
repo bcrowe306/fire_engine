@@ -516,8 +516,8 @@ strip_begin :: proc(h: f32, selected: bool) {
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	pos := im.GetCursorScreenPos()
-	bg := ui.mix(t.surface, t.raised, 0.55)
-	im.DrawList_AddRectFilled(dl, pos, {pos.x + strip_w_cur, pos.y + h}, ui.col(bg), t.radius)
+	im.DrawList_AddRectFilled(dl, pos, {pos.x + strip_w_cur, pos.y + h}, ui.col(ui.PLOT_BG), t.radius) // (black, as the devices' pictures)
+	if !selected do im.DrawList_AddRect(dl, pos, {pos.x + strip_w_cur, pos.y + h}, ui.col(ui.with_alpha(t.border, 0.7)), t.radius, 1)
 	if selected do im.DrawList_AddRect(dl, pos, {pos.x + strip_w_cur, pos.y + h}, ui.col(t.accent), t.radius, 1.5)
 	im.SetCursorScreenPos({pos.x + STRIP_PAD, pos.y + STRIP_PAD})
 	im.BeginGroup() // lines start inside the padding
@@ -654,7 +654,7 @@ slot_row :: proc(a: ^App, target: pm.Fx_Target, s: pm.Effect_Slot, failed: bool)
 		}
 		im.EndDragDropTarget()
 	}
-	item_menu(a, {kind = .Slot, fx = target}, "##slotmenu")
+	item_menu(a, {kind = .Slot, fx = target}, fmt.ctprintf("##slotmenu%d", target.slot)) // (a popup each slot: one id, its items drawn once a slot)
 	if s.kind != .None && im.IsItemHovered({.DelayShort}) do im.SetTooltip("%s", fmt.ctprintf("%s%s", pm.slot_name(s), "" if s.on else " (off)"))
 }
 

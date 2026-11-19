@@ -302,6 +302,155 @@ cut := fx.super_filter_readout(sf).cutoff_hz // where it is now
 One stereo instance, the LFO and envelope moving, takes 0.3 to 1.2 % of a
 core on an Apple-silicon Mac at `-o:speed` (Phaser the dearest).
 
+## ProEq
+
+`fx.pro_eq_create` (in `fire:fx`) is an eight-band parametric EQ with two
+sets of bands, A and B.
+
+- **Band types:** low and high cut (12, 24, 36, 48 or 96 dB an octave,
+  Butterworth, the steepest section carrying the band's Q), low and high
+  shelf, bell, notch, band-pass (0 dB at its peak) and tilt (first order,
+  half its gain each way). `pro_eq_band_param(set, band, field)` gives a
+  band setting's id.
+- **The filters:** every section is designed to match its analog shape's
+  magnitude at DC, Nyquist and the band's frequency (a matched
+  second-order design), so a bell at 16 kHz keeps its width. Each runs as
+  a state-variable filter with the same response, which stays well
+  behaved while its settings move.
+- **Modes:** Stereo (A on both sides), L/R (A the left, B the right) and
+  M/S (A the mid, B the side).
+- **Adaptive Q** narrows a bell as its gain grows; **Scale** multiplies
+  every shelf's, bell's and tilt's gain (−2 to 2); **Gain** is the
+  output.
+- **Timing:** settings move on a 16-frame grid counted from the reset,
+  smoothed over 12 ms, so the output is the same at any block size with
+  no latency. Before the first grid point they jump.
+- **Oversampling** (`Pro_Eq_Settings.oversample`, 2×) is chosen when the
+  node is made: it makes the node 31 frames late, and a graph reads a
+  node's latency only as it builds.
+- **For drawing it:** `pro_eq_curve` gives a set's response (or one
+  band's) at the frequencies you ask, designed as the node designs it;
+  `pro_eq_read_input` the last frames it took in, for a spectrum;
+  `pro_eq_readout` its peaks. `pro_eq_audition` makes it play only what
+  one band touches.
+
+```odin
+node, eq, _ := fx.pro_eq_create({})
+graph.add_node(g, node, 2, 2)
+graph.set_param(g, id, fx.pro_eq_band_param(0, 2, .Freq_Hz), 300)
+graph.set_param(g, id, fx.pro_eq_band_param(0, 2, .Gain_Db), -4)
+```
+
+One stereo instance with all eight bands on (48 dB cuts at both ends)
+takes 0.66 % of a core on an Apple-silicon Mac at `-o:speed`, 1.8 %
+oversampled.
+
+## ProComp
+
+`fx.pro_comp_create` (in `fire:fx`) is a clean compressor:
+feed-forward, stereo-linked.
+
+- **Detection:** Peak, RMS (10 ms) or Expand (a downward expander:
+  below the threshold, down by the ratio).
+- **The curve:** Threshold, Ratio (1:1 to ∞:1, `PC_RATIO_INF`; in Expand
+  ∞ is a gate) and a quadratic Knee. `pro_comp_curve` gives it for
+  drawing.
+- **The envelope:** Attack and Release on the gain reduction, in dB (Log)
+  or linear gain (Lin). In Expand, Attack is the opening. **Auto** release
+  blends a quick release after a short peak with a slow one after a long
+  squeeze.
+- **Lookahead** (`Pro_Comp_Settings.lookahead`: 0, 1 or 10 ms) delays the
+  sound so the detector hears it early; the node reports it as its
+  latency.
+- **Makeup** raises the compressed signal by what the curve takes off a
+  full-scale level. Then Output and Dry/Wet.
+- **The key:** added with four inputs and `PC_PARAM_KEYED` set, inputs 3
+  and 4 are its key, mixed with its own input by Key Mix, through Key
+  Gain and an EQ (low-pass, band-pass, high-pass, notch, peak, shelves).
+  `PC_PARAM_LISTEN` puts out what the detector hears.
+- **For drawing it:** `pro_comp_readout` (the levels in and out, the
+  detector's level, the reduction) and `pro_comp_history` (the last 1024
+  moments of 256 frames: peaks in and out, the deepest reduction), from
+  any thread.
+
+```odin
+node, pc := fx.pro_comp_create({lookahead = .Ms_1})
+graph.add_node(g, node, 2, 2)
+graph.set_param(g, id, fx.PC_PARAM_THRESHOLD_DB, -24)
+graph.set_param(g, id, fx.PC_PARAM_RATIO, 4)
+```
+
+One stereo instance takes 0.2 to 0.35 % of a core on an Apple-silicon Mac
+at `-o:speed`.
+
+## ProSaturator
+
+`fx.pro_saturator_create` (in `fire:fx`) is a waveshaping saturator.
+
+- **Curves:** Analog Clip, Soft Sine, Bass Shaper, Medium Curve, Hard
+  Curve, Sinoid Fold, Digital Clip, Tube (asymmetric: even harmonics),
+  Tape (soft, its treble falling as it is driven) and the Waveshaper
+  (Drive, Lin, Curve, Damp, Depth, Period). Every curve but the
+  Waveshaper passes a quiet signal at its level.
+- **Drive** into the curve (±36 dB); **Color**, an EQ before it (a low
+  shelf, Base, and a bell, Freq, Width, Depth) and its opposite after, so
+  it changes which frequencies saturate; **DC** (a 10 Hz high-pass);
+  Output, Dry/Wet; **Soft Clip** at the end.
+- **Quality** (`Pro_Saturator_Settings.quality`: Off, 2×, 4×)
+  oversamples the curve; the node reports the latency.
+- **For drawing it:** `pro_saturator_curve` (the curve at the settings,
+  steepening with Drive), `pro_saturator_color_response`,
+  `pro_saturator_readout` (the peaks), `pro_saturator_signal` (what went
+  into the curve, a point every 8 frames) and `pro_saturator_read_taps`
+  (its input and output, for the harmonics), from any thread.
+
+```odin
+node, ps, _ := fx.pro_saturator_create({quality = .X2})
+graph.add_node(g, node, 2, 2)
+graph.set_param(g, id, fx.PS_PARAM_TYPE, f64(fx.Pro_Saturator_Type.Tube))
+graph.set_param(g, id, fx.PS_PARAM_DRIVE_DB, 9)
+```
+
+One stereo instance takes 0.2 to 0.5 % of a core on an Apple-silicon Mac
+at `-o:speed`, up to 1.7 % at 4×.
+
+## ProVerb
+
+`fx.proverb_create` (in `fire:fx`) is an algorithmic room reverb: a
+predelay, an early section (a pattern of taps, each side its own, into
+two short diffusers) and a late feedback delay network (4, 8 or 16 lines
+as Quality says, mixed by a Householder matrix, every line modulated).
+
+- **Decay** (0.1–100 s) is the middle's RT60; below Bass Xover the tail
+  lasts Decay × Bass Mult, above High Xover Decay × High Mult (a shelf of
+  each in every line's loop). `proverb_rt60` gives the decay at any
+  frequency, as the node sets it.
+- **The early section:** Early Size (its span, about 6 to 95 ms), Early
+  Cross, Early Mod Rate and Depth, Early Send (into the late tail).
+- **The late tail:** Late Size (its first arrival, about 6 to 57 ms),
+  Late Cross, Late Mod Rate and Depth (a pitch deviation: the smear
+  doesn't grow with the rate), Diffusion.
+- **Depth** sets early against late (equal power), **High Cut** filters
+  the wet, **Mix** sets the wet against the dry (no latency).
+- **Modes:** twelve, each a structure of its own, tuned against
+  measurements of a reference reverb (`scripts/proverb_probe`: its output
+  rendered and measured as a black box).
+- **Quality** (`Proverb_Settings.quality`): Eco (4 lines), Normal (8),
+  High (16).
+- **For drawing it:** `proverb_readout` (the peaks, the tail's level),
+  `proverb_read_wet` (the wet, for a picture of the tail),
+  `proverb_early_taps` (the early pattern), `proverb_rt60`.
+
+```odin
+node, pv, _ := fx.proverb_create({quality = .Normal})
+graph.add_node(g, node, 2, 2)
+graph.set_param(g, id, fx.PV_PARAM_DECAY_S, 3)
+graph.set_param(g, id, fx.PV_PARAM_MIX, 1) // (on a send: all wet)
+```
+
+One stereo instance takes 0.6 % of a core (Eco), 1 % (Normal) and 1.8 %
+(High) on an Apple-silicon Mac at `-o:speed`.
+
 ## Switching effects in and out
 
 `wet_create(inner)` wraps any effect node with a dry/wet mix,

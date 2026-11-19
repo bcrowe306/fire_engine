@@ -62,7 +62,8 @@ pad's is **· Audio**), its **EQ**, then each insert with an effect, and
 anywhere (a strip's insert, a bus's slot, a performance effect's Edit) and
 the panel shows that track's chain with that effect in front: a bus shows
 its slots, a performance effect itself. Click a pad to show its chain
-again. Right-click an effect's tab for its commands. Drag the divider between the grid and the tabs to give
+again, with the device it last had in front (its sound the first time,
+or if that effect has gone). Right-click an effect's tab for its commands. Drag the divider between the grid and the tabs to give
 either more room (double-click it to go back to a square grid). Panels
 are tabs that can be dragged elsewhere; **View > Reset Layout** puts
 them back.
@@ -265,9 +266,11 @@ records.
   pick stays as you move around the app, and is saved with the project.
 
   In **Notes**: the grid (1/4 to 1/64, triplets) and Quantize (Cmd+U,
-  the notes there), input quantize. Below, the current bank's pads (pad
-  1 at the bottom, as on the grid) as
-  rows, edited with four tools (on the tab's line, or the keys
+  the notes there), input quantize. Below, every pad, A1 to H16 (pad
+  1 at the bottom, as on the grid), as rows, sixteen in view: the wheel
+  scrolls through the banks, and choosing a bank or a pad out of view
+  brings its rows in (scrolling doesn't change what is selected). The
+  rows are edited with four tools (on the tab's line, or the keys
   while it has the keyboard; Escape: back to Select):
   - **Select** (V): click a note (Shift-click adds or takes away), drag on
     empty space to box-select, drag selected notes to move them, their
@@ -568,6 +571,11 @@ records.
   filtered key on the track instead, to set it by. Keyed, the compressor
   only presses down: a quiet key lifts nothing.
 
+  Every effect with presets has a **Presets** menu (the bookmark) on its
+  header line. In the Library an effect's presets are folded under it: a
+  click on the effect shows them (or folds them away), a double-click
+  still inserts the effect; on Push 2, Presets on the upper row.
+
   **SuperFilter** (an insert, a bus slot or main) is an auto filter: a
   filter moved by an LFO and an envelope.
   - Type, Circuit, 24 dB and Clip are on its header line. A circuit that
@@ -596,6 +604,96 @@ records.
     1/8, Wobble 1/4 Triplet, Duck to Kick (choose the kick as its key),
     DJ Sweep, Talk Box, Comb Shimmer, Random Steps, Slow Pad Sweep,
     Auto-Wah and Stereo Spin. Double-click one, or drag it onto a pad.
+
+  **ProEq** (an insert, a bus slot or main) is an eight-band parametric
+  EQ, next to the pad's own three-band EQ.
+  - Each band is a low or high cut (12, 24, 36, 48 or 96 dB an octave), a
+    shelf, a bell, a notch, a band-pass or a tilt. Bands 1 and 8 start as
+    cuts, switched off; the others start flat.
+  - The display shows a light grid, the input's spectrum faint and the
+    output's over it, the summed curve (boosts tinted green, cuts red),
+    the selected band's own curve in its colour, and the eight numbered
+    handles. Drag a handle across for Freq, up and down for Gain (or Q,
+    for a shape without a gain); Alt and the wheel set Q, Shift is fine,
+    a double-click turns the band on or off.
+  - The selected band's Freq, Gain and Q are at the left. Under the
+    display each band has a cell: its shape (a menu of the types, and a
+    cut's slopes) and its on switch.
+  - On the header line: **Mode** (Stereo; L/R, set A the left and B the
+    right; M/S, A the mid and B the side), **Edit** (which set is shown
+    and edited, the other drawn faint) and **Adaptive Q** (a bell narrows
+    as its gain grows). Leaving Stereo the first time, B starts as a copy
+    of A.
+  - At the right: **Audition** (hold a handle to hear only what its band
+    touches), the spectrum on or off, **2× Quality** (oversampling:
+    cleaner high bands, 31 frames late, about twice the work), **Scale**
+    (every gain, −200 to 200 %) and the output's **Gain**.
+  - On Push 2 the bands are on the upper row (a press selects one; Shift
+    and a press turns it on or off) over three banks: Band (the selected
+    one's Freq, Gain, Q, Type, Slope, On), Bands (every band's Freq) and
+    Global (Mode, Edit, Adaptive Q, Oversampling, Spectrum, Audition).
+  - Its factory presets: Clean Low End, Kick Punch, Snare Body and Crack,
+    Vocal Presence, De-mud, Air, Telephone, Mid/Side Widen, Master Polish
+    and Hi-Hat Tame.
+
+  **ProComp** (an insert, a bus slot or main) is a clean compressor, next
+  to the multiband Compressor.
+  - Its display has three views (the buttons at its top): **Curve** (the
+    transfer curve, a ring at the threshold, a dot where the level is
+    now), **Activity** (the last four seconds: the input, the output and
+    the gain reduction) and **Meters** (the three meters, wide). Drag the
+    input meter's arrow for the threshold, the output meter's for the
+    output gain (Shift: fine).
+  - Ratio, Attack and Release at the left; Knee, Lookahead (0, 1 or 10
+    ms), Env (Lin or Log) and the mode (Peak, RMS, Expand) under the
+    display; Makeup, Auto (release) and Dry/Wet at the right.
+  - **Sidechain** on its header line opens its row: the source (itself,
+    any pad, a bus it doesn't feed), its EQ (on, its type, Freq, Q, Gain),
+    the key's Gain and Mix, and Listen (hear what it listens to, after the
+    EQ).
+  - On Push 2 the views are on the upper row, over three banks: Main,
+    Detail and Sidechain.
+  - Its factory presets: Glue Bus, Drum Punch, Vocal Leveler, Kick Duck
+    and Pumping 4/4 (choose the kick as the key), Parallel Smash, Bass
+    Control, Gentle Master, Snare Snap and De-ess.
+
+  **ProSaturator** (an insert, a bus slot or main) is a waveshaping
+  saturator, next to Saturation.
+  - Its display shows the curve (steeper as Drive rises) with the signal
+    moving along it, the eight harmonics it puts out (the input's as a
+    line on each bar), Color's EQ faint across it, and the levels in and
+    out.
+  - Drive, DC and Color at the left; Type (ten curves) and Quality (Off,
+    2×, 4×) under the display; Color's Base, Freq, Width and Depth while
+    it is on, the Waveshaper's six knobs for its type; Soft Clip, Output
+    and Dry/Wet at the right.
+  - On Push 2: the same display over three banks, Main, Color and
+    Waveshaper.
+  - Its factory presets: Warm Bus, Tube Glow, Tape Kiss, Bass Weight,
+    Fuzz, Fold Lead, Digital Crunch, Presence Drive, Parallel Grit and
+    Shaper Bells.
+
+  **ProVerb** (an insert, a bus slot or main; on a send bus, set its Mix
+  to 100 %) is a room reverb with twelve modes.
+  - Its display has two pictures of its own: **Early** (the early reflections as spikes, left
+    above and right below, after the predelay's gap) and **Damping**
+    (decay time against frequency; drag B for the bass, H for the treble:
+    across for the crossover, up and down for the multiplier; C for the
+    High Cut).
+  - Five bars: Mix, Predelay, Decay, High Cut, Depth (early against
+    late). The Early page: Size, Cross, Mod Rate, Mod Depth, Send,
+    Diffusion. The Late page: Size, Cross, Mod Rate, Mod Depth, Bass and
+    High Mult and their crossovers. Mode and Quality (Eco, Normal, High)
+    on the header line.
+  - On Push 2 the upper row picks the picture (Early, Damping) over four
+    banks: Main, Early, Late, Decay.
+  - Its Presets (the bookmark on its header line) are its own library,
+    42 presets in menus by kind of space (Rooms, Chambers, Halls, Big
+    Spaces, Ambiences, Dark, Drums, Gated, Vocals, Effects), the same on
+    every machine. When ValhallaRoom is installed, ValhallaRoom's presets
+    follow, by their folders, read from your copy and mapped to ProVerb's
+    settings (none of them ship with Pads). In the Library they are under
+    ProVerb, folded.
 - **Performance effects** (the Perform tab's right grid): 16 effects on main, each
   on while its pad is held — filter sweeps, stutters at 1/8 to 1/32,
   cutters, bit-crusher, ring mod, pitch up and down, delay, reverb,
@@ -1273,6 +1371,16 @@ Delete to clear them (each one undo step).
 
 ## Projects
 
+**The project page** (File > Projects…, Cmd+Shift+P; at start when there
+is no project to open; on Push 2, Shift + Setup) has the project open,
+whether it is saved, and Save, Save As… and Rename…; **New Empty
+Project**, Open… and the templates; the recent projects; and **All
+Projects** (the projects folder's), searched by name, each with
+**Duplicate** (a copy beside it, named as you say) and **Move to Trash**
+(after asking; the open project can't be). Push 2 shows the same page:
+Recent, All and Templates on the upper row, the list on encoder 1, Open,
+New Empty, Save, Save As, Rename, Duplicate and Trash on the lower row.
+
 A project is a folder, `Name.pads`: `project.fire` (a
 [fire:session](/guides/sessions/) file whose app chunks hold the pads,
 samples, sequences, song, mixer, MIDI map and settings) and its audio
@@ -1571,6 +1679,10 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_groups.py` | track groups: pads selected and grouped with Cmd+G (named), the tab folding them away and back, Ungroup, undo |
 | `test_sidechain.py` | a loop's compressor keyed from the kick (the list without its own output), Listen, undo |
 | `test_superfilter.py` | SuperFilter's panel by the mouse (the display's handle, the type, the sidechain row and LFO extras), its four banks on a pretend Push 2, its presets from the Library |
+| `test_procomp.py` | ProComp's panel by the mouse (the threshold's arrow, Ratio, the views, the mode, Lookahead, the sidechain row keyed from a pad), its views and three banks on a pretend Push 2, its presets from the Library |
+| `test_prosaturator.py` | ProSaturator's panel by the mouse (Drive, the type, Color and its row, the Waveshaper's row, Quality), its three banks on a pretend Push 2, its presets from the Library |
+| `test_proverb.py` | ProVerb's panel by the mouse (the bars, the damping handles, the Early and Late pages, the mode, the decay picture with a loop playing), its pictures and four banks on a pretend Push 2, its presets from the Library |
+| `test_proeq.py` | ProEq's panel by the mouse (a band's handle, the type menus and slopes, the on switches, M/S and editing B), its bands and three banks on a pretend Push 2, its presets from the Library |
 | `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a time signature change on its lane, a tempo point on the tempo lane, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |

@@ -454,6 +454,17 @@ stays valid after `render` releases the node, until the node is destroyed.
 | `out_of_range` | events whose offset >= frames |
 | `capacity` | log size, set by probe_create |
 
+### Reflection
+
+```odin
+Reflection :: struct {
+	ms: f64,
+	level: f64,
+}
+```
+
+One reflection: when (ms from the start) and how loud (linear).
+
 ### Stretch_Signal
 
 ```odin
@@ -1195,6 +1206,81 @@ probe_destroy :: proc(n: ^core.Node, p: ^Probe)
 ```
 
 Frees the probe's log and the probe itself (the same as core.node_destroy).
+
+### energy_decay_db
+
+```odin
+energy_decay_db :: proc(x: []f32, allocator: mem.Allocator = context.allocator) -> []f64
+```
+
+The energy decay curve of `x` (Schroeder's backward integration), in dB
+against its total energy (0 dB at the start, falling). Allocates.
+
+### decay_time
+
+```odin
+decay_time :: proc(x: []f32, sample_rate: f64, from_db: f64 = -5.0, to_db: f64 = -35.0) -> f64
+```
+
+The time `x` takes to fall 60 dB (seconds), from the straight line
+through its energy decay curve between `from_db` and `to_db` (−5 to −35:
+a T30); 0 if it never reaches `to_db`.
+
+### octave_band
+
+```odin
+octave_band :: proc(x: []f32, sample_rate: f64, center_hz: f64, allocator: mem.Allocator = context.allocator) -> []f32
+```
+
+`x` through an octave band-pass at `center_hz` (two second-order
+band-passes in a row). Allocates.
+
+### band_decay_time
+
+```odin
+band_decay_time :: proc(x: []f32, sample_rate: f64, center_hz: f64) -> f64
+```
+
+`x`'s decay time in the octave band at `center_hz` (as `decay_time`).
+
+### echo_density
+
+```odin
+echo_density :: proc(x: []f32, sample_rate: f64, window_ms: f64 = 20.0, step_ms: f64 = 5.0, allocator: mem.Allocator = context.allocator) -> []f64
+```
+
+`x`'s normalised echo density over time (Abel and Huang): in each
+window of `window_ms`, every `step_ms`, the share of frames further from
+zero than the window's standard deviation, over a Gaussian's share
+(0.3173). About 1 once the reverb is smooth noise; near 0 while it is
+a few separate echoes. Allocates.
+
+### correlation
+
+```odin
+correlation :: proc(a: []f32, b: []f32) -> f64
+```
+
+The correlation of `a` and `b` (−1..1; 0 when either is silent).
+
+### spectral_spread
+
+```odin
+spectral_spread :: proc(x: []f32, sample_rate: f64, hz: f64) -> f64
+```
+
+How far `x`'s spectrum spreads about `hz` (Hz): the width of the band
+around its peak near `hz` within 20 dB of it. A pure tone through a
+reverb that modulates comes out wider.
+
+### early_peaks
+
+```odin
+early_peaks :: proc(x: []f32, sample_rate: f64, ms: f64, count: int, allocator: mem.Allocator = context.allocator) -> []Reflection
+```
+
+The `count` loudest peaks of `x` in its first `ms` milliseconds (at
+least half a millisecond apart), in time order. Allocates.
 
 ### stretch_case_freq_map
 

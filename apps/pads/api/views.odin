@@ -21,12 +21,14 @@ View_Kind :: enum i32 {
 	Dialog,    // the dialog Pads shows (ui_dialog): its title, its words, its choices on the buttons
 	Song,      // the song's lanes around its cursor (`song_edit_state`), its tabs: Song, Clip, Lanes, Arrangement, Markers, Tempo
 	Settings,  // Pads' Settings: Audio, Channels, MIDI, Sync (what a headless Pads needs set from a controller)
+	Projects,  // the project page: the project open (Save, Save As, Rename), Recent, All, Templates (Open, New, Duplicate, Trash)
 }
 
 // A view's buttons a controller presses (`view_press`): the row of choices
 // under its knobs (Lower_1..8: 0..7), the row of tabs over them
 // (Upper_1..8: 8..15), the page before and after (its knobs' pages), and
-// the next device in the chain; and the controller's modifiers, pressed
+// the next device in the chain, the item before and after (Up, Down); and
+// the controller's modifiers, pressed
 // and let go as they are held (Mute, Solo: the lower row mutes or solos
 // the mixer's strips; Shift; Delete: a knob touched goes back to its
 // default).
@@ -40,6 +42,8 @@ View_Button :: enum i64 {
 	Solo,
 	Shift,
 	Delete,
+	Up,   // the view's item before (a controller's ▲: the device before, the row above, the strips' eight before)
+	Down, // the view's item after (▼)
 }
 
 // What a view offers a controller now, as it last drew: its knobs (one an

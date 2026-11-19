@@ -45,11 +45,12 @@ ctl_settings :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		refresh_devices(a)
 		cs.refreshed = true
 	}
+	ctl_upper(ctx, 7, "Controller ›", false) // (the controller's own settings: it takes the button)
 	if k := ctl_tabs(ctx, SETTINGS_TABS, cs.tab); k >= 0 && k < len(SETTINGS_TABS) {
 		cs.tab = k
 		s.page = .Audio if k < 2 else .Midi // (the window's page follows)
 	}
-	plot := im.Vec2{full.x, full.y - CTL_PLOT_Y - 46 - CTL_BUTTONS_H - 2}
+	plot := im.Vec2{full.x, full.y - CTL_PLOT_Y - CTL_KNOBS_H - CTL_BUTTONS_H - 4} // (the knobs: a row of value bars)
 	changed := false
 	switch cs.tab {
 	case 0: ctl_settings_audio(ctx, full, plot)

@@ -3,13 +3,19 @@
 // controller. Both are the same state: a tab or device chosen on the
 // controller is chosen in the window, and the other way round.
 //
-//	  0 -  24  the tabs (the upper buttons; a free last one: the next device)
-//	 26 -  72  the tab's picture (its plot, its waveform...)
-//	 74 - 136  its knobs, one an encoder (more: pages, Page < and >)
-//	138 - 160  its choices (the lower buttons)
+// Under the status line (ui_views.odin: the top 16 points, on every
+// view), in the 144 left:
+//
+//	  0 -  22  the tabs (the upper buttons)
+//	 24 -  92  the tab's picture (its plot, its waveform...)
+//	 94 - 124  its knobs as value bars, one an encoder (more: pages, the
+//	           controller's ◀ ▶; the page strip at the picture's bottom right)
+//	126 - 144  its choices (the lower buttons)
 //
 // The pad's meters down the right. The encoders turn the knobs as the
-// mouse does (ui.Knob_Input); the buttons click what they show.
+// mouse does (ui.Knob_Input); the buttons click what they show. The device
+// chain is on the status line (▲ ▼ step it); Delete + Device removes the
+// device shown, Mute + Device turns it off and on.
 package pads
 
 import "core:fmt"
@@ -27,11 +33,12 @@ import "fire:sampler"
 import "fire:synth"
 
 CTL_COL :: 120
-CTL_TABS_H :: 24
-CTL_PLOT_Y :: 26
+CTL_TABS_H :: 22
+CTL_PLOT_Y :: 24
 CTL_KNOB :: 24
-CTL_KNOBS_H :: 62
-CTL_BUTTONS_H :: 22
+CTL_KNOBS_H :: 30
+CTL_BUTTONS_H :: 18
+CTL_BAR_W :: CTL_COL - 16 // a knob's value bar
 CTL_METER_W :: 14
 // A choice's step: this much of an encoder's turn (three of Push 2's detents).
 CTL_STEP :: 3.0 / 160
@@ -58,6 +65,9 @@ Ctl_State :: struct {
 	auto_cc_pad:  int,
 	settings:   Ctl_Settings, // the Settings view (ui_ctl_settings.odin)
 	shift:      bool,        // the controller's Shift held (any view told: its knobs fine, labels say so)
+	dev_delete: bool,        // Device: the controller's Delete held (with Device: the device shown removed)
+	dev_mute:   bool,        // Device: its Mute held (with Device: the device shown off or on)
+	browse_part: int,        // Browse: the part the arrows move in (0 the categories, 1 the list)
 }
 
 // Where the picture goes and how big it is.
@@ -81,15 +91,31 @@ ctl_device :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		a.ctl.key = key
 		a.ctl.page = 0
 	}
-	if ctx.input != nil {
-		if ctx.input.pressed[int(pa.View_Button.Page_Left)] do a.ctl.page = max(a.ctl.page - 1, 0)
-		if ctx.input.pressed[int(pa.View_Button.Page_Right)] do a.ctl.page = min(a.ctl.page + 1, max(a.ctl.pages - 1, 0))
-		if ctx.input.pressed[int(pa.View_Button.Next_Device)] do ctl_next_device(a)
+	if inp := ctx.input; inp != nil {
+		on :: proc(inp: ^pa.View_Input, b: pa.View_Button) -> bool { return inp.pressed[int(b)] }
+		off :: proc(inp: ^pa.View_Input, b: pa.View_Button) -> bool { return inp.released[int(b)] }
+		// ◀ ▶: the tab's pages; ▲ ▼: the chain; Device with Delete held:
+		// the device shown removed, with Mute held: off or on.
+		if on(inp, .Page_Left) do a.ctl.page = max(a.ctl.page - 1, 0)
+		if on(inp, .Page_Right) do a.ctl.page = min(a.ctl.page + 1, max(a.ctl.pages - 1, 0))
+		if on(inp, .Up) do ctl_next_device(a, -1)
+		if on(inp, .Down) do ctl_next_device(a, 1)
+		if on(inp, .Delete) do a.ctl.dev_delete = true
+		if on(inp, .Mute) do a.ctl.dev_mute = true
+		if on(inp, .Next_Device) {
+			switch {
+			case a.ctl.dev_delete: ctl_device_remove(a)
+			case a.ctl.dev_mute:   ctl_device_toggle(a)
+			case:                  ctl_next_device(a, 1)
+			}
+		}
+		if off(inp, .Delete) do a.ctl.dev_delete = false
+		if off(inp, .Mute) do a.ctl.dev_mute = false
 	}
-	ctx.buttons |= 1 << uint(pa.View_Button.Next_Device)
+	ctx.buttons |= 1 << uint(pa.View_Button.Next_Device) | 1 << uint(pa.View_Button.Up) | 1 << uint(pa.View_Button.Down)
 	ctx.pages = 1
 	plot := ctl_plot(full)
-	if tr.kind == .Pad do view_meter(a, tr.index, {full.x - CTL_METER_W, CTL_PLOT_Y}, {CTL_METER_W, plot.y + CTL_KNOBS_H})
+	if tr.kind == .Pad do view_meter(a, tr.index, {full.x - CTL_METER_W, CTL_PLOT_Y}, {CTL_METER_W, plot.y}) // (beside the picture: the row under it is the knobs')
 	im.SetCursorPos({0, CTL_PLOT_Y})
 	switch st.device.kind {
 	case .Instrument:
@@ -126,24 +152,15 @@ ctl_device :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 
 // --- the parts ----------------------------------------------------------------------------------
 
-// The row of tabs, `current` lit; a free last one names the next device in
-// the chain (pressing it goes there). The tab pressed, or -1.
+// The row of tabs, `current` lit. The tab pressed, or -1.
 @(private)
 ctl_tabs :: proc(ctx: ^View_Ctx, names: []string, current: int) -> int {
-	a := ctx.a
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	o := im.GetWindowPos()
 	cells := make([dynamic]string, context.temp_allocator)
 	append(&cells, ..names)
-	next := ""
-	if len(cells) < 8 && ctx.want.kind == .Device { // (the device panel's: its chain)
-		if d, ok := ctl_next_of(a); ok {
-			next = fmt.tprintf("%s ›", ctl_device_name(a, d))
-			for len(cells) < 7 do append(&cells, "")
-			append(&cells, next)
-		}
-	}
+	next := "" // (the next device: on the status line now, ▲ ▼ step it)
 	pressed := -1
 	ui.text_push(.Label)
 	defer ui.text_pop()
@@ -163,10 +180,7 @@ ctl_tabs :: proc(ctx: ^View_Ctx, names: []string, current: int) -> int {
 		b := int(pa.View_Button.Upper_1) + k
 		ctx.buttons |= 1 << uint(b)
 		if lit do ctx.lit |= 1 << uint(b)
-		if ctx.input != nil && ctx.input.pressed[b] {
-			if next != "" && k == 7 do ctl_next_device(a)
-			else do pressed = k
-		}
+		if ctx.input != nil && ctx.input.pressed[b] do pressed = k
 	}
 	return pressed
 }
@@ -205,40 +219,63 @@ ctl_knob :: proc(ctx: ^View_Ctx, n, total: int, label: cstring, plot: im.Vec2) -
 	if n / 8 != ctx.a.ctl.page do return false
 	col := n % 8
 	w := ui.knob_width(label, CTL_KNOB)
-	im.SetCursorPos({f32(col * CTL_COL) + (CTL_COL - w) / 2, CTL_PLOT_Y + plot.y - 1})
+	im.SetCursorPos({f32(col * CTL_COL) + (CTL_COL - w) / 2, CTL_PLOT_Y + plot.y + 4})
 	ui.knob_input.drawn = col // (its encoder's)
 	return true
 }
 
-// The tab's pages of knobs as buttons at the right of the lower row (up to
-// `ctx.bank_end`), each named by its first knob, the one shown lit, on the
-// buttons the tab leaves free. Too few free: the last free one steps to the
-// next page (round to the first). Page < and > reach them all.
+// The tab's pages of knobs (more than one): a strip at the picture's
+// bottom right, each page by its first knob's name, the one shown bright
+// and underlined, ◀ ▶ either side (lit where there is a page that way):
+// the controller's ◀ ▶ step them. No button of the lower row goes on them.
 @(private)
 ctl_banks :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	a := ctx.a
 	n := ctx.pages
 	if n <= 1 do return
-	end := ctx.bank_end if ctx.bank_end > 0 else 7
-	free: [8]int
-	nf := 0
-	for k := end; k >= 0 && nf < n; k -= 1 do if ctx.buttons & (1 << uint(k)) == 0 {
-		free[nf] = k
-		nf += 1
-	}
-	if nf == 0 do return
+	a.ctl.page = clamp(a.ctl.page, 0, n - 1)
+	ctl_page_strip(ctx, full, n, a.ctl.page)
+}
+
+// A page strip (ctl_banks): `n` pages, `cur` shown, named by ctx.banks.
+ctl_page_strip :: proc(ctx: ^View_Ctx, full: im.Vec2, n, cur: int) {
+	t := ui.theme()
+	dl := im.GetWindowDrawList()
+	o := im.GetWindowPos()
+	plot := ctl_plot(full)
+	ui.text_push(.Caption)
+	defer ui.text_pop()
 	name :: proc(ctx: ^View_Ctx, b: int) -> string {
 		return ctx.banks[b] if b < len(ctx.banks) && ctx.banks[b] != "" else fmt.tprintf("Page %d", b + 1)
 	}
-	if nf < n {
-		next := (a.ctl.page + 1) % n
-		if p, _ := ctl_button(ctx, free[0], fmt.ctprintf("%s ›", name(ctx, next)), false, full); p do a.ctl.page = next
-		return
+	gap: f32 = 10
+	w: f32 = 0
+	for b in 0 ..< n do w += im.CalcTextSize(fmt.ctprintf("%s", name(ctx, b))).x + gap
+	aw := im.CalcTextSize("◀").x
+	w += 2 * (aw + gap)
+	lh := im.GetTextLineHeight()
+	x1 := o.x + plot.x - 4
+	x := x1 - w
+	y := o.y + CTL_PLOT_Y + plot.y - lh - 4
+	im.DrawList_AddRectFilled(dl, {x - 6, y - 2}, {x1 + 2, y + lh + 3}, ui.col(ui.with_alpha(VIEW_BG, 0.8)), 4)
+	tri :: proc(dl: ^im.DrawList, x, y, h: f32, left, on: bool) {
+		t := ui.theme()
+		c := ui.col(t.text if on else ui.with_alpha(t.text_dim, 0.4))
+		m := y + h / 2
+		if left do im.DrawList_AddTriangleFilled(dl, {x + 7, m - 4}, {x + 7, m + 4}, {x + 1, m}, c)
+		else do im.DrawList_AddTriangleFilled(dl, {x + 1, m - 4}, {x + 1, m + 4}, {x + 7, m}, c)
 	}
+	tri(dl, x, y, lh, true, cur > 0)
+	x += aw + gap
 	for b in 0 ..< n {
-		k := free[n - 1 - b]
-		if p, _ := ctl_button(ctx, k, fmt.ctprintf("%s ›", name(ctx, b)) if b > a.ctl.page else fmt.ctprintf("%s", name(ctx, b)), b == a.ctl.page, full); p do a.ctl.page = b
+		c := fmt.ctprintf("%s", name(ctx, b))
+		ts := im.CalcTextSize(c)
+		im.DrawList_AddText(dl, {x, y}, ui.col(t.text if b == cur else t.text_dim), c)
+		if b == cur do im.DrawList_AddLine(dl, {x, y + lh + 1}, {x + ts.x, y + lh + 1}, ui.col(t.accent), 2)
+		x += ts.x + gap
 	}
+	tri(dl, x, y, lh, false, cur < n - 1)
+	ctx.buttons |= 1 << uint(pa.View_Button.Page_Left) | 1 << uint(pa.View_Button.Page_Right)
 }
 
 // A choice (an enum: `names`) as a dropdown in knob `n`'s place: its name
@@ -303,9 +340,9 @@ ctl_box :: proc(col: int, label: cstring, text: string, held: bool, plot: im.Vec
 	t := ui.theme()
 	dl := im.GetWindowDrawList()
 	o := im.GetWindowPos()
-	x0 = o.x + f32(col * CTL_COL) + 6
-	x1 = x0 + CTL_COL - 12
-	y := o.y + CTL_PLOT_Y + plot.y - 1
+	x0 = o.x + f32(col * CTL_COL) + 8
+	x1 = x0 + CTL_BAR_W
+	y := o.y + CTL_PLOT_Y + plot.y + 4
 	ui.text_push(.Label)
 	defer ui.text_pop()
 	shown := string(label)
@@ -314,19 +351,23 @@ ctl_box :: proc(col: int, label: cstring, text: string, held: bool, plot: im.Vec
 	if ctl_shift_now do lc = fmt.ctprintf("%s · fine", shown) // (Shift held: every knob a tenth)
 	ls := im.CalcTextSize(lc)
 	lh = ls.y
-	im.DrawList_AddText(dl, {(x0 + x1 - ls.x) / 2, y}, ui.col(t.accent if ctl_shift_now else t.text if held else t.text_dim), lc)
-	by = y + ls.y + 5
-	bh = 24
-	im.DrawList_AddRectFilled(dl, {x0, by}, {x1, by + bh}, ui.col(t.raised), t.radius)
-	if held do im.DrawList_AddRect(dl, {x0, by}, {x1, by + bh}, ui.col(t.accent), t.radius, 1.5)
+	// As a knob's bar: the name at the left, the choice at the right (▾ after
+	// it), a line under them (the accent while touched).
 	vc := fmt.ctprintf("%s", text)
 	vs := im.CalcTextSize(vc)
-	im.PushClipRect({x0 + 4, by}, {x1 - 14, by + bh}, true)
-	im.DrawList_AddText(dl, {max(x0 + 6, (x0 + x1 - 10 - vs.x) / 2), by + (bh - vs.y) / 2}, ui.col(t.text), vc)
-	im.PopClipRect()
-	// ▾
-	ax, ay := x1 - 10, by + bh / 2
+	vs.x += 10 // (its ▾)
+	im.DrawList_PushClipRect(dl, {x0, y}, {x1 - vs.x - 4, y + lh}, true)
+	im.DrawList_AddText(dl, {x0, y}, ui.col(t.accent if ctl_shift_now else t.text if held else t.text_dim), lc)
+	im.DrawList_PopClipRect(dl)
+	im.DrawList_PushClipRect(dl, {x0 + min(ls.x + 6, CTL_BAR_W / 2), y}, {x1 - 10, y + lh}, true)
+	im.DrawList_AddText(dl, {max(x1 - vs.x, x0 + min(ls.x + 6, CTL_BAR_W / 2)), y}, ui.col(t.text), vc)
+	im.DrawList_PopClipRect(dl)
+	ax, ay := x1 - 4, y + lh / 2
 	im.DrawList_AddTriangleFilled(dl, {ax - 4, ay - 2}, {ax + 4, ay - 2}, {ax, ay + 3}, ui.col(t.text_dim))
+	by = y + lh + 3
+	bh = f32(ui.KNOB_BAR_THICK)
+	im.DrawList_AddRectFilled(dl, {x0, by}, {x1, by + bh}, ui.col(t.accent if held else t.raised), 2)
+	by = y // (a list opened from it: over the picture, above this)
 	return
 }
 
@@ -370,42 +411,100 @@ ctl_chain :: proc(a: ^App) -> []Device {
 	switch tr.kind {
 	case .Pad:
 		append(&out, Device{.Midi, 0}, Device{.Instrument, 0}, Device{.Eq, 0})
-		for k in 0 ..< pm.PAD_INSERTS do if s, _ := pm.target_slot(m, {.Pad, tr.index, k}); s.kind != .None do append(&out, Device{.Slot, k})
+		ctl_chain_slots(m, &out, {.Pad, tr.index, 0}, pm.PAD_INSERTS)
 	case .Bus:
-		for k in 0 ..< pm.BUS_SLOTS do if s, _ := pm.target_slot(m, {.Bus, tr.index, k}); s.kind != .None do append(&out, Device{.Slot, k})
+		ctl_chain_slots(m, &out, {.Bus, tr.index, 0}, pm.BUS_SLOTS)
 	case .Perf:
 		append(&out, Device{.Slot, 0})
 	}
 	return out[:]
 }
 
-// The device after the one shown (round to the first; the MIDI page last).
+// A track's effect slots that hold one, then its first empty one (an
+// effect to add: "+ Add" on the chain).
 @(private)
-ctl_next_of :: proc(a: ^App) -> (Device, bool) {
+ctl_chain_slots :: proc(m: ^pm.Model, out: ^[dynamic]Device, t: pm.Fx_Target, n: int) {
+	empty := -1
+	for k in 0 ..< n {
+		s, ok := pm.target_slot(m, {t.kind, t.index, k})
+		if !ok do continue
+		if s.kind != .None do append(out, Device{.Slot, k})
+		else if empty < 0 do empty = k
+	}
+	if empty >= 0 do append(out, Device{.Slot, empty})
+}
+
+// The device `step` from the one shown in the chain (+1 the next, -1 the
+// one before; round; the MIDI page last).
+@(private)
+ctl_next_of :: proc(a: ^App, step := 1) -> (Device, bool) {
 	chain := ctl_chain(a)
 	if len(chain) < 2 do return {}, false
 	order := make([dynamic]Device, context.temp_allocator)
 	for d in chain do if d.kind != .Midi do append(&order, d)
 	for d in chain do if d.kind == .Midi do append(&order, d)
-	for d, k in order do if d == a.detail.device do return order[(k + 1) % len(order)], true
+	n := len(order)
+	for d, k in order do if d == a.detail.device do return order[((k + step) % n + n) % n], true
 	return order[0], true
 }
 
-// Shows the next device (the window too).
+// Shows the device `step` along the chain (the window too).
 @(private)
-ctl_next_device :: proc(a: ^App) {
-	d, ok := ctl_next_of(a)
+ctl_next_device :: proc(a: ^App, step := 1) {
+	d, ok := ctl_next_of(a, step)
 	if !ok do return
 	st := &a.detail
 	st.device, st.show = d, 2
-	if d.kind == .Slot {
-		tr := st.track
-		switch tr.kind {
-		case .Pad:  a.fx = {.Pad, tr.index, d.slot}
-		case .Bus:  a.fx = {.Bus, tr.index, d.slot}
-		case .Perf: a.fx = {.Perf, tr.index, 0}
-		}
+	if d.kind == .Slot do a.fx = ctl_device_fx(a, d)
+}
+
+// Removes the device shown: an effect; the instrument, the pad cleared (as
+// Clear Pad, undoable); a pad's EQ and MIDI page stay.
+@(private)
+ctl_device_remove :: proc(a: ^App) {
+	d := a.detail.device
+	if tr := a.detail.track; d.kind == .Instrument && tr.kind == .Pad {
+		if !pm.pad_used(&a.m.project, tr.index) do return
+		pa.pad_clear(&a.api, i64(tr.index))
+		ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Cleared %s", pm.pad_label(tr.index)))
+		return
 	}
+	if d.kind != .Slot || a.detail.track.kind == .Perf {
+		ui.toast(&a.ws.toasts, .Warning, "Delete + Device removes an effect or the instrument (its EQ and MIDI stay)")
+		return
+	}
+	fx := ctl_device_fx(a, d)
+	if s, ok := pm.target_slot(&a.m, fx); !ok || s.kind == .None do return
+	sl, _ := pm.target_slot(&a.m, fx)
+	name := pm.slot_name(sl)
+	pa.effect_clear(&a.api, slot_ref(fx))
+	ui.toast(&a.ws.toasts, .Info, fmt.tprintf("Removed %s", name))
+}
+
+// Turns the device shown off or on (an effect; a pad's EQ).
+@(private)
+ctl_device_toggle :: proc(a: ^App) {
+	d := a.detail.device
+	#partial switch d.kind {
+	case .Slot:
+		fx := ctl_device_fx(a, d)
+		if fx.kind == .Perf do return
+		if s, ok := pm.target_slot(&a.m, fx); ok && s.kind != .None do pa.effect_set_on(&a.api, slot_ref(fx), !s.on)
+	case:
+		ui.toast(&a.ws.toasts, .Info, "Mute + Device turns an effect off and on")
+	}
+}
+
+// The effect slot device `d` of the track shown is.
+@(private)
+ctl_device_fx :: proc(a: ^App, d: Device) -> pm.Fx_Target {
+	tr := a.detail.track
+	switch tr.kind {
+	case .Pad:  return {.Pad, tr.index, d.slot}
+	case .Bus:  return {.Bus, tr.index, d.slot}
+	case .Perf: return {.Perf, tr.index, 0}
+	}
+	return {}
 }
 
 // A device's name, short.
@@ -423,7 +522,7 @@ ctl_device_name :: proc(a: ^App, d: Device) -> string {
 		if tr.kind == .Bus do fx = {.Bus, tr.index, d.slot}
 		if tr.kind == .Perf do fx = {.Perf, tr.index, 0}
 		_ = k
-		if s, ok := pm.target_slot(m, fx); ok do return pm.slot_name(s)
+		if s, ok := pm.target_slot(m, fx); ok do return "+ Add" if s.kind == .None else pm.slot_name(s)
 	}
 	return ""
 }
@@ -734,7 +833,7 @@ ctl_lfo :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 	key := int(Voice_Key.Lfo) + k * 10
 	place :: proc(ctx: ^View_Ctx, col: int, label: cstring, plot: im.Vec2) {
 		w := ui.knob_width(label, CTL_KNOB)
-		im.SetCursorPos({f32(col * CTL_COL) + (CTL_COL - w) / 2, CTL_PLOT_Y + plot.y - 1})
+		im.SetCursorPos({f32(col * CTL_COL) + (CTL_COL - w) / 2, CTL_PLOT_Y + plot.y + 4})
 		ui.knob_input.drawn = col
 	}
 	place(ctx, 0, "Rate", plot)
@@ -815,7 +914,6 @@ ctl_global :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 			}
 		}
 	}
-	ctl_clear_button(ctx, i, full)
 }
 
 // The pad's card over the picture: its letter and name, its sample.
@@ -838,11 +936,6 @@ ctl_pad_card :: proc(a: ^App, i: int, plot: im.Vec2) {
 	}
 }
 
-// Clear Pad, the last of the row (undoable, as in the window).
-@(private)
-ctl_clear_button :: proc(ctx: ^View_Ctx, i: int, full: im.Vec2) {
-	if p, _ := ctl_button(ctx, 7, ui.ICON_ERASER + "  Clear Pad", false, full); p do pa.pad_clear(&ctx.a.api, i64(i))
-}
 
 // An audio pad's takes: the current sequence's, its playhead; volume and
 // pan; armed, and how it monitors.
@@ -863,7 +956,6 @@ ctl_audio_takes :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 @(private)
 ctl_audio_global :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 	ctl_audio_takes(ctx, i, plot, full)
-	ctl_clear_button(ctx, i, full)
 }
 
 @(private)
@@ -1045,16 +1137,20 @@ ctl_effect :: proc(ctx: ^View_Ctx, t: pm.Fx_Target, plot, full: im.Vec2) {
 	}
 	a.fx = t
 	pm.watch_slot(&m.engine, t)
+	if s.kind == .Pro_Eq || s.kind == .Pro_Comp || s.kind == .Proverb { // (its bands, or its views, on the upper row in place of the tabs)
+		#partial switch s.kind {
+		case .Pro_Eq:   ctl_pro_eq(ctx, t, s, plot, full)
+		case .Pro_Comp: ctl_pro_comp(ctx, t, s, plot, full)
+		case .Proverb:  ctl_pro_verb(ctx, t, s, plot, full)
+		}
+		return // (On: Mute + Device; Remove: Delete + Device)
+	}
 	ctl_tabs(ctx, {fmt.tprintf("%s%s", pm.slot_name(s), "" if s.on || t.kind == .Perf else " (off)")}, 0)
 	im.SetCursorPos({0, CTL_PLOT_Y})
-	if s.kind == .Super_Filter {
-		ctl_super_filter(ctx, t, s, plot, full)
-		ctx.bank_end = 6
-		if t.kind != .Perf {
-			if p, _ := ctl_button(ctx, 0, "On", s.on, full); p do pa.effect_set_on(&a.api, slot_ref(t), !s.on)
-			if p, _ := ctl_button(ctx, 7, ui.ICON_TRASH_2 + "  Remove", false, full); p do pa.effect_clear(&a.api, slot_ref(t))
-		}
-		return
+	if s.kind == .Super_Filter || s.kind == .Pro_Saturator {
+		if s.kind == .Super_Filter do ctl_super_filter(ctx, t, s, plot, full)
+		else do ctl_pro_saturator(ctx, t, s, plot, full)
+		return // (On: Mute + Device; Remove: Delete + Device)
 	}
 	twin_e, twin := pm.synth_twin(s.kind)
 	if !twin do draw_effect_view(a, t, s, plot)
@@ -1075,12 +1171,7 @@ ctl_effect :: proc(ctx: ^View_Ctx, t: pm.Fx_Target, plot, full: im.Vec2) {
 	} else {
 		ctl_params(ctx, t, s, plugin, knobs[:], {}, plot)
 	}
-	ctx.bank_end = 6
-	if t.kind != .Perf {
-		if p, _ := ctl_button(ctx, 0, "On", s.on, full); p do pa.effect_set_on(&a.api, slot_ref(t), !s.on)
-		if p, _ := ctl_button(ctx, 7, ui.ICON_TRASH_2 + "  Remove", false, full); p do pa.effect_clear(&a.api, slot_ref(t))
-	}
-	if s.kind == .Plugin && plugin != nil do ctl_editor_button(ctx, 1, t, plugin, full)
+	if s.kind == .Plugin && plugin != nil do ctl_editor_button(ctx, 0, t, plugin, full) // (On: Mute + Device; Remove: Delete + Device)
 }
 
 // A knob of an effect's or a plug-in's: a parameter (`is`), a synth effect's
@@ -1167,9 +1258,7 @@ ctl_plugin :: proc(ctx: ^View_Ctx, t: pm.Fx_Target, plot, full: im.Vec2) {
 	knobs := make([dynamic]Ctl_Param, context.temp_allocator)
 	for q in pm.target_params(&m.engine, t) do append(&knobs, Ctl_Param{info = q, is = true})
 	ctl_params(ctx, t, s, p, knobs[:], {}, plot)
-	ctx.bank_end = 6
 	ctl_editor_button(ctx, 0, t, p, full)
-	ctl_clear_button(ctx, i, full)
 }
 
 // --- the synth ----------------------------------------------------------------------------------
@@ -1367,8 +1456,6 @@ ctl_synth :: proc(ctx: ^View_Ctx, i: int, plot, full: im.Vec2) {
 		g :: synth.global_param
 		ctl_synth_knobs(ctx, {{"Volume", g(.Volume)}, {"Voices", g(.Polyphony)}, {"Glide", g(.Glide)}, {"Glide Curve", g(.Glide_Slope)}, {"Bend Range", g(.Bend_Range)}, {"Velocity", g(.Velocity_Track)}, {"Transpose", g(.Transpose)}, {"Tune", g(.Tune)},
 			{"Voice Mode", g(.Mono)}, {"Oversampling", g(.Oversampling)}, {"Priority", g(.Priority)}, {"Always Glide", g(.Glide_Always)}, {"Glide Octaves", g(.Glide_Octave)}}, plot)
-		ctx.bank_end = 6
-		ctl_clear_button(ctx, i, full)
 	}
 }
 

@@ -1,5 +1,6 @@
 package ui
 
+import "core:fmt"
 import "core:strconv"
 import "core:strings"
 
@@ -64,6 +65,50 @@ probe_items :: proc() -> []Probe_Item {
 		})
 	}
 	return out[:]
+}
+
+// A Probe_Item's status bit: an item the probe made up for a name given
+// to something without an id (a Dummy, a Text; probe.cpp's FIRE_PROBE_NAMED).
+@(private) PROBE_NAMED :: u32(1) << 31
+
+// Items of the last frame that share an id with one before them (ImGui's
+// "conflicting IDs": two widgets one, clicks going to the wrong one), each
+// id once (temporary allocator). Only what the probe saw: items that show.
+probe_conflicts :: proc() -> []Probe_Item {
+	n := int(im.probe_count())
+	seen := make(map[im.ID]int, n, context.temp_allocator)
+	out := make([dynamic]Probe_Item, context.temp_allocator)
+	for i in 0 ..< n {
+		it: im.Probe_Item
+		if !im.probe_get(i32(i), &it) || it.id == 0 || it.status & PROBE_NAMED != 0 do continue
+		window := string(cstring(&it.window[0]))
+		if strings.has_prefix(window, "##offscreen") do continue // (a controller's views: their own context, several frames in one)
+		k := seen[it.id]
+		seen[it.id] = k + 1
+		if k != 1 do continue // (the second: a conflict; more, already said)
+		raw := strings.clone(string(cstring(&it.label[0])), context.temp_allocator)
+		append(&out, Probe_Item{label = shown(raw), raw = raw, window = strings.clone(string(cstring(&it.window[0])), context.temp_allocator), min = {it.x0, it.y0}, max = {it.x1, it.y1}, status = it.status})
+	}
+	return out[:]
+}
+
+// How many conflicting items `probe_report_conflicts` has said (a scripted
+// run fails if any).
+probe_conflicts_seen: int
+
+// Says on stderr, once for each id, items that conflict (`probe_conflicts`)
+// in the frame just drawn: a test harness fails on "imgui: conflicting ID".
+// Nothing when the probe is off.
+probe_report_conflicts :: proc() {
+	if !probe_enabled do return
+	@(static) said: map[string]bool
+	for it in probe_conflicts() {
+		key := fmt.tprintf("%s\x00%s", it.window, it.raw)
+		if key in said do continue
+		said[strings.clone(key)] = true
+		probe_conflicts_seen += 1
+		fmt.eprintfln("imgui: conflicting ID: %q in window %q (at %v)", it.raw, it.window, it.min)
+	}
 }
 
 // A label up to "##" (or "###"), trimmed.

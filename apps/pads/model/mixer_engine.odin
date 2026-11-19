@@ -21,13 +21,20 @@ Slot_Key :: struct {
 	keyed:  bool, // it takes a key (four inputs)
 	listen: bool,
 	own:    bool, // keyed from its own input (through the key's filters)
+	oversample: bool, // ProEq's Oversampling (its latency: a new node)
+	lookahead:  u8,   // ProComp's Lookahead, ProSaturator's and ProVerb's Quality (likewise)
 }
 
 @(private)
 key_of :: proc(s: Effect_Slot) -> Slot_Key {
 	// (SuperFilter is always keyed: from nothing, its own input through the key's filters.)
 	keyed := keyable(s.kind) && (s.key.kind != .None || key_has_high_cut(s.kind))
-	return {s.kind, s.plugin_path, s.plugin_id, keyed, keyed && s.listen, keyed && s.key.kind == .None}
+	os := s.kind == .Pro_Eq && slot_value(s, fx.PE_PARAM_OVERSAMPLE, 0) >= 0.5
+	la := u8(clamp(slot_value(s, fx.PC_PARAM_LOOKAHEAD, 0), 0, 2)) if s.kind == .Pro_Comp else 0
+	if s.kind == .Pro_Saturator do la = u8(clamp(slot_value(s, fx.PS_PARAM_QUALITY, 0), 0, 2)) // (its Quality, likewise)
+	if s.kind == .Proverb do la = u8(clamp(slot_value(s, fx.PV_PARAM_QUALITY, 1), 0, 2))
+	listen := keyed && s.listen && !listens_itself(s.kind) // (ProComp listens itself: its node plays its key)
+	return {s.kind, s.plugin_path, s.plugin_id, keyed, listen, keyed && s.key.kind == .None, os, la}
 }
 
 // One effect slot in the graph.
@@ -185,6 +192,20 @@ effect_node :: proc(e: ^Engine, s: Effect_Slot) -> (node: fc.Node, plugin: ^clap
 	case .Cutter:     inner = dsp.cutter_create()
 	case .Stutter:    return dsp.stutter_create(), nil, true // always listening: its switch is its own
 	case .Super_Filter: inner, _ = fx.super_filter_create({})
+	case .Pro_Eq:
+		n, _, err := fx.pro_eq_create({oversample = slot_value(s, fx.PE_PARAM_OVERSAMPLE, 0) >= 0.5})
+		if err != .None do return {}, nil, false
+		inner = n
+	case .Pro_Comp:
+		inner, _ = fx.pro_comp_create({lookahead = fx.Pro_Comp_Lookahead(clamp(int(slot_value(s, fx.PC_PARAM_LOOKAHEAD, 0)), 0, 2))})
+	case .Pro_Saturator:
+		n, _, err := fx.pro_saturator_create({quality = fx.Pro_Saturator_Quality(clamp(int(slot_value(s, fx.PS_PARAM_QUALITY, 0)), 0, 2))})
+		if err != .None do return {}, nil, false
+		inner = n
+	case .Proverb:
+		n, _, err := fx.proverb_create({quality = fx.Proverb_Quality(clamp(int(slot_value(s, fx.PV_PARAM_QUALITY, 1)), 0, 2))})
+		if err != .None do return {}, nil, false
+		inner = n
 	case .Plugin:
 		n, p, pok := plugin_node(e, s)
 		if !pok do return {}, nil, false
@@ -203,6 +224,11 @@ apply_slot :: proc(g: ^graph.Graph, f: ^Fx_Node, s: Effect_Slot, fresh: bool, mi
 		if fresh || old != p.value do graph.set_param(g, f.id, p.id, f64(p.value))
 	}
 	if f.applied.kind == s.kind do reset_dropped(g, f, s)
+	if s.kind == .Pro_Comp && (fresh || f.applied.listen != s.listen || f.applied.key != s.key) {
+		// (Whether its key is wired, and its own Listen.)
+		graph.set_param(g, f.id, fx.PC_PARAM_KEYED, 1 if f.key.keyed else 0)
+		graph.set_param(g, f.id, fx.PC_PARAM_LISTEN, 1 if s.listen else 0)
+	}
 	if f.key_filter != {} && (fresh || f.key_hpf != s.key_hpf) {
 		graph.set_param(g, f.key_filter, dsp.FILTER_PARAM_CUTOFF_HZ, f64(max(s.key_hpf, 10))) // (10 Hz: as good as none)
 		f.key_hpf = s.key_hpf
@@ -264,6 +290,10 @@ build_slot :: proc(e: ^Engine, f: ^Fx_Node, s: Effect_Slot) -> bool {
 	case .Compressor, .Delay, .Reverb, .Chorus, .Flanger, .Phaser, .Distortion, .Eq, .Filter:
 		f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (a `synth.Effect_Node`)
 	case .Super_Filter: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (an `fx.Super_Filter`)
+	case .Pro_Eq:       f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (an `fx.Pro_Eq`)
+	case .Pro_Comp:     f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (an `fx.Pro_Comp`)
+	case .Pro_Saturator: f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (an `fx.Pro_Saturator`)
+	case .Proverb:       f.inner, f.kind = (^dsp.Wet)(node.data).inner.data, s.kind // (an `fx.Proverb`)
 	}
 	apply_slot(g, f, s, true)
 	return true
@@ -749,6 +779,43 @@ slot_super_filter :: proc(e: ^Engine, t: Fx_Target) -> (r: fx.Super_Filter_Reado
 	f := target_node(e, t)
 	if f == nil || !f.has || f.inner == nil || f.kind != .Super_Filter do return {}, false
 	return fx.super_filter_readout((^fx.Super_Filter)(f.inner)), true
+}
+
+// The ProEq in slot `t`, or nil if the slot holds none (or it isn't in the
+// graph). Its readout, input and audition are safe from any thread
+// (`fx.pro_eq_readout`, `fx.pro_eq_read_input`, `fx.pro_eq_audition`).
+slot_pro_eq :: proc(e: ^Engine, t: Fx_Target) -> ^fx.Pro_Eq {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil || f.kind != .Pro_Eq do return nil
+	return (^fx.Pro_Eq)(f.inner)
+}
+
+// The ProComp in slot `t`, or nil if the slot holds none (or it isn't in
+// the graph). Its readout and history are safe from any thread
+// (`fx.pro_comp_readout`, `fx.pro_comp_history`).
+slot_pro_comp :: proc(e: ^Engine, t: Fx_Target) -> ^fx.Pro_Comp {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil || f.kind != .Pro_Comp do return nil
+	return (^fx.Pro_Comp)(f.inner)
+}
+
+// The ProSaturator in slot `t`, or nil if the slot holds none (or it isn't
+// in the graph). Its readout, signal and taps are safe from any thread
+// (`fx.pro_saturator_readout`, `fx.pro_saturator_signal`,
+// `fx.pro_saturator_read_taps`).
+slot_pro_saturator :: proc(e: ^Engine, t: Fx_Target) -> ^fx.Pro_Saturator {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil || f.kind != .Pro_Saturator do return nil
+	return (^fx.Pro_Saturator)(f.inner)
+}
+
+// The ProVerb in slot `t`, or nil if the slot holds none (or it isn't in
+// the graph). Its readout and wet are safe from any thread
+// (`fx.proverb_readout`, `fx.proverb_read_wet`).
+slot_proverb :: proc(e: ^Engine, t: Fx_Target) -> ^fx.Proverb {
+	f := target_node(e, t)
+	if f == nil || !f.has || f.inner == nil || f.kind != .Proverb do return nil
+	return (^fx.Proverb)(f.inner)
 }
 
 // Main's loudness (EBU R128): momentary, short-term and integrated in LUFS

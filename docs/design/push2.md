@@ -14,6 +14,47 @@ Choices made (2026-11-16): Open Sans the kit's default font; every view
 of Pads' (sequencer, device, mixer, clip, browser); every mode (Mix,
 Device, Note/Scale, Session, Browse, Clip).
 
+## One way everywhere: the display's conventions (2026-11-18)
+
+Every view on the display follows the same rules, so what a button does
+doesn't depend on where you are:
+
+- **The status line** (the top 16 points, `view_status` in
+  `ui_views.odin`), on every view, never over it: Shift (held), the
+  sequence (`S3 Verse`), where it plays (bar.beat; counting in, the beats
+  to the top in red), the tempo; the device chain in Device (the device
+  shown bright, an off one dim with "(off)"), the selected pad elsewhere;
+  at the right Pads' newest message (two seconds), input quantize (`IQ
+  1/16`), the unsaved dot and Main's meter. The views draw under it (a
+  child window: their own coordinates, 144 points tall).
+- **◀ ▶ (the arrows) page the view:** the open tab's pages of knobs
+  (Device), Mix's pages (Volume, Pan, the sends, routing), the browser's
+  parts. A **page strip** at the picture's bottom right names the pages,
+  the one shown underlined, ◀ ▶ lit where there is a page that way: there
+  is always a way back to the first. No button of the lower row goes on
+  pages.
+- **▲ ▼ step the view's items:** the device chain (Device; Device pressed
+  again: the next too), Mix's strips eight at a time (the buses seven),
+  the browser's rows (▶ into the list or a folder or a device's presets,
+  ◀ back out), the project page's rows, the Song lanes, Perform's
+  launcher rows.
+- **Page ◀ ▶ scroll the pads' grid:** Clip's step pages, Song's cursor (a
+  bar; Shift: a beat); otherwise the selected pad the one before or after
+  (Shift: the sequence).
+- **The knob row is value bars** (`ui.Knob_Input.bar_w`, `ui.knob`'s
+  bar style): the name at the left, the value at the right, a bar under
+  them (filled from 0 for a range either side of it), 30 points; a choice
+  is the same with ▾ (`ctl_box`). The lower row's buttons are 18 points.
+  The picture gets 68 (it had 46).
+- **Removing and bypassing:** Delete + Device removes the device shown (an
+  effect; the instrument: the pad cleared, undoable); Mute + Device turns
+  an effect off and on. The lower row holds only the device's own choices
+  (no On, Remove or Clear Pad buttons).
+- **Repeat** is Pads' note repeat (the toolbar's, every pad held): lit
+  while it is on; held, on until let go; Shift + Repeat latches it on or
+  off; held a while with no pad played, its settings (on, rate, gate:
+  the Note Repeat dialog) on the display.
+
 ## Pads' panel on the display (2026-11-16)
 
 The display mirrors Pads instead of a layout of its own, so a Pads user is
@@ -22,15 +63,16 @@ at home on the hardware:
 - **Device** is Pads' device panel itself (`View_Kind.Device`): the device
   and tab the window shows, drawn by Pads for 960 x 160 (`ui_ctl.odin`):
   its tabs on the upper row, its picture, its knobs one an encoder (more:
-  pages, Page < and >), its choices on the lower row, the pad's meters at
+  pages, ◀ and ▶), its choices on the lower row, the pad's meters at
   the right. One state: a tab or device chosen on the Push is the
-  window's, and the other way round. Device pressed again: the next
-  device in the chain (MIDI, the instrument, EQ, the inserts).
+  window's, and the other way round. Device pressed again (or ▼): the
+  next device in the chain (the instrument, EQ, the inserts, "+ Add" for
+  the next empty slot, MIDI).
 - Every device: the sampler (and slicer, audio pad), the synth's eight
   tabs, plug-in instruments, the EQ, the MIDI effects, every effect slot
   (an empty one: choose an effect, Add); an empty pad offers Browse,
-  Record (held), Audio, Synth, Slicer; Global and the synth's Global:
-  Clear Pad (Delete held + a pad clears it too).
+  Record (held), Audio, Synth, Slicer; Delete + Device on the instrument
+  clears the pad (Delete held + a pad clears it too).
 - The encoders turn Pads' own knobs (`ui.Knob_Input`): undo, automation
   and modulation as with the mouse; a touch is one step.
 - **Dialogs**: every modal goes through `modal_begin`; its words and buttons
@@ -97,8 +139,8 @@ at home on the hardware:
   - Modifiers on a sequence pad: Shift launches it alone, Select goes to
     it, Delete clears it, Duplicate copies it. Select on an effect shows
     it in Device.
-  - Scene buttons launch the rows shown; Up/Down move the rows, Page < >
-    the lanes, Octave the pads' bank.
+  - Scene buttons launch the rows shown; ▲ ▼ move the rows, ◀ ▶ the
+    lanes, Octave the pads' bank.
   - The display: the 4 lanes (names above: their sequence in Clip; Stop
     below), the effects' legend, Main and Cue, the bar's settings lit.
     Encoders: 1 lanes, 2 rows, 5 the last effect's strength, 7 Main, 8
@@ -111,7 +153,7 @@ at home on the hardware:
   Layout keeps the drum pads.
 - **Mix** is the window's mixer strips (`View_Kind.Mixer`, `ctl_mixer` in
   `ui_ctl_mixer.odin`), drawn and driven by Pads like Device: the
-  selected pad's eight (Page < >: the eight before or after), each with
+  selected pad's eight (▲ ▼: the eight before or after; ◀ ▶ its pages), each with
   its readouts, fader filled in the pad's colour, dB scale, stereo meter,
   pan, M (yellow), S (blue), R (red) and name plate.
   - Upper 1 steps the encoders' page: Volume, Pan, a Send per bus, Audio
@@ -121,7 +163,11 @@ at home on the hardware:
   - Upper 2, Arm: pressed, the selected pad armed or not; held, the lower
     row arms.
   - Upper 8, Buses: the buses seven at a time, Main pinned at the far
-    right (Volume, Pan, Output pages).
+    right (Volume, Pan, Output pages). The lower row selects a bus (or
+    Main): Device then shows its chain, to add effects (an empty slot: the
+    first encoder picks the effect, Add), edit them, turn them off and
+    remove them. The chain's last stop, "+ Add ›" on the upper row's
+    last, is its next empty slot. Buses off: back to the selected pad's.
   - The lower row selects; with Mute, Solo or Arm held, it mutes, solos or
     arms. Delete held and an encoder touched: back to its default.
   - The master encoder is Main's level.
@@ -168,7 +214,56 @@ at home on the hardware:
   - Circuit: Drive, Circuit, Slope, Clip, Output, Wave, Shape, Mode.
   - Envelope: Attack, Release, Hold, S&H, S&H Rate, Source, Key Low, Key High.
   - LFO: Stereo, Phase or Spin, Offset, Retrigger, Smooth, Key Gain, Listen.
-  - On, the four banks, Remove on the lower row.
+  - Its banks by ◀ ▶ (the page strip); off and on by Mute + Device, removed by Delete + Device.
+- **ProEq** (`ctl_pro_eq`, ui_proeq.odin): the window's display (the grid,
+  the input's and output's spectra, the summed curve tinted, the selected
+  band's own curve, the eight handles). The upper row holds the bands in
+  place of the tabs: a press selects one, Shift and a press turns it on or
+  off (lit: the selected band, underlined in its colour). Three banks:
+  - Band (the selected one): Freq, Gain, Q, Type, Slope, On, Scale, Gain.
+  - Bands: each band's Freq (touching one selects it).
+  - Global: Mode, Edit, Adaptive Q, Oversampling, Spectrum, Audition, Scale, Gain.
+  - With Audition on, touching Freq, Gain or Q plays the band alone.
+  - Its banks by ◀ ▶ (the page strip); off and on by Mute + Device, removed by Delete + Device.
+- **ProComp** (`ctl_pro_comp`, ui_procomp.odin): the window's display (the
+  transfer curve with the level's dot, the activity, or the meters alone;
+  the threshold, GR and output meters beside the first two), stretched
+  across the short display with its labels off. The upper row picks the
+  view (Curve, Activity, Meters). Three banks:
+  - Main: Threshold, Ratio, Attack, Release, Knee, Makeup, Output, Dry/Wet.
+  - Detail: Mode, Auto, Lookahead, Env, View, Key Mix.
+  - Sidechain: Source, EQ, EQ Type, EQ Freq, EQ Q, EQ Gain, Key Gain, Listen.
+  - Its banks by ◀ ▶ (the page strip); off and on by Mute + Device, removed by Delete + Device.
+- **Projects** (`ctl_projects`, ui_ctl_projects.odin; View_Kind.Projects):
+  Pads' project page, while it shows (at start, and Shift + Setup, which
+  opens and closes it). The project open and whether it is saved; Recent,
+  All and Templates on the upper row (Close its last); the list on
+  encoder 1; Open (a template's: New), New Empty, Save, Save As, Rename,
+  Duplicate and Trash on the lower row (Save As, Rename, Duplicate and
+  Trash the window's dialogs, on the display, the name editor typing).
+- **Setup's last tab, Controller ›:** the Push's own settings (it was
+  Shift + Setup before the project page took that).
+- **Browse from a device:** its effect's presets unfolded and its row
+  selected (presets are folded under their effect; Presets on the upper
+  row unfolds or folds the selected one).
+- **ProVerb** (`ctl_pro_verb`, ui_proverb.odin): one of the window's two
+  pictures large, picked on the upper row (Early: the reflections as
+  spikes after the predelay; Damping: RT60 against frequency, its
+  handles). Four banks:
+  - Main: Mix, Predelay, Decay, High Cut, Depth, Mode, Quality, Diffusion.
+  - Early: Size, Cross, Mod Rate, Mod Depth, Send.
+  - Late: Size, Cross, Mod Rate, Mod Depth.
+  - Decay: Bass Mult, Bass Xover, High Mult, High Xover.
+  - Its banks by ◀ ▶ (the page strip); off and on by Mute + Device, removed by Delete + Device.
+- **ProSaturator** (`ctl_pro_saturator`, ui_prosaturator.odin): the
+  window's display (the curve with the signal on it, the harmonics,
+  Color's EQ, the meters), its labels off on the short display. Three
+  banks:
+  - Main: Drive, Type, Output, Dry/Wet, Soft Clip, DC, Color, Quality.
+  - Color: Base, Freq, Width, Depth (named in brackets while Color is off).
+  - Waveshaper: WS Drive, Lin, Curve, Damp, WS Depth, Period (in brackets
+    for the other types).
+  - Its banks by ◀ ▶ (the page strip); off and on by Mute + Device, removed by Delete + Device.
 - **Slice pads:** in Note (Keys) mode with a slicer selected, pad n plays slice n+1.
   - Slices are lit at 45% of the pad's colour, the selected one white, the sounding one at full colour; pads past the last slice are dark.
   - A press selects the slice.

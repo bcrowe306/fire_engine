@@ -315,18 +315,26 @@ app_seal :: proc(a: ^App) {
 // response plots' 160 log-spaced frequencies (shifted so -60 dBFS is the
 // plots' floor), falling slowly from peaks; nil before anything is heard.
 spectrum :: proc(a: ^App) -> []f32 {
-	st := &a.spectrum
+	x: [SPECTRUM_SIZE]f32
+	if !pm.watch_read(&a.m.engine, x[:]) do return nil
+	sr := a.host.graph.settings.sample_rate if a.host.graph.settings.sample_rate > 0 else 48_000
+	return spectrum_of(&a.spectrum, x[:], sr)
+}
+
+// The spectrum of `x` (its last `SPECTRUM_SIZE` frames) at rate `sr`, as
+// `spectrum` gives it, each point falling slowly in `st`.
+@(private)
+spectrum_of :: proc(st: ^Spectrum_State, x: []f32, sr: f64) -> []f32 {
 	if !st.ready {
 		if dsp.fft_init(&st.fft, SPECTRUM_SIZE) != .None do return nil
 		st.ready = true
 		for &v in st.smooth do v = -36
 	}
-	x: [SPECTRUM_SIZE]f32
-	if !pm.watch_read(&a.m.engine, x[:]) do return nil
-	sr := a.host.graph.settings.sample_rate if a.host.graph.settings.sample_rate > 0 else 48_000
+	if len(x) < SPECTRUM_SIZE do return nil
+	frames := x[len(x) - SPECTRUM_SIZE:]
 	buf := make([]complex64, SPECTRUM_SIZE, context.temp_allocator)
 	out := make([]complex64, SPECTRUM_SIZE, context.temp_allocator)
-	for v, i in x {
+	for v, i in frames {
 		w := 0.5 - 0.5 * math.cos(math.TAU * f32(i) / f32(SPECTRUM_SIZE - 1)) // Hann
 		buf[i] = complex(v * w, 0)
 	}

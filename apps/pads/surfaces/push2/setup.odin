@@ -7,9 +7,10 @@ import "fsurf:draw"
 import kit "fsurf:surface"
 
 /*
-Shift + Setup: the Push's own settings on the display (the surface's: they
-are the hardware's, not Pads'), kept with the device's settings and sent
-again whenever it starts:
+Setup's last tab (Controller ›, the upper row's last button while Pads'
+Settings show): the Push's own settings on the display (the surface's:
+they are the hardware's, not Pads'), kept with the device's settings and
+sent again whenever it starts:
 
 - encoder 1: the pads' LEDs' brightness
 - encoder 2: the display's brightness

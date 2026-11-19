@@ -360,6 +360,14 @@ class Pads:
             pass
         if self.proc.returncode not in (0, None) and not self.crashed:
             raise self._crash("Pads crashed while quitting")
+        self.expect_no_id_conflicts()
+
+    def expect_no_id_conflicts(self):
+        """Fails if any frame had two items with one ImGui ID (the probe
+        says so on stderr: "imgui: conflicting ID")"""
+        bad = sorted({l for l in self.log if "imgui: conflicting ID" in l})
+        if bad:
+            raise AssertionError("ImGui ID conflicts:\n" + "\n".join(bad))
 
     def __enter__(self):
         return self

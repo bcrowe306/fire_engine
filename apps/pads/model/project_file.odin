@@ -148,6 +148,13 @@ copy_tree :: proc(from, to: string, top := false) -> fc.Error {
 	return .None
 }
 
+// Control thread. Copies project folder `from` to `to` (made: it must not
+// be there yet), all but its cache and backup.
+copy_project :: proc(from, to: string) -> fc.Error {
+	if os.exists(to) do return .Invalid_Argument
+	return copy_tree(from, to, true)
+}
+
 // Moves the project's folder to `dir` (a rename): its samples go with it.
 // Saves it there.
 model_move :: proc(m: ^Model, dir: string) -> fc.Error {

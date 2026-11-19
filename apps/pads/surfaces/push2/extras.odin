@@ -35,6 +35,9 @@ banner).
 - **Add Device:** Browse on the Library's effects for the selected pad.
 - **Add Track:** the next empty pad selected (Song: a new lane); Shift: a
   new mixer bus.
+- **Shift + Setup:** Pads' project page on the display (View_Kind.Projects:
+  the project open, Save, Save As, Rename; Recent, All, Templates; Open,
+  New Empty, Duplicate, Trash); again, or Close, closes it.
 - **Setup:** Pads' Settings on the display (View_Kind.Settings: Audio,
   Channels, MIDI, Sync) and in the window; again: back. Shift or held
   long: the Push's own settings on the display (setup.odin).
@@ -240,8 +243,10 @@ extra_press :: proc(p: ^Push2, slot: string, alt: bool) {
 		say(p, .Warning, "No empty pad")
 	case "setup":
 		if alt {
-			if p.setup_open do setup_close(p)
-			else do setup_show(p)
+			// Shift + Setup: Pads' project page (again: closed).
+			start: bool
+			t.ui_start_page(t.api, &start)
+			t.ui_set_start_page(t.api, !start)
 			return
 		}
 		if p.setup_open {

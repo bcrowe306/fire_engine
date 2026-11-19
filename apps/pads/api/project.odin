@@ -107,6 +107,21 @@ project_rename :: proc(api: ^Api, name: string) -> Result {
 	return result(api, pc.project_rename(api.core, name))
 }
 
+// Copies project `dir` beside itself as "<name>.pads" (what it has saved).
+// Invalid_Argument for a name a folder can't have or one taken; Not_Found
+// for no project there.
+project_duplicate :: proc(api: ^Api, dir, name: string) -> Result {
+	return result(api, pc.project_duplicate(api.core, dir, name))
+}
+
+// Moves project `dir` to the system's Trash (it can be put back from
+// there) and off the recent projects. Invalid_Argument for the open
+// project; Not_Found for no project there; Unsupported where there is no
+// Trash.
+project_trash :: proc(api: ^Api, dir: string) -> Result {
+	return result(api, pc.project_trash(api.core, dir))
+}
+
 // Recent project `index`'s folder (0: the latest). Temporary.
 project_recent :: proc(api: ^Api, index: i64) -> (string, Result) {
 	r := api.core.files.recent

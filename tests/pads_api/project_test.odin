@@ -176,3 +176,29 @@ clean_up_moves_what_nothing_uses :: proc(t: ^testing.T) {
 	u, _ = pa.project_unused_files(api)
 	testing.expect_value(t, u.unused, 0)
 }
+
+// Duplicating a project puts a copy beside it under its new name (a name
+// taken, refused); moving one to the Trash takes it away and off the
+// recent list (the open one, refused). The Trash here is the test's own.
+@(test)
+projects_duplicated_and_trashed :: proc(t: ^testing.T) {
+	r := rig_make(t, "projects_dup_trash")
+	defer rig_destroy(r)
+	api := &r.api
+	a, _ := filepath.join({r.dir, "Alpha"}, context.temp_allocator)
+	testing.expect_value(t, pa.project_save_as(api, a), pa.Result.Ok)
+	alpha, _ := pa.project_dir(api)
+	testing.expect_value(t, pa.project_duplicate(api, alpha, "Beta"), pa.Result.Ok)
+	beta, _ := filepath.join({filepath.dir(alpha), "Beta.pads"}, context.temp_allocator)
+	testing.expect(t, os.exists(beta), "the copy beside it")
+	testing.expect_value(t, pa.project_duplicate(api, alpha, "Beta"), pa.Result.Invalid_Argument)
+	testing.expect_value(t, pa.project_duplicate(api, beta, "a/b"), pa.Result.Invalid_Argument)
+	trash, _ := filepath.join({r.dir, "Trash"}, context.temp_allocator)
+	pc.trash_override = trash
+	defer pc.trash_override = ""
+	testing.expect_value(t, pa.project_trash(api, alpha), pa.Result.Invalid_Argument) // (open)
+	testing.expect_value(t, pa.project_trash(api, beta), pa.Result.Ok)
+	gone, _ := filepath.join({trash, "Beta.pads"}, context.temp_allocator)
+	testing.expect(t, !os.exists(beta) && os.exists(gone), "in the Trash")
+	testing.expect_value(t, pa.project_trash(api, beta), pa.Result.Not_Found)
+}

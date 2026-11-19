@@ -17,7 +17,9 @@ host-neutral example it grew from.
 - Pads: Note (Pads' Keyboard mode: the selected pad's keys), Layout
   (drum pads), Session (Pads' pads in their colours, or its sequences
   with the launcher on the display, each press of Session the other:
-  grid.odin); the arrows select the pad and the sequence; the transport;
+  grid.odin); the arrows page the display's view (◀ ▶) and step its
+  items (▲ ▼); Page ◀ ▶ scroll the grid (Clip's steps, Song) or step the
+  pad (Shift: the sequence); the transport;
   the touch strip bends pitch.
 - Browse, Clip: Pads' browser and sequencer on the display (mirror.odin).
 */
@@ -172,6 +174,7 @@ Push2 :: struct {
 	dialog_open:   bool,
 	watch:         ^kit.Component, // Pads watched: its dialog
 	delete_held:   bool, // Delete held: a pad pressed is cleared
+	repeat:        Repeat_Hold, // Repeat (Pads' note repeat): held, latched, a pad played meanwhile
 	select_held, dup_held: bool, // Select, Duplicate held (Perform's sequence pads: go to, copy)
 	scenes:        [8]^kit.Control, // the scene buttons beside the grid (0 at the top)
 	dev_bank:      int, // Device's bank (0: the Overview, when there is one)
@@ -415,9 +418,9 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 
 	// ── The encoders and the rows: Mix and Device (modes.odin) ──
 	p.shift = kit.modifier_make(cs, "Shift", side(cs, "Shift", CC_SHIFT, false), {redo, shift_hints_setup(cs)})
+	page_lc, page_rc := side(cs, "Page <", CC_PAGE_LEFT, false), side(cs, "Page >", CC_PAGE_RIGHT, false)
 	modes_setup(cs, p, master, side(cs, "Mix", CC_MIX, false), side(cs, "Device", CC_DEVICE, false), side(cs, "Browse", CC_BROWSE, false), side(cs, "Clip", CC_CLIP, false),
-		side(cs, "Page <", CC_PAGE_LEFT, false), side(cs, "Page >", CC_PAGE_RIGHT, false),
-		side(cs, "Mute", CC_MUTE, true), side(cs, "Solo", CC_SOLO, true))
+		page_lc, page_rc, side(cs, "Mute", CC_MUTE, true), side(cs, "Solo", CC_SOLO, true))
 
 	// ── The pads: Note, Layout (drums), Session ──
 	p.key_grid = grid_make(cs, "Keys", pads, .Keys)
@@ -448,7 +451,9 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	drums := kit.drum_pads_make(cs, "Drum", pads)
 	drums.channel = pa.PADS_CHANNEL // (the pads only: not an armed synth's keys)
 	repeat := kit.note_repeat_make(cs, "Note Repeat", pads, rate = 0.25, priority = 1)
-	repeat_button := kit.modifier_make(cs, "Repeat", side(cs, "Repeat", CC_REPEAT, false), {repeat})
+	repeat_c := side(cs, "Repeat", CC_REPEAT, false)
+	repeat_button := kit.modifier_make(cs, "Repeat", repeat_c, {repeat})
+	p.repeat.pads = pads
 	// Select and Duplicate: held, what a pad press does (Perform: go to a
 	// sequence, copy it).
 	held := kit.component_make(cs, "Select Duplicate")
@@ -474,7 +479,8 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	nav := arrows_setup(cs, side(cs, "Left", CC_LEFT, false), side(cs, "Right", CC_RIGHT, false), side(cs, "Up", CC_UP, false), side(cs, "Down", CC_DOWN, false))
 	p.pad_modes = kit.modes_make(cs, "Pads")
 	kit.modes_add(p.pad_modes, "note", {p.key_grid, octave}, side(cs, "Note", CC_NOTE, false))
-	kit.modes_add(p.pad_modes, "drum", {drums, &repeat_button.component}, side(cs, "Layout", CC_LAYOUT, false))
+	if p.pads_api != nil do kit.modes_add(p.pad_modes, "drum", {drums}, side(cs, "Layout", CC_LAYOUT, false)) // (Repeat: Pads' note repeat, in every mode)
+	else do kit.modes_add(p.pad_modes, "drum", {drums, &repeat_button.component}, side(cs, "Layout", CC_LAYOUT, false))
 	kit.modes_add(p.pad_modes, "pads", pads_mode)
 	kit.modes_add(p.pad_modes, "sequences", seq_mode)
 	p.song_grid = grid_make(cs, "Song Sequences", pads, .Song)
@@ -571,6 +577,8 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 
 	kit.ring_setup(cs, 8, 8)
 	for c in ([?]^kit.Component{transport, app, &p.shift.component, tempo_c, swing_c, p.selected, nav, &p.enc_modes.component, &p.pad_modes.component, p.session_button, song_b, p.device_follow, &p.dialog_modes.component, p.watch, del, colour, screen, renderer, held, lights, extras}) do kit.surface_add(cs, c)
+	if p.pads_api != nil do kit.surface_add(cs, grid_page_setup(cs, page_lc, page_rc))
+	if p.pads_api != nil do kit.surface_add(cs, repeat_setup(cs, repeat_c)) // (Pads' grid and pads; without Pads, Page ◀ ▶ are Device's banks)
 	modes_start(p)
 	return true
 }
@@ -626,4 +634,65 @@ track_colour :: proc(cs: ^kit.Control_Surface) {
 	kit.send(cs, a[:])
 	kit.send(cs, b[:])
 	kit.send(cs, reapply[:])
+}
+
+// Repeat on Pads (its toolbar's note repeat, for every pad held): lit while
+// it is on; held, on until let go; Shift + Repeat: latched on, or off; held
+// a while with no pad played: its settings (rate, gate) on the display.
+Repeat_Hold :: struct {
+	pads:     ^kit.Matrix,
+	held:     bool, // Repeat down
+	momentary: bool, // turned on by this hold (off when let go)
+	played:   bool, // a pad pressed while it was held
+}
+
+@(private)
+repeat_setup :: proc(cs: ^kit.Control_Surface, button: ^kit.Control) -> ^kit.Component {
+	c := kit.component_make(cs, "Pads Repeat")
+	kit.layer_bind(c.layer, "repeat", button)
+	c.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) {
+		t := (^Push2)(c.cs.user).pads_api
+		on: bool
+		if t != nil do t.perform_note_repeat(t.api, &on)
+		kit.light(control, "Repeat.On" if on else "Repeat.Off")
+	}
+	c.on_activate = proc(c: ^kit.Component) {
+		kit.task_every(c.cs, 40, proc(data: rawptr) {
+			c := (^kit.Component)(data)
+			p := (^Push2)(c.cs.user)
+			r := &p.repeat
+			if r.held && r.pads != nil do for x in r.pads.controls do if x.pressed do r.played = true
+			kit.redraw_owned(c)
+		}, c, c)
+	}
+	c.on_event = proc(c: ^kit.Component, e: kit.Event) {
+		p := (^Push2)(c.cs.user)
+		t := p.pads_api
+		if t == nil do return
+		r := &p.repeat
+		on: bool
+		t.perform_note_repeat(t.api, &on)
+		#partial switch e.kind {
+		case .Press:
+			r.held, r.played, r.momentary = true, false, false
+			if p.shift.held {
+				t.perform_set_note_repeat(t.api, !on) // (latched, or off)
+			} else if !on {
+				t.perform_set_note_repeat(t.api, true)
+				r.momentary = true
+			}
+		case .Hold:
+			if !r.played && !p.shift.held {
+				if r.momentary do t.perform_set_note_repeat(t.api, false)
+				r.momentary = false
+				app_show(p, "note repeat")
+			}
+		case .Release:
+			if r.momentary do t.perform_set_note_repeat(t.api, false)
+			r.held, r.momentary = false, false
+		}
+		kit.redraw_owned(c)
+		invalidate(c.cs)
+	}
+	return c
 }
