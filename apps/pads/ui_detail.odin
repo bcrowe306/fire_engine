@@ -392,7 +392,10 @@ device_content :: proc(a: ^App) {
 			}
 		}
 	case .Eq:
-		if tr.kind == .Pad do draw_pad_eq(a)
+		if tr.kind == .Pad {
+			pm.watch_sound(&m.engine, tr.index) // (the pad's sound: a controller's EQ panel draws its spectrum through the EQ)
+			draw_pad_eq(a)
+		}
 	case .Midi:
 		if tr.kind == .Pad do draw_midi_fx(a, tr.index)
 	case .Slot:
