@@ -85,7 +85,16 @@ Surfaces :: struct {
 	devices:   [dynamic]^Open_Device, // the surfaces' devices (devices.odin)
 	device_mutex: sync.Mutex,
 	device_events: [dynamic]Device_Event, // from their threads, for `surfaces_update`
+	// Each message a surface sends, on any of its ports, open or not (an
+	// app showing its lights: an on-screen controller). The surfaces'
+	// thread. Nil: none.
+	listen:      proc(user: rawptr, inst: ^fsurf.Instance, port: u32, bytes: []u8),
+	listen_user: rawptr,
 }
+
+// The first port number of a surface with no controller (its own, above
+// any device's): what it sends goes only to `Surfaces.listen`.
+SURFACE_VIRTUAL_PORTS :: 200
 
 // Starts the surfaces: scans the folders, loads every library there, and
 // matches the controllers on the host's MIDI ports. Its MIDI filter goes on
@@ -322,6 +331,8 @@ message_size :: proc "contextless" (status: u8) -> int {
 surfaces_send :: proc(user: rawptr, inst: ^fsurf.Instance, port: u32, bytes: []u8) -> bool {
 	s := (^Surfaces)(user)
 	h := s.host
+	if s.listen != nil do s.listen(s.listen_user, inst, port, bytes)
+	if port >= SURFACE_VIRTUAL_PORTS && port <= 255 do return true // (a surface with no controller: delivered, to the listener)
 	if h.midi_driver == nil || int(port) >= len(h.midi_outputs) || h.midi_outputs[port] == 0 do return false
 	return midi.send(h.midi_driver, h.midi_outputs[port], bytes) == .None
 }

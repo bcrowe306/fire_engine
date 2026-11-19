@@ -2865,6 +2865,22 @@ surface_assign :: proc(api: ^Api, lib: i64, k: i64, input: string, output: strin
 
 Starts library `lib`'s surface `k` on MIDI ports chosen by hand (by their ids: `midi_port_id`; output "" for none), whatever their names: it takes them from any surface found there, and keeps them until `surface_unload`. Its index among the surfaces.
 
+### surface_assign_virtual
+
+```odin
+surface_assign_virtual :: proc(api: ^Api, lib: i64, k: i64) -> (i64, Result)
+```
+
+Starts library `lib`'s surface `k` with no controller: on ports of its own that no device uses (from VIRTUAL_PORT_FIRST): what Pads' virtual controller plays (`surface_press` and the others) comes in on them; what it sends goes nowhere but to the surfaces' listener (an on-screen controller's lights: `Surfaces.listen`). Its other devices aren't there. Its ports read "Virtual". Its place among the surfaces (`surface_*`); `surface_unload` stops it.
+
+### surface_id
+
+```odin
+surface_id :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Surface `index`'s id, as its library gives it ("org.fire_engine.pads .push2"). Temporary.
+
 ### surface_unload
 
 ```odin

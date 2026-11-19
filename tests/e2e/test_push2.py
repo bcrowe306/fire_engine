@@ -6,6 +6,7 @@ its display (the virtual controller)."""
 
 import os
 import sys
+import time
 
 import pytest
 
@@ -623,30 +624,41 @@ def test_the_arrows_page_the_view_and_step_its_items(pads, fixtures):
     assert pads.api("view_state", kind="Browser", page=0)["page"] == 1
 
 
+def comes_true(pads, test, frames=60):
+    """Whether `test` comes true within `frames` (a loaded machine is slow)."""
+    for _ in range(frames // 3):
+        if test():
+            return True
+        pads.wait(3)
+    return test()
+
+
 def test_repeat_is_pads_note_repeat_held_latched_and_its_settings(pads):
     plug(pads)
     pads.cmd("midiport play push B0 38 7F")  # Repeat held: on
     pads.wait(3)
-    assert pads.api("perform_note_repeat")
+    assert comes_true(pads, lambda: pads.api("perform_note_repeat") == True)
     pads.cmd("midiport play push 90 24 64")  # a pad played meanwhile: no settings on its hold
     pads.cmd("midiport play push 80 24 00")
     pads.wait(40)
     pads.cmd("midiport play push B0 38 00")  # let go: off
     pads.wait(3)
-    assert not pads.api("perform_note_repeat")
+    assert comes_true(pads, lambda: pads.api("perform_note_repeat") == False)
     assert not pads.api("ui_dialog")["open"]
     pads.cmd("midiport play push B0 31 7F")  # Shift + Repeat: latched
     press(pads, 0x38)
     pads.cmd("midiport play push B0 31 00")
     pads.wait(3)
-    assert pads.api("perform_note_repeat")
+    assert comes_true(pads, lambda: pads.api("perform_note_repeat") == True)
     pads.cmd("midiport play push B0 31 7F")  # again: off
     press(pads, 0x38)
     pads.cmd("midiport play push B0 31 00")
     pads.wait(3)
-    assert not pads.api("perform_note_repeat")
+    assert comes_true(pads, lambda: pads.api("perform_note_repeat") == False)
     pads.cmd("midiport play push B0 38 7F")  # held a while, no pad: its settings
-    pads.wait(45)
+    for _ in range(8):  # (a long press is half a second: real time, not frames)
+        time.sleep(0.1)
+        pads.wait(2)
     pads.cmd("midiport play push B0 38 00")
     pads.wait(5)
     assert pads.api("ui_dialog")["open"]

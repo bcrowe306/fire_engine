@@ -26,6 +26,7 @@ task app:pads OPT=none   # a debug build in .build/app/pads
 | `--headless` | no window on screen |
 | `--control PORT` | take commands live from a test harness on 127.0.0.1:PORT (0: any free port, printed) |
 | `--prefs DIR` | where preferences go: recent projects, the browser's favourites (default: the system's place for them) |
+| `--virtual-push2` | Push 2 on the screen, played with the mouse (**View > Push 2 on Screen**; Pads' own when none is plugged in: [Push 2 on Screen](surfaces.md#push-2-on-screen)) |
 | `--profile N` | draw N frames flat out and print the CPU time per frame (after `--drive`'s script, if given) |
 
 With `--fake`, the simulated device runs on the UI thread as frames go by,
@@ -1682,6 +1683,7 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_procomp.py` | ProComp's panel by the mouse (the threshold's arrow, Ratio, the views, the mode, Lookahead, the sidechain row keyed from a pad), its views and three banks on a pretend Push 2, its presets from the Library |
 | `test_prosaturator.py` | ProSaturator's panel by the mouse (Drive, the type, Color and its row, the Waveshaper's row, Quality), its three banks on a pretend Push 2, its presets from the Library |
 | `test_proverb.py` | ProVerb's panel by the mouse (the bars, the damping handles, the Early and Late pages, the mode, the decay picture with a loop playing), its pictures and four banks on a pretend Push 2, its presets from the Library |
+| `test_push_window.py` | Push 2 on Screen with no Push 2 plugged in: started on a port of its own, Play and Stop, Browse on its display, the tempo encoder dragged (touched), a pad played, a right-click holding Shift, closing the window stopping it |
 | `test_proeq.py` | ProEq's panel by the mouse (a band's handle, the type menus and slopes, the on switches, M/S and editing B), its bands and three banks on a pretend Push 2, its presets from the Library |
 | `test_song_time.py` | the song's time: a loop range dragged on the ruler, a marker by double-click (named), Alt+arrows to markers, a time signature change on its lane, a tempo point on the tempo lane, undo |
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |

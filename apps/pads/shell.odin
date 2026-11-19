@@ -85,6 +85,9 @@ setup_actions :: proc(a: ^App) {
 	add(acts, {id = "fold_pads", label = "Fold the Pads Area", icon = ui.ICON_PANEL_BOTTOM_CLOSE, chord = ui.MOD_CMD | i32(im.Key.J), user = a,
 		run = proc(u: rawptr) { a := (^App)(u); a.ws.bottom_folded = !a.ws.bottom_folded },
 		checked = proc(u: rawptr) -> bool { return (^App)(u).ws.bottom_folded }})
+	add(acts, {id = "push_window", label = "Push 2 on Screen", icon = ui.ICON_GRID, user = a,
+		run = proc(u: rawptr) { a := (^App)(u); a.push_window.open = !a.push_window.open },
+		checked = proc(u: rawptr) -> bool { return (^App)(u).push_window.open }})
 	add(acts, {id = "reset_layout", label = "Reset Layout", icon = ui.ICON_LAYOUT_DASHBOARD, user = a,
 		run = proc(u: rawptr) { ui.workspace_reset_layout(&(^App)(u).ws) }})
 	for b in 0 ..< pm.BANKS {
@@ -201,6 +204,7 @@ show_named :: proc(a: ^App, name: string) -> bool {
 	case "recording":          a.controls.recording_open = true // recording into a pad (a controller's Record held)
 	case "transport":          a.controls.transport_open = true // loop, count-in, the click (a controller's Metronome held)
 	case "note repeat":        a.controls.repeat_open = true // the toolbar's note repeat (a controller's Repeat held)
+	case "push window":        a.push_window.open = true // Push 2 on the screen (View > Push 2 on Screen)
 	case "scale":              a.controls.scale_open = true // Keyboard mode's scale (a controller's Scale)
 	case "convert":            a.controls.convert_open = true // the selected pad converted or resampled (a controller's Convert)
 	case "copy bars":          begin_copy_bars(a, a.m.project.slot) // (a controller's Clip: Copy Bars)
@@ -318,6 +322,7 @@ draw_menu :: proc(user: rawptr) {
 		ui.menu_action(&a.actions, "pad_waves")
 		ui.menu_action(&a.actions, "library")
 		ui.menu_action(&a.actions, "fold_pads")
+		ui.menu_action(&a.actions, "push_window")
 		ui.menu_action(&a.actions, "reset_layout")
 		im.EndMenu()
 	}

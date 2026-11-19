@@ -192,8 +192,50 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
     they came: what was pressed, then what the surface made of it.
 - **Virtual controller:** the surface's controls where it placed them,
   lit as it lights them, its displays mirrored. Click, drag an encoder up
-  and down, drag a fader along it: what you do reaches the surface as its
-  controller's MIDI, through its claim table.
+  and down (or scroll on it), drag a fader along it; right-click a button
+  to hold it until you click it again: what you do reaches the surface as
+  its controller's MIDI, through its claim table.
+
+## Push 2 on Screen
+
+**View > Push 2 on Screen** (or `--virtual-push2`) opens a window with
+Push 2 in it, laid out as the device is: its encoders, both rows, the
+display (Pads' views on it, as on the hardware), the pads, the scene
+buttons, the touch strip and every button around them.
+
+- **No Push 2 plugged in:** Pads starts its Push 2 surface with no
+  controller (`surface_assign_virtual`): on a MIDI port number no device
+  uses (from 200), its output going nowhere, its ports reading "Virtual".
+  Closing the window stops it.
+- **A Push 2 plugged in:** the window shows that one, and plays it too.
+- **The mouse:** click to press (a pad lower down plays softer); hold for a
+  long press (Repeat's settings, Quantize's); right-click a button to hold
+  it (Shift, Select, Delete, Mute...) until you click it again. Shift on
+  the keyboard is Push 2's while the window has the keys. Drag an encoder
+  up or down, or scroll on it: dragged, it's touched (its column lit, one
+  undo step). Drag along the touch strip to bend the pitch.
+
+- **Its size:** resize the window as you like (Push 2 keeps its shape,
+  centred). **Fill** spreads it over Pads' window; **Full Screen** over
+  the whole screen. Esc goes back to a window.
+- **As the device looks:** knurled encoders, rubber buttons with their
+  names printed where Push 2 has them (two lines where it has two),
+  Record's circle and Play's triangle, the arrows and Octave/Page as
+  diamonds split corner to corner, the scene buttons' chevrons, the touch
+  strip's 31 lights, frosted pads.
+- **Its lights are the device's:** Pads keeps a copy of Push 2's colour
+  palette from what the surface sends (its SysEx palette entries), so
+  each light shows the colour the hardware would. The pads, the rows'
+  thin strips, the scene buttons, Mute, Solo, Stop Clip, Play, Record and
+  Automate in their colours; the other buttons' names backlit white, dim
+  or bright. A light's MIDI channel makes it pulse or blink in time, as
+  on the device. With a Push 2 plugged in, its palette is heard the same
+  way.
+
+Push 2's encoder touches and its strip's pitch bend aren't in its layout
+(fsurf.layout has one binding a control): the window knows them from
+Pads' own surface. What a surface with no controller sends goes to
+`Surfaces.listen` (Pads' app layer), counted as sent.
 
 ## From scripts and tests
 
@@ -201,7 +243,8 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
   - libraries: `surface_load`, `surface_library_*`, `surface_offered_*`
   - the surfaces running: `surface_count`, `surface_name`,
     `surface_state`, `surface_ports`, `surface_devices`
-  - `surface_assign`, `surface_unload`, `surface_set_detect`
+  - `surface_assign`, `surface_assign_virtual` (no controller),
+    `surface_unload`, `surface_set_detect`, `surface_id`
   - the monitor: `surface_monitor*`
   - Pads' views for displays: `view_frame`
   - the log: `surface_log_count`, `surface_log_line`, `surface_log_level`,

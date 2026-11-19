@@ -2087,6 +2087,17 @@ typedef struct Pads_Api_V1 {
 	// Turns the toolbar's note repeat on or off (a controller's Repeat: held,
 	// on while it is; Shift + Repeat latches it).
 	Pads_Result (*perform_set_note_repeat)(Pads_Api* api, bool on);
+	// Starts library `lib`'s surface `k` with no controller: on ports of its
+	// own that no device uses (from VIRTUAL_PORT_FIRST): what Pads' virtual
+	// controller plays (`surface_press` and the others) comes in on them; what
+	// it sends goes nowhere but to the surfaces' listener (an on-screen
+	// controller's lights: `Surfaces.listen`). Its other devices aren't there.
+	// Its ports read "Virtual". Its place among the surfaces (`surface_*`);
+	// `surface_unload` stops it.
+	Pads_Result (*surface_assign_virtual)(Pads_Api* api, int64_t lib, int64_t k, int64_t* out);
+	// Surface `index`'s id, as its library gives it ("org.fire_engine.pads
+	// .push2"). Temporary.
+	Pads_Result (*surface_id)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

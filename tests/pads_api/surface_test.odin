@@ -114,6 +114,38 @@ surfaces_are_found_listed_and_played_by_name :: proc(t: ^testing.T) {
 	_, ar = pa.surface_assign(&r.api, lib, 0, "nothing", "")
 	testing.expect_value(t, ar, pa.Result.Not_Found)
 
+	// Started with no controller: on a port no device uses ("Virtual"),
+	// played by its virtual controller; twice, two ports; stopped.
+	v, vr := pa.surface_assign_virtual(&r.api, lib, 0)
+	testing.expect_value(t, vr, pa.Result.Ok)
+	ports, _ = pa.surface_ports(&r.api, v)
+	vid, _ := pa.surface_id(&r.api, v)
+	testing.expect(t, ports == "Virtual" && vid == "org.fsurf.example.keys")
+	vst, _ := pa.surface_state(&r.api, v)
+	testing.expect_value(t, vst, pa.Surface_State.Active)
+	pa.transport_stop(&r.api)
+	render(r, 256)
+	frame(r)
+	ts, _ = pa.transport_state(&r.api)
+	testing.expect(t, !ts.playing)
+	testing.expect_value(t, pa.surface_press(&r.api, v, "Play"), pa.Result.Ok)
+	pa.surface_release(&r.api, v, "Play")
+	testing.expect_value(t, pass(r), 0)
+	render(r, 256)
+	frame(r)
+	ts, _ = pa.transport_state(&r.api)
+	testing.expect(t, ts.playing)
+	v2, _ := pa.surface_assign_virtual(&r.api, lib, 0)
+	vd := fsurf.host_devices(&r.api.surfaces.fs)[v].ports[0]
+	vd2 := fsurf.host_devices(&r.api.surfaces.fs)[v2].ports[0]
+	testing.expect(t, vd.input >= pa.VIRTUAL_PORT_FIRST && vd2.input != vd.input)
+	pa.surface_unload(&r.api, v2)
+	pa.surface_unload(&r.api, v)
+	_, vr = pa.surface_assign_virtual(&r.api, lib, 9)
+	testing.expect_value(t, vr, pa.Result.Not_Found)
+	_, ir := pa.surface_id(&r.api, 99)
+	testing.expect_value(t, ir, pa.Result.Not_Found)
+
 	// Unloading its library: no surfaces.
 	testing.expect_value(t, pa.surface_library_unload(&r.api, lib), pa.Result.Ok)
 	n, _ = pa.surface_count(&r.api)

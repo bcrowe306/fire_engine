@@ -329,6 +329,44 @@ surface_assign :: proc(api: ^Api, lib: i64, k: i64, input: string, output: strin
 	return 0, .Ok
 }
 
+// The first MIDI port number a surface started with no controller is
+// given (`surface_assign_virtual`): above any device's.
+VIRTUAL_PORT_FIRST :: app.SURFACE_VIRTUAL_PORTS
+
+// Starts library `lib`'s surface `k` with no controller: on ports of its
+// own that no device uses (from VIRTUAL_PORT_FIRST): what Pads' virtual
+// controller plays (`surface_press` and the others) comes in on them; what
+// it sends goes nowhere but to the surfaces' listener (an on-screen
+// controller's lights: `Surfaces.listen`). Its other devices aren't there.
+// Its ports read "Virtual". Its place among the surfaces (`surface_*`);
+// `surface_unload` stops it.
+surface_assign_virtual :: proc(api: ^Api, lib: i64, k: i64) -> (i64, Result) {
+	d, ok := offered_at(api, lib, k)
+	if !ok do return 0, .Not_Found
+	used := make(map[u32]bool, allocator = context.temp_allocator)
+	for x in fsurf.host_devices(&api.surfaces.fs) do for p in x.ports do used[p.input] = true
+	ports := make([]fsurf.Port_Assignment, max(int(d.port_count), 0), context.temp_allocator)
+	next := u32(VIRTUAL_PORT_FIRST)
+	for &p in ports {
+		for used[next] && next < 255 do next += 1
+		if next >= 255 do return 0, fail(api, .Unsupported, "no MIDI port number free")
+		p = {input = next, output = next, input_name = "Virtual", output_name = "Virtual"}
+		used[next] = true
+	}
+	dev, _ := fsurf.host_assign(&api.surfaces.fs, api.surfaces.libraries[lib].lib, string(d.id), ports)
+	if dev == nil do return 0, fail(api, .Unsupported, "the surface would not start")
+	for x, i in fsurf.host_devices(&api.surfaces.fs) do if x == dev do return i64(i), .Ok
+	return 0, .Ok
+}
+
+// Surface `index`'s id, as its library gives it ("org.fire_engine.pads
+// .push2"). Temporary.
+surface_id :: proc(api: ^Api, index: i64) -> (string, Result) {
+	d, ok := device_at(api, index)
+	if !ok do return "", .Not_Found
+	return string(d.descriptor.id), .Ok
+}
+
 // Stops surface `index`: one assigned by hand is forgotten; one found has
 // its surface's detection turned off (`surface_set_detect` turns it on
 // again). The surfaces after it move down.

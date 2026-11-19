@@ -154,6 +154,16 @@ platform_init :: proc(p: ^Platform, settings: Platform_Settings) -> bool {
 	return true
 }
 
+// Puts the window over the whole screen (`on`), or back as it was.
+set_fullscreen :: proc(p: ^Platform, on: bool) {
+	if p.window != nil do _ = sdl.SetWindowFullscreen(p.window, on)
+}
+
+// Whether the window is over the whole screen.
+fullscreen :: proc(p: ^Platform) -> bool {
+	return p.window != nil && .FULLSCREEN in sdl.GetWindowFlags(p.window)
+}
+
 // Shuts ImGui, the device and the window down, in that order.
 platform_destroy :: proc(p: ^Platform) {
 	if p.device != nil do _ = sdl.WaitForGPUIdle(p.device)

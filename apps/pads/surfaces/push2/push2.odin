@@ -220,8 +220,8 @@ spec := kit.Spec{
 	required_extensions = {"fsurf.daw"},
 	devices     = {{role = "display", transport = .Usb_Bulk, vendor_id = 0x2982, product_id = 0x1967, interface = 0, endpoint_out = 0x01}},
 	displays    = {{name = "Main", width = 960, height = 160, format = .Bgr565, fps = 30, device = 0}},
-	width       = 378, // millimetres, for tools
-	height      = 340,
+	width       = 378, // millimetres, for tools (as the device: PLACES)
+	height      = 305,
 	goodbye     = {live[:]},
 	setup       = setup,
 	on_destroy  = proc(cs: ^kit.Control_Surface) {
@@ -314,27 +314,27 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	// ── The hardware, placed as on the device (millimetres) ──
 	for i in 0 ..< 8 {
 		p.encoders[i] = kit.touch_encoder(cs, "Encoder", kit.bind_cc(u8(CC_TRACK_ENCODER + i)), kit.bind_note(u8(NOTE_TOUCH + i)))
-		kit.place(p.encoders[i], 70 + f32(i) * 29, 6, 16, 16)
+		kit.place(p.encoders[i], 73 + f32(i) * 29.2, 5.5, 14, 14)
 		p.upper[i] = kit.button(cs, "Upper", kit.bind_cc(u8(CC_UPPER + i)))
-		kit.place(p.upper[i], 68 + f32(i) * 29, 26, 24, 7)
+		kit.place(p.upper[i], 68.5 + f32(i) * 29.2, 28, 25.5, 10)
 		p.lower[i] = kit.button(cs, "Lower", kit.bind_cc(u8(CC_LOWER + i)))
-		kit.place(p.lower[i], 68 + f32(i) * 29, 82, 24, 7)
+		kit.place(p.lower[i], 68.5 + f32(i) * 29.2, 101.5, 25.5, 10)
 	}
 	master := kit.touch_encoder(cs, "Master Encoder", kit.bind_cc(CC_MASTER_ENCODER), kit.bind_note(NOTE_TOUCH + 8))
-	kit.place(master, 328, 6, 16, 16)
+	kit.place(master, 347.5, 5.5, 14, 14)
 	tempo := kit.touch_encoder(cs, "Tempo Encoder", kit.bind_cc(CC_TEMPO), kit.bind_note(NOTE_TOUCH + 10))
-	kit.place(tempo, 10, 6, 16, 16)
+	kit.place(tempo, 7.5, 5.5, 14, 14)
 	swing := kit.touch_encoder(cs, "Swing Encoder", kit.bind_cc(CC_SWING), kit.bind_note(NOTE_TOUCH + 9))
-	kit.place(swing, 36, 6, 16, 16)
+	kit.place(swing, 37.5, 5.5, 14, 14)
 	strip := kit.button(cs, "Touch Strip", kit.bind_note(NOTE_STRIP_TOUCH)) // (its touch; its pitch bend passes)
-	kit.place(strip, 50, 96, 8, 232)
+	kit.place(strip, 39, 121, 15, 173)
 	pads := kit.matrix_make(cs, "Pads", 8, 8, proc(row, col: int) -> kit.Binding {
 		return kit.bind_note(u8(36 + (7 - row) * 8 + col)) // 36 at the bottom left
 	})
-	kit.place_matrix(pads, 66, 96, 26, 26, gap = 3)
+	kit.place_matrix(pads, 68.5, 121, 25.5, 18.3, gap = 3.75)
 	for i in 0 ..< 8 {
 		p.scenes[i] = kit.button(cs, SCENE_NAMES[i], kit.bind_cc(u8(CC_SCENE + 7 - i)))
-		kit.place(p.scenes[i], 300, 99 + f32(i) * 29, 20, 22)
+		kit.place(p.scenes[i], 310, 121 + f32(i) * 22.05, 18, 18.3)
 	} // (Perform: the launcher's rows)
 	p.x, p.y = 34, 96
 
@@ -589,6 +589,10 @@ side :: proc(cs: ^kit.Control_Surface, name: string, cc: u8, left: bool) -> ^kit
 	p := (^Push2)(cs.user)
 	b := kit.button(cs, name, kit.bind_cc(cc))
 	append(&p.sides, b)
+	for at in PLACES do if at.name == name {
+		kit.place(b, at.x, at.y, at.w, at.h)
+		return b
+	}
 	if left {
 		kit.place(b, 8, p.y, 40, 8)
 		p.y += 11
@@ -597,6 +601,28 @@ side :: proc(cs: ^kit.Control_Surface, name: string, cc: u8, left: bool) -> ^kit
 		p.x += 11
 	}
 	return b
+}
+
+// Where each button around the pads is on the device (millimetres from
+// its top left; as on Push 2 itself), for tools (Pads' Push 2 on Screen).
+@(private)
+PLACES := [?]struct { name: string, x, y, w, h: f32 }{
+	{"Tap Tempo", 6, 28, 25, 10}, {"Metronome", 31.5, 28, 25.5, 10},
+	{"Setup", 335, 28, 18, 10}, {"User", 354, 28, 18, 10},
+	{"Delete", 6, 51, 18, 18}, {"Undo", 6, 70, 18, 18},
+	{"Add Device", 310, 51, 18, 18}, {"Add Track", 310, 70, 18, 18},
+	{"Device", 335, 51, 18, 18}, {"Mix", 354, 51, 18, 18}, {"Browse", 335, 70, 18, 18}, {"Clip", 354, 70, 18, 18},
+	{"Mute", 6, 101.5, 16, 10}, {"Solo", 22.5, 101.5, 16.5, 10}, {"Stop", 39.5, 101.5, 17, 10},
+	{"Master", 310, 101.5, 18, 10},
+	{"Up", 344, 102, 19, 9}, {"Down", 344, 129, 19, 9}, {"Left", 335, 110.5, 9, 19}, {"Right", 363, 110.5, 9, 19},
+	{"Convert", 6, 121, 18, 17}, {"Double Loop", 6, 139.5, 18, 17}, {"Quantize", 6, 158, 18, 17},
+	{"Duplicate", 6, 180, 18, 17}, {"New", 6, 198.5, 18, 17},
+	{"Fixed Length", 6, 220, 18, 17}, {"Automate", 6, 238.5, 18, 14.5},
+	{"Record", 6, 255, 18, 18}, {"Play", 6, 276, 18, 18},
+	{"Repeat", 335, 187, 18, 18}, {"Accent", 354, 187, 18, 18},
+	{"Scale", 335, 210, 18, 11}, {"Layout", 354, 210, 18, 11}, {"Note", 335, 221.5, 18, 16.5}, {"Session", 354, 221.5, 18, 16.5},
+	{"Octave Up", 344, 243, 19, 9}, {"Octave Down", 344, 271, 19, 9}, {"Page <", 335, 252, 9, 19}, {"Page >", 363, 252, 9, 19},
+	{"Shift", 335, 284, 18, 10}, {"Select", 354, 284, 18, 10},
 }
 
 // Notes an encoder's touch (its column lit on the display), then hands the

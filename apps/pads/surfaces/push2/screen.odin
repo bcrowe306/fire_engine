@@ -52,7 +52,7 @@ screen_setup :: proc(cs: ^kit.Control_Surface) -> ^kit.Component {
 	d.draw = draw_screen
 	d.send = kit.display_send_push2
 	d.resend = true // (a steady stream, as Live sends)
-	kit.place_display(d, 66, 36, 234, 39)
+	kit.place_display(d, 66.5, 49.5, 233, 39)
 	return screen
 }
 

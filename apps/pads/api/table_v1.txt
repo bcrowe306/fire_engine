@@ -412,3 +412,5 @@ project_duplicate
 project_trash
 perform_note_repeat
 perform_set_note_repeat
+surface_assign_virtual
+surface_id

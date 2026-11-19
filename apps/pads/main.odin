@@ -26,6 +26,8 @@ Options:
 	--prefs DIR    where preferences go (recent projects, favourites); default: the system's
 	--control PORT take commands live from a test harness on 127.0.0.1:PORT (0: any free
 	               port; the one chosen is printed): see app:ui's Control and tests/e2e
+	--virtual-push2  Push 2 on the screen, played with the mouse (View > Push 2 on Screen):
+	               Pads' own when none is plugged in
 	--no-start-page  no project manager at start or after New Project (tests; --drive never shows it)
 	--profile N    draw N frames as fast as possible and print the CPU time per frame
 	               (after the drive script, if one is given: profile a loaded project)
@@ -131,6 +133,7 @@ App :: struct {
 	fake_midi: ^midi.Driver, // --fake-midi: pretend MIDI ports (tests plug controllers into it: `midiport`)
 	fake_usb: ^app.Device_Driver, // --fake-usb: pretend USB and HID devices (`usbdev`); else nil
 	surfaces_page: Surfaces_Page, // Settings > Control Surfaces (ui_surfaces.odin)
+	push_window: Push_Window, // View > Push 2 on Screen (ui_push_window.odin)
 	start:     Start_Page,    // the project manager (ui_start.odin)
 	controls:  Controls_Ui,   // dialogs a controller's buttons open (ui_controls.odin)
 	views:    [dynamic]^View_Draw, // Pads' views drawn for surfaces' displays (ui_views.odin)
@@ -155,7 +158,7 @@ main :: proc() {
 	control := -1
 	surfaces: [dynamic]string // --surface PATH: control-surface libraries to load
 	defer delete(surfaces)
-	surface_dev, fake_midi, fake_usb := false, false, false
+	surface_dev, fake_midi, fake_usb, virtual_push2 := false, false, false, false
 	start_page := true
 	for i := 1; i < len(os.args); i += 1 {
 		next :: proc(i: ^int) -> string {
@@ -181,6 +184,7 @@ main :: proc() {
 		case "--fake-usb": fake_usb = true // (tests: pretend USB and HID devices, plugged in by `usbdev`)
 		case "--control-size": control_size = control_size_parse(next(&i)) // (tests: the size their positions were written for)
 		case "--no-start-page": start_page = false
+		case "--virtual-push2": virtual_push2 = true // Push 2 on the screen (View > Push 2 on Screen)
 		case "--fake-interface": fake_interface = true // (tests: a simulated 8-in/8-out interface beside the 2-in/2-out one)
 		case "--version":
 			fmt.println("Pads", version_text())
@@ -200,7 +204,7 @@ main :: proc() {
 	a := new(App)
 	a.fake_interface = fake_interface
 	if fake_midi do a.fake_midi = mfake.create()
-	a.surfaces_page = {assign_lib = -1, virtual = -1, held = -1}
+	a.surfaces_page = {assign_lib = -1, virtual = -1}
 	defer {
 		delete(a.surfaces_page.assign_in)
 		delete(a.surfaces_page.assign_out)
@@ -257,6 +261,8 @@ main :: proc() {
 	}
 	defer ui.platform_destroy(p)
 	defer views_destroy(a) // (before the platform: their GPU textures)
+	defer push_window_destroy(a) // (its display's picture: before the platform too)
+	defer virtual_play_destroy(&a.surfaces_page.play)
 	appearance_apply(a)
 	p.confirm_quit = true // (closing asks to save first: draw_leave)
 	app.bus_init(&a.bus)
@@ -298,6 +304,8 @@ main :: proc() {
 		app.surfaces_add_static(&a.api.surfaces, &push2.fsurf_entry, "Push 2 (built in)")
 	}
 	defer pa.surfaces_stop(&a.api)
+	push_window_listen(a) // (Push 2's palette, as the surface sets it: its lights on the screen)
+	a.push_window.open = virtual_push2
 	for path in surfaces do if _, r := pa.surface_load(&a.api, path); r != .Ok {
 		why, _ := pa.last_error(&a.api)
 		fmt.eprintfln("pads: --surface %s: %s", path, why)
@@ -501,6 +509,7 @@ frame :: proc(a: ^App) {
 	draw_recording_dialog(a)
 	draw_transport_dialog(a)
 	draw_repeat_dialog(a)
+	draw_push_window(a)
 	draw_sequence_dialog(a)
 	draw_lane_dialog(a)
 	prof.begin("project_frame")
