@@ -1,19 +1,20 @@
-"""The devices' panels' test kit (push2_fx.py) on the generic panel (a
-family not built yet): a device in a slot, on the synth's Effects tab and
-in Perform, shown on the Push, its knobs turned."""
+"""The devices' panels' test kit (push2_fx.py): a device in a slot, on the
+synth's Effects tab and in Perform, shown on the Push by its family's
+panel, its knobs turned, its drawing timed."""
 
 import os
 
 from push2_fx import Device, bank, banks, draw_us, in_perform, in_slot, moves, on_synth, pads, save, view  # noqa: F401
 
 
-def test_a_slot_effect_on_the_generic_panel(pads, fixtures):
-    d = in_slot(pads, "cutter", sample=os.path.join(fixtures, "loop.wav"))  # (Rhythm: a later round's)
+def test_a_slot_effect_on_its_familys_panel(pads, fixtures):
+    d = in_slot(pads, "cutter", sample=os.path.join(fixtures, "loop.wav"))
     assert banks(pads) >= 1
     assert pads.api("effect_name", s=d.slot) == "Cutter"
-    moves(pads, d, 0, 1, 10)  # (the Cutter's first: its rate, CUTTER_PARAM_BEATS)
+    moves(pads, d, 0, 1, 10, check=lambda before, after: after < before)  # (its Rate, CUTTER_PARAM_BEATS: faster, fewer beats)
     save(pads, "kit_slot")
-    assert tuple(draw_us(pads)) == (0, 0)  # (no family panel drawn yet)
+    last, most = draw_us(pads)
+    assert 0 < last <= most  # (its family's panel drew, and was timed)
 
 
 def test_a_synth_effect_on_its_tab(pads):
