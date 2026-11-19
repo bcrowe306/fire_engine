@@ -244,6 +244,7 @@ steps_press :: proc(g: ^Grid, i: int, velocity: f32, time_ns: u64) {
 			}
 			say(p, .Success, fmt.tprintf("%d note%s of %s onto %s", len(ids), "" if len(ids) == 1 else "s", pad_name(s.copy_pad), pad_name(pad)))
 		case p.delete_held:
+			p.delete_used = true
 			ids := notes_in(p, n, pad, 0, 1e9)
 			if len(ids) > 0 do t.sequence_remove_notes(t.api, n.slot, &ids[0], i64(len(ids)))
 			say(p, .Info, fmt.tprintf("%s's notes taken out of the sequence", pad_name(pad)))
@@ -282,6 +283,7 @@ steps_press :: proc(g: ^Grid, i: int, velocity: f32, time_ns: u64) {
 		}
 		say(p, .Success, fmt.tprintf("%d step%s pasted", hi_step - s.copy_lo + 1, "" if hi_step == s.copy_lo else "s"))
 	case p.delete_held:
+		p.delete_used = true
 		ids := notes_in(p, n, n.pad, lo, hi)
 		if len(ids) > 0 do t.sequence_remove_notes(t.api, n.slot, &ids[0], i64(len(ids)))
 	case:

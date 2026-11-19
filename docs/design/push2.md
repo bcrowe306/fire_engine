@@ -21,7 +21,7 @@ doesn't depend on where you are:
 
 - **The status line** (the top 16 points, `view_status` in
   `ui_views.odin`), on every view, never over it: Shift (held), the
-  sequence (`S3 Verse`), where it plays (bar.beat; counting in, the beats
+  sequence and its length (`S3 Verse 4 bars`), where it plays (bar.beat; counting in, the beats
   to the top in red), the tempo; the device chain in Device (the device
   shown bright, an off one dim with "(off)"), the selected pad elsewhere;
   at the right Pads' newest message (two seconds), input quantize (`IQ
@@ -83,9 +83,20 @@ at home on the hardware:
   Performance view as they're chosen.
 - **Clip** is Pads' Sequence panel (`View_Kind.Sequencer`,
   `ctl_sequencer`): the same rows (pads, Piano, Fold), notes, selection
-  and grid. Encoders: rows, the note selected (in time), its velocity,
-  length, position, row and chance, the grid; the lower row: Piano, Fold,
-  Mute, Duplicate, Delete. Automation and Audio: in Pads for now.
+  and grid, the selected pad's row outlined red. Encoders: the pad (the
+  cursor's row), the notes on that row (in time), the selection's
+  velocity, length, position, row and chance, the grid; the lower row:
+  Piano, Fold, Mute, Duplicate, Delete. Automation and Audio: in Pads for
+  now.
+  - **The cursor** (a lit step boxed yellow): ▲ ▼ a row, its pad
+    selected; ◀ ▶ a grid step. The note on its step is selected while
+    it's there.
+  - **Select** keeps the cursor's note in the selection (again: let go;
+    an empty step: nothing); **Shift + Select** every note of the pad
+    (again: none).
+  - **Delete** (a tap; held with a pad, the pad cleared) takes the
+    selection; the cursor goes to the next note along its row (none
+    after: the one before), selected.
 - **Browse is the Library** (`ui_library.odin`: one model, the window's
   Library and the Push's display alike): its categories (each favourite,
   Files, Drives, Projects, Recent, Templates, Instruments, Synth Presets,
@@ -267,6 +278,7 @@ at home on the hardware:
 - **Slice pads:** in Note (Keys) mode with a slicer selected, pad n plays slice n+1.
   - Slices are lit at 45% of the pad's colour, the selected one white, the sounding one at full colour; pads past the last slice are dark.
   - A press selects the slice.
+- **The Tempo encoder:** a BPM a detent; Shift: a tenth.
 - **Transport lights** (transport.odin, a task every 15 ms reading Pads' transport):
   - **Tap Tempo** blinks every beat, playing or not, brighter on the bar's first beat.
   - **Play** blinks on the beat while playing.
@@ -330,8 +342,8 @@ Every Push 2 control gets a job, and none is left doing nothing by accident.
 
 - **Double Loop:** doubles the current sequence (its notes copied). In Song mode it doubles the selected clip's length instead, and the lane's later clips move on.
 - **Quantize:**
-  - A press quantizes the current sequence, or the selected notes in Clip.
-  - A long press (about 0.4 s) or Shift + Quantize opens the Quantize dialog. It is a Pads dialog, so it shows in the window and on the Push. It sets the Quantize grid and strength, plus input quantize: on/off, grid, strength and swing.
+  - A press turns input quantize on or off.
+  - A long press (about 0.4 s) or Shift + Quantize opens the Quantize dialog. It is a Pads dialog, so it shows in the window and on the Push. It sets the Quantize grid and strength, plus input quantize: on/off, grid, strength and swing. Its Quantize Now quantizes the current sequence, or the selected notes in Clip.
   - The Quantize grid and strength are a new project setting. The window's Quantize button uses it too.
   - The Quantize light is bright while input quantize is on and dim while it's off. The display shows an "IQ 1/16" badge.
 - **Fixed Length:** a picker on the display for the current sequence's length in bars (1-64).

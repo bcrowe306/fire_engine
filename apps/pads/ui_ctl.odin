@@ -55,6 +55,9 @@ Ctl_State :: struct {
 	route:  int, // the synth's modulation route shown
 	seq_view: ui.Roll_View, // the sequencer's rows shown (its own: the window's are its size)
 	seq_pad:  int,          // the selected pad they were brought to (+1; another: brought to it)
+	seq_row:  int,          // the cursor: its row (the selected pad's, in Drums)
+	seq_beat: f64,          // and the step it's on (a grid step's start, or a note's)
+	seq_transient: bool,    // the selection's last note is there only because the cursor is on it (moved on: let go; Select: kept)
 	mix:      Ctl_Mix,      // Mix (ui_ctl_mixer.odin)
 	slice_tab: bool,        // a slicer's Slice tab (else its Slicer tab: both the window's Sample tab)
 	song:      Ctl_Song,     // the Song view (ui_ctl_song.odin)
@@ -292,7 +295,7 @@ ctl_choice :: proc(ctx: ^View_Ctx, n, total: int, label: cstring, names: []strin
 	held := false
 	if ki != nil {
 		held = ki.held[col]
-		if steps := int(ki.turn[col] / CTL_STEP); steps != 0 {
+		if steps := ctl_whole(ki.turn[col] / CTL_STEP); steps != 0 {
 			ki.turn[col] -= f64(steps) * CTL_STEP
 			to := clamp(cur + steps, 0, len(names) - 1)
 			if to != cur do chosen = to

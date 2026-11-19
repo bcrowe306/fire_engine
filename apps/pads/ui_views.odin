@@ -185,9 +185,11 @@ view_status :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 		return ts.x + 8
 	}
 	if a.ctl.shift do x += badge(dl, x, mid, "SHIFT", t.warn, t.bg) + 10
-	// The sequence, where it plays, the tempo.
+	// The sequence and its length, where it plays, the tempo.
 	p := &a.m.project
-	put(dl, &x, mid, fmt.tprintf("S%d %s", p.slot + 1, pm.sequence_name(p, p.slot)), t.text)
+	put(dl, &x, mid, fmt.tprintf("S%d %s", p.slot + 1, pm.sequence_name(p, p.slot)), t.text, 6)
+	bars := max(p.sequences[p.slot].bars, 1)
+	put(dl, &x, mid, fmt.tprintf("%d bar%s", bars, "" if bars == 1 else "s"), t.text_dim)
 	if tr, _ := pa.transport_state(&a.api); true {
 		if tr.counting_in do put(dl, &x, mid, fmt.tprintf("-%d", int(math.ceil(-tr.timeline_beat))), t.danger)
 		else do put(dl, &x, mid, fmt.tprintf("%d.%d", max(tr.bar, 1), max(tr.beat_in_bar, 1)), t.text if tr.playing else t.text_dim)

@@ -104,6 +104,7 @@ grid_make :: proc(cs: ^kit.Control_Surface, name: string, pads: ^kit.Matrix, kin
 		#partial switch e.kind {
 		case .Press:
 			g.held[i] = true
+			if p.delete_held do p.delete_used = true
 			switch g.kind {
 			case .Pads:
 				n := p.pad_page * 64 + i
@@ -402,8 +403,8 @@ arrows_setup :: proc(cs: ^kit.Control_Surface, left, right, up, down: ^kit.Contr
 		st := view_now(p, p.mirror_kind)
 		on: bool
 		switch slot {
-		case "left":  on = st.page > 0
-		case "right": on = st.page < st.pages - 1
+		case "left":  on = st.page > 0 || st.buttons & (1 << uint(pa.View_Button.Page_Left)) != 0
+		case "right": on = st.page < st.pages - 1 || st.buttons & (1 << uint(pa.View_Button.Page_Right)) != 0
 		case "up":    on = st.buttons & (1 << uint(pa.View_Button.Up)) != 0
 		case "down":  on = st.buttons & (1 << uint(pa.View_Button.Down)) != 0
 		}

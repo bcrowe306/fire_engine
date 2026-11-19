@@ -32,13 +32,20 @@ ctl_list_steps :: proc(col: int) -> int {
 	return clamp(n, -1, 1)
 }
 
+// The whole steps in `x` steps of turn, toward zero (ticks that add up
+// to a step in floating point, 0.9999..., are one).
+@(private)
+ctl_whole :: proc(x: f64) -> int {
+	return int(x + (1e-6 if x > 0 else -1e-6))
+}
+
 // Encoder `col`'s whole steps since the last drawing (`step` of travel
 // each; what's left over waits).
 @(private)
 ctl_steps :: proc(col: int, step: f64) -> int {
 	ki := ui.knob_input
 	if ki == nil do return 0
-	n := int(ki.turn[col] / step)
+	n := ctl_whole(ki.turn[col] / step)
 	ki.turn[col] -= f64(n) * step
 	ki.ended[col] = false
 	ki.drawn = max(ki.drawn, col + 1)
@@ -496,10 +503,13 @@ fmt_cos :: proc(beat: f64) -> f64 {
 // The sequencer's notes on a controller's display, as the window's
 // Sequence panel has them (the same rows, the same selection and grid): its
 // tabs the upper row's first three, the rows under them, the notes in their
-// pads' colours, the selection outlined, the playhead. The encoders: the
-// rows shown, the note selected (in time), its velocity, length, position
-// and row, its chance, the grid. The lower row: Piano (the selected pad's
-// keys), Fold, then Mute, Duplicate and Delete for the selection.
+// pads' colours, the selection outlined, the selected pad's row outlined
+// red, the playhead. The encoders: the rows shown, the note selected (in
+// time; Select held: added to the selection), its velocity, length,
+// position and row, its chance, the grid. The lower row: Piano (the
+// selected pad's keys), Fold, then Mute, Duplicate and Delete for the
+// selection (Delete: the next note selected). A controller's Select
+// tapped: the selected pad's notes; its Delete tapped: the selection gone.
 ctl_sequencer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	a := ctx.a
 	m := &a.m
@@ -548,59 +558,191 @@ ctl_sequencer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	// The rows shown: as many as fit, the selected pad's (or the pad's own
 	// pitch in the piano roll) brought into view when it changes.
 	v := &a.ctl.seq_view
+	cx := &a.ctl
 	keys := clamp(int(plot.y / 14), 1, len(rows))
 	v.keys = keys
-	if a.ctl.seq_pad != a.selected + 1 {
-		a.ctl.seq_pad = a.selected + 1
+	length := pm.seq_beats(&m.project, s)
+	snap := pm.grid_beats(st.grid)
+	// The cursor: on the selected pad's row (brought into view) when the
+	// pad is picked elsewhere.
+	if cx.seq_pad != a.selected + 1 {
+		cx.seq_pad = a.selected + 1
 		v.key0 = 0
 		for r, k in row_pad do if r == a.selected && (!st.piano || row_pitch[k] == 0 || slicer) {
 			v.key0 = k - keys / 2
+			cx.seq_row = k
 			break
 		}
 	}
-	// Encoder 1: the rows.
-	{
-		names := make([]string, max(len(rows) - keys + 1, 1), context.temp_allocator)
-		for &nm, k in names do nm = rows[k].name
-		v.key0 = clamp(v.key0, 0, max(len(rows) - keys, 0))
-		if k, _ := ctl_choice(ctx, 0, 8, "Rows", names, v.key0, plot); k >= 0 do v.key0 = k
+	cx.seq_row = clamp(cx.seq_row, 0, len(rows) - 1)
+	cx.seq_beat = clamp(cx.seq_beat, 0, max(length - snap, 0))
+	// The note on the cursor's step (its row, starting within the step).
+	cursor_note :: proc(s: pm.Sequence, notes: []ui.Roll_Note, which: []int, row: int, beat, snap: f64) -> (pm.Seq_Note, bool) {
+		for rn, k in notes do if rn.key == row && rn.start >= beat - 1e-9 && rn.start < beat + snap - 1e-9 do return s.notes[which[k]], true
+		return {}, false
 	}
-	length := pm.seq_beats(&m.project, s)
+	// (the window may have changed the selection: the cursor's note no longer its last)
+	if cx.seq_transient {
+		n, ok := cursor_note(s, notes[:], which[:], cx.seq_row, cx.seq_beat, snap)
+		if !ok || len(st.sel) == 0 || st.sel[len(st.sel) - 1] != n do cx.seq_transient = false
+	}
+	// The notes (under the knobs' lists, opened over them while touched).
+	v.key0 = clamp(v.key0, 0, max(len(rows) - keys, 0))
 	v.beat0, v.beats = 0, length
-	snap := pm.grid_beats(st.grid)
 	beat, playing := pm.position(&m.engine)
 	im.SetCursorPos({0, CTL_PLOT_Y})
+	grid_at := im.GetCursorScreenPos()
 	ui.note_grid("ctl seq", notes[:], rows, v, snap, plot, st.tool, beat if playing else -1, pm.bar_beats(&m.project))
-	// Encoder 2: the note selected, the notes on these rows in time.
-	order := make([]int, len(notes), context.temp_allocator) // (into `notes`)
-	for &o, k in order do o = k
-	{
-		ns := notes[:]
-		for i in 1 ..< len(order) { // (insertion sort: by start, then row)
-			j := i
-			for j > 0 && (ns[order[j - 1]].start > ns[order[j]].start + 1e-9 || (abs(ns[order[j - 1]].start - ns[order[j]].start) <= 1e-9 && ns[order[j - 1]].key > ns[order[j]].key)) {
-				order[j - 1], order[j] = order[j], order[j - 1]
-				j -= 1
+	// The cursor moved: the note it left let go (unless Select kept it),
+	// the one it's on selected.
+	land :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, which: []int, snap: f64) {
+		st := &a.seq
+		cx := &a.ctl
+		if cx.seq_transient && len(st.sel) > 0 do pop(&st.sel)
+		cx.seq_transient = false
+		st.selected = -1
+		if n, ok := cursor_note(s, notes, which, cx.seq_row, cx.seq_beat, snap); ok && !is_selected(st, n) {
+			append(&st.sel, n)
+			cx.seq_transient = true
+			for x, i in s.notes do if x == n {
+				st.selected = i
+				break
 			}
 		}
 	}
-	names := make([dynamic]string, context.temp_allocator)
-	append(&names, "None")
-	cur := 0
-	for k, i in order {
-		n := s.notes[which[k]]
-		append(&names, fmt.tprintf("%s %s", ctl_beat_name(&m.project, n.start), rows[notes[k].key].name))
-		if len(st.sel) > 0 && n == st.sel[0] do cur = i + 1
+	moved, row_moved := false, false
+	// The arrows: ▲ ▼ a row (its pad selected), ◀ ▶ a grid step.
+	inp := ctx.input
+	if inp != nil {
+		if inp.pressed[int(pa.View_Button.Up)] && cx.seq_row < len(rows) - 1 do cx.seq_row, moved, row_moved = cx.seq_row + 1, true, true
+		if inp.pressed[int(pa.View_Button.Down)] && cx.seq_row > 0 do cx.seq_row, moved, row_moved = cx.seq_row - 1, true, true
+		if inp.pressed[int(pa.View_Button.Page_Left)] && cx.seq_beat > 1e-9 do cx.seq_beat, moved = max(math.ceil(cx.seq_beat / snap - 1e-9) * snap - snap, 0), true
+		if inp.pressed[int(pa.View_Button.Page_Right)] {
+			if nb := math.floor(cx.seq_beat / snap + 1e-9) * snap + snap; nb < length - 1e-9 do cx.seq_beat, moved = nb, true
+		}
 	}
-	if k, _ := ctl_choice(ctx, 1, 8, "Note", names[:], cur, plot); k >= 0 {
-		clear(&st.sel)
+	// Encoder 1: the cursor's row (its pad selected).
+	{
+		names := make([]string, len(rows), context.temp_allocator)
+		for &nm, k in names do nm = rows[k].name
+		if k, _ := ctl_choice(ctx, 0, 8, "Pad" if !st.piano else "Key", names, cx.seq_row, plot); k >= 0 do cx.seq_row, moved, row_moved = k, true, true
+	}
+	if row_moved {
+		if !st.piano && row_pad[cx.seq_row] != a.selected {
+			pa.perform_select_pad(&a.api, i64(row_pad[cx.seq_row]))
+			cx.seq_pad = row_pad[cx.seq_row] + 1 // (the cursor already there)
+		}
+		if cx.seq_row < v.key0 do v.key0 = cx.seq_row
+		if cx.seq_row >= v.key0 + keys do v.key0 = cx.seq_row - keys + 1
+	}
+	v.key0 = clamp(v.key0, 0, max(len(rows) - keys, 0))
+	// Encoder 2: the notes on the cursor's row, in time (the cursor goes
+	// to the one chosen).
+	{
+		on_row := make([dynamic]int, context.temp_allocator) // (into `notes`, by start)
+		for rn, k in notes do if rn.key == cx.seq_row {
+			j := len(on_row)
+			append(&on_row, k)
+			for j > 0 && notes[on_row[j - 1]].start > rn.start + 1e-9 {
+				on_row[j - 1], on_row[j] = on_row[j], on_row[j - 1]
+				j -= 1
+			}
+		}
+		names := make([dynamic]string, context.temp_allocator)
+		cur := 0
+		for k, i in on_row {
+			append(&names, fmt.tprintf("%s", ctl_beat_name(&m.project, notes[k].start)))
+			if notes[k].start < cx.seq_beat + snap - 1e-9 do cur = i // (on it, or the last before it)
+		}
+		if len(names) == 0 do append(&names, "None")
+		if k, _ := ctl_choice(ctx, 1, 8, "Note", names[:], cur, plot); k >= 0 && k < len(on_row) do cx.seq_beat, moved = notes[on_row[k]].start, true
+	}
+	if moved do land(a, s, notes[:], which[:], snap)
+	// Select: the cursor's note kept in the selection (again: let go);
+	// Shift + Select: every note of the pad (again: none).
+	if inp != nil && inp.pressed[int(pa.View_Button.Select)] {
+		if a.ctl.shift {
+			pad := row_pad[cx.seq_row] if !st.piano else a.selected
+			all, total := true, 0
+			for n in s.notes do if int(n.pad) == pad {
+				total += 1
+				if !is_selected(st, n) do all = false
+			}
+			clear(&st.sel)
+			st.selected = -1
+			cx.seq_transient = false
+			if !(all && total > 0) do for n, i in s.notes do if int(n.pad) == pad {
+				append(&st.sel, n)
+				if st.selected < 0 do st.selected = i
+			}
+		} else if n, ok := cursor_note(s, notes[:], which[:], cx.seq_row, cx.seq_beat, snap); ok {
+			switch {
+			case cx.seq_transient && st.sel[len(st.sel) - 1] == n: cx.seq_transient = false // (kept)
+			case is_selected(st, n):
+				for x, i in st.sel do if x == n {
+					ordered_remove(&st.sel, i)
+					break
+				}
+			case: append(&st.sel, n)
+			}
+		}
+	}
+	// Delete: the selection gone, the cursor on the next note along its row
+	// (none after: the one before), that note selected.
+	delete_and_go_on :: proc(a: ^App, s: pm.Sequence, notes: []ui.Roll_Note, which: []int, snap: f64) {
+		st := &a.seq
+		cx := &a.ctl
+		after, before: pm.Seq_Note
+		has_after, has_before := false, false
+		for rn, k in notes do if rn.key == cx.seq_row {
+			n := s.notes[which[k]]
+			if is_selected(st, n) do continue
+			if rn.start >= cx.seq_beat + snap - 1e-9 {
+				if !has_after || n.start < after.start do after, has_after = n, true
+			} else if rn.start < cx.seq_beat - 1e-9 {
+				if !has_before || n.start > before.start do before, has_before = n, true
+			}
+		}
+		delete_selection(a)
 		st.selected = -1
-		if k > 0 {
-			i := which[order[k - 1]]
-			append(&st.sel, s.notes[i])
+		cx.seq_transient = false
+		to, ok := (after if has_after else before), has_after || has_before
+		if !ok do return
+		cx.seq_beat = to.start
+		now := pm.current_sequence(&a.m)
+		for n, i in now.notes do if n == to {
+			append(&st.sel, n)
 			st.selected = i
-			nk := notes[order[k - 1]].key
-			if nk < v.key0 || nk >= v.key0 + keys do v.key0 = clamp(nk - keys / 2, 0, max(len(rows) - keys, 0))
+			cx.seq_transient = true
+			break
+		}
+	}
+	if inp != nil && inp.pressed[int(pa.View_Button.Delete)] && len(st.sel) > 0 do delete_and_go_on(a, s, notes[:], which[:], snap)
+	// The arrows lit where the cursor can go.
+	if cx.seq_row < len(rows) - 1 do ctx.buttons |= 1 << uint(pa.View_Button.Up)
+	if cx.seq_row > 0 do ctx.buttons |= 1 << uint(pa.View_Button.Down)
+	if cx.seq_beat > 1e-9 do ctx.buttons |= 1 << uint(pa.View_Button.Page_Left)
+	if cx.seq_beat + snap < length - 1e-9 do ctx.buttons |= 1 << uint(pa.View_Button.Page_Right)
+
+	// Over them: the selected pad's row and the cursor (as they are now).
+	{
+		dl := im.GetWindowDrawList()
+		row_h := plot.y / f32(max(v.keys, 1))
+		names_w := ui.roll_rows_width(rows)
+		gw := plot.x - names_w
+		// The selected pad's row outlined red (the piano roll's rows are all its).
+		if !st.piano do for r, k in row_pad do if r == a.selected && k >= v.key0 && k < v.key0 + v.keys {
+			y := grid_at.y + plot.y - f32(k - v.key0 + 1) * row_h
+			im.DrawList_AddRect(dl, {grid_at.x + 1, y + 1}, {grid_at.x + plot.x - 1, y + row_h - 1}, ui.col(t.danger), 3, 1.5)
+		}
+		// The cursor's step: lit, and boxed in the accent (white boxes are
+		// the selection's).
+		if cx.seq_row >= v.key0 && cx.seq_row < v.key0 + v.keys && length > 0 {
+			y := grid_at.y + plot.y - f32(cx.seq_row - v.key0 + 1) * row_h
+			x0 := grid_at.x + names_w + f32(cx.seq_beat / length) * gw
+			x1 := x0 + max(f32(snap / length) * gw, 3)
+			im.DrawList_AddRectFilled(dl, {x0, y + 2}, {x1, y + row_h - 2}, ui.col(ui.with_alpha(t.text, 0.22)), 2)
+			im.DrawList_AddRect(dl, {x0 - 1, y + 1}, {x1 + 1, y + row_h - 1}, ui.col(t.warn), 2, 2)
 		}
 	}
 	has := len(st.sel) > 0
@@ -634,7 +776,7 @@ ctl_sequencer :: proc(ctx: ^View_Ctx, full: im.Vec2) {
 	// The selection's: Mute, Duplicate, Delete.
 	if p, _ := ctl_button(ctx, 4, "Unmute" if has && first.muted else "Mute", false, full); p && has do mute_selection(a)
 	if p, _ := ctl_button(ctx, 5, "Duplicate", false, full); p && has do duplicate_selection(a)
-	if p, _ := ctl_button(ctx, 6, "Delete", false, full); p && has do delete_selection(a)
+	if p, _ := ctl_button(ctx, 6, "Delete", false, full); p && has do delete_and_go_on(a, s, notes[:], which[:], snap)
 	_ = t
 	ui.knob_input.drawn = 8
 }

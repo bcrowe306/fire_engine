@@ -124,6 +124,16 @@ modal_knob :: proc(a: ^App, label, text: string, fine := false) -> int {
 	return n
 }
 
+// A modal's on/off setting on a controller's encoder (as `modal_knob`):
+// turned clockwise, on; counter-clockwise, off (never a toggle, so a turn
+// too far doesn't flip it back). What it is now, and whether that's a
+// change from `on`.
+modal_switch :: proc(a: ^App, label: string, on: bool, on_text := "On", off_text := "Off") -> (to: bool, changed: bool) {
+	n := modal_knob(a, label, on_text if on else off_text)
+	to = n > 0 if n != 0 else on
+	return to, to != on
+}
+
 // After the window's frame: what its dialog showed is what a controller
 // shows now.
 dialog_frame :: proc(a: ^App) {

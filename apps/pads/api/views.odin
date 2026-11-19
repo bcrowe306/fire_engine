@@ -44,6 +44,7 @@ View_Button :: enum i64 {
 	Delete,
 	Up,   // the view's item before (a controller's ▲: the device before, the row above, the strips' eight before)
 	Down, // the view's item after (▼)
+	Select, // a controller's Select (the sequencer: the cursor's note kept in the selection or let go; with Shift, every note of the selected pad)
 }
 
 // What a view offers a controller now, as it last drew: its knobs (one an

@@ -198,7 +198,7 @@ draw_seq_dialogs :: proc(a: ^App) {
 			b.to = i32(to)
 		}
 		b.at = clamp(b.at + i32(modal_knob(a, "At Bar", fmt.tprintf("%d", b.at))), 1, pm.MAX_BARS)
-		if modal_knob(a, "Replace", "Yes" if b.replace else "No") != 0 do b.replace = !b.replace
+		b.replace, _ = modal_switch(a, "Replace", b.replace, "Yes", "No")
 		im.Spacing()
 		if modal_button(a, "Copy") {
 			pads: [pm.PADS]bool

@@ -129,7 +129,7 @@ draw_quantize_dialog :: proc(a: ^App) {
 	on := iq.on
 	im.Checkbox("On##iqon", &on)
 	ui.name("input quantize on")
-	if modal_knob(a, "Input", "On" if iq.on else "Off") != 0 do on = !iq.on
+	if v, ch := modal_switch(a, "Input", iq.on); ch do on = v
 	ig := int(iq.grid)
 	im.SetNextItemWidth(160)
 	if ui.combo("Grid##iqgrid", pm.GRID_NAMES[pm.Grid(ig)]) {
@@ -358,9 +358,9 @@ draw_recording_dialog :: proc(a: ^App) {
 		settings_save(a)
 	}
 	if ui.toggle("Latch##reclatch", &a.sample_latched) do a.sample_armed = a.sample_latched
-	if modal_knob(a, "Latch", "On" if a.sample_latched else "Off") != 0 {
-		a.sample_latched = !a.sample_latched
-		a.sample_armed = a.sample_latched
+	if v, ch := modal_switch(a, "Latch", a.sample_latched); ch {
+		a.sample_latched = v
+		a.sample_armed = v
 	}
 	im.Spacing()
 	if a.rec.active {
@@ -394,7 +394,7 @@ draw_repeat_dialog :: proc(a: ^App) {
 	modal_text(a, "Every pad held repeats at this rate (hold Repeat, or Shift + Repeat to latch it).", dim = true)
 	on, _ := pa.perform_note_repeat(&a.api)
 	if ui.toggle("On##nrpon", &on) do pa.perform_set_note_repeat(&a.api, on)
-	if modal_knob(a, "Repeat", "On" if on else "Off") != 0 do pa.perform_set_note_repeat(&a.api, !on)
+	if v, ch := modal_switch(a, "Repeat", on); ch do pa.perform_set_note_repeat(&a.api, v)
 	rate := int(s.repeat_rate)
 	im.SetNextItemWidth(110)
 	if rate_combo("##nrprate", &s.repeat_rate) do pa.settings_set_number(&a.api, "note_repeat.rate", f64(s.repeat_rate))
@@ -424,7 +424,7 @@ draw_transport_dialog :: proc(a: ^App) {
 	modal_text(a, "Loop, the count-in, the click and the time signature.", dim = true)
 	loop := tr.loop
 	if ui.toggle("Loop##trloop", &loop) do pa.transport_set_loop(&a.api, loop)
-	if modal_knob(a, "Loop", "On" if tr.loop else "Off") != 0 do pa.transport_set_loop(&a.api, !tr.loop)
+	if v, ch := modal_switch(a, "Loop", tr.loop); ch do pa.transport_set_loop(&a.api, v)
 	ci := int(tr.count_in)
 	ui.segmented("count in", {"No count-in", "1 bar", "2 bars"}, &ci)
 	ci = clamp(ci + modal_knob(a, "Count-in", "None" if tr.count_in == 0 else fmt.tprintf("%d bar%s", tr.count_in, "" if tr.count_in == 1 else "s")), 0, 2)
@@ -439,10 +439,10 @@ draw_transport_dialog :: proc(a: ^App) {
 	if snd != int(tr.metronome_sound) do pa.transport_set_metronome_sound(&a.api, pa.Metronome_Sound(snd))
 	acc := tr.metronome_accent
 	if ui.toggle("Accent the bar's first beat##tracc", &acc) do pa.transport_set_metronome_accent(&a.api, acc)
-	if modal_knob(a, "Accent", "On" if tr.metronome_accent else "Off") != 0 do pa.transport_set_metronome_accent(&a.api, !tr.metronome_accent)
+	if v, ch := modal_switch(a, "Accent", tr.metronome_accent); ch do pa.transport_set_metronome_accent(&a.api, v)
 	ro := tr.metronome_recording_only
 	if ui.toggle("Only while recording##trro", &ro) do pa.transport_set_metronome_recording_only(&a.api, ro)
-	if modal_knob(a, "Rec Only", "On" if tr.metronome_recording_only else "Off") != 0 do pa.transport_set_metronome_recording_only(&a.api, !tr.metronome_recording_only)
+	if v, ch := modal_switch(a, "Rec Only", tr.metronome_recording_only); ch do pa.transport_set_metronome_recording_only(&a.api, v)
 	num, den := tr.time_sig_num, tr.time_sig_den
 	im.Text("%s", fmt.ctprintf("Time signature %d/%d", num, den))
 	num = clamp(num + i64(modal_knob(a, "Beats", fmt.tprintf("%d", num))), 1, 16)

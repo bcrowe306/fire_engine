@@ -27,6 +27,7 @@ package pads_push2
 
 import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:path/filepath"
 
 import abi "fsurf:abi"
@@ -174,6 +175,7 @@ Push2 :: struct {
 	dialog_open:   bool,
 	watch:         ^kit.Component, // Pads watched: its dialog
 	delete_held:   bool, // Delete held: a pad pressed is cleared
+	delete_used:   bool, // a pad (or step) pressed while Delete was held (let go unused in Clip: the selected notes deleted)
 	repeat:        Repeat_Hold, // Repeat (Pads' note repeat): held, latched, a pad played meanwhile
 	select_held, dup_held: bool, // Select, Duplicate held (Perform's sequence pads: go to, copy)
 	scenes:        [8]^kit.Control, // the scene buttons beside the grid (0 at the top)
@@ -411,8 +413,10 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.layer_bind(tempo_c.layer, "tempo", tempo)
 	tempo_c.on_event = proc(c: ^kit.Component, e: kit.Event) {
 		if e.kind != .Delta do return
+		p := (^Push2)(c.cs.user)
 		t := kit.daw_get(c.cs, .Tempo)
-		kit.daw_set(c.cs, .Tempo, 0, 0, clamp(t + f64(e.delta), 20, 999))
+		step := 0.1 if p.shift.held else 1.0 // (Shift: fine, a tenth of a BPM)
+		kit.daw_set(c.cs, .Tempo, 0, 0, clamp(math.round((t + f64(e.delta) * step) / step) * step, 20, 999))
 	}
 	swing_c := swing_setup(cs, swing) // (extras.odin)
 
@@ -466,8 +470,15 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	held.on_event = proc(c: ^kit.Component, e: kit.Event) {
 		if e.kind != .Press && e.kind != .Release do return
 		p := (^Push2)(c.cs.user)
-		if e.slot == "select" do p.select_held = e.kind == .Press
-		else {
+		if e.slot == "select" {
+			p.select_held = e.kind == .Press
+			// Clip: told to the sequencer (the cursor's note kept or let go;
+			// with Shift, every note of the pad).
+			if p.select_held && p.mirror_kind == .Sequencer {
+				press(p, .Sequencer, .Select, true)
+				press(p, .Sequencer, .Select, false)
+			}
+		} else {
 			p.dup_held = e.kind == .Press
 			if !p.dup_held do steps_forget_copy(p)
 		}
@@ -553,6 +564,12 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 		if e.kind != .Press && e.kind != .Release do return
 		p := (^Push2)(c.cs.user)
 		p.delete_held = e.kind == .Press
+		// Clip: a tap (no pad cleared with it) deletes the selected notes.
+		if p.delete_held do p.delete_used = false
+		else if !p.delete_used && p.mirror_kind == .Sequencer {
+			press(p, .Sequencer, .Delete, true)
+			press(p, .Sequencer, .Delete, false)
+		}
 		if p.pad_grid.active do for x in p.pad_grid.pads.controls do if kit.owns(p.pad_grid, x) do grid_route(p.pad_grid, x)
 		kit.redraw_owned(c)
 	}

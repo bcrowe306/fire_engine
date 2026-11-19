@@ -512,10 +512,10 @@ draw_push_window :: proc(a: ^App) {
 	ui.text_push(.Caption)
 	im.AlignTextToFramePadding()
 	if v == nil do im.TextDisabled("%s", fmt.ctprintf("%s", pw.why if pw.why != "" else "No Push 2 is running."))
-	else do im.TextDisabled("%s", "Pads' own Push 2 (none plugged in)" if virtual else "Your Push 2 (the window plays it too)")
+	else do im.TextDisabled("%s", cstring("Pads' own Push 2 (none plugged in)") if virtual else cstring("Your Push 2 (the window plays it too)"))
 	im.SameLine()
 	im.TextDisabled("(?)")
-	if im.IsItemHovered() do im.SetTooltip("%s", "Click to press; hold for a long press; a pad lower down plays softer.\nRight-click a button to hold it (Shift, Select, Delete, Mute...) until you click it again.\nShift on the keyboard holds Push 2's.\nDrag an encoder up or down, or scroll on it; drag along the touch strip.\nEsc leaves Fill and Full Screen.")
+	if im.IsItemHovered() do im.SetTooltip("%s", cstring("Click to press; hold for a long press; a pad lower down plays softer.\nRight-click a button to hold it (Shift, Select, Delete, Mute...) until you click it again.\nShift on the keyboard holds Push 2's.\nDrag an encoder up or down, or scroll on it; drag along the touch strip.\nEsc leaves Fill and Full Screen."))
 	bw: f32 = 100
 	im.SameLine()
 	im.SetCursorPosX(max(im.GetCursorPosX(), im.GetWindowWidth() - bw * 2 - im.GetStyle().WindowPadding.x - im.GetStyle().ItemSpacing.x))

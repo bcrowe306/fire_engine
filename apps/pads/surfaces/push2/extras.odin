@@ -21,10 +21,10 @@ banner).
 - **Fixed Length:** Pads' Sequence Length dialog (its lengths on the lower
   row); held long or with Shift: the Sequence dialog (colour, tempo, bars,
   the pad's loop, when a sequence takes over; Rename, Duplicate, Clear).
-- **Quantize:** the sequencer's selected notes, else the sequence, as
-  Pads' Quantize setting says; held long or with Shift: Pads' Quantize
-  dialog (its settings and input quantize's on the encoders). Lit bright
-  while input quantize is on (the display shows "IQ 1/16" too).
+- **Quantize:** input quantize on or off; held long or with Shift: Pads'
+  Quantize dialog (quantizing the notes, its settings and input
+  quantize's on the encoders). Lit bright while input quantize is on (the
+  display shows "IQ 1/16" too).
 - **Convert:** Pads' Convert dialog for the selected pad: Make a Slicer,
   Slice onto Pads, Into a Synth, Back to a Sampler (those that fit it),
   Resample Sequence, Resample Pad (onto the next empty pad).
@@ -265,8 +265,14 @@ extra_press :: proc(p: ^Push2, slot: string, alt: bool) {
 		}
 		if p.mode_buttons != nil do kit.redraw_owned(p.mode_buttons)
 	case "quantize":
-		if alt do app_show(p, "quantize")
-		else do t.ui_quantize(t.api)
+		if alt {
+			app_show(p, "quantize")
+		} else {
+			q: pa.Input_Quantize
+			t.sequence_input_quantize(t.api, &q)
+			t.sequence_set_input_quantize(t.api, !q.on, q.grid, q.strength, q.swing)
+			say(p, .Info, "Input quantize: on" if !q.on else "Input quantize: off")
+		}
 	}
 }
 

@@ -502,8 +502,7 @@ def test_clip_is_pads_sequencer(pads, fixtures):
         pads.api("sequence_add_note", slot=0, n={"start": b, "length": 0.25, "pad": 0, "velocity": 0.8, "probability": 1})
     press(pads, 0x71)  # Clip: the sequencer
     pads.wait(8)
-    turn(pads, 1, 3)  # Note: the first
-    turn(pads, 1, 3)  # ... the second
+    turn(pads, 1, 3)  # Note: the selected pad's next (the cursor on the first)
     turn(pads, 2, -20)  # its velocity: 20% less
     notes = [pads.api("sequence_note", slot=0, index=i) for i in range(3)]
     second = [n for n in notes if abs(n["start"] - 1) < 1e-6][0]
@@ -516,6 +515,75 @@ def test_clip_is_pads_sequencer(pads, fixtures):
     press(pads, 26)  # Delete
     pads.wait(5)
     assert pads.api("sequence_state", slot=0)["notes"] == 2
+
+
+def test_clip_cursor_arrows_select_and_delete(pads, fixtures):
+    """Clip: the arrows move a cursor (a row, its pad selected; a grid
+    step), the note on it selected; Select keeps it, Shift + Select every
+    note of the pad; Delete takes the selection, the next note along the
+    row selected."""
+    plug(pads)
+    pads.api("pad_load_sample", pad=0, path=os.path.join(fixtures, "kick.wav"))
+    for pad, b in ((0, 0), (0, 1), (0, 2.5), (1, 0.5), (1, 1.5)):
+        pads.api("sequence_add_note", slot=0, n={"start": b, "length": 0.25, "pad": pad, "velocity": 0.8, "probability": 1})
+
+    def notes():
+        return [pads.api("sequence_note", slot=0, index=i) for i in range(pads.api("sequence_state", slot=0)["notes"])]
+
+    def velocity(pad, b):
+        return next(n["velocity"] for n in notes() if n["pad"] == pad and abs(n["start"] - b) < 1e-6)
+
+    def tap(cc, times=1):
+        for _ in range(times):
+            press(pads, cc)
+            pads.wait(2)
+
+    press(pads, 0x71)  # Clip
+    pads.wait(8)
+    tap(45, 4)  # Right x4: beat 1 (1/16 steps), its note selected
+    tap(48)  # Select: kept
+    tap(45, 6)  # on to 2.5: that one too (the cursor's)
+    turn(pads, 2, -20)  # Velocity: both
+    assert abs(velocity(0, 1) - 0.6) < 0.02 and abs(velocity(0, 2.5) - 0.6) < 0.02, notes()
+    assert abs(velocity(0, 0) - 0.8) < 1e-6 and abs(velocity(1, 0.5) - 0.8) < 1e-6
+    settle(pads)
+    display_png(pads, os.path.join(pads.out_dir, "push2_clip_cursor.png"))
+    tap(118)  # Delete: both gone
+    assert sorted((n["pad"], n["start"]) for n in notes()) == [(0, 0), (1, 0.5), (1, 1.5)], notes()
+    turn(pads, 2, -20)  # (the next along the row, none after: the one before, selected)
+    assert abs(velocity(0, 0) - 0.6) < 0.02, notes()
+    # Up: the row above, its pad selected; Shift + Select: all its notes.
+    tap(46)
+    assert pads.api("perform_state")["selected"] == 1
+    pads.cmd("midiport play push B0 31 7F")
+    pads.wait(2)
+    tap(48)
+    pads.cmd("midiport play push B0 31 00")
+    pads.wait(2)
+    settle(pads)
+    display_png(pads, os.path.join(pads.out_dir, "push2_clip_pad_selected.png"))
+    tap(118)
+    assert sorted((n["pad"], n["start"]) for n in notes()) == [(0, 0)], notes()
+    tap(47)  # Down: pad 0's row again
+    assert pads.api("perform_state")["selected"] == 0
+
+
+def test_the_tempo_encoder_a_bpm_a_detent_and_with_shift_a_tenth(pads):
+    plug(pads)
+    pads.api("transport_set_tempo", bpm=120)
+    for _ in range(3):
+        pads.cmd("midiport play push B0 0E 01")  # Tempo: +1 a detent
+        pads.wait(1)
+    pads.wait(3)
+    assert abs(pads.api("transport_state")["bpm"] - 123) < 1e-6
+    pads.cmd("midiport play push B0 31 7F")  # Shift held: a tenth
+    pads.wait(2)
+    for _ in range(4):
+        pads.cmd("midiport play push B0 0E 7F")
+        pads.wait(1)
+    pads.cmd("midiport play push B0 31 00")
+    pads.wait(3)
+    assert abs(pads.api("transport_state")["bpm"] - 122.6) < 1e-6
 
 
 def test_note_is_pads_keyboard_mode_and_follows_it(pads, fixtures):
@@ -1589,12 +1657,18 @@ def test_quantize_press_long_press_dialog_and_its_light(pads):
     pads.api("sequence_add_note", slot=0, n={"start": 0.3, "length": 0.25, "pad": 0, "velocity": 0.8, "probability": 1})
     # The setting: 1/4, full strength.
     pads.api("sequence_set_quantize_setting", grid="Quarter", strength=1)
+    # A press: input quantize on, and again, off (the notes left alone).
+    assert cc_light(pads, 116) == 115  # (input quantize off: dim)
     press(pads, 116)  # Quantize
     pads.wait(3)
-    assert pads.api("sequence_note", slot=0, index=0)["start"] == 0
-    assert any("Quantized" in m for m in messages(pads)), messages(pads)
+    assert pads.api("sequence_input_quantize")["on"]
+    assert cc_light(pads, 116) == 127  # (input quantize on: bright)
+    press(pads, 116)
+    pads.wait(3)
+    assert not pads.api("sequence_input_quantize")["on"]
+    assert cc_light(pads, 116) == 115
+    assert abs(pads.api("sequence_note", slot=0, index=0)["start"] - 0.3) < 1e-6
     # Held long: the Quantize dialog, its settings on the encoders.
-    assert cc_light(pads, 116) == 115  # (input quantize off: dim)
     long_press(pads, 116)
     pads.wait(8)
     assert pads.api("ui_dialog_title") == "Quantize"
@@ -1604,13 +1678,20 @@ def test_quantize_press_long_press_dialog_and_its_light(pads):
     turn(pads, 1, -50)  # Strength: 50%
     pads.wait(4)
     assert abs(pads.api("sequence_quantize_setting")["strength"] - 0.5) < 1e-3
-    turn(pads, 2, 3)  # Input: on
-    pads.wait(4)
-    assert pads.api("sequence_input_quantize")["on"]
+    pads.api("sequence_set_quantize_setting", grid="Quarter", strength=1)
+    # Input: clockwise on, counter-clockwise off; never a toggle.
+    for steps, on in [(3, True), (3, True), (-3, False), (-3, False), (3, True)]:
+        turn(pads, 2, steps)
+        pads.wait(4)
+        assert pads.api("sequence_input_quantize")["on"] == on, (steps, on)
     settle(pads)
     display_png(pads, os.path.join(pads.out_dir, "push2_quantize_dialog.png"))
     assert cc_light(pads, 116) == 127  # (input quantize on: bright)
-    press(pads, 21)  # Close (Quantize Now, Close)
+    press(pads, 20)  # Quantize Now (Quantize Now, Close)
+    pads.wait(3)
+    assert pads.api("sequence_note", slot=0, index=0)["start"] == 0
+    assert any("Quantized" in m for m in messages(pads)), messages(pads)
+    press(pads, 21)  # Close
     pads.wait(6)
     assert pads.api("ui_dialog_title") == ""
     settle(pads)

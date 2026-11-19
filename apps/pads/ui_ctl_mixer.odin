@@ -663,7 +663,7 @@ mix_encoder :: proc(a: ^App, ctx: ^View_Ctx, k: int, s: Mix_Strip, page: Mix_Pag
 			set_cue(a, s, clamp(db + f32(d) * (6 - pm.SEND_MIN_DB), pm.SEND_MIN_DB, 6), c.pre)
 		}
 	case .Audio_In, .Monitor, .Output, .Midi_In, .Midi_Out:
-		if steps := int(ki.turn[k] / CTL_STEP); steps != 0 {
+		if steps := ctl_whole(ki.turn[k] / CTL_STEP); steps != 0 {
 			ki.turn[k] -= f64(steps) * CTL_STEP
 			if len(choice.names) > 0 {
 				to := clamp(max(choice.cur, 0) + steps, 0, len(choice.names) - 1)

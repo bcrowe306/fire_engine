@@ -374,6 +374,7 @@ modes_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, master, mix_b, device_b
 	buttons.on_event = proc(c: ^kit.Component, e: kit.Event) {
 		if e.kind != .Press do return
 		p := (^Push2)(c.cs.user)
+		if p.delete_held do p.delete_used = true
 		if e.slot != "clip" do steps_leave(p) // (Clip's pads: the ones before)
 		switch e.slot {
 		case "device":
