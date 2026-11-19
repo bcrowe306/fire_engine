@@ -104,7 +104,13 @@ fx_banks :: proc(p: ^Fx_Panel, names: ..string) {
 
 // Parameter `id`'s plain value (a slot's, or the synth's: the panel's own).
 fx_value :: proc(p: ^Fx_Panel, id: fc.Param_Id) -> f32 {
-	if p.twin do return host_value(p.ctx.a, id)
+	if p.twin {
+		a := p.ctx.a
+		host := a.param_host
+		if p.where_ == .Slot do a.param_host = {slot = true, t = p.t} // (a twin slot: its own values, not the pad's synth)
+		defer a.param_host = host
+		return host_value(a, id)
+	}
 	switch p.where_ {
 	case .Slot, .Plugin_Instrument:
 		v := pm.slot_value(p.s, id, max(f32))
