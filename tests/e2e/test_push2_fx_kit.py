@@ -8,10 +8,10 @@ from push2_fx import Device, bank, banks, draw_us, in_perform, in_slot, moves, o
 
 
 def test_a_slot_effect_on_the_generic_panel(pads, fixtures):
-    d = in_slot(pads, "comb", sample=os.path.join(fixtures, "loop.wav"))
+    d = in_slot(pads, "cutter", sample=os.path.join(fixtures, "loop.wav"))  # (Rhythm: a later round's)
     assert banks(pads) >= 1
-    assert pads.api("effect_name", s=d.slot) == "Comb"
-    moves(pads, d, 0, 1, 10)  # (the Comb's first: its frequency, COMB_PARAM_HZ)
+    assert pads.api("effect_name", s=d.slot) == "Cutter"
+    moves(pads, d, 0, 1, 10)  # (the Cutter's first: its rate, CUTTER_PARAM_BEATS)
     save(pads, "kit_slot")
     assert tuple(draw_us(pads)) == (0, 0)  # (no family panel drawn yet)
 

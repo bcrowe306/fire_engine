@@ -72,11 +72,10 @@ def in_perform(pads, kind, n=0):
     """Effect `kind` as Perform's effect `n`, shown on the Push (Device)."""
     plug(pads)
     pads.cmd(f"perf_fx {n} {kind}")
-    pads.wait(10)  # (the Push settles on the selected pad's chain first: Perform's shown after)
-    pads.cmd(f"edit_fx perf {n}")
-    _show(pads)
-    pads.cmd(f"edit_fx perf {n}")
-    pads.wait(5)
+    pads.wait(10)  # (the Push settles on the selected pad's chain first)
+    _show(pads)  # (Device: it shows the selected pad's chain)
+    pads.cmd(f"edit_fx perf {n}")  # (then Perform's effect)
+    pads.wait(8)
     return Device(pads, "perf", {"place": "Perf", "index": n, "slot": 0})
 
 
