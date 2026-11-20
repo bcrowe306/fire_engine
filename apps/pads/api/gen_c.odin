@@ -455,6 +455,14 @@ Table_V1 :: struct {
 	progression_mine_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 	progression_use_mine: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
 	progression_save: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	perform_cell: proc "c" (api: ^Api, col: i64, row: i64, out: ^Perform_Cell) -> Result,
+	perform_cell_name: proc "c" (api: ^Api, col: i64, row: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	perform_play_cell: proc "c" (api: ^Api, col: i64, row: i64, on: bool, velocity: f32) -> Result,
+	perform_chord_playing: proc "c" (api: ^Api, out: ^Chord_Playing) -> Result,
+	perform_chord_playing_note: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result,
+	perform_chord_playing_name: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	key_set_layout: proc "c" (api: ^Api, layout: Grid_Layout) -> Result,
+	key_layout_name: proc "c" (api: ^Api, layout: Grid_Layout, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -912,6 +920,14 @@ table_fill :: proc(api: ^Api) {
 	t.progression_mine_name = c_progression_mine_name
 	t.progression_use_mine = c_progression_use_mine
 	t.progression_save = c_progression_save
+	t.perform_cell = c_perform_cell
+	t.perform_cell_name = c_perform_cell_name
+	t.perform_play_cell = c_perform_play_cell
+	t.perform_chord_playing = c_perform_chord_playing
+	t.perform_chord_playing_note = c_perform_chord_playing_note
+	t.perform_chord_playing_name = c_perform_chord_playing_name
+	t.key_set_layout = c_key_set_layout
+	t.key_layout_name = c_key_layout_name
 }
 
 @(private)
@@ -4343,6 +4359,78 @@ c_progression_save :: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^
 	context = runtime.default_context()
 	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
 	s, r := progression_save(api, name_s)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_perform_cell :: proc "c" (api: ^Api, col: i64, row: i64, out: ^Perform_Cell) -> Result {
+	context = runtime.default_context()
+	v, r := perform_cell(api, col, row)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_perform_cell_name :: proc "c" (api: ^Api, col: i64, row: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := perform_cell_name(api, col, row)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_perform_play_cell :: proc "c" (api: ^Api, col: i64, row: i64, on: bool, velocity: f32) -> Result {
+	context = runtime.default_context()
+	return perform_play_cell(api, col, row, on, velocity)
+}
+
+@(private)
+c_perform_chord_playing :: proc "c" (api: ^Api, out: ^Chord_Playing) -> Result {
+	context = runtime.default_context()
+	v, r := perform_chord_playing(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_perform_chord_playing_note :: proc "c" (api: ^Api, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := perform_chord_playing_note(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_perform_chord_playing_name :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := perform_chord_playing_name(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_key_set_layout :: proc "c" (api: ^Api, layout: Grid_Layout) -> Result {
+	context = runtime.default_context()
+	return key_set_layout(api, layout)
+}
+
+@(private)
+c_key_layout_name :: proc "c" (api: ^Api, layout: Grid_Layout, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := key_layout_name(api, layout)
 	if out_len != nil do out_len^ = i64(len(s))
 	if out != nil && out_cap > 0 {
 		n := copy(([^]u8)(out)[:out_cap - 1], s)

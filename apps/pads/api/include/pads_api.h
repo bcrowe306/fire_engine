@@ -251,6 +251,33 @@ enum {
 	PADS_SPREAD_DROP_2 = 2,
 };
 
+// How Scale mode lays the key out on a controller's 8×8 grid (Push 2's
+// Layout). Values kept: new ones are appended.
+typedef int32_t Pads_Grid_Layout;
+enum {
+	PADS_GRID_LAYOUT_FOURTHS = 0,
+	PADS_GRID_LAYOUT_THIRDS = 1,
+	PADS_GRID_LAYOUT_SEQUENTIAL = 2,
+	PADS_GRID_LAYOUT_CHROMATIC = 3,
+};
+
+// How a grid cell's chord is voiced (Progressions' rows on a grid).
+typedef int32_t Pads_Chord_Voicing;
+enum {
+	PADS_CHORD_VOICING_AS_BUILT = 0,
+	PADS_CHORD_VOICING_OCTAVE_UP = 1,
+	PADS_CHORD_VOICING_BASS_DOWN = 2,
+};
+
+// What a grid cell plays.
+typedef int32_t Pads_Cell_Kind;
+enum {
+	PADS_CELL_KIND_NONE = 0,
+	PADS_CELL_KIND_NOTE = 1,
+	PADS_CELL_KIND_CHORD = 2,
+	PADS_CELL_KIND_SLICE = 3,
+};
+
 // How a sample is recorded into a pad.
 typedef int32_t Pads_Sampling;
 enum {
@@ -397,6 +424,7 @@ enum {
 	PADS_VIEW_KIND_SONG = 6,
 	PADS_VIEW_KIND_SETTINGS = 7,
 	PADS_VIEW_KIND_PROJECTS = 8,
+	PADS_VIEW_KIND_HARMONY = 9,
 };
 
 // Called on the control thread when `topic` changed (`index`: which; -1 all).
@@ -748,6 +776,35 @@ typedef struct Pads_Perform_Key {
 	bool chord; // a chord of Chords or Progressions mode
 } Pads_Perform_Key;
 
+// A cell of a controller's 8×8 grid (Push 2's pads in the note modes):
+// what pressing it plays on the selected pad.
+typedef struct Pads_Perform_Cell {
+	Pads_Cell_Kind kind;
+	int64_t pitch; // Note: semitones from the selected pad's own note; Chord: its root as built; Slice: the slice
+	bool in_key; // Note: the key has it (Chromatic's others: dim)
+	bool root; // Note: the key's root; Chord: built on it (the tonic's column)
+	bool playable; // it plays something: within what a pad can be pitched to, a chord the key can make, a slice the slicer has
+	int64_t degree; // Chord: the degree it is built on (0 the key's root)
+	Pads_Variation variation;
+	int64_t index; // Progressions: its chord's index in the progression (else -1)
+	Pads_Chord_Voicing voicing;
+	int64_t count; // notes it plays now
+	bool playing; // Chord: it is the chord playing now (held), see `perform_chord_playing`
+} Pads_Perform_Cell;
+
+// The chord the note modes played last (from the window's pads, a grid's
+// cells, the API), as a display shows it.
+typedef struct Pads_Chord_Playing {
+	bool ok; // a chord has played since the play mode changed
+	bool held; // its press is still down
+	int64_t degree; // the degree it is built on (0 the key's root)
+	Pads_Variation variation;
+	int64_t index; // Progressions: its chord's index in the progression (else -1)
+	Pads_Chord_Voicing voicing;
+	int64_t pad; // the pad it played
+	int64_t count; // its notes as played (`perform_chord_playing_note`)
+} Pads_Chord_Playing;
+
 // The project key and how the chords play it.
 typedef struct Pads_Key_Info {
 	int64_t root; // 0..11, semitones above C
@@ -757,6 +814,7 @@ typedef struct Pads_Key_Info {
 	bool voice_leading; // each chord's inversion the closest to the one before
 	Pads_Spread spread;
 	double strum_ms; // 0..100 between a chord's notes, low first
+	Pads_Grid_Layout layout; // Scale mode on a controller's 8×8 grid
 } Pads_Key_Info;
 
 // A chord of the key, as built (before voice leading and spread).
@@ -2257,6 +2315,41 @@ typedef struct Pads_Api_V1 {
 	// too): the file's path (in the settings folder; one of the same name is
 	// replaced). Temporary.
 	Pads_Result (*progression_save)(Pads_Api* api, const char* name, int64_t name_len, char* out, int64_t out_cap, int64_t* out_len);
+	// Cell `col`, `row` (0..7 each; 0, 0 the bottom left) of a controller's
+	// 8×8 grid in the play mode now. Scale: the key's notes laid out as
+	// `key_set_layout` says, the bottom left the key's root two octaves below
+	// the pad's own note (Scale's octave moves it); a slicer's slices one a
+	// cell in order. Chords: degrees across (I to vii, a 7-note key's eighth
+	// I an octave up; a smaller key fewer columns), variations up (as
+	// `Variation` orders them). Progressions: chord n on cell n along the
+	// bottom rows (eight a row), the same chords an octave up on the rows
+	// above, and above those with the bass an octave down. Pads and
+	// Velocity: as Scale.
+	Pads_Result (*perform_cell)(Pads_Api* api, int64_t col, int64_t row, Pads_Perform_Cell* out);
+	// What cell `col`, `row` shows: a note ("C3"), a slice ("Slice 2"), a
+	// chord ("ii7 Dm7"; "–" if the key can't make it), or "" for none.
+	// Temporary.
+	Pads_Result (*perform_cell_name)(Pads_Api* api, int64_t col, int64_t row, char* out, int64_t out_cap, int64_t* out_len);
+	// Plays cell `col`, `row` (as `perform_cell` says) on the selected pad at
+	// `velocity` (0..1], or lets it go (`on` false), through the same path as
+	// the window's pads: a chord voice-led, spread and strummed as the key's
+	// voicing says, recorded when recording, and the chord playing
+	// (`perform_chord_playing`). What a cell played is what its release
+	// ends, whatever changed between.
+	Pads_Result (*perform_play_cell)(Pads_Api* api, int64_t col, int64_t row, bool on, float velocity);
+	// The chord played last.
+	Pads_Result (*perform_chord_playing)(Pads_Api* api, Pads_Chord_Playing* out);
+	// Note `index` (0 the lowest) of the chord played last, as it played:
+	// semitones from its pad's own note.
+	Pads_Result (*perform_chord_playing_note)(Pads_Api* api, int64_t index, int64_t* out);
+	// The name of the chord played last, "ii7 Dm7" ("" if none). Temporary.
+	Pads_Result (*perform_chord_playing_name)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// How Scale mode lays the key out on a controller's 8×8 grid (Push 2's
+	// Layout; `perform_cell`). Saved with the project (not an edit); the Key
+	// topic reports it.
+	Pads_Result (*key_set_layout)(Pads_Api* api, Pads_Grid_Layout layout);
+	// Layout `layout`'s name, as the window shows it ("Fourths").
+	Pads_Result (*key_layout_name)(Pads_Api* api, Pads_Grid_Layout layout, char* out, int64_t out_cap, int64_t* out_len);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

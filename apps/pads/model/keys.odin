@@ -136,6 +136,7 @@ Keys :: struct {
 	spread:           Spread,
 	strum_ms:         f32,    // 0..MAX_STRUM_MS between a chord's notes, low note first
 	chord_page:       int,    // Chords mode: the variations the window's 4 rows show (0: triad to sus2, 1: add9 to 2nd inversion)
+	layout:           Grid_Layout, // Scale mode on a controller's 8×8 grid (Push 2's Layout)
 }
 
 // Notes an octave of `s` has.
@@ -533,4 +534,150 @@ chords_pad :: proc "contextless" (k: Keys, bank, pad: int) -> (degree: int, v: V
 midi_note_name :: proc(key: int) -> string {
 	k := clamp(key, 0, 127)
 	return fmt.tprintf("%s%d", NOTE_SHARPS[k % 12], k / 12 - 2)
+}
+
+// ---------------------------------------------------------------------------
+// A controller's 8×8 grid (Push 2's pads in the note modes)
+
+// How Scale mode lays the key out on a controller's 8×8 grid (Push 2's
+// Layout). Saved with the project, by value: new ones are appended.
+Grid_Layout :: enum u8 {
+	Fourths,    // each row a fourth above the one below, the key's notes only (the default)
+	Thirds,     // each row a third above the one below, the key's notes only
+	Sequential, // the key's notes in a line, eight a row
+	Chromatic,  // every semitone, each row a fourth up (the key's notes lit, the rest dim)
+}
+
+// Grid layouts' names, as the UI shows them.
+GRID_LAYOUT_NAMES := [Grid_Layout]cstring{.Fourths = "Fourths", .Thirds = "Thirds", .Sequential = "Sequential", .Chromatic = "Chromatic"}
+
+// The grid's columns and rows.
+GRID_COLS :: 8
+GRID_ROWS :: 8
+
+// How a grid cell's chord is voiced (Progressions' other rows on Push 2).
+Chord_Voicing :: enum u8 {
+	As_Built,  // as voice leading and the spread play it
+	Octave_Up, // the same, an octave up
+	Bass_Down, // with its bass note doubled an octave below the lowest
+}
+
+// What a grid cell plays.
+Cell_Kind :: enum u8 {
+	None,  // nothing (dark)
+	Note,  // a note (Scale)
+	Chord, // a chord of the key (Chords) or of the progression (Progressions)
+	Slice, // a slicer's slice (Scale mode on a slicer)
+}
+
+// A cell of the grid: what it plays.
+Grid_Cell :: struct {
+	kind:      Cell_Kind,
+	pitch:     int,  // Note: semitones from the pad's own note; Slice: the slice
+	in_key:    bool, // Note: the key has it (only Chromatic has others)
+	root:      bool, // Note: the key's root; Chord: built on it (the tonic)
+	degree:    int,  // Chord: the degree it is built on (0 the root)
+	variation: Variation,
+	index:     int,  // Progressions: its chord's index (else -1)
+	voicing:   Chord_Voicing,
+}
+
+// The degrees a row of Scale's grid climbs in layout `l` (Chromatic:
+// semitones, a fourth): the first of the key's notes a fourth (Thirds: a
+// minor third) or more above its root, so a 7-note key's rows are a
+// fourth (a third) apart.
+grid_row_step :: proc "contextless" (k: Keys, l: Grid_Layout) -> int {
+	first :: proc "contextless" (steps: []int, semis: int) -> int {
+		for s, i in steps do if s >= semis do return i
+		return len(steps)
+	}
+	steps := scale_steps(k.scale)
+	switch l {
+	case .Fourths:    return max(first(steps, 5), 1)
+	case .Thirds:     return max(first(steps, 3), 1)
+	case .Sequential: return GRID_COLS
+	case .Chromatic:  return 5
+	}
+	return GRID_COLS
+}
+
+// Scale mode's cell `col`, `row` (0, 0 the bottom left) in layout `l`: the
+// bottom left is the key's root two octaves below the pad's own note,
+// Scale's octave moving it; along a row the key's next notes (Chromatic:
+// semitones), each row `grid_row_step` up.
+grid_scale_cell :: proc "contextless" (k: Keys, l: Grid_Layout, col, row: int) -> (c: Grid_Cell) {
+	c.kind, c.index = .Note, -1
+	step := grid_row_step(k, l)
+	if l == .Chromatic {
+		c.pitch = k.root + 12 * (k.octave - 2) + row * step + col
+		c.in_key = in_key(k, c.pitch)
+		c.root = ((c.pitch - k.root) % 12 + 12) % 12 == 0
+		return
+	}
+	n := scale_size(k.scale)
+	degree := -2 * n + row * step + col
+	c.pitch = degree_pitch(k, degree)
+	c.in_key = true
+	c.root = ((degree % n) + n) % n == 0
+	return
+}
+
+// The columns Chords mode's grid has: one a degree of the key (a 7-note
+// key's eighth is I an octave up; a key of more notes, its first eight).
+grid_chord_columns :: proc "contextless" (k: Keys) -> int {
+	n := scale_size(k.scale)
+	return GRID_COLS if n >= 7 else n
+}
+
+// Chords mode's cell `col`, `row`: the chord on degree `col` (the key's
+// degrees across), variation `row` (from the bottom: triad, 7th, sus4,
+// sus2, add9, 6th, first and second inversion). Past the key's degrees:
+// none. (Whether the key can make it: `chord_build`.)
+grid_chords_cell :: proc "contextless" (k: Keys, col, row: int) -> (c: Grid_Cell) {
+	c.index = -1
+	if col < 0 || col >= grid_chord_columns(k) || row < 0 || row >= len(Variation) do return
+	n := scale_size(k.scale)
+	c.kind, c.degree, c.variation = .Chord, col, Variation(row)
+	c.root = col % n == 0
+	return
+}
+
+// Progressions mode's cell `col`, `row`: chord n of progression `p` on
+// cell n along the bottom rows (eight a row, as many rows as it needs),
+// the rows above them the same chords an octave up, and above those with
+// the bass an octave down. The rest: none.
+grid_progression_cell :: proc "contextless" (k: Keys, p: ^Progression, col, row: int) -> (c: Grid_Cell) {
+	c.index = -1
+	if p.count <= 0 || col < 0 || col >= GRID_COLS || row < 0 do return
+	rows := (p.count + GRID_COLS - 1) / GRID_COLS
+	block := row / rows
+	i := (row % rows) * GRID_COLS + col
+	if block >= len(Chord_Voicing) || i >= p.count do return
+	ch := p.chords[i]
+	n := scale_size(k.scale)
+	c.kind, c.degree, c.variation, c.index, c.voicing = .Chord, ch.degree, ch.variation, i, Chord_Voicing(block)
+	c.root = n > 0 && ch.degree % n == 0
+	return
+}
+
+// Chord notes `c` (as played: voice-led and spread) voiced `v`: an octave
+// up, or with `bass` (the chord's lowest note as built: its root, or the
+// note an inversion names) doubled below its lowest note, an octave or
+// more down. A chord with no room for another note keeps its own.
+voice_chord :: proc "contextless" (c: Chord_Notes, bass: int, v: Chord_Voicing) -> Chord_Notes {
+	x := c
+	if x.count == 0 do return x
+	switch v {
+	case .As_Built:
+	case .Octave_Up:
+		for i in 0 ..< x.count do x.pitches[i] += 12
+	case .Bass_Down:
+		if x.count >= MAX_CHORD_NOTES do break
+		low := x.pitches[0]
+		d := ((low - bass) % 12 + 12) % 12
+		for i := x.count; i > 0; i -= 1 do x.pitches[i] = x.pitches[i - 1]
+		x.pitches[0] = low - d - 12
+		x.count += 1
+	}
+	return x
 }

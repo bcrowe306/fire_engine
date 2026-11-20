@@ -25,6 +25,8 @@ Core :: struct {
 	keys:      pm.Keys,      // the project key, Scale's octave, the chords' voicing (saved with the project)
 	progression: pm.Progression, // the one Progressions mode plays (saved with the project)
 	voicing:   [pm.PADS]pm.Chord_Notes, // the last chord each pad played (voice leading leads the next from it)
+	chord_played: Chord_Played, // the last chord the note modes played, from any grid (a display shows it)
+	presses:   int,          // chord presses so far (each one's number: what its release ends)
 	pads_bank: int,          // the bank the pads were on before a note mode moved it
 	job:       Job,          // an export under way (export.odin)
 	browser:   pm.Browser,   // the Library's browser: favourites, the folder tree, the selection, the search

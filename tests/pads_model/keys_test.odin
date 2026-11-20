@@ -215,7 +215,7 @@ the_key_voicing_and_progression_are_saved :: proc(t: ^testing.T) {
 	testing.expect_value(t, pm.model_new(m, r.dir), fc.Error.None)
 	v := &m.project.view
 	v.play_mode = .Progressions
-	v.keys = {scale = .Hirajoshi, root = 7, octave = 2, no_voice_leading = true, spread = .Drop_2, strum_ms = 35, chord_page = 1}
+	v.keys = {scale = .Hirajoshi, root = 7, octave = 2, no_voice_leading = true, spread = .Drop_2, strum_ms = 35, chord_page = 1, layout = .Chromatic}
 	v.progression, _ = pm.progression_parse("vi IV I V", "Back Porch")
 	m.project.pads[2].midi_fx.arp_in_key = true
 	testing.expect_value(t, pm.model_save(m), fc.Error.None)

@@ -78,6 +78,8 @@ State :: struct {
 	curved:     int, // automation points of the current sequence bending the line after them
 	repeat_all: bool,   // the toolbar's note repeat is on
 	fx_draw_us: [2]f64, // a family's device panel on a controller: its last drawing time and the most since (µs; ui_ctl_fx.odin)
+	harmony_draw_us: [2]f64, // the note modes' view on a controller (Harmony): its last drawing time and the most since (µs)
+	harmony_shown: string, // the chord it last named ("ii7 Dm7"; "": none)
 	cutter_bar: [3]f64, // the controller's Cutter picture as last drawn: the beat its bar starts at as the cutter counts, the beat it counts from now (the timeline's playing, else the grid's), and the clock's grid beat
 	ctl_knobs:  [8]State_Ctl_Knob, // the device panel's knobs on a controller as last drawn, by encoder (empty: none there)
 	mic_access: string, // macOS's microphone permission: Unknown, Not_Asked, Denied, Granted
@@ -424,6 +426,8 @@ state_json :: proc(a: ^App) -> string {
 	s.seq_mode = enum_name(a.seq.mode)
 	s.repeat_all = a.m.engine.repeat_all
 	s.fx_draw_us = {a.ctl.fx_draw_us, a.ctl.fx_draw_max_us}
+	s.harmony_draw_us = {a.ctl.harmony_draw_us, a.ctl.harmony_draw_max_us}
+	s.harmony_shown = strings.clone(string(a.ctl.harmony_shown[:a.ctl.harmony_shown_n]), context.temp_allocator)
 	s.cutter_bar = a.ctl.cutter_bar
 	for &k, i in a.ctl.shown {
 		s.ctl_knobs[i] = {label = string(cstring(&k.label[0])), value = string(cstring(&k.value[0])), live = k.live, live_at = k.live_at, marks = k.marks}

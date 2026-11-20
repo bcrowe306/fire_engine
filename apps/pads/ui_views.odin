@@ -128,6 +128,7 @@ view_draw :: proc(ctx: ^View_Ctx) {
 		case .Song:      ctl_song(ctx, size)
 		case .Settings:  ctl_settings(ctx, size)
 		case .Projects:  ctl_projects(ctx, size)
+		case .Harmony:   ctl_harmony(ctx, size)
 		}
 	}
 	im.EndChild()

@@ -1827,6 +1827,54 @@ perform_play_key :: proc(api: ^Api, key: i64, on: bool, velocity: f32 = 1) -> Re
 
 Plays the note modes' key `key` (as `perform_key` counts them) on the selected pad, at `velocity` (0..1], or lets it go (`on` false), as pressing that pad of Pads' grid does: a chord's notes strummed as the key's voicing says. A key out of the pad's range plays nothing. What a key played is what its release ends, whatever changed between.
 
+### perform_cell
+
+```odin
+perform_cell :: proc(api: ^Api, col: i64, row: i64) -> (Perform_Cell, Result)
+```
+
+Cell `col`, `row` (0..7 each; 0, 0 the bottom left) of a controller's 8×8 grid in the play mode now. Scale: the key's notes laid out as `key_set_layout` says, the bottom left the key's root two octaves below the pad's own note (Scale's octave moves it); a slicer's slices one a cell in order. Chords: degrees across (I to vii, a 7-note key's eighth I an octave up; a smaller key fewer columns), variations up (as `Variation` orders them). Progressions: chord n on cell n along the bottom rows (eight a row), the same chords an octave up on the rows above, and above those with the bass an octave down. Pads and Velocity: as Scale.
+
+### perform_cell_name
+
+```odin
+perform_cell_name :: proc(api: ^Api, col: i64, row: i64) -> (string, Result)
+```
+
+What cell `col`, `row` shows: a note ("C3"), a slice ("Slice 2"), a chord ("ii7 Dm7"; "–" if the key can't make it), or "" for none. Temporary.
+
+### perform_play_cell
+
+```odin
+perform_play_cell :: proc(api: ^Api, col: i64, row: i64, on: bool, velocity: f32 = 1) -> Result
+```
+
+Plays cell `col`, `row` (as `perform_cell` says) on the selected pad at `velocity` (0..1], or lets it go (`on` false), through the same path as the window's pads: a chord voice-led, spread and strummed as the key's voicing says, recorded when recording, and the chord playing (`perform_chord_playing`). What a cell played is what its release ends, whatever changed between.
+
+### perform_chord_playing
+
+```odin
+perform_chord_playing :: proc(api: ^Api) -> (Chord_Playing, Result)
+```
+
+The chord played last.
+
+### perform_chord_playing_note
+
+```odin
+perform_chord_playing_note :: proc(api: ^Api, index: i64) -> (i64, Result)
+```
+
+Note `index` (0 the lowest) of the chord played last, as it played: semitones from its pad's own note.
+
+### perform_chord_playing_name
+
+```odin
+perform_chord_playing_name :: proc(api: ^Api) -> (string, Result)
+```
+
+The name of the chord played last, "ii7 Dm7" ("" if none). Temporary.
+
 ### key_state
 
 ```odin
@@ -1834,6 +1882,22 @@ key_state :: proc(api: ^Api) -> (Key_Info, Result)
 ```
 
 The project key now.
+
+### key_set_layout
+
+```odin
+key_set_layout :: proc(api: ^Api, layout: Grid_Layout) -> Result
+```
+
+How Scale mode lays the key out on a controller's 8×8 grid (Push 2's Layout; `perform_cell`). Saved with the project (not an edit); the Key topic reports it.
+
+### key_layout_name
+
+```odin
+key_layout_name :: proc(api: ^Api, layout: Grid_Layout) -> (string, Result)
+```
+
+Layout `layout`'s name, as the window shows it ("Fourths").
 
 ### key_set
 
@@ -3763,6 +3827,24 @@ How a chord's notes are spread.
 
 `Close`, `Open`, `Drop_2`
 
+### Grid_Layout
+
+How Scale mode lays the key out on a controller's 8×8 grid (Push 2's Layout). Values kept: new ones are appended.
+
+`Fourths`, `Thirds`, `Sequential`, `Chromatic`
+
+### Chord_Voicing
+
+How a grid cell's chord is voiced (Progressions' rows on a grid).
+
+`As_Built`, `Octave_Up`, `Bass_Down`
+
+### Cell_Kind
+
+What a grid cell plays.
+
+`None`, `Note`, `Chord`, `Slice`
+
 ### Sampling
 
 How a sample is recorded into a pad.
@@ -3839,7 +3921,7 @@ A message's kind.
 
 A view Pads draws for a display.
 
-`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`, `Dialog`, `Song`, `Settings`, `Projects`
+`Device`, `Mixer`, `Sequencer`, `Clip`, `Browser`, `Dialog`, `Song`, `Settings`, `Projects`, `Harmony`
 
 ### Part_State
 
@@ -4282,6 +4364,39 @@ One of the note modes' keys: what pressing it plays.
 | `count` | `i64` | notes it plays (a chord's several) |
 | `chord` | `bool` | a chord of Chords or Progressions mode |
 
+### Perform_Cell
+
+A cell of a controller's 8×8 grid (Push 2's pads in the note modes): what pressing it plays on the selected pad.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | `Cell_Kind` |  |
+| `pitch` | `i64` | Note: semitones from the selected pad's own note; Chord: its root as built; Slice: the slice |
+| `in_key` | `bool` | Note: the key has it (Chromatic's others: dim) |
+| `root` | `bool` | Note: the key's root; Chord: built on it (the tonic's column) |
+| `playable` | `bool` | it plays something: within what a pad can be pitched to, a chord the key can make, a slice the slicer has |
+| `degree` | `i64` | Chord: the degree it is built on (0 the key's root) |
+| `variation` | `Variation` |  |
+| `index` | `i64` | Progressions: its chord's index in the progression (else -1) |
+| `voicing` | `Chord_Voicing` |  |
+| `count` | `i64` | notes it plays now |
+| `playing` | `bool` | Chord: it is the chord playing now (held), see `perform_chord_playing` |
+
+### Chord_Playing
+
+The chord the note modes played last (from the window's pads, a grid's cells, the API), as a display shows it.
+
+| Field | Type | |
+|---|---|---|
+| `ok` | `bool` | a chord has played since the play mode changed |
+| `held` | `bool` | its press is still down |
+| `degree` | `i64` | the degree it is built on (0 the key's root) |
+| `variation` | `Variation` |  |
+| `index` | `i64` | Progressions: its chord's index in the progression (else -1) |
+| `voicing` | `Chord_Voicing` |  |
+| `pad` | `i64` | the pad it played |
+| `count` | `i64` | its notes as played (`perform_chord_playing_note`) |
+
 ### Key_Info
 
 The project key and how the chords play it.
@@ -4295,6 +4410,7 @@ The project key and how the chords play it.
 | `voice_leading` | `bool` | each chord's inversion the closest to the one before |
 | `spread` | `Spread` |  |
 | `strum_ms` | `f64` | 0..100 between a chord's notes, low first |
+| `layout` | `Grid_Layout` | Scale mode on a controller's 8×8 grid |
 
 ### Key_Chord
 

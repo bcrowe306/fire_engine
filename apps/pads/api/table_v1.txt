@@ -445,3 +445,11 @@ progression_mine_count
 progression_mine_name
 progression_use_mine
 progression_save
+perform_cell
+perform_cell_name
+perform_play_cell
+perform_chord_playing
+perform_chord_playing_note
+perform_chord_playing_name
+key_set_layout
+key_layout_name

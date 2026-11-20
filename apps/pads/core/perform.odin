@@ -19,6 +19,20 @@ Key_Notes :: struct {
 	chord:  pm.Chord,       // Chords and Progressions: the chord (`ok` false: none)
 	chords: bool,           // a chord of Chords or Progressions mode (strummed), not Scale's note
 	slice:  bool,           // a slicer's slice (Scale mode on a slicer)
+	index:  int,            // Progressions: its chord's index + 1 (0: not a progression's)
+	voicing: pm.Chord_Voicing, // a grid cell's chord: as built, an octave up, or the bass doubled down
+}
+
+// The last chord the note modes played (from the window's pads, a
+// controller's grid, the API): what a display names and lights.
+Chord_Played :: struct {
+	chord:   pm.Chord,       // as built (ok false: none played since the play mode changed)
+	notes:   pm.Chord_Notes, // as played (voice-led, spread, voiced)
+	pad:     int,
+	index:   int,            // Progressions: its chord's index + 1 (0: another mode's)
+	voicing: pm.Chord_Voicing,
+	press:   int,            // the press that played it (`Core.presses`)
+	held:    bool,           // that press still down
 }
 
 // What key `key` of the note modes plays on the selected pad: Scale's
@@ -39,6 +53,7 @@ keyboard_notes :: proc(c: ^Core, key: int) -> (k: Key_Notes) {
 	case .Progressions:
 		if at >= c.progression.count do return // (past its chords: nothing)
 		k.chord = pm.progression_chord(c.keys, &c.progression, at)
+		k.index = at + 1
 	case:
 		degree := at - keyboard_bottom(c)
 		k.notes.count = 1
@@ -46,18 +61,79 @@ keyboard_notes :: proc(c: ^Core, key: int) -> (k: Key_Notes) {
 		k.close, k.slice = k.notes, slicer
 		return
 	}
+	chord_voiced(c, &k)
+	return
+}
+
+// Key `k`'s chord (`k.chord`, as built) voice-led from the last chord the
+// selected pad played, spread, and voiced as `k.voicing` says.
+@(private)
+chord_voiced :: proc(c: ^Core, k: ^Key_Notes) {
 	k.chords = true
 	if !k.chord.ok do return
 	k.close = k.chord.notes
 	v := k.chord.variation
 	if !c.keys.no_voice_leading && v != .First_Inversion && v != .Second_Inversion do k.close = pm.voice_lead(k.close, c.voicing[c.selected])
-	k.notes = pm.spread_chord(k.close, c.keys.spread)
+	k.notes = pm.voice_chord(pm.spread_chord(k.close, c.keys.spread), k.chord.notes.pitches[0], k.voicing)
+}
+
+// A key's chord played on pad `pad`: what the next chord there is led
+// from, and the chord a display shows. The press's number (0: not a
+// chord), for `key_released`.
+key_played :: proc(c: ^Core, pad: int, k: Key_Notes) -> int {
+	if !k.chords || k.notes.count == 0 || pad < 0 || pad >= pm.PADS do return 0
+	c.voicing[pad] = k.close
+	c.presses += 1
+	c.chord_played = {chord = k.chord, notes = k.notes, pad = pad, index = k.index, voicing = k.voicing, press = c.presses, held = true}
+	return c.presses
+}
+
+// Press `press` (`key_played`'s number) let go: its chord no longer held.
+key_released :: proc(c: ^Core, press: int) {
+	if press != 0 && c.chord_played.press == press do c.chord_played.held = false
+}
+
+// What cell `col`, `row` (0, 0 the bottom left) of a controller's 8×8 grid
+// plays on the selected pad in the play mode now: Scale's note in the
+// key's layout (a slicer's slice: one a cell, in order), Chords' chord
+// (degrees across, variations up), Progressions' chord (and the rows of
+// it voiced otherwise). Pads and Velocity: as Scale. Outside the grid:
+// none.
+grid_cell :: proc(c: ^Core, col, row: int) -> pm.Grid_Cell {
+	if col < 0 || col >= pm.GRID_COLS || row < 0 || row >= pm.GRID_ROWS do return {index = -1}
+	if c.m.project.pads[c.selected].kind == .Slicer do return {kind = .Slice, pitch = row * pm.GRID_COLS + col, index = -1}
+	#partial switch c.play_mode {
+	case .Chords:       return pm.grid_chords_cell(c.keys, col, row)
+	case .Progressions: return pm.grid_progression_cell(c.keys, &c.progression, col, row)
+	}
+	return pm.grid_scale_cell(c.keys, c.keys.layout, col, row)
+}
+
+// What grid cell `g` plays (as `keyboard_notes` says for the window's
+// keys): its note, its slice, or its chord voice-led, spread and voiced.
+grid_notes :: proc(c: ^Core, g: pm.Grid_Cell) -> (k: Key_Notes) {
+	switch g.kind {
+	case .None:
+	case .Note, .Slice:
+		k.notes.count = 1
+		k.notes.pitches[0] = g.pitch
+		k.close, k.slice = k.notes, g.kind == .Slice
+	case .Chord:
+		k.chord = pm.chord_build(c.keys, g.degree, g.variation)
+		k.index = g.index + 1 if g.index >= 0 else 0
+		k.voicing = g.voicing
+		chord_voiced(c, &k)
+	}
 	return
 }
 
-// A key's chord played on pad `pad`: what the next chord there is led from.
-key_played :: proc(c: ^Core, pad: int, k: Key_Notes) {
-	if k.chords && k.notes.count > 0 && pad >= 0 && pad < pm.PADS do c.voicing[pad] = k.close
+// Whether grid cell `g`'s chord is the one playing now (held): the same
+// chord of Chords, the same chord and voicing of Progressions.
+grid_playing :: proc(c: ^Core, g: pm.Grid_Cell) -> bool {
+	p := &c.chord_played
+	if g.kind != .Chord || !p.held || !p.chord.ok do return false
+	if g.index >= 0 do return p.index == g.index + 1 && p.voicing == g.voicing
+	return p.index == 0 && p.chord.degree == g.degree && p.chord.variation == g.variation
 }
 
 // What a note mode's key shows: a note's name (or a slicer's slice), or a
@@ -111,6 +187,7 @@ set_play_mode :: proc(c: ^Core, mode: pm.Play_Mode) {
 	if !was do c.pads_bank = c.bank
 	c.play_mode = mode
 	c.voicing = {}
+	c.chord_played = {}
 	#partial switch mode {
 	case .Scale:
 		c.bank = keyboard_home_bank(c)

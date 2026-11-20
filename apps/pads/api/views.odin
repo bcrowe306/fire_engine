@@ -22,6 +22,7 @@ View_Kind :: enum i32 {
 	Song,      // the song's lanes around its cursor (`song_edit_state`), its tabs: Song, Clip, Lanes, Arrangement, Markers, Tempo
 	Settings,  // Pads' Settings: Audio, Channels, MIDI, Sync (what a headless Pads needs set from a controller)
 	Projects,  // the project page: the project open (Save, Save As, Rename), Recent, All, Templates (Open, New, Duplicate, Trash)
+	Harmony,   // the note modes' (Scale, Chords, Progressions): the key, the chord playing (its name, its notes on a keyboard), the progression's chords; the key and voicing on the knobs, the modes and layouts on the tabs
 }
 
 // A view's buttons a controller presses (`view_press`): the row of choices

@@ -63,6 +63,7 @@ Api :: struct {
 	remote:    Remote_Link, // the remote client's (remote.odin)
 	views:     [dynamic]View_Want, // views surfaces ask Pads to draw (views.odin)
 	keys_held: [PADS]Key_Held,     // what each note mode's key played (perform_play_key)
+	cells_held: [pm.GRID_COLS * pm.GRID_ROWS]Key_Held, // what each grid cell played (perform_play_cell)
 }
 
 // What a note mode's key press played, to end it.
@@ -72,6 +73,7 @@ Key_Held :: struct {
 	pitches:  [pm.MAX_CHORD_NOTES]i8,
 	count:    int,
 	strum_ms: f32, // (its notes' offs strummed as their ons were)
+	press:    int, // a chord's press (pc.key_played's number: its release lets the chord go)
 }
 
 // A call posted from another thread: run on the control thread at the

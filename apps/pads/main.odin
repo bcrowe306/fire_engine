@@ -612,7 +612,7 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 		g^ = {on = true, pad = a.selected, keyboard = true, count = len(ps), strum_ms = a.keys.strum_ms if kn.chords else 0}
 		for p, i in ps do g.pitches[i] = i8(clamp(p, -48, 48))
 		pc.play_pitches(&a.core, g.pad, g.pitches[:g.count], true, velocity, g.strum_ms)
-		pc.key_played(&a.core, g.pad, kn)
+		g.press = pc.key_played(&a.core, g.pad, kn)
 	case .Velocity:
 		g^ = {on = true, pad = a.selected}
 		pm.hit(&a.m.engine, a.selected, true, pm.velocity_of_pad(k))
@@ -649,6 +649,7 @@ release :: proc(a: ^App, index: int) {
 	g.on = false
 	if g.keyboard {
 		pc.play_pitches(&a.core, g.pad, g.pitches[:g.count], false, 0, g.strum_ms)
+		pc.key_released(&a.core, g.press)
 	} else {
 		pm.hit(&a.m.engine, g.pad, false)
 	}
@@ -662,6 +663,7 @@ Grid_Held :: struct {
 	pitches:  [pm.MAX_CHORD_NOTES]i8,
 	count:    int,
 	strum_ms: f32, // (a strummed chord's: its offs strummed too)
+	press:    int, // a chord's press (pc.key_played's number)
 }
 
 // The computer keyboard as the 4×4 pad grid, pad 1 first: the bottom row

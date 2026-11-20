@@ -70,6 +70,30 @@ Spread :: enum i32 {
 	Drop_2, // wide: the second note from the top an octave down
 }
 
+// How Scale mode lays the key out on a controller's 8×8 grid (Push 2's
+// Layout). Values kept: new ones are appended.
+Grid_Layout :: enum i32 {
+	Fourths,    // each row a fourth above the one below, the key's notes only (the default)
+	Thirds,     // each row a third above the one below, the key's notes only
+	Sequential, // the key's notes in a line, eight a row
+	Chromatic,  // every semitone, each row a fourth up (`Perform_Cell.in_key` says which are the key's)
+}
+
+// How a grid cell's chord is voiced (Progressions' rows on a grid).
+Chord_Voicing :: enum i32 {
+	As_Built,  // as voice leading and the spread play it
+	Octave_Up, // the same, an octave up
+	Bass_Down, // with its bass note doubled an octave below the lowest
+}
+
+// What a grid cell plays.
+Cell_Kind :: enum i32 {
+	None,  // nothing (dark)
+	Note,  // a note of Scale mode's layout
+	Chord, // a chord: Chords mode's, or the progression's
+	Slice, // a slicer's slice
+}
+
 // How the pads play now.
 Perform_State :: struct {
 	play_mode: Play_Mode,
@@ -201,21 +225,145 @@ perform_play_key :: proc(api: ^Api, key: i64, on: bool, velocity: f32 = 1) -> Re
 	if on && !(velocity > 0 && velocity <= 1) do return fail(api, .Invalid_Argument, "velocity is 0..1")
 	c := api.core
 	h := &api.keys_held[key]
-	if h.count > 0 { // (pressed again before its release: that one ends first)
-		pc.play_pitches(c, h.pad, h.pitches[:h.count], false, 0, h.strum_ms)
-		h^ = {}
-	}
+	held_end(c, h) // (pressed again before its release: that one ends first)
 	if !on do return .Ok
-	k := pc.keyboard_notes(c, int(key))
+	held_play(c, h, pc.keyboard_notes(c, int(key)), velocity)
+	return .Ok
+}
+
+// Ends what a key or cell press played (nothing if it played nothing).
+@(private)
+held_end :: proc(c: ^pc.Core, h: ^Key_Held) {
+	if h.count == 0 do return
+	pc.play_pitches(c, h.pad, h.pitches[:h.count], false, 0, h.strum_ms)
+	pc.key_released(c, h.press)
+	h^ = {}
+}
+
+// Plays `k` on the selected pad at `velocity` (not if a pad can't be
+// pitched that far, or it is no chord), kept in `h` for its release.
+@(private)
+held_play :: proc(c: ^pc.Core, h: ^Key_Held, k: pc.Key_Notes, velocity: f32) {
+	k := k
 	ps := pm.chord_slice(&k.notes)
-	if !pc.keyboard_in_range(ps) do return .Ok
+	if !pc.keyboard_in_range(ps) do return
 	h.pad = c.selected
 	for p, i in ps do h.pitches[i] = i8(clamp(p, -48, 48))
 	h.count = len(ps)
 	h.strum_ms = c.keys.strum_ms if k.chords else 0
 	pc.play_pitches(c, h.pad, h.pitches[:h.count], true, velocity, h.strum_ms)
-	pc.key_played(c, h.pad, k)
+	h.press = pc.key_played(c, h.pad, k)
+}
+
+// A cell of a controller's 8×8 grid (Push 2's pads in the note modes):
+// what pressing it plays on the selected pad.
+Perform_Cell :: struct {
+	kind:      Cell_Kind,
+	pitch:     i64,  // Note: semitones from the selected pad's own note; Chord: its root as built; Slice: the slice
+	in_key:    bool, // Note: the key has it (Chromatic's others: dim)
+	root:      bool, // Note: the key's root; Chord: built on it (the tonic's column)
+	playable:  bool, // it plays something: within what a pad can be pitched to, a chord the key can make, a slice the slicer has
+	degree:    i64,  // Chord: the degree it is built on (0 the key's root)
+	variation: Variation,
+	index:     i64,  // Progressions: its chord's index in the progression (else -1)
+	voicing:   Chord_Voicing,
+	count:     i64,  // notes it plays now
+	playing:   bool, // Chord: it is the chord playing now (held), see `perform_chord_playing`
+}
+
+// Cell `col`, `row` (0..7 each; 0, 0 the bottom left) of a controller's
+// 8×8 grid in the play mode now. Scale: the key's notes laid out as
+// `key_set_layout` says, the bottom left the key's root two octaves below
+// the pad's own note (Scale's octave moves it); a slicer's slices one a
+// cell in order. Chords: degrees across (I to vii, a 7-note key's eighth
+// I an octave up; a smaller key fewer columns), variations up (as
+// `Variation` orders them). Progressions: chord n on cell n along the
+// bottom rows (eight a row), the same chords an octave up on the rows
+// above, and above those with the bass an octave down. Pads and
+// Velocity: as Scale.
+perform_cell :: proc(api: ^Api, col: i64, row: i64) -> (Perform_Cell, Result) {
+	if col < 0 || col >= pm.GRID_COLS || row < 0 || row >= pm.GRID_ROWS do return {}, fail(api, .Invalid_Argument, "a cell's column and row are 0..7")
+	c := api.core
+	g := pc.grid_cell(c, int(col), int(row))
+	k := pc.grid_notes(c, g)
+	ps := pm.chord_slice(&k.notes)
+	out := Perform_Cell{kind = Cell_Kind(g.kind), pitch = i64(g.pitch), in_key = g.in_key, root = g.root, degree = i64(g.degree), variation = Variation(g.variation), index = i64(g.index), voicing = Chord_Voicing(g.voicing), count = i64(len(ps)), playing = pc.grid_playing(c, g)}
+	#partial switch g.kind {
+	case .Note:  out.playable = pc.keyboard_in_range(ps)
+	case .Chord: out.pitch, out.playable = i64(k.chord.root), pc.keyboard_in_range(ps)
+	case .Slice: out.playable = g.pitch < int(c.m.project.pads[c.selected].slicer.count)
+	}
+	return out, .Ok
+}
+
+// What cell `col`, `row` shows: a note ("C3"), a slice ("Slice 2"), a
+// chord ("ii7 Dm7"; "–" if the key can't make it), or "" for none.
+// Temporary.
+perform_cell_name :: proc(api: ^Api, col: i64, row: i64) -> (string, Result) {
+	if col < 0 || col >= pm.GRID_COLS || row < 0 || row >= pm.GRID_ROWS do return "", fail(api, .Invalid_Argument, "a cell's column and row are 0..7")
+	c := api.core
+	g := pc.grid_cell(c, int(col), int(row))
+	switch g.kind {
+	case .None:  return "", .Ok
+	case .Slice: return fmt.tprintf("Slice %d", g.pitch + 1), .Ok
+	case .Note:  return pm.midi_note_name(60 + g.pitch), .Ok
+	case .Chord: return pm.chord_name(c.keys, pm.chord_build(c.keys, g.degree, g.variation)), .Ok
+	}
+	return "", .Ok
+}
+
+// Plays cell `col`, `row` (as `perform_cell` says) on the selected pad at
+// `velocity` (0..1], or lets it go (`on` false), through the same path as
+// the window's pads: a chord voice-led, spread and strummed as the key's
+// voicing says, recorded when recording, and the chord playing
+// (`perform_chord_playing`). What a cell played is what its release
+// ends, whatever changed between.
+perform_play_cell :: proc(api: ^Api, col: i64, row: i64, on: bool, velocity: f32 = 1) -> Result {
+	if col < 0 || col >= pm.GRID_COLS || row < 0 || row >= pm.GRID_ROWS do return fail(api, .Invalid_Argument, "a cell's column and row are 0..7")
+	if on && !(velocity > 0 && velocity <= 1) do return fail(api, .Invalid_Argument, "velocity is 0..1")
+	c := api.core
+	h := &api.cells_held[row * pm.GRID_COLS + col]
+	held_end(c, h) // (pressed again before its release: that one ends first)
+	if !on do return .Ok
+	g := pc.grid_cell(c, int(col), int(row))
+	if g.kind == .Slice && g.pitch >= int(c.m.project.pads[c.selected].slicer.count) do return .Ok
+	held_play(c, h, pc.grid_notes(c, g), velocity)
 	return .Ok
+}
+
+// The chord the note modes played last (from the window's pads, a grid's
+// cells, the API), as a display shows it.
+Chord_Playing :: struct {
+	ok:        bool, // a chord has played since the play mode changed
+	held:      bool, // its press is still down
+	degree:    i64,  // the degree it is built on (0 the key's root)
+	variation: Variation,
+	index:     i64,  // Progressions: its chord's index in the progression (else -1)
+	voicing:   Chord_Voicing,
+	pad:       i64,  // the pad it played
+	count:     i64,  // its notes as played (`perform_chord_playing_note`)
+}
+
+// The chord played last.
+perform_chord_playing :: proc(api: ^Api) -> (Chord_Playing, Result) {
+	p := &api.core.chord_played
+	if !p.chord.ok do return {index = -1}, .Ok
+	return {ok = true, held = p.held, degree = i64(p.chord.degree), variation = Variation(p.chord.variation), index = i64(p.index - 1), voicing = Chord_Voicing(p.voicing), pad = i64(p.pad), count = i64(p.notes.count)}, .Ok
+}
+
+// Note `index` (0 the lowest) of the chord played last, as it played:
+// semitones from its pad's own note.
+perform_chord_playing_note :: proc(api: ^Api, index: i64) -> (i64, Result) {
+	p := &api.core.chord_played
+	if !p.chord.ok || index < 0 || int(index) >= p.notes.count do return 0, fail(api, .Not_Found, "the chord has no such note")
+	return i64(p.notes.pitches[index]), .Ok
+}
+
+// The name of the chord played last, "ii7 Dm7" ("" if none). Temporary.
+perform_chord_playing_name :: proc(api: ^Api) -> (string, Result) {
+	p := &api.core.chord_played
+	if !p.chord.ok do return "", .Ok
+	return pm.chord_name(api.core.keys, p.chord), .Ok
 }
 
 // The project key and how the chords play it.
@@ -227,12 +375,28 @@ Key_Info :: struct {
 	voice_leading: bool, // each chord's inversion the closest to the one before
 	spread:        Spread,
 	strum_ms:      f64,  // 0..100 between a chord's notes, low first
+	layout:        Grid_Layout, // Scale mode on a controller's 8×8 grid
 }
 
 // The project key now.
 key_state :: proc(api: ^Api) -> (Key_Info, Result) {
 	k := api.core.keys
-	return {root = i64(k.root), scale = Scale(k.scale), octave = i64(k.octave), notes = i64(pm.scale_size(k.scale)), voice_leading = !k.no_voice_leading, spread = Spread(k.spread), strum_ms = f64(k.strum_ms)}, .Ok
+	return {root = i64(k.root), scale = Scale(k.scale), octave = i64(k.octave), notes = i64(pm.scale_size(k.scale)), voice_leading = !k.no_voice_leading, spread = Spread(k.spread), strum_ms = f64(k.strum_ms), layout = Grid_Layout(k.layout)}, .Ok
+}
+
+// How Scale mode lays the key out on a controller's 8×8 grid (Push 2's
+// Layout; `perform_cell`). Saved with the project (not an edit); the Key
+// topic reports it.
+key_set_layout :: proc(api: ^Api, layout: Grid_Layout) -> Result {
+	if layout < min(Grid_Layout) || layout > max(Grid_Layout) do return fail(api, .Invalid_Argument, "no such layout")
+	api.core.keys.layout = pm.Grid_Layout(layout)
+	return .Ok
+}
+
+// Layout `layout`'s name, as the window shows it ("Fourths").
+key_layout_name :: proc(api: ^Api, layout: Grid_Layout) -> (string, Result) {
+	if layout < min(Grid_Layout) || layout > max(Grid_Layout) do return "", fail(api, .Invalid_Argument, "no such layout")
+	return string(pm.GRID_LAYOUT_NAMES[pm.Grid_Layout(layout)]), .Ok
 }
 
 // Sets the project key: its root (0..11, semitones above C) and scale.

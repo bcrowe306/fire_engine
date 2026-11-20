@@ -1907,12 +1907,79 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := perform_play_key(api, key, on, velocity)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_perform_cell":
+		col := remote_i64(args, "col", &ok)
+		row := remote_i64(args, "row", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_cell(api, col, row)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_cell_name":
+		col := remote_i64(args, "col", &ok)
+		row := remote_i64(args, "row", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_cell_name(api, col, row)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_play_cell":
+		col := remote_i64(args, "col", &ok)
+		row := remote_i64(args, "row", &ok)
+		on := remote_bool(args, "on", &ok)
+		velocity := remote_f32_or(args, "velocity", 1, &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := perform_play_cell(api, col, row, on, velocity)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_perform_chord_playing":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_chord_playing(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_chord_playing_note":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_chord_playing_note(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_chord_playing_name":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_chord_playing_name(api)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_key_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
 			return
 		}
 		val, r := key_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_set_layout":
+		layout := Grid_Layout(remote_enum(args, "layout", Grid_Layout_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := key_set_layout(api, layout)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_key_layout_name":
+		layout := Grid_Layout(remote_enum(args, "layout", Grid_Layout_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_layout_name(api, layout)
 		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_key_set":
 		root := remote_i64(args, "root", &ok)
@@ -3812,6 +3879,15 @@ Variation_NAMES := [?]string{"Triad", "Seventh", "Sus4", "Sus2", "Add9", "Sixth"
 Spread_NAMES := [?]string{"Close", "Open", "Drop_2"}
 
 @(private)
+Grid_Layout_NAMES := [?]string{"Fourths", "Thirds", "Sequential", "Chromatic"}
+
+@(private)
+Chord_Voicing_NAMES := [?]string{"As_Built", "Octave_Up", "Bass_Down"}
+
+@(private)
+Cell_Kind_NAMES := [?]string{"None", "Note", "Chord", "Slice"}
+
+@(private)
 Sampling_NAMES := [?]string{"Hold", "Arm", "Threshold", "Bars"}
 
 @(private)
@@ -3848,7 +3924,7 @@ Sync_NAMES := [?]string{"Internal", "Midi_Clock", "Link"}
 Message_Kind_NAMES := [?]string{"Info", "Success", "Warning", "Error"}
 
 @(private)
-View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser", "Dialog", "Song", "Settings", "Projects"}
+View_Kind_NAMES := [?]string{"Device", "Mixer", "Sequencer", "Clip", "Browser", "Dialog", "Song", "Settings", "Projects", "Harmony"}
 
 @(private)
 remote_struct_Cc :: proc(args: json.Object, name: string, ok: ^bool) -> Cc {
@@ -4285,7 +4361,15 @@ REMOTE_METHODS := [?]string{
 	"pads_perform_key",
 	"pads_perform_key_name",
 	"pads_perform_play_key",
+	"pads_perform_cell",
+	"pads_perform_cell_name",
+	"pads_perform_play_cell",
+	"pads_perform_chord_playing",
+	"pads_perform_chord_playing_note",
+	"pads_perform_chord_playing_name",
 	"pads_key_state",
+	"pads_key_set_layout",
+	"pads_key_layout_name",
 	"pads_key_set",
 	"pads_key_set_octave",
 	"pads_key_set_voicing",
