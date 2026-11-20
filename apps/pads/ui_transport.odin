@@ -419,14 +419,16 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 // 16 velocities.
 @(private = "file")
 draw_play_mode :: proc(a: ^App) {
-	NAMES := [pm.Play_Mode]cstring{.Pads = "Pads", .Scale = "Scale", .Chords = "Chords", .Progressions = "Progress.", .Velocity = "Vel"}
-	im.SetNextItemWidth(96)
-	if ui.combo("##toolplaymode", NAMES[a.play_mode]) {
+	// As wide as its longest name ("Progressions"), so each reads whole.
+	widest: f32 = 0
+	for mode in pm.PLAY_MODES do widest = max(widest, im.CalcTextSize(pm.PLAY_MODE_NAMES[mode]).x)
+	im.SetNextItemWidth(widest + im.GetFrameHeight() + 2 * im.GetStyle().FramePadding.x + 2)
+	if ui.combo("##toolplaymode", pm.PLAY_MODE_NAMES[a.play_mode]) {
 		for mode in pm.PLAY_MODES do if im.Selectable(pm.PLAY_MODE_NAMES[mode], mode == a.play_mode) do set_play_mode(a, mode)
 		im.EndCombo()
 	}
 	ui.name("toolbar play mode")
-	if im.IsItemHovered() do im.SetTooltip("How the pads play: each its own sound (Pads), the selected pad in the project key (its notes: Scale; its chords: Chords; a progression's: Progressions), or the selected pad at 16 velocities (Vel)")
+	if im.IsItemHovered() do im.SetTooltip("How the pads play: each its own sound (Pads), the selected pad in the project key (its notes: Scale; its chords: Chords; a progression's: Progressions), or the selected pad at 16 velocities (Velocity)")
 }
 
 // Note Repeat, MPC-style: on, whatever pad you hold repeats at its rate

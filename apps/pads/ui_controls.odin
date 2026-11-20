@@ -313,6 +313,17 @@ draw_key_dialog :: proc(a: ^App) {
 	ui.name("key octave")
 	oct := clamp(int(o) + modal_knob(a, "Octave", fmt.tprintf("%+d", ks.octave)), -3, 3)
 	if i64(oct) != ks.octave do pa.key_set_octave(&a.api, i64(oct))
+	// Scale mode on a controller's 8×8 grid (Push 2's Layout).
+	lay := int(ks.layout)
+	im.SetNextItemWidth(220)
+	if ui.combo("Grid layout##layout", pm.GRID_LAYOUT_NAMES[pm.Grid_Layout(lay)]) {
+		for x in pm.Grid_Layout do if im.Selectable(pm.GRID_LAYOUT_NAMES[x], int(x) == lay) do lay = int(x)
+		im.EndCombo()
+	}
+	ui.name("key layout")
+	if im.IsItemHovered() do im.SetTooltip("How Scale mode lays the key out on a controller's 8×8 grid (Push 2): rows a fourth or a third apart, in a line, or every semitone")
+	lay = clamp(lay + modal_knob(a, "Layout", string(pm.GRID_LAYOUT_NAMES[pm.Grid_Layout(lay)])), 0, len(pm.Grid_Layout) - 1)
+	if i64(lay) != i64(ks.layout) do pa.key_set_layout(&a.api, pa.Grid_Layout(lay))
 	// The chords' voicing.
 	im.Spacing()
 	im.SeparatorText("Chords")

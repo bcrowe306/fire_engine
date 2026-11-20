@@ -108,6 +108,7 @@ draw_pads :: proc(user: rawptr) {
 			// so a small pad shows both.
 			if key.chord {
 				if sp := strings.index_byte(face.name, ' '); sp > 0 do face.name, face.middle = face.name[sp + 1:], face.name[:sp]
+				face.name_min = 9 // (a long symbol, "Dmadd9", smaller on a narrow pad rather than cut)
 			}
 			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0 || target.kind == .Synth, key.root, false, nil
 			if target.kind == .Slicer { // its slices, a pad each

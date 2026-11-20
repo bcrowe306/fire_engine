@@ -549,6 +549,7 @@ Pad_Face :: struct {
 	armed:     bool,    // a red dot at the bottom centre: it records what comes in
 	drop_zones: bool,   // while a payload is over it: two halves, Sampler (top) and Slicer (bottom)
 	device_type: cstring, // a second payload it takes (a device to put on it: see `Pad_Hit.dropped_device`)
+	name_min:  f32,     // the smallest size its name shrinks to before it is cut (0: the body size less one; a chord's symbol: smaller)
 }
 
 // A note in a miniature: where it starts and ends across (0..1) and its
@@ -667,9 +668,9 @@ pad :: proc(id: cstring, face: Pad_Face, size := PAD_SIZE) -> (hit: Pad_Hit) {
 		// Too long: smaller (down to the body size), then cut with "…".
 		nc := strings.clone_to_cstring(face.name, context.temp_allocator)
 		im.PushFontFloat(nil, big)
-		if w := im.CalcTextSize(nc).x; w > room && face.has_sound {
+		if w := im.CalcTextSize(nc).x; w > room && (face.has_sound || face.name_min > 0) {
 			im.PopFont()
-			im.PushFontFloat(nil, max(big * room / w, TEXT_SIZE[.Body] - 1))
+			im.PushFontFloat(nil, max(big * room / w * 0.95, face.name_min if face.name_min > 0 else TEXT_SIZE[.Body] - 1)) // (a little under: text doesn't scale exactly with its size)
 		}
 		nc = fit_text(face.name, room)
 		ns := im.CalcTextSize(nc)
