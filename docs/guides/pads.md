@@ -410,8 +410,8 @@ records.
     in pattern mode goes into the sequence being edited (the one launched
     last). Picking a sequence elsewhere (the toolbar, the Sequence view)
     plays it alone, as before.
-  - **Pads**: the 16 pads to play, as in the pads area (its banks, Pads,
-    Keyboard or Velocity as the MIDI page sets).
+  - **Pads**: the 16 pads to play, as in the pads area (its banks, and
+    the play mode the MIDI page sets).
   - **Effects**: the 16 performance effects, coloured by kind (filters
     violet, rhythm teal, pitch pink, space blue, drive coral; see below).
   - **Levels**: main and the cue (headphones; Settings sets where it
@@ -421,20 +421,17 @@ records.
 - **A pad's MIDI page** (the **MIDI** tab, first in its chain in the
   bottom area, before its sound; it reads **MIDI · Repeat** or **MIDI ·
   Arp** when one is on): how the 16 pads play — **Pads**, each its own
-  sound; **Keyboard**, the 16 pads are a scale (or diatonic chords:
-  triads, sevenths, power chords) on the selected pad, from any root and
-  octave, the bottom-left pad the root (the bank buttons, A–H, pick which
-  16 notes, from the bottom of the MIDI range up: A starts at the root's
-  lowest octave (C-2 for C) and each bank goes on from the last. It opens
-  on the bank holding the pad's own note (C3), and back in Pads mode the
-  pads' own bank returns; the computer keyboard's pad keys follow);
-  **Velocity**, the selected pad at 16 velocities. Then the pad's own
+  sound; **Scale**, **Chords** and **Progressions**, the selected pad in
+  the project key (see [Scales, chords and progressions](#scales-chords-and-progressions),
+  with the key's scale, root and octave here too); **Velocity**, the
+  selected pad at 16 velocities. Then the pad's own
   **note repeat** (held, it plays at once and again on every step of the
   sequence's grid while playing, else the clock's: its step and gate; a
   press just before a step is that step's note, never a double hit)
-  and **arpeggiator** (the notes held on it — a chord in Keyboard mode —
+  and **arpeggiator** (the notes held on it — a chord in Chords mode —
   one after another: up, down, up-down, random, as played; 1–4 octaves;
-  gate; latch), each with a bar of its steps lighting the one playing
+  gate; latch; **In key**, its notes and their octaves moved to the
+  nearest note of the project key), each with a bar of its steps lighting the one playing
   (bright while it is on); one or the other, saved with the pad, acting
   on its live notes (not the sequencer's). Recording, what they play is
   what goes into the sequence: each repeat, each arpeggiated note, where
@@ -1031,17 +1028,70 @@ under it. The line (it wraps in a narrow window):
   the slicer back into a sampler.
 
 In the piano roll a slicer has a row per slice ("Slice 3 D3"). In
-**Keyboard** play mode, the selected slicer's slices are laid out on the
+**Scale** play mode (and Chords and Progressions), the selected slicer's slices are laid out on the
 pads, slice 1 on the bottom-left pad. A sequencer note's pitch chooses its
 slice, and so does a MIDI note's key.
+
+## Scales, chords and progressions
+
+A project has a **key**: a root and a scale, shown in the status bar
+(click it, or the key's button above the pads, for the **Key** dialog;
+a controller's Scale opens it too). The scales: major, minor and the
+other church modes (dorian, phrygian, lydian, mixolydian, locrian),
+harmonic and melodic minor, phrygian dominant, Hungarian minor, the
+pentatonics, blues, whole tone, the two diminished scales, Japanese
+(in-sen), Hirajoshi and chromatic. Three play modes play the selected
+pad in it, and the sequencer records what they play as ordinary notes
+(a chord is several), so it edits like any others:
+
+- **Scale**: the pads are the key's notes, the bottom-left pad its root,
+  the roots lit. The bank buttons (A–H) pick which 16, from the bottom of
+  the MIDI range up: A starts at the root's lowest octave (C-2 for C) and
+  each bank goes on from the last. It opens on the bank holding the pad's
+  own note (C3), plus or minus the **Octave**; back in Pads mode the pads'
+  own bank returns. The computer keyboard's pad keys follow.
+- **Chords**: each pad a chord of the key, named on it ("ii7 Dm7"):
+  the key's degrees across (I, ii, iii, IV on bank A; each bank the next
+  four), its variations up, four at a time — **Triad 7 sus** (triad, 7th,
+  sus4, sus2 from the bottom) or **add9 6 inv** (add9, 6th, first and
+  second inversion). A chord is made of the key's own notes: in a
+  pentatonic or 6-note key, one it can't make reads "–" and plays
+  nothing. Numerals go by the key's degrees in a 7-note key, by semitones
+  from the root in others (bIII...).
+- **Progressions**: the pads play a progression's chords in order, pad 1
+  the first (up to 16). Its button above the pads opens the
+  **Progressions** dialog: the bank (about 40 progressions of our own,
+  by style: Pop, Soul, Jazz, Blues, Cinematic, Dark, Modal, Folk, Gospel,
+  Lo-fi) and **Yours**; the one in use, editable (each chord's degree and
+  variation, moved up or down, taken out, one added, the name), and
+  **Save as yours** (a `.fprog` file in the settings folder's
+  Presets/Progressions, as synth presets are). Progressions are roman
+  numerals, so they follow the key; the project keeps the one in use.
+
+The Key dialog also sets how chords are voiced, for Chords and
+Progressions:
+
+- **Voice leading** (on by default): each chord in the inversion closest
+  to the chord the pad played before it. Off, chords play in root
+  position (an inversion variation keeps its inversion either way).
+- **Spread**: **Close**, **Open** (the second note from the bottom an
+  octave up) or **Wide (drop 2)** (the second from the top an octave down).
+- **Strum**: 0 to 100 ms between a chord's notes, low note first. The
+  router times it on the audio thread, so a recorded chord keeps it.
+
+The piano roll shades the key's rows (its roots more), and its **Fold to
+key** button (beside Fold) shows only them (and any row with notes).
+The arpeggiator's **In key** keeps what it plays in the key. Old
+projects' Keyboard mode opens as Scale, and as Chords if its chords were
+on.
 
 ## Synths
 
 A pad can be a **synth**: a wavetable synthesizer (`fire:synth`; the
 design is in [docs/design/synth.md](/design/synth/)). Right-click a pad and
 choose **Synth** (again to make it a sampler; its patch is kept). It plays
-chromatically: a pad hit plays C3, the piano roll and Keyboard mode play
-its pitches, and an armed track's MIDI plays it (an armed synth taking
+chromatically: a pad hit plays C3, the piano roll and the note modes
+(Scale, Chords, Progressions) play its pitches, and an armed track's MIDI plays it (an armed synth taking
 All MIDI too, by key rather than the drum map), pitch bend, the mod wheel
 and channel pressure included. The Pitch, Cutoff and Resonance lanes reach
 its transpose and filter 1.
@@ -1151,7 +1201,7 @@ behind). Loading a preset is one undo step.
 
 A CLAP instrument found in Settings > Plug-ins can be a pad's device.
 Drag it from the Devices panel (Instruments > Plug-ins) onto a pad. The
-pad plays it chromatically, like a synth: its keys, Keyboard mode, the
+pad plays it chromatically, like a synth: its keys, the note modes, the
 piano roll and an armed track's MIDI play its notes. The wheels and
 aftertouch reach it as MIDI.
 
@@ -1177,8 +1227,9 @@ The toolbar under the menus, always showing: what is needed while
 playing. From the left: the tempo, Tap, the time signature, Count-in and
 Click; the sequence, Pattern | Song and the position; then the transport
 (centred on the window when there is room): play, stop, Rec, Loop, Auto,
-Sample, how the pads play (**Pads**, **Keyboard**, **Vel**: as in the
-bottom area's header) and Note Repeat. Play and stop are icons; the rest
+Sample, how the pads play (**Pads**, **Scale**, **Chords**,
+**Progressions**, **Vel**: as in the bottom area's header) and Note
+Repeat. Play and stop are icons; the rest
 are labelled lit buttons. A new project counts in a bar and clicks while
 recording (the Click on, only while recording; both in the metronome's
 menu).
@@ -1236,9 +1287,11 @@ how many):
 
 Elsewhere, near what they change:
 - **Play modes** (at the right of the pads area's header): the pads as
-  pads, as a keyboard of the selected pad, or as it at 16 velocities — as
-  on a pad's MIDI page. In those two, arrows above the bank tabs step the
-  selected pad through the tracks (the pads with a sound, round again).
+  pads, the selected pad in the project key (Scale, Chords,
+  Progressions), or it at 16 velocities — as on a pad's MIDI page. In all
+  but Pads, arrows above the bank tabs step the selected pad through the
+  tracks (the pads with a sound, round again); beside them, Chords' rows,
+  Progressions' progression and the key.
 - **Input quantize** (the magnet in the Sequence view, beside its
   **Quantize**): on, recorded notes move toward the grid shown beside it;
   the arrow sets the grid (1/4–1/64, triplets), the **strength** (100%:
@@ -1429,7 +1482,8 @@ banks A–D, and keep their own MIDI map (where key 36 played A1).
   settings, devices, inserts and sends, the buses and performance
   effects, the sequences and the song, the synths' patches and their own
   wavetables, the transport. How the app was left is saved too: how the
-  pads play (and Keyboard mode's scale, root, octave and chord), the bank
+  pads play (and the project key, its octave and the chords' voicing,
+  the progression in use), the bank
   and pad selected, and the sequence pads' bank. A test sets every
   setting to new values, saves, loads, and checks each one came back.
 - A project saves when you save it. The window's title shows the
@@ -1552,7 +1606,9 @@ slot N / bars N / tempo BPM / swing AMOUNT   (slot 1..32; swing 0..1 on 1/16)
 note PAD BEAT LENGTH [VELOCITY]              a note in the current sequence
 point PAD volume|pitch|low|mid|high BEAT VALUE   an automation point
 lane velocity|chance|automation [PARAM]      what the editor's lane shows
-mode pads|keys|velocity / scale NAME / chord off|triad|seventh|power
+mode pads|scale|chords|progressions|velocity (keys: scale) / scale NAME / root NAME
+chord off|triad|seventh|power   (Scale mode, or Chords: as Keyboard's chords were)
+chord_page 0|1 / voicing lead|fixed close|open|wide STRUM_MS / progression N (the bank's)
 arp on|off / repeat on|off
 midi KEY VELOCITY    a MIDI note in, as from a port (velocity 0: note-off)
 learn PAD KEY / import_midi PATH
@@ -1590,6 +1646,8 @@ drag, shortcuts, the palette — and checks the model after each;
 `pads_sequence.txt` covers the sequencer (by command, then by clicks,
 Space and Cmd+R with the pad keys); `pads_perform.txt` the play modes,
 repeat, the arpeggiator, MIDI in and learn, automation and MIDI import;
+`pads_harmony.txt` Chords and Progressions modes, the Key and Progressions
+dialogs and a strummed chord;
 `pads_mixer.txt` the buses, sends, inserts, mute, meters and performance
 effects; `pads_project.txt` switching on the grid, the song, save, new,
 open, export and resample (into `.build/app/drive_project`);
@@ -1652,7 +1710,7 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_audio.py` | a pad made an audio track (input, monitor, undo), arming (Global tab and the strip's R), recording a take from the fake device's input, Clear Take |
 | `test_devices.py` | the bottom panel as a device view: a pad's chain (sampler, EQ, inserts added with +), a bus's chain from the mixer, a performance effect, a pad chosen again |
 | `test_devices_panel.py` | the Library's devices: an effect, a synth and a preset dragged onto pads (one undo step), found by typing; the sequence pads launched (at Now), held (its column back to what it had when let go), their banks |
-| `test_app_gaps.py` | the arrow keys moving between pads; Keyboard mode opening on C3's bank and bank A at C-2; the status bar; Edit > History jumping back and forward; MIDI exported and read back; new pads' own colours |
+| `test_app_gaps.py` | the arrow keys moving between pads; Scale mode opening on C3's bank and bank A at C-2; the status bar; Edit > History jumping back and forward; MIDI exported and read back; new pads' own colours |
 | `test_fx_views.py` | effect pictures: a filter's response dragged, the dynamics' curve and gain reduction meter, delay, reverb, comb, chorus, cutter, pitch, bit-crusher |
 | `test_device.py` | the device tabs (Transpose in whole semitones on a sampler and a slicer): the amp envelope's handles, the filter's type, slope and response handle (and the live cutoff above the setting while its envelope opens it), the pitch envelope, an LFO routed to the cutoff, Global, an audio pad's tabs; legato chosen, its glide dragged, Always set and undone |
 | `test_sample.py` | the Sample tab's wave: S and E dragged by their tags, the fade handles (and undo), the playhead while it plays, the bottom panel's channel strip |
@@ -1661,9 +1719,9 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_note_keys.py` | the editor's keys on selected notes: Backspace, 0 to mute and unmute, Cmd+A, the arrows (a step, a bar, a row), Cmd+D; the toolbar's Pattern / Song, the launch setting (in Perform) |
 | `test_tracks.py` | arming follows the selection (Cmd-click arms more, the setting off); a track's MIDI input chosen on its strip, an armed track played by its own port; the input meters |
 | `test_settings.py` | the Settings window: theme and zoom (clicks still land, zoomed), a shortcut pressed in (and a clash taken), audio applied and kept, the tempo following MIDI clock and the clock out, a new project's defaults from settings.ini (a hand-written comment kept), plug-ins scanned and offered |
-| `test_synth.py` | a pad made a synth from its menu and played; Keyboard mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
+| `test_synth.py` | a pad made a synth from its menu and played; Scale mode's banks moving the notes, a key recorded at its pitch; a source dragged onto a knob, its ring's handle dragged and right-clicked away (and undone); the envelope's attack handle and an LFO point drawn; a wavetable chosen; legato and oversampling; the effects chain (an effect switched on, dragged to the front, undone); a random modulator (its style, dragged onto a knob); the wavetable editor (a new table, a harmonic dragged, a keyframe added and undone); presets (stepped through, chosen, saved as yours and found again) |
 | `test_reaudit.py` | what the UI re-audit fixed: Escape closes Settings; another pad selected shows its sound, not the MIDI page; the slicer's settings behind its two dropdowns; a 1100×760 window keeping the toolbar and the mixer's strips whole |
-| `test_slicer.py` | slicing from the browser (Alt+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Keyboard mode playing slices; back to a sampler with the slices kept |
+| `test_slicer.py` | slicing from the browser (Alt+Enter, Cmd+Shift+Enter, the file's menu, Alt-drag, an empty pad's Slicer half); an empty slicer filled by a drop; markers dragged, added and removed; a slice's level line; zoom and the overview; slices to a sequence and to a pad; the piano roll's slice rows; Scale mode playing slices; back to a sampler with the slices kept |
 | `test_tweaks.py` | several pads selected (Shift, Cmd) muted, choked and cleared; the choke group in the Sample tab; Stop twice; Settings; a sample dropped on a sequence row; the lane's height; renaming the project; buses added, renamed and routed, several strips moved at once; a pad's warp |
 | `test_sequence_tabs.py` | the Sequence view's Notes (the default) and Automation tabs, the tab kept while moving around and saved with the project; Line and Curve; a new automation from the menu; the notes under the curve off and on; a drawn note at 100% chance; a CC lane drawn for the selected pad |
 | `test_automation_targets.py` | a mixer fader's right-click Automate, Touch a control learning a knob, knob moves recorded only with Auto on |
@@ -1689,6 +1747,7 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_note_tools.py` | the editor's tools: a row's name (its pad, its notes, the headphones; Delete on the selection), Draw painting and Erase sweeping (one undo step each), Move and Alt-copy, V/B/E/M, a row's Rename, the piano roll and Fold |
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
+| `test_harmony.py` | the Play mode menu's five modes; Chords mode's chord names, banks and rows; the Key dialog from the status bar (key, scale, voicing); Progressions mode, its dialog's bank by style, the editor (a chord added, changed, moved, taken out), saved as yours; the piano roll's Fold to key; the arpeggiator's In key |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_lanes.py` | launcher lanes: one renamed from its header, one added (the window following) and a sequence made at its end, sequences moved by menu and Option-drag, the overview moving the window, a lane deleted, undo |
 | `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Shift-click launching alone, Continue, Option-click not launching, Record to Song writing the launches into lanes, the main fader |

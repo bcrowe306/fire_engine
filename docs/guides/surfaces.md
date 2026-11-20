@@ -94,7 +94,7 @@ submodule (`cd extern/fire-surface && ./scripts/build.sh`) and put
 - **Display:** the eight tracks in view with their names and volumes, or
   the selected device's parameters (Device), and the transport. On USB
   power alone Push 2 dims its display; its power supply brightens it.
-- **Pads:** Note, a keyboard in Keyboard mode's scale (Octave Up and
+- **Pads:** Note, a keyboard in the project key (Pads' Scale mode; Octave Up and
   Down); Layout, drum pads (Repeat held: note repeat); Session, the
   launcher's clips (the arrows move the window).
 - **Encoders:** Mix, the volumes (Shift held: pans); Device, the selected
@@ -150,7 +150,7 @@ The engine side is generic: `midi.Input_Filter`, which the app layer's
   - the pads as tracks, with their mixer
   - the selected pad's sound and inserts, with their parameters
   - the launcher's lanes and rows
-  - Keyboard mode's scale
+  - the project key
   - undo, redo, save and the views
 
   Pads tells a surface what changed: the API's changes, and once a frame
