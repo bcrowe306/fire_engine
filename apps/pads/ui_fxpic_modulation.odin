@@ -163,9 +163,11 @@ mod_chorus_picture :: proc(p: fx.Chorus_Params, phase: f32, rate: string, on: bo
 	pairs := clamp(p.voices, 1, 4)
 	sweep := clamp(p.depth, 0, 1) * CHORUS_SWEEP
 	avg := (p.delay[0] + p.delay[1]) * 0.5
-	// The time line: as long as the longest delay needs (20, 40 or 80 ms:
-	// steps, so turning a knob moves the voices, not the scale).
+	// The time line: as long as the longest delay needs, and its echo with
+	// feedback on (20, 40 or 80 ms: steps, so turning a knob moves the
+	// voices, not the scale).
 	longest := max(p.delay[0], p.delay[1]) + 1.5 * sweep
+	if abs(p.feedback) > 0.05 do longest *= 2
 	span: f32 = 0.02
 	for span < longest * 1.08 && span < 0.08 do span *= 2
 	xt :: proc(x0, x1, span, s: f32) -> f32 { return x0 + (x1 - x0) * clamp(s / span, 0, 1) }
@@ -203,7 +205,10 @@ mod_chorus_picture :: proc(p: fx.Chorus_Params, phase: f32, rate: string, on: bo
 				if side == 1 do c = ui.mix(c, th.text, 0.3)
 				// Its sweep, faint; where it is now; its echo.
 				im.DrawList_AddLine(dl, {xt(x0, x1, span, base + 0.5 * sweep), y}, {xt(x0, x1, span, base + 1.5 * sweep) + 1, y}, ui.col(ui.with_alpha(c, 0.28)), 2)
-				if fb > 0.05 && 2 * d < span do im.DrawList_AddCircleFilled(dl, {xt(x0, x1, span, 2 * d), y}, 2.2, ui.col(ui.with_alpha(c, 0.15 + 0.6 * fb)), 8)
+				if fb > 0.05 && 2 * d < span { // (fading out toward the line's end, past which it isn't drawn)
+					fade := clamp((span - 2 * d) / (span * 0.15), 0, 1)
+					im.DrawList_AddCircleFilled(dl, {xt(x0, x1, span, 2 * d), y}, 2.2, ui.col(ui.with_alpha(c, (0.15 + 0.6 * fb) * fade)), 8)
+				}
 				dc := ui.col(ui.with_alpha(c, 0.35 + 0.65 * min(wet * 1.4, 1)))
 				if side == 0 do im.DrawList_AddCircleFilled(dl, {xt(x0, x1, span, d), y}, 3.4, dc, 10)
 				else do im.DrawList_AddCircle(dl, {xt(x0, x1, span, d), y}, 3.2, dc, 10, 1.6) // (Delay 2's: rings)

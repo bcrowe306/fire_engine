@@ -121,9 +121,10 @@ effect_get_param :: proc(api: ^Api, s: Slot_Ref, id: i64) -> (f64, Result) {
 	slot, r := slot_of(api, s)
 	if r != .Ok do return 0, r
 	if slot.kind == .None do return 0, fail(api, .Not_Found, "the slot is empty")
-	def: f32
-	for p in pm.effect_params(slot.kind) do if i64(p.id) == id do def = f32(p.default)
-	return f64(pm.slot_value(slot, fc.Param_Id(id), def)), .Ok
+	if v := pm.slot_value(slot, fc.Param_Id(id), max(f32)); v != max(f32) do return f64(v), .Ok
+	if v, ok := pm.target_param_value(&api.core.m.engine, fx_target(s), fc.Param_Id(id)); ok do return v, .Ok // (a plug-in's own, never set here)
+	for p in pm.effect_params(slot.kind) do if i64(p.id) == id do return p.default, .Ok
+	return 0, .Ok
 }
 
 // Sets parameter `id` of the effect in slot `s` (plain units, in its

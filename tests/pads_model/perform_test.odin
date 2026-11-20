@@ -531,3 +531,31 @@ the_pads_channel_plays_only_pads_never_an_armed_tracks_keys :: proc(t: ^testing.
 	received, _ = pm.midi_activity(&m.engine, 1)
 	testing.expect_value(t, received, 1)
 }
+
+// Pads loops a sequence in its clip player (the timeline runs on), so it
+// tells each cutter where what plays began and the loop from there: its
+// cuts fall the same on every pass (a dotted rate, a launch mid-bar).
+@(test)
+cutters_count_from_where_the_sequence_plays :: proc(t: ^testing.T) {
+	r := rig_make(t, "perf_cutter_cycle")
+	defer rig_destroy(r)
+	m := &r.m
+	testing.expect_value(t, m.project.perf_fx[7].kind, pm.Effect_Kind.Cutter)
+	pm.sync(&m.engine)
+	render(r, 2400)
+	pm.play(&m.engine)
+	pm.sync(&m.engine)
+	render(r, 2400)
+	pm.sync(&m.engine)
+	f := m.engine.mixer.buses[pm.BUSES].perf[7]
+	pl := m.engine.plan
+	testing.expect(t, f.has && f.cycle_sent, "the cutter was told")
+	testing.expect(t, pl.loop_end > pl.loop_start, "the sequence loops")
+	testing.expectf(t, f.cycle == [3]f64{pl.at, pl.loop_start, pl.loop_end}, "its origin and loop: the plan's (%v, plan at %v, %v..%v)", f.cycle, pl.at, pl.loop_start, pl.loop_end)
+	// The transport's loop off: once through, no loop.
+	m.project.transport.loop = false
+	m.engine.seq_dirty = true
+	pm.sync(&m.engine)
+	f = m.engine.mixer.buses[pm.BUSES].perf[7]
+	testing.expectf(t, f.cycle.y == 0 && f.cycle.z == 0, "no loop (%v)", f.cycle)
+}

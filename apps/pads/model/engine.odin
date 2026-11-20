@@ -463,10 +463,12 @@ sync :: proc(e: ^Engine) {
 		prof.zone("graph.commit")
 		graph.commit(g)
 	}
+	resend := e.resend
 	e.resend = false
 	// A targeted node rebuilt: its automation goes to the new one.
 	if !e.stopped && targets_stale(e) do e.seq_dirty = true
 	sync_sequencer(e)
+	sync_cutter_cycles(e, resend)
 }
 
 // The tempo, the click and the current sequence.

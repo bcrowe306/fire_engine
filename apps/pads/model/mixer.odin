@@ -201,7 +201,7 @@ effect_params :: proc(k: Effect_Kind) -> []fc.Param_Info {
 	case .Ring_Mod:   return dsp.ring_params[:]
 	case .Comb:       return dsp.comb_params[:]
 	case .Pitch:      return dsp.pitch_params[:]
-	case .Cutter:     return dsp.cutter_params[:]
+	case .Cutter:     return dsp.cutter_params[:3] // (the rest: where its count starts, the engine's)
 	case .Stutter:    return dsp.stutter_params[:1] // the length (on is the slot's switch)
 	case .Super_Filter: return fx_pkg.super_filter_params[:]
 	case .Pro_Eq:       return fx_pkg.pro_eq_params[:]

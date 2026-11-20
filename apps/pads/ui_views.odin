@@ -67,6 +67,7 @@ views_render :: proc(a: ^App) {
 			if inp.released[int(pa.View_Button.Shift)] do a.ctl.shift = false
 		}
 		ctl_shift_now = a.ctl.shift
+		ctx.knobs.fine = a.ctl.shift
 		// In its track's colour, as the window's bottom area (the device's
 		// pad; elsewhere the selected pad's).
 		ui.set_accent(&a.platform, track_accent(a, w.kind != .Device))

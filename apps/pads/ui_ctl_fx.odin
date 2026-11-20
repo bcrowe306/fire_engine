@@ -83,14 +83,18 @@ fx_banks :: proc(p: ^Fx_Panel, names: ..string) {
 			if ke.ended do pa.history_gesture_end(&a.api)
 		case p.where_ == .Synth:
 			sy := m.project.pads[p.pad].synth
+			// The list says which are off; the box only the name (the On
+			// button and the picture's caption say whether it is on).
 			order := make([dynamic]string, context.temp_allocator)
+			short := make([dynamic]string, context.temp_allocator)
 			at := 0
 			for x, k in sy.fx_order {
 				xon := pm.synth_value(m, p.pad, effect_on(x)) > 0.5
 				append(&order, fmt.tprintf("%d %s%s", k + 1, synth.EFFECT_NAMES[x], "" if xon else " (off)"))
+				append(&short, fmt.tprintf("%d %s", k + 1, synth.EFFECT_NAMES[x]))
 				if x == p.effect do at = k
 			}
-			if k, _ := ctl_choice(ctx, b * 8, total, fmt.ctprintf("Effect##fxe%d", b), order[:], at, p.plot); k >= 0 do a.synth_ui.effect = sy.fx_order[k]
+			if k, _ := ctl_choice(ctx, b * 8, total, fmt.ctprintf("Effect##fxe%d", b), order[:], at, p.plot, short[:]); k >= 0 do a.synth_ui.effect = sy.fx_order[k]
 		}
 	}
 	// The synth tab's On: lower-row button 7.

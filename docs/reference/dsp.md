@@ -672,6 +672,35 @@ CUTTER_PARAM_DEPTH : core.Param_Id : core.Param_Id(3)
 
 Parameter id of the cutter's depth: 0..1: how far it closes
 
+### CUTTER_PARAM_ORIGIN
+
+```odin
+CUTTER_PARAM_ORIGIN : core.Param_Id : core.Param_Id(4)
+```
+
+Parameter id of where the cutter's cycles count from on the leader
+timeline (local beats; hidden): an app that plays its own loops on a
+running timeline (its clip player looping, not the timeline) says where
+what plays began, so the cuts fall the same on every pass
+
+### CUTTER_PARAM_LOOP_START
+
+```odin
+CUTTER_PARAM_LOOP_START : core.Param_Id : core.Param_Id(5)
+```
+
+Parameter id of the start of the loop being played, in beats from the
+origin (hidden; see `CUTTER_PARAM_ORIGIN`)
+
+### CUTTER_PARAM_LOOP_END
+
+```odin
+CUTTER_PARAM_LOOP_END : core.Param_Id : core.Param_Id(6)
+```
+
+Parameter id of the end of the loop being played, in beats from the
+origin (hidden; no larger than its start: no loop)
+
 ### STUTTER_PARAM_BEATS
 
 ```odin
@@ -2174,6 +2203,9 @@ Cutter :: struct {
 	coef: f64,
 	beat: f64,
 	rate: f64,
+	origin: f64,
+	loop_start: f64,
+	loop_end: f64,
 }
 ```
 
@@ -2182,7 +2214,8 @@ of `beats`, closed (by `depth`) for the rest, with edges of a couple of
 milliseconds so it never clicks. While the transport's leader timeline
 plays, the cycles count from its position (beat 0 of the song or
 sequence: the cuts fall on its bar lines and start again where it loops
-or jumps); otherwise from the clock's free-running grid beat, and
+or jumps; from `CUTTER_PARAM_ORIGIN`, within the loop it is given, where
+the app loops what plays itself); otherwise from the clock's free-running grid beat, and
 without a transport from its own 120 BPM clock.
 
 | Field | Description |
@@ -2194,6 +2227,9 @@ without a transport from its own 120 BPM clock.
 | `coef` | one-pole step for the edges |
 | `beat` | own clock without a transport |
 | `rate` |  |
+| `origin` |  |
+| `loop_start` |  |
+| `loop_end` | where the count starts on the leader, and the loop from there |
 
 ### Stutter
 
@@ -4255,7 +4291,7 @@ Pitch shifter parameters. Read-only.
 ### cutter_params
 
 ```odin
-cutter_params: [3]core.Param_Info
+cutter_params: [6]core.Param_Info
 ```
 
 Cutter parameters. Read-only.

@@ -98,6 +98,7 @@ Knob_Input :: struct {
 	size:  f32, // the knobs' size (0: as each asks)
 	bar_w: f32, // > 0: knobs drawn as a value bar this wide (the name and value on a line, a bar under them: a display's compact row)
 	shown: [8]Knob_Shown, // what knob k showed as it was drawn (`knob_shown`)
+	fine:  bool,          // the controller's turns finer (Shift held): a value bar's name says "· fine"
 }
 
 // What a knob drawn for a controller showed: its name and value as read,
@@ -110,6 +111,7 @@ Knob_Shown :: struct {
 	live:    bool,
 	live_at: f32, // where its live mark is along the bar (0..1)
 	marks:   int,
+	fine:    bool, // its name said "· fine" (`Knob_Input.fine`)
 }
 
 // Puts what knob `k` showed into the controller input's `shown` (no input,
@@ -119,7 +121,7 @@ knob_shown :: proc(k: int, label, value: string, live := false) {
 	ki := knob_input
 	if ki == nil || k < 0 || k >= len(ki.shown) do return
 	s := &ki.shown[k]
-	s^ = {live = live}
+	s^ = {live = live, fine = ki.fine}
 	copy(s.label[:len(s.label) - 1], label)
 	copy(s.value[:len(s.value) - 1], value)
 }
@@ -361,7 +363,9 @@ knob_bar :: proc(dl: ^im.DrawList, pos: im.Vec2, w: f32, label: cstring, value, 
 	vt := shown_value if shown_value != nil else strings.clone_to_cstring(text, context.temp_allocator)
 	vs := im.CalcTextSize(vt)
 	im.DrawList_PushClipRect(dl, pos, {pos.x + w - vs.x - 4, pos.y + lh}, true)
-	im.DrawList_AddText(dl, pos, col(t.text if hot else t.text_dim), label)
+	shown := label
+	if knob_input.fine do shown = fmt.ctprintf("%s · fine", label)
+	im.DrawList_AddText(dl, pos, col(t.accent if knob_input.fine else t.text if hot else t.text_dim), shown)
 	im.DrawList_PopClipRect(dl)
 	im.DrawList_AddText(dl, {pos.x + w - vs.x, pos.y}, col(t.text), vt)
 	y := pos.y + lh + 3

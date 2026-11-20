@@ -21,6 +21,10 @@ def test_a_synth_effect_on_its_tab(pads):
     d = on_synth(pads, "delay")
     assert banks(pads) >= 1
     save(pads, "kit_synth")
+    # Its picker's box: the effect's place and name, not "(off)" (the list
+    # says which are off; the On button whether this one is).
+    pick = knobs_shown(pads)[0]
+    assert pick["label"] == "Effect" and "Delay" in pick["value"] and "(off)" not in pick["value"], pick
     assert isinstance(d, Device)
 
 

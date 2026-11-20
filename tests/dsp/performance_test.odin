@@ -176,6 +176,42 @@ cutter_counts_from_where_the_timeline_plays :: proc(t: ^testing.T) {
 	testing.expect(t, kit.expect_block_invariant(t, {create = mk}, in_, cfg, patterns, name = "cutter_timeline"))
 }
 
+// An app looping what plays itself (its clip player, the timeline running
+// on) gives the cutter where it began (0.3 beats in) and its loop (1.2
+// beats from there: mid-cycle): a cut opens there and on every 1/16 after
+// it, and again from the top of each pass, not where the count from the
+// timeline's beat 0 would put it.
+@(test)
+cutter_counts_from_its_origin_within_its_loop :: proc(t: ^testing.T) {
+	ORIGIN :: 7200 // frames: 0.3 beats at 120 BPM
+	LOOP :: 28_800 // 1.2 beats
+	CYCLE :: 6000  // 1/16
+	cfg := kit.default_render_config()
+	cfg.playing = true
+	cfg.events = []kit.Timed_Event{value(0, dsp.CUTTER_PARAM_ORIGIN, 0.3), value(0, dsp.CUTTER_PARAM_LOOP_START, 0), value(0, dsp.CUTTER_PARAM_LOOP_END, 1.2)}
+	in_ := kit.buffer_make(2, 96_000, 48_000, context.temp_allocator)
+	for c in 0 ..< 2 do for &v in in_.channels[c] do v = 1
+	node := dsp.cutter_create()
+	defer core.node_destroy(&node)
+	out, r := kit.render(&node, in_, cfg, context.temp_allocator)
+	kit.expect_clean_render(t, r)
+	x := out.channels[0]
+	passes := 0
+	for seg := ORIGIN; seg < len(x); seg += LOOP {
+		passes += 1
+		for k in 0 ..< 5 {
+			base := seg + k * CYCLE
+			if base + 4500 >= len(x) do break
+			testing.expectf(t, x[base - 20] < 0.05, "shut just before the cut at %d (%v)", base, x[base - 20])
+			testing.expectf(t, x[base + 1500] > 0.99, "open at %d (%v)", base + 1500, x[base + 1500])
+			testing.expectf(t, x[base + 4500] < 0.01, "shut at %d (%v)", base + 4500, x[base + 4500])
+		}
+	}
+	testing.expect(t, passes >= 3)
+	mk :: proc(_: rawptr) -> core.Node { return dsp.cutter_create() }
+	testing.expect(t, kit.expect_block_invariant(t, {create = mk}, in_, cfg, patterns, name = "cutter_origin"))
+}
+
 @(test)
 stutter_repeats_the_slice_before_it :: proc(t: ^testing.T) {
 	node := dsp.stutter_create()

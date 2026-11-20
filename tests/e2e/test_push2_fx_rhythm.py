@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from push2_fx import DEVICE, bank, banks, draw_us, in_perform, in_slot, moves, pads, press, save, turn, value, view  # noqa: F401
+from push2_fx import DEVICE, bank, banks, draw_us, in_perform, in_slot, knobs_shown, moves, pads, press, save, turn, value, view  # noqa: F401
 
 MUTE, DELETE = 0x3C, 0x76
 LOWER = 20  # the lower row's first button (CC 20..27)
@@ -76,11 +76,13 @@ def pitch_steps(pads, d, where, lead=0):
     assert abs(d.get(1) - 15) < 1e-6 and value(pads, lead) == "+15 st", (d.get(1), value(pads, lead))
     pads.cmd(f"midiport play push B0 {SHIFT:02X} 7F")  # Shift held: cents
     pads.wait(3)
+    assert knobs_shown(pads)[lead]["fine"], knobs_shown(pads)[lead]  # (its name says "· fine")
     turn(pads, lead, 15)
     assert abs(d.get(1) - 15.15) < 1e-4 and value(pads, lead) == "+15.15 st", (d.get(1), value(pads, lead))
     save(pads, f"pitch_{where}_cents")
     pads.cmd(f"midiport play push B0 {SHIFT:02X} 00")
     pads.wait(3)
+    assert not knobs_shown(pads)[lead]["fine"]
     turn(pads, lead, 1)  # up from +15.15: the next whole one
     assert abs(d.get(1) - 16) < 1e-6 and value(pads, lead) == "+16 st", (d.get(1), value(pads, lead))
     turn(pads, lead, -20)

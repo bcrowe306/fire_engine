@@ -245,6 +245,7 @@ State_Ctl_Knob :: struct {
 	live:  bool,   // automation moves it now (its live mark)
 	live_at: f32,  // ... where the mark is along it (0..1)
 	marks: int,    // modulation routes marked on it (the synth's)
+	fine:  bool,   // its name says "· fine" (the controller's Shift held)
 }
 
 // The Audio tab's selection.
@@ -430,7 +431,7 @@ state_json :: proc(a: ^App) -> string {
 	s.harmony_shown = strings.clone(string(a.ctl.harmony_shown[:a.ctl.harmony_shown_n]), context.temp_allocator)
 	s.cutter_bar = a.ctl.cutter_bar
 	for &k, i in a.ctl.shown {
-		s.ctl_knobs[i] = {label = string(cstring(&k.label[0])), value = string(cstring(&k.value[0])), live = k.live, live_at = k.live_at, marks = k.marks}
+		s.ctl_knobs[i] = {label = string(cstring(&k.label[0])), value = string(cstring(&k.value[0])), live = k.live, live_at = k.live_at, marks = k.marks, fine = k.fine}
 	}
 	s.mic_access = enum_name(mic_access())
 	li, lo, lr := app.host_latency(&a.host)

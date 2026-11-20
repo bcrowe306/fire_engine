@@ -274,6 +274,11 @@ def test_push2_plugin_in_a_slot(pads, fixtures, clap_lib):
     d = Device(pads, "slot", slot, 0)
     params = params_of(pads, {"track": "Pad", "index": 0, "device": "Insert", "slot": 0, "param": 0})
     assert len(params) == 8, params
+    # Never set here: each reads as the plug-in has it (its default), not 0.
+    for pid, *_ in params:
+        info = pads.api("param_info", ref={"track": "Pad", "index": 0, "device": "Insert", "slot": 0, "param": pid})
+        assert abs(pads.api("effect_get_param", s=slot, id=pid) - info["default_value"]) < 1e-9, (pid, info)
+    assert any(pads.api("effect_get_param", s=slot, id=pid) != 0 for pid, *_ in params)
     every_bank(pads, d, params, ["1–8"], "delay")
     # Each knob reads as the plug-in reads it (its own text: units), and
     # again as it moves.

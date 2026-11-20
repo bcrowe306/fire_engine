@@ -46,5 +46,3 @@ plan before it is built.
   machines.
 - **Pads' window adopting the Push 2 device pictures** (written to be
   shared: ui_fxpic_*.odin).
-- **Scales, chords and progressions** play modes, and a project key:
-  planned in docs/design/scales-chords.md (in progress).

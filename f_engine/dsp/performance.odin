@@ -389,12 +389,26 @@ CUTTER_PARAM_BEATS :: core.Param_Id(1)
 CUTTER_PARAM_DUTY :: core.Param_Id(2)
 // Parameter id of the cutter's depth: 0..1: how far it closes
 CUTTER_PARAM_DEPTH :: core.Param_Id(3)
+// Parameter id of where the cutter's cycles count from on the leader
+// timeline (local beats; hidden): an app that plays its own loops on a
+// running timeline (its clip player looping, not the timeline) says where
+// what plays began, so the cuts fall the same on every pass
+CUTTER_PARAM_ORIGIN :: core.Param_Id(4)
+// Parameter id of the start of the loop being played, in beats from the
+// origin (hidden; see `CUTTER_PARAM_ORIGIN`)
+CUTTER_PARAM_LOOP_START :: core.Param_Id(5)
+// Parameter id of the end of the loop being played, in beats from the
+// origin (hidden; no larger than its start: no loop)
+CUTTER_PARAM_LOOP_END :: core.Param_Id(6)
 
 // Cutter parameters. Read-only.
 cutter_params := [?]core.Param_Info{
 	{id = CUTTER_PARAM_BEATS, name = "Rate", min = 1.0 / 32, max = 1, default = 0.25, flags = {.Automatable}},
 	{id = CUTTER_PARAM_DUTY, name = "Duty", min = 0.05, max = 0.95, default = 0.5, flags = {.Automatable}},
 	{id = CUTTER_PARAM_DEPTH, name = "Depth", min = 0, max = 1, default = 1, flags = {.Automatable}},
+	{id = CUTTER_PARAM_ORIGIN, name = "Origin", min = -1e12, max = 1e12, default = 0, flags = {.Hidden}},
+	{id = CUTTER_PARAM_LOOP_START, name = "Loop Start", min = 0, max = 1e12, default = 0, flags = {.Hidden}},
+	{id = CUTTER_PARAM_LOOP_END, name = "Loop End", min = 0, max = 1e12, default = 0, flags = {.Hidden}},
 }
 
 // A trance gate on the beat grid: open for the first `duty` of every cycle
@@ -402,7 +416,8 @@ cutter_params := [?]core.Param_Info{
 // milliseconds so it never clicks. While the transport's leader timeline
 // plays, the cycles count from its position (beat 0 of the song or
 // sequence: the cuts fall on its bar lines and start again where it loops
-// or jumps); otherwise from the clock's free-running grid beat, and
+// or jumps; from `CUTTER_PARAM_ORIGIN`, within the loop it is given, where
+// the app loops what plays itself); otherwise from the clock's free-running grid beat, and
 // without a transport from its own 120 BPM clock.
 Cutter :: struct {
 	beats, duty, depth: f64,
@@ -410,6 +425,7 @@ Cutter :: struct {
 	coef:  f64, // one-pole step for the edges
 	beat:  f64, // own clock without a transport
 	rate:  f64,
+	origin, loop_start, loop_end: f64, // where the count starts on the leader, and the loop from there
 }
 
 @(private)
@@ -432,6 +448,9 @@ cutter_vtable := core.Node_VTable {
 			if v, _, ok := core.param_event(e.payload, CUTTER_PARAM_BEATS); ok do ct.beats = clamp(v, 1.0 / 32, 1)
 			if v, _, ok := core.param_event(e.payload, CUTTER_PARAM_DUTY); ok do ct.duty = clamp(v, 0.05, 0.95)
 			if v, _, ok := core.param_event(e.payload, CUTTER_PARAM_DEPTH); ok do ct.depth = clamp(v, 0, 1)
+			if v, _, ok := core.param_event(e.payload, CUTTER_PARAM_ORIGIN); ok do ct.origin = v
+			if v, _, ok := core.param_event(e.payload, CUTTER_PARAM_LOOP_START); ok do ct.loop_start = max(v, 0)
+			if v, _, ok := core.param_event(e.payload, CUTTER_PARAM_LOOP_END); ok do ct.loop_end = max(v, 0)
 		}, proc(self: rawptr, ctx: ^core.Process_Context, from, to: int) {
 			ct := (^Cutter)(self)
 			t := ctx.transport
@@ -443,7 +462,10 @@ cutter_vtable := core.Node_VTable {
 			for i in from ..< to {
 				beat: f64
 				if tl != nil {
-					beat = f64(core.timeline_position_at(t, tl, i))
+					beat = f64(core.timeline_position_at(t, tl, i)) - ct.origin
+					if span := ct.loop_end - ct.loop_start; span > 0 && beat >= ct.loop_end {
+						beat = ct.loop_start + math.mod(beat - ct.loop_start, span)
+					}
 				} else if t != nil {
 					beat = f64(core.transport_grid_at(t, i))
 				} else {

@@ -54,6 +54,8 @@ Fx_Node :: struct {
 	key_lp:     graph.Node_Id,
 	key_src:    graph.Node_Id,
 	key_hpf:    f32, // as sent
+	cycle:      [3]f64, // a cutter: where its count starts and the loop from there, as sent
+	cycle_sent: bool,
 	key_lpf:    f32,
 }
 
@@ -646,6 +648,30 @@ cue_level :: proc(e: ^Engine) -> (peak, rms: [2]f32) {
 	return dsp.meter_read(e.mixer.cue_meter)
 }
 
+// [control] Tells each cutter where what plays began on the timeline and
+// the loop from there (the clip player loops it, not the timeline), so its
+// cuts fall the same on every pass, from the sequence's own beat 0.
+@(private)
+sync_cutter_cycles :: proc(e: ^Engine, resend: bool) {
+	if !e.mixer.built do return
+	want := [3]f64{e.plan.at, e.plan.loop_start, e.plan.loop_end}
+	if e.plan.loop_end <= e.plan.loop_start do want.yz = 0
+	g := e.host.graph
+	send :: proc(g: ^graph.Graph, f: ^Fx_Node, want: [3]f64, resend: bool) {
+		if !f.has || f.key.kind != .Cutter || (f.cycle_sent && f.cycle == want && !resend) do return
+		graph.set_param(g, f.id, dsp.CUTTER_PARAM_ORIGIN, want.x)
+		graph.set_param(g, f.id, dsp.CUTTER_PARAM_LOOP_START, want.y)
+		graph.set_param(g, f.id, dsp.CUTTER_PARAM_LOOP_END, want.z)
+		f.cycle, f.cycle_sent = want, true
+	}
+	mx := &e.mixer
+	for &st in mx.strips do if st.built do for &f in st.inserts do send(g, &f, want, resend)
+	for &bn in mx.buses {
+		for &f in bn.slots do send(g, &f, want, resend)
+		for &f in bn.perf do send(g, &f, want, resend)
+	}
+}
+
 // The plug-in in an effect slot's node, if it holds one (for its
 // parameters' names and ranges): a pad's insert, or a bus's slot.
 slot_plugin :: proc(e: ^Engine, pad: int, bus: int, slot: int) -> ^clap.Plugin {
@@ -696,6 +722,17 @@ target_params :: proc(e: ^Engine, t: Fx_Target, allocator := context.temp_alloca
 		append(&out, p)
 	}
 	return out[:]
+}
+
+// Parameter `id` of the slot `t` points at as its node has it, when the
+// project holds no value of its own for it: a plug-in's current value,
+// else the parameter's default. Main thread.
+target_param_value :: proc(e: ^Engine, t: Fx_Target, id: fc.Param_Id) -> (f64, bool) {
+	if f := target_node(e, t); f != nil && f.plugin != nil {
+		if v, ok := clap.plugin_param_value(f.plugin, id); ok do return v, true
+	}
+	for info in target_params(e, t) do if info.id == id do return info.default, true
+	return 0, false
 }
 
 // Performance effect `k` at its intensity: `live` while its pad is held
