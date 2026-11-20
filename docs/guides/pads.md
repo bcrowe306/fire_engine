@@ -1085,6 +1085,35 @@ The arpeggiator's **In key** keeps what it plays in the key. Old
 projects' Keyboard mode opens as Scale, and as Chords if its chords were
 on.
 
+### On Push 2
+
+Push 2's **Note** plays the note modes on its 8×8 grid (pressed again:
+Scale, Chords, Progressions in turn, and the window's play mode follows,
+as the Push follows the window's). The display shows Pads' own view of
+them: the key and what plays it, the chord playing (its name large, its
+numeral, its notes on a keyboard over the key's), in Progressions the
+progression's chords with the one playing lit; the play modes on the
+upper row (and in Scale the layouts), the key on the encoders (Root,
+Scale, Octave, then Layout; the voicing in Chords; the bank's Style and
+Name, then the voicing, in Progressions).
+
+- **Scale**: the key laid out as the Key dialog's **Grid layout** says
+  (**Shift + Layout** steps it; Layout alone is still the drum pads):
+  **Fourths** (each row a fourth up, the key's notes only: the default),
+  **Thirds**, **Sequential** (eight in a row) or **Chromatic** (every
+  semitone, rows a fourth apart; the key's notes lit, the rest dim). The
+  bottom left is the root two octaves under the pad's own note; **Octave
+  Up/Down** move it. Roots in the pad's colour, held pads green, a
+  slicer's slices one a pad in order.
+- **Chords**: the key's degrees across (I to vii, the eighth I an octave
+  up; a pentatonic key five columns), all eight variations up from the
+  triad at the bottom; each degree's column in its own colour, the
+  tonic's in the pad's, chords the key can't make dark, the chord playing
+  bright.
+- **Progressions**: chord n on pad n along the bottom rows (eight a row),
+  the rows above them the same chords an octave up, and above those with
+  the bass note doubled an octave down; the one playing bright.
+
 ## Synths
 
 A pad can be a **synth**: a wavetable synthesizer (`fire:synth`; the
@@ -1228,7 +1257,7 @@ playing. From the left: the tempo, Tap, the time signature, Count-in and
 Click; the sequence, Pattern | Song and the position; then the transport
 (centred on the window when there is room): play, stop, Rec, Loop, Auto,
 Sample, how the pads play (**Pads**, **Scale**, **Chords**,
-**Progressions**, **Vel**: as in the bottom area's header) and Note
+**Progressions**, **Velocity**: as in the bottom area's header) and Note
 Repeat. Play and stop are icons; the rest
 are labelled lit buttons. A new project counts in a bar and clicks while
 recording (the Click on, only while recording; both in the metronome's
@@ -1748,6 +1777,7 @@ after `load`, so a test that must hear a pad waits for its `ready` first
 | `test_sequences.py` | renaming (double-click, F2, undo), Duplicate (menu, Cmd+D), own tempo, the Copy Bars dialog, a marked part copied and pasted |
 | `test_sequencer.py` | play/stop and Space, the metronome, notes by clicking the piano roll (and right-click, undo), ×2 and clear, recording from the pad keys, the lanes |
 | `test_harmony.py` | the Play mode menu's five modes; Chords mode's chord names, banks and rows; the Key dialog from the status bar (key, scale, voicing); Progressions mode, its dialog's bank by style, the editor (a chord added, changed, moved, taken out), saved as yours; the piano roll's Fold to key; the arpeggiator's In key |
+| `test_push2_harmony.py` | the note modes on a pretend Push 2: Scale's layouts (Fourths, Thirds, Sequential, Chromatic; Shift + Layout, Octave, the encoder) in C major and A minor, the Chords grid in C major and a pentatonic key (its dark cells), the Progressions grid's rows (an octave up, the bass down) and its bank on the encoders, the chord playing lit and named on the display (images), Note following the play mode both ways; the window's play-mode box and long chord names |
 | `test_live.py` | the sequence pads (launch when stopped, queue to the end of the playing pass, the cell's menu), performance effects as hard as pressed and their Intensity knob, the toolbar's play modes |
 | `test_lanes.py` | launcher lanes: one renamed from its header, one added (the window following) and a sequence made at its end, sequences moved by menu and Option-drag, the overview moving the window, a lane deleted, undo |
 | `test_perform_view.py` | the Perform tab: the pads area folded (and kept so from Song), a row launched (its columns together), a column stopped and launched again, Stop All, Shift-click launching alone, Continue, Option-click not launching, Record to Song writing the launches into lanes, the main fader |

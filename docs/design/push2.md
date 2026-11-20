@@ -156,12 +156,35 @@ at home on the hardware:
     below), the effects' legend, Main and Cue, the bar's settings lit.
     Encoders: 1 lanes, 2 rows, 5 the last effect's strength, 7 Main, 8
     Cue.
-- **Note** is Pads' Keyboard play mode (either way: chosen in the window,
-  the Push follows): 64 keys, 0 at the bottom left along each row, each
-  playing the selected pad as that key of Pads' keyboard does
-  (`perform_play_key`: chords, slicers); roots in the pad's colour, the
-  rest dim, out of range dark. Octave Up/Down: Pads' keyboard octave.
-  Layout keeps the drum pads.
+- **Note** is Pads' note modes, Scale, Chords and Progressions (built
+  2026-11-19, docs/design/scales-chords.md stage 4), on the 8x8 grid:
+  each cell is `perform_cell` (col, row from the bottom left) and plays
+  through `perform_play_cell`, the window's pads' path (voice leading,
+  spread, strum, recording). Either way: the window's play mode chosen
+  there, the Push follows; **Note pressed again** steps Scale → Chords →
+  Progressions → Scale, and the window follows.
+  - **Scale:** the key laid out as the key's grid layout says (Fourths,
+    the default; Thirds; Sequential; Chromatic), the bottom left the root
+    two octaves under the pad's own note; roots in the pad's colour, the
+    key's others dim white, Chromatic's others dimmer, out of range dark,
+    a slicer's slices one a cell in order. **Octave Up/Down:** the key's
+    octave.
+  - **Chords:** the key's degrees across (the eighth I an octave up; a
+    smaller key fewer columns), the eight variations up; each degree's
+    column its colour (the tonic's the pad's), what the key can't make
+    dark, the chord playing bright.
+  - **Progressions:** chord n on cell n along the bottom rows, the rows
+    above an octave up, then with the bass an octave down.
+  - **Layout** stays the drum pads (and Velocity); **Shift + Layout** in
+    Note steps Scale's layout (the Key dialog's Grid layout, saved with
+    the project): Live's Layout cycles its layouts, but here Layout
+    already means the drums, so the layouts take its Shift function.
+  - **The display:** Pads' Harmony view (`View_Kind.Harmony`,
+    ui_ctl_harmony.odin): the key, the chord playing (its name, its notes
+    on a keyboard over the key's), the progression's chords with the one
+    playing lit; the upper row the three modes (and Scale's layouts), the
+    encoders Root, Scale, Octave, then Layout / the voicing / the bank's
+    Style and Name and the voicing. Leaving Note gives the display back.
 - **Mix** is the window's mixer strips (`View_Kind.Mixer`, `ctl_mixer` in
   `ui_ctl_mixer.odin`), drawn and driven by Pads like Device: the
   selected pad's eight (▲ ▼: the eight before or after; ◀ ▶ its pages), each with
@@ -355,7 +378,7 @@ Every Push 2 control gets a job, and none is left doing nothing by accident.
 - **Add Device:** Browse on Effects (and plug-ins) for the selected pad. A load goes into its next empty effect slot.
 - **Add Track:** selects the next empty pad, and in Song mode adds a lane instead. Shift + Add Track adds a mixer bus.
 - **Accent:** full velocity (127) on every pad hit while on, recorded that way too, and lit while on. It's a new Pads setting the window's toolbar shows. A long press makes it momentary, on only while held.
-- **Scale:** for now, Keyboard mode's scale, root, octave and chord on the display. The scales, chords and progressions grid mode replaces it later; that mode isn't built yet.
+- **Scale:** Pads' Key dialog on the display and encoders: scale, root, octave, the grid layout, voice leading, spread, strum (the note modes' grids: Note).
 - **Swing encoder:** sets the current sequence's swing and input quantize's swing together, as one amount. While touched, the display shows the amount.
 - **Setup:** a press opens Pads' Settings window. Shift + Setup shows the Push's own settings on the display: pad sensitivity and velocity curve, aftertouch, display and LED brightness.
 - **User:** does nothing, and its light stays off. Pads needs the Push in User mode.
@@ -441,7 +464,7 @@ off without one). Each mode lays out:
 |---|---|---|---|---|
 | Mix | Pads' mixer strips (pads, or buses + Main) | the page Upper 1 chose (volume, pan, sends, routing) | upper: page, Arm, Buses | lower: select, or mute / solo / arm while held |
 | Device | the selected pad's sound: its device's view (filter curve, envelopes, LFOs) | its parameters, a bank each page | as before | upper: banks; lower: devices in the chain |
-| Note / Scale | the keyboard or drum layout; Scale: roots and scales on the display | Scale: root, scale, in key, layout | Pads' Keyboard mode (built); drums: 16 pads + steps | Scale, Layout, Octave |
+| Note / Scale | Pads' Harmony view: the key, the chord playing, the progression; Scale: the Key dialog | root, scale, octave, then layout / voicing / the bank (Harmony); the Key dialog's (Scale) | Pads' Scale (four layouts), Chords and Progressions grids (built); Layout: drums, Velocity | Note (again: the next mode), Shift + Layout (Scale's layout), Scale, Octave |
 | Session | Sequences: Pads' launcher (built) | rows, lanes | Pads' pads, or its sequences | stop row |
 | Browse | the browser: folders and files, previewed | scroll, choose | (as before) | load, back |
 | Clip | Pads' sequencer: the sequence's notes (built) | rows, note, velocity, length, position, row, chance, grid | as before (steps on the pads: later) | Piano, Fold, Mute, Duplicate, Delete |

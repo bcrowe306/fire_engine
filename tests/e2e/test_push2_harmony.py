@@ -135,7 +135,9 @@ def test_scale_mode_layouts_on_the_grid(pads):
     pads.wait(5)
     assert pads.api("key_state")["octave"] == 1 and cell(pads, 0, 0)["pitch"] == -3
     save(pads, "scale_a_minor")
-    assert 0 < pads.state()["harmony_draw_us"][0] <= pads.state()["harmony_draw_us"][1]
+    last, most = pads.state()["harmony_draw_us"]
+    assert 0 < last <= most
+    print(f"harmony view draw: {last:.0f} us (most {most:.0f} us)")
 
 
 def test_the_chords_grid_and_a_pentatonic_keys_dark_cells(pads):
@@ -221,6 +223,8 @@ def test_the_progressions_grid_its_voicings_and_the_bank_on_the_encoders(pads):
     hit(pads, 1, 0, hold=True)
     shown(pads)
     save(pads, "progressions_next_style")
+    last, most = pads.state()["harmony_draw_us"]
+    print(f"harmony view draw (Progressions): {last:.0f} us (most {most:.0f} us)")
     let_go(pads, 1, 0)
 
 

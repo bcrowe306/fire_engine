@@ -5,14 +5,15 @@ description: Pads' Scale, Chords and Progressions play modes, the project key, a
 
 # Scales, chords and progressions (plan, 2026-11-19)
 
-Status: stages 1–3 built (2026-11-19): the key and its scales, chord
+Status: stages 1–4 built (2026-11-19): the key and its scales, chord
 building and naming, progressions (the bank and your own), voice leading
 and spread, the five play modes, the project file (v41, old projects
 converted); the window (the Play mode menus, the Key and Progressions
 dialogs, the pads' chord names, the status bar's key, the piano roll's
-shading and Fold to key, the arpeggiator's In key); strum in the router.
-Stage 4 (Push 2) is next: until then its Note mode plays the window's
-note modes' keys as the window's grid counts them (see As built).
+shading and Fold to key, the arpeggiator's In key); strum in the router;
+Push 2 (the four Scale layouts, the Chords and Progressions grids, Pads'
+Harmony view on its display, Note following the play mode both ways).
+See As built.
 
 Today Pads' pads have three play modes: Pads, Keyboard (the selected pad's
 notes in a scale, with an optional stacked chord on every pad) and
@@ -193,8 +194,65 @@ Where the build differs from the plan above, or settles what it left open:
   `Perform_State` gains `chord_page`; the key is `key_*`, the
   progression `progression_*`, and the new `Key` topic reports changes
   to either.
-- **Push 2 until stage 4:** its Note mode stands for all three note modes
-  (the window in Chords or Progressions shows Note on Push 2, and its
-  keys play the window's chords as `perform_key` counts them); the Key
-  dialog mirrors on its display with six encoders (scale, root, octave,
-  voice leading, spread, strum).
+- **Push 2 before stage 4:** its Note mode stood for all three note modes,
+  its keys playing the window's as `perform_key` counts them. Stage 4
+  replaced that (below).
+
+## As built (stage 4: Push 2)
+
+- **The grid is the API's:** a controller's 8x8 grid is `perform_cell`
+  (col, row from the bottom left: what a cell plays and how it lights)
+  and `perform_play_cell` (the window's pads' path: voice leading,
+  spread, strum, recording; what a press played is what its release
+  ends), so any surface gets the layouts. The model's `grid_*_cell` lay
+  them out (unit-tested); the core plays them.
+- **Scale's layouts:** `Grid_Layout` (Fourths, Thirds, Sequential,
+  Chromatic) is part of the key (`key_set_layout`; the Key dialog's
+  **Grid layout**, encoder 4 there; project v42). Each row climbs to the
+  first of the key's notes a fourth (Thirds: a minor third) or more
+  above the root: three notes in a 7-note key, two in minor pentatonic,
+  three in major pentatonic (a fifth: it has no fourth). Chromatic rows
+  are 5 semitones. The bottom left is the root two octaves under the
+  pad's own note (C1 for C at octave 0), the key's octave moving it, so
+  every layout starts on the same note; Sequential is eight of the key's
+  notes a row from there (not the window's banks any more). A slicer's
+  slices stay one a cell, in order.
+- **Chords:** eight columns in a 7-note key (the eighth I an octave up),
+  as many as the key has notes in a smaller one, the eight variations up.
+  The colours by degree are the surface's (the tonic's column the pad's,
+  none green: held is green).
+- **Progressions:** the progression (16 chords at most) takes one or two
+  rows from the bottom; the same number of rows above it play it an
+  octave up (`Chord_Voicing.Octave_Up`), and above those with the bass
+  doubled an octave down (`Bass_Down`: the chord's lowest note as built,
+  its root or the note an inversion names, an octave or more under the
+  lowest played; a chord of six notes has no room and keeps its own).
+  The voicing is applied after voice leading and spread; the next chord
+  is still led from the chord as built there.
+- **The chord playing:** the core keeps the last chord the note modes
+  played from any grid (window, Push, API), whether its press is still
+  down, its progression index and voicing: `perform_chord_playing` (+
+  `_note`, `_name`). A cell's `playing` is that chord held (Progressions:
+  the same index and voicing). A Push cell held shows green, so the
+  bright "playing" colour shows on a chord held elsewhere (the window).
+- **Note on Push 2:** Note again steps Scale → Chords → Progressions; the
+  window's play mode followed both ways (mirror.odin's watch). **Shift +
+  Layout** steps Scale's layout: Layout already is the drum pads (again:
+  Velocity), so the layouts take its Shift function rather than break it.
+  Octave is the key's octave.
+- **The display:** Pads' Harmony view (`View_Kind.Harmony`,
+  ui_ctl_harmony.odin) shows while Note is the pads' mode (leaving Note
+  gives the display back): the key and what plays it, the chord playing
+  (symbol large, numeral, notes on three octaves of keyboard over the
+  key's dots), in Progressions the progression's chords along the top
+  with the one playing lit; upper row Scale / Chords / Progressions and
+  Scale's four layouts; encoders Root, Scale, Octave, then Layout
+  (Scale), voice leading / spread / strum (Chords), Style / Name (the bank
+  by style, then in order) and the voicing (Progressions). Its drawing
+  takes about 17 µs (Scale) and 20 µs (Progressions) a frame on an M-series
+  Mac at -o:speed (the state's `harmony_draw_us`; the first frames up to
+  ~150 µs). The window doesn't show this view: its own pads, the status
+  bar and the Key and Progressions dialogs already show the same.
+- **Window fixes:** the toolbar's play-mode box is as wide as
+  "Progressions"; a chord's symbol shrinks (to 9 pt) before it is cut on
+  a narrow pad.
