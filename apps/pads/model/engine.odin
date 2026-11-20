@@ -769,9 +769,10 @@ zone_of :: proc(pad: Pad, index: int, src: ^stream.Source, scale := 1.0) -> samp
 
 // Plays pad `index` (from the UI): `on` false releases it. A `keyboard`
 // hit plays the pad `pitch` semitones from its own pitch, as one note of
-// many (keyboard mode, chords); its release must give the same pitch.
-hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, keyboard := false) -> bool {
-	return rt.spsc_push(&e.router.queue, Hit{u8(index), on, velocity, pitch, keyboard})
+// many (the note modes, chords; `delay_ms` later for a strummed chord's);
+// its release must give the same pitch.
+hit :: proc(e: ^Engine, index: int, on: bool, velocity: f32 = 1, pitch: i8 = 0, keyboard := false, delay_ms: f32 = 0) -> bool {
+	return rt.spsc_push(&e.router.queue, Hit{u8(index), on, velocity, pitch, keyboard, delay_ms})
 }
 
 

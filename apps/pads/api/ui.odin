@@ -61,7 +61,7 @@ ui_state :: proc(api: ^Api) -> (Ui_State, Result) {
 // the Library for the device shown ("browse device"), the sequencer's
 // Automation tab ("automation"), or a dialog: Sequence Length
 // ("sequence length"), Quantize's settings ("quantize"), Convert
-// ("convert"), Keyboard mode's scale ("scale"), Settings ("settings"),
+// ("convert"), the Key dialog ("scale" or "key"), the Progressions dialog ("progressions"), Settings ("settings"),
 // Recording ("recording": the Sample control), Transport ("transport":
 // loop, count-in, the click, the time signature), Copy Bars ("copy
 // bars"), the current sequence's settings ("sequence settings"), launcher

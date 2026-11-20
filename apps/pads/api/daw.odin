@@ -7,6 +7,7 @@ import "core:math"
 import app "app:core"
 import abi "fsurf:abi"
 import fsurf "fsurf:host"
+import pm "../model"
 
 /*
 fsurf.daw (extern/fire-surface/include/fsurf_daw.h) over this API: what a
@@ -20,7 +21,7 @@ control surface written for any host sees of Pads.
   frequency on a log scale).
 - The launcher's columns are its lanes (A, B...), its rows the rows of
   sequences; a scene is a row.
-- Notes: Keyboard mode's scale and root.
+- Notes: the project key's scale and root.
 - Changes: the API's topics (transport, selection, mixer, launcher), and,
   once a frame, a look at what it doesn't report (the pads' names and
   colours, the devices, their parameters' values), for the topics a surface
@@ -136,11 +137,12 @@ param_from_unit :: proc(api: ^Api, ref: Param_Ref, u: f64) -> (f64, bool) {
 	return v, true
 }
 
+// Scale `s`'s notes as a mask from its root (bit 0 the root).
 @(private)
-SCALE_MASKS := [Scale]u32{
-	.Chromatic = 0xFFF, .Major = 0b1010_1011_0101, .Minor = 0b0101_1010_1101, .Dorian = 0b0110_1010_1101,
-	.Mixolydian = 0b0110_1011_0101, .Harmonic_Minor = 0b1001_1010_1101, .Major_Pentatonic = 0b0010_1001_0101,
-	.Minor_Pentatonic = 0b0100_1010_1001, .Blues = 0b0100_1110_1001,
+scale_mask :: proc(s: Scale) -> u32 {
+	m: u32
+	for x in pm.scale_steps(pm.Scale(s)) do m |= 1 << u32(x)
+	return m
 }
 
 @(private)
@@ -237,7 +239,7 @@ daw_get :: proc "c" (h: ^abi.Host, id: abi.Daw_Id, a, b: i32) -> f64 {
 		return f64(ps.root)
 	case .Scale_Mask:
 		ps, _ := perform_state(api)
-		return f64(SCALE_MASKS[ps.scale])
+		return f64(scale_mask(ps.scale))
 	}
 	return 0
 }
@@ -280,9 +282,7 @@ daw_get_text :: proc "c" (h: ^abi.Host, id: abi.Daw_Id, a, b: i32) -> cstring {
 		s, _ = sequence_name(api, slot)
 	case .Scale_Name:
 		ps, _ := perform_state(api)
-		names := [Scale]string{.Chromatic = "Chromatic", .Major = "Major", .Minor = "Minor", .Dorian = "Dorian", .Mixolydian = "Mixolydian",
-			.Harmonic_Minor = "Harmonic Minor", .Major_Pentatonic = "Major Pentatonic", .Minor_Pentatonic = "Minor Pentatonic", .Blues = "Blues"}
-		s = names[ps.scale]
+		s = string(pm.SCALE_NAMES[pm.Scale(ps.scale)])
 	case: return nil
 	}
 	n := min(len(s), len(api.daw.text) - 1)

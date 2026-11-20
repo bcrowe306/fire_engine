@@ -288,7 +288,7 @@ pad_struck :: proc(api: ^Api, pad: i64) -> (i64, Result) {
 }
 
 // A slicer's slices now: how many, the selected one (whose settings its
-// page shows; Keyboard mode's keys play them, from slice 1), and the one
+// page shows; Scale mode's keys play them, from slice 1), and the one
 // sounding (under its playhead; -1: none).
 Pad_Slices :: struct {
 	count:    i64,

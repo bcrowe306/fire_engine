@@ -17,13 +17,15 @@ Core :: struct {
 	rec:       pm.Recording, // recording a sample into a pad
 	sample_holding: int,     // the pad recording while it is held (-1: none); letting it go stops it
 	// How the pads play (see perform.odin).
-	selected:  int,          // the selected pad: what the keys, Keyboard and Velocity modes play, and the editors show
+	selected:  int,          // the selected pad: what the keys, the note modes and Velocity play, and the editors show
 	slice:     int,          // a slicer's selected slice (its page's settings, a controller's slice pads)
 	song_edit: Song_Edit,    // editing the song (the window's Song tab and a controller's: one state)
-	bank:      int,          // the bank the pads show (Keyboard mode: a range of notes)
+	bank:      int,          // the bank the pads show (Scale: a range of notes; Chords: of degrees)
 	play_mode: pm.Play_Mode,
-	keys:      pm.Keys,      // Keyboard mode's scale, root, octave and chord
-	pads_bank: int,          // the bank the pads were on before Keyboard mode moved it
+	keys:      pm.Keys,      // the project key, Scale's octave, the chords' voicing (saved with the project)
+	progression: pm.Progression, // the one Progressions mode plays (saved with the project)
+	voicing:   [pm.PADS]pm.Chord_Notes, // the last chord each pad played (voice leading leads the next from it)
+	pads_bank: int,          // the bank the pads were on before a note mode moved it
 	job:       Job,          // an export under way (export.odin)
 	browser:   pm.Browser,   // the Library's browser: favourites, the folder tree, the selection, the search
 	transport: Transport,    // the transport's own state (tap tempo, Stop pressed twice)
@@ -60,6 +62,7 @@ Transport :: struct {
 tick :: proc(c: ^Core, dt: f64) {
 	t := &c.transport
 	t.clock += dt
+	pm.set_key_mask(&c.m.engine, pm.key_mask(c.keys)) // (the arpeggiators' In key)
 	if pm.tap_start_due(&t.taps, t.clock) {
 		if _, playing := pm.timeline_beat(&c.m.engine); !playing do pm.play(&c.m.engine)
 	}

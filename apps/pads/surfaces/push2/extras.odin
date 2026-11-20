@@ -28,8 +28,8 @@ banner).
 - **Convert:** Pads' Convert dialog for the selected pad: Make a Slicer,
   Slice onto Pads, Into a Synth, Back to a Sampler (those that fit it),
   Resample Sequence, Resample Pad (onto the next empty pad).
-- **Scale:** Pads' Scale dialog: Keyboard mode's scale, root, octave and
-  chords on the encoders (lit while the pads are Keyboard mode).
+- **Scale:** Pads' Key dialog: the project key's scale, root, octave and
+  the chords' voicing on the encoders (lit while the pads are a note mode).
 - **Accent:** every pad hit at full velocity (lit while on); held long,
   only while held.
 - **Add Device:** Browse on the Library's effects for the selected pad.
@@ -87,7 +87,7 @@ extras_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, buttons: map[string]^k
 		case "scale":
 			perf: pa.Perform_State
 			if t != nil do t.perform_state(t.api, &perf)
-			kit.light_value(control, W_ON if perf.play_mode == .Keyboard || held else W_DIM)
+			kit.light_value(control, W_ON if (perf.play_mode == .Scale || perf.play_mode == .Chords || perf.play_mode == .Progressions) || held else W_DIM)
 		case "accent":
 			on: bool
 			if t != nil do t.perform_accent(t.api, &on)

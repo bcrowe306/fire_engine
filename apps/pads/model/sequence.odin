@@ -20,7 +20,7 @@ Seq_Note :: struct {
 	start:       f64, // beats from the sequence's start
 	length:      f64, // beats, > 0
 	pad:         u8,  // 0..PADS-1
-	pitch:       i8,  // semitones from the pad's own pitch (keyboard mode)
+	pitch:       i8,  // semitones from the pad's own pitch (the note modes)
 	velocity:    f32, // 0..1
 	probability: f32, // 0..1: the chance it plays each time round
 	muted:       bool, // kept in place, but silent

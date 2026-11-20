@@ -1839,6 +1839,14 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := perform_set_bank(api, bank)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_perform_set_chord_page":
+		page := remote_i64(args, "page", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := perform_set_chord_page(api, page)
+		remote_answer(out, r, nil, remote_error(api, r))
 	case "pads_perform_select_pad":
 		pad := remote_i64(args, "pad", &ok)
 		if !ok {
@@ -1881,6 +1889,14 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		val, r := perform_key(api, key)
 		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_perform_key_name":
+		key := remote_i64(args, "key", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := perform_key_name(api, key)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_perform_play_key":
 		key := remote_i64(args, "key", &ok)
 		on := remote_bool(args, "on", &ok)
@@ -1891,6 +1907,243 @@ remote_call :: proc(api: ^Api, line: string, out: ^strings.Builder) {
 		}
 		r := perform_play_key(api, key, on, velocity)
 		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_key_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_set":
+		root := remote_i64(args, "root", &ok)
+		scale := Scale(remote_enum(args, "scale", Scale_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := key_set(api, root, scale)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_key_set_octave":
+		octave := remote_i64(args, "octave", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := key_set_octave(api, octave)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_key_set_voicing":
+		voice_leading := remote_bool(args, "voice_leading", &ok)
+		spread := Spread(remote_enum(args, "spread", Spread_NAMES[:], &ok))
+		strum_ms := remote_f64(args, "strum_ms", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := key_set_voicing(api, voice_leading, spread, strum_ms)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_key_name":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_name(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_scale_name":
+		scale := Scale(remote_enum(args, "scale", Scale_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_scale_name(api, scale)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_has":
+		pitch := remote_i64(args, "pitch", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_has(api, pitch)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_chord":
+		degree := remote_i64(args, "degree", &ok)
+		variation := Variation(remote_enum(args, "variation", Variation_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_chord(api, degree, variation)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_chord_note":
+		degree := remote_i64(args, "degree", &ok)
+		variation := Variation(remote_enum(args, "variation", Variation_NAMES[:], &ok))
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_chord_note(api, degree, variation, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_key_chord_name":
+		degree := remote_i64(args, "degree", &ok)
+		variation := Variation(remote_enum(args, "variation", Variation_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := key_chord_name(api, degree, variation)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_state":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_state(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_name":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_name(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_set_name":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_set_name(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_numerals":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_numerals(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_chord":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_chord(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_chord_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_chord_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_insert":
+		index := remote_i64(args, "index", &ok)
+		degree := remote_i64(args, "degree", &ok)
+		variation := Variation(remote_enum(args, "variation", Variation_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_insert(api, index, degree, variation)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_set_chord":
+		index := remote_i64(args, "index", &ok)
+		degree := remote_i64(args, "degree", &ok)
+		variation := Variation(remote_enum(args, "variation", Variation_NAMES[:], &ok))
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_set_chord(api, index, degree, variation)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_remove":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_remove(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_move":
+		from := remote_i64(args, "from", &ok)
+		to := remote_i64(args, "to", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_move(api, from, to)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_bank_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_bank_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_bank_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_bank_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_bank_style":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_bank_style(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_bank_numerals":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_bank_numerals(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_use_bank":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_use_bank(api, index)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_mine_count":
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_mine_count(api)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_mine_name":
+		index := remote_i64(args, "index", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_mine_name(api, index)
+		remote_answer(out, r, val, remote_error(api, r))
+	case "pads_progression_use_mine":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		r := progression_use_mine(api, name)
+		remote_answer(out, r, nil, remote_error(api, r))
+	case "pads_progression_save":
+		name := remote_string(args, "name", &ok)
+		if !ok {
+			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
+			return
+		}
+		val, r := progression_save(api, name)
+		remote_answer(out, r, val, remote_error(api, r))
 	case "pads_project_state":
 		if !ok {
 			remote_answer(out, .Invalid_Argument, nil, "missing or wrong arguments")
@@ -3544,13 +3797,19 @@ Device_NAMES := [?]string{"Sound", "Insert", "Volume", "Pan", "Send", "Eq"}
 Param_Unit_NAMES := [?]string{"None", "Decibels", "Hertz", "Milliseconds", "Percent", "Semitones", "Ratio"}
 
 @(private)
-Play_Mode_NAMES := [?]string{"Pads", "Keyboard", "Velocity"}
+Play_Mode_NAMES := [?]string{"Pads", "Scale", "Velocity", "Chords", "Progressions"}
 
 @(private)
-Scale_NAMES := [?]string{"Chromatic", "Major", "Minor", "Dorian", "Mixolydian", "Harmonic_Minor", "Major_Pentatonic", "Minor_Pentatonic", "Blues"}
+Scale_NAMES := [?]string{"Chromatic", "Major", "Minor", "Dorian", "Mixolydian", "Harmonic_Minor", "Major_Pentatonic", "Minor_Pentatonic", "Blues", "Phrygian", "Lydian", "Locrian", "Melodic_Minor", "Phrygian_Dominant", "Hungarian_Minor", "Whole_Tone", "Diminished_Half_Whole", "Diminished_Whole_Half", "In_Sen", "Hirajoshi"}
 
 @(private)
 Chord_NAMES := [?]string{"Off", "Triad", "Seventh", "Power"}
+
+@(private)
+Variation_NAMES := [?]string{"Triad", "Seventh", "Sus4", "Sus2", "Add9", "Sixth", "First_Inversion", "Second_Inversion"}
+
+@(private)
+Spread_NAMES := [?]string{"Close", "Open", "Drop_2"}
 
 @(private)
 Sampling_NAMES := [?]string{"Hold", "Arm", "Threshold", "Bars"}
@@ -3571,7 +3830,7 @@ Setting_Kind_NAMES := [?]string{"Bool", "Int", "Number", "Choice", "Text"}
 Setting_Group_NAMES := [?]string{"Appearance", "Audio", "Midi", "Sync", "Recording", "Project", "Plugins"}
 
 @(private)
-Topic_NAMES := [?]string{"Transport", "History", "Selection", "Pad", "Mixer", "Sequence", "Song", "Launcher", "Project", "Settings", "Recording", "Ui"}
+Topic_NAMES := [?]string{"Transport", "History", "Selection", "Pad", "Mixer", "Sequence", "Song", "Launcher", "Project", "Settings", "Recording", "Ui", "Key"}
 
 @(private)
 Surface_Log_Level_NAMES := [?]string{"Debug", "Info", "Warning", "Error"}
@@ -3639,6 +3898,7 @@ remote_struct_Midi_Fx :: proc(args: json.Object, name: string, ok: ^bool) -> Mid
 	v.arp_octaves = remote_i64_or(obj, "arp_octaves", 0, ok)
 	v.arp_gate = remote_f32_or(obj, "arp_gate", 0, ok)
 	v.arp_latch = remote_bool_or(obj, "arp_latch", false, ok)
+	v.arp_in_key = remote_bool_or(obj, "arp_in_key", false, ok)
 	return v
 }
 
@@ -4017,12 +4277,43 @@ REMOTE_METHODS := [?]string{
 	"pads_perform_set_note_repeat",
 	"pads_perform_set_play_mode",
 	"pads_perform_set_bank",
+	"pads_perform_set_chord_page",
 	"pads_perform_select_pad",
 	"pads_perform_set_accent",
 	"pads_perform_accent",
 	"pads_perform_set_keys",
 	"pads_perform_key",
+	"pads_perform_key_name",
 	"pads_perform_play_key",
+	"pads_key_state",
+	"pads_key_set",
+	"pads_key_set_octave",
+	"pads_key_set_voicing",
+	"pads_key_name",
+	"pads_key_scale_name",
+	"pads_key_has",
+	"pads_key_chord",
+	"pads_key_chord_note",
+	"pads_key_chord_name",
+	"pads_progression_state",
+	"pads_progression_name",
+	"pads_progression_set_name",
+	"pads_progression_numerals",
+	"pads_progression_chord",
+	"pads_progression_chord_name",
+	"pads_progression_insert",
+	"pads_progression_set_chord",
+	"pads_progression_remove",
+	"pads_progression_move",
+	"pads_progression_bank_count",
+	"pads_progression_bank_name",
+	"pads_progression_bank_style",
+	"pads_progression_bank_numerals",
+	"pads_progression_use_bank",
+	"pads_progression_mine_count",
+	"pads_progression_mine_name",
+	"pads_progression_use_mine",
+	"pads_progression_save",
 	"pads_project_state",
 	"pads_project_dir",
 	"pads_project_name",

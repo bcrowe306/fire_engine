@@ -1753,7 +1753,7 @@ Turns the toolbar's note repeat on or off (a controller's Repeat: held, on while
 perform_set_play_mode :: proc(api: ^Api, mode: Play_Mode) -> Result
 ```
 
-Plays the pads as `mode` (the pads held let go first; Keyboard opens on the bank holding the pad's own note).
+Plays the pads as `mode` (the pads held let go first; Scale opens on the bank holding the pad's own note, Chords and Progressions on bank A; Progressions with no progression in use takes the bank's first).
 
 ### perform_set_bank
 
@@ -1762,6 +1762,14 @@ perform_set_bank :: proc(api: ^Api, bank: i64) -> Result
 ```
 
 Shows bank `bank` (0..7) of the pads.
+
+### perform_set_chord_page
+
+```odin
+perform_set_chord_page :: proc(api: ^Api, page: i64) -> Result
+```
+
+Chords mode's rows: `page` 0 the triads, 7ths, sus4s and sus2s (from the bottom), 1 the add9s, 6ths, first and second inversions. Saved with the project.
 
 ### perform_select_pad
 
@@ -1793,7 +1801,7 @@ Whether every pad hit plays at full velocity.
 perform_set_keys :: proc(api: ^Api, scale: Scale, root: i64, octave: i64, chord: Chord) -> Result
 ```
 
-Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with the project (not an edit).
+The project key's scale and root (0..11), Scale mode's octave (-3..3), and `chord`: Off plays Chords mode as Scale, any other Scale mode as Chords (what Keyboard mode's chords became); else the mode stays. Saved with the project (not an edit). See `key_set`.
 
 ### perform_key
 
@@ -1801,7 +1809,15 @@ Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with the pr
 perform_key :: proc(api: ^Api, key: i64) -> (Perform_Key, Result)
 ```
 
-Keyboard mode's key `key` (0..127: 0 the shown bank's first pad, 16 the next bank's first...): the note it plays on the selected pad, whatever the play mode now.
+The note modes' key `key` (0..127: 0 the shown bank's first pad, 16 the next bank's first...): what it plays on the selected pad in the play mode now (Scale's note, Chords' or Progressions' chord; Pads and Velocity: as Scale).
+
+### perform_key_name
+
+```odin
+perform_key_name :: proc(api: ^Api, key: i64) -> (string, Result)
+```
+
+What the note modes' key `key` shows: a note ("C3"), a slice ("Slice 2"), or a chord ("ii7 Dm7"; "–" if the key can't make it). Temporary.
 
 ### perform_play_key
 
@@ -1809,7 +1825,239 @@ Keyboard mode's key `key` (0..127: 0 the shown bank's first pad, 16 the next ban
 perform_play_key :: proc(api: ^Api, key: i64, on: bool, velocity: f32 = 1) -> Result
 ```
 
-Plays Keyboard mode's key `key` (as `perform_key` counts them) on the selected pad, at `velocity` (0..1], or lets it go (`on` false), as pressing that pad of Pads' grid in Keyboard mode does: a chord's notes together. A key out of the pad's range plays nothing. What a key played is what its release ends, whatever changed between.
+Plays the note modes' key `key` (as `perform_key` counts them) on the selected pad, at `velocity` (0..1], or lets it go (`on` false), as pressing that pad of Pads' grid does: a chord's notes strummed as the key's voicing says. A key out of the pad's range plays nothing. What a key played is what its release ends, whatever changed between.
+
+### key_state
+
+```odin
+key_state :: proc(api: ^Api) -> (Key_Info, Result)
+```
+
+The project key now.
+
+### key_set
+
+```odin
+key_set :: proc(api: ^Api, root: i64, scale: Scale) -> Result
+```
+
+Sets the project key: its root (0..11, semitones above C) and scale. Saved with the project (not an edit); the Key topic reports it.
+
+### key_set_octave
+
+```odin
+key_set_octave :: proc(api: ^Api, octave: i64) -> Result
+```
+
+Scale mode's octave, -3..3 (Chords and Progressions too: where their chords are built).
+
+### key_set_voicing
+
+```odin
+key_set_voicing :: proc(api: ^Api, voice_leading: bool, spread: Spread, strum_ms: f64) -> Result
+```
+
+How Chords and Progressions voice their chords: voice leading (each chord's inversion the closest to the chord the pad played before), the spread, and the strum (0..100 ms between notes, low first).
+
+### key_name
+
+```odin
+key_name :: proc(api: ^Api) -> (string, Result)
+```
+
+The project key's name: "C major", "F# dorian". Temporary.
+
+### key_scale_name
+
+```odin
+key_scale_name :: proc(api: ^Api, scale: Scale) -> (string, Result)
+```
+
+Scale `scale`'s name, as the window shows it.
+
+### key_has
+
+```odin
+key_has :: proc(api: ^Api, pitch: i64) -> (bool, Result)
+```
+
+Whether `pitch` (semitones from a pad's own note, which is a C) is in the project key (the piano roll shades those rows).
+
+### key_chord
+
+```odin
+key_chord :: proc(api: ^Api, degree: i64, variation: Variation) -> (Key_Chord, Result)
+```
+
+Chord `variation` on degree `degree` (0 the key's root; past its notes, octaves up) of the project key, made of the key's own notes.
+
+### key_chord_note
+
+```odin
+key_chord_note :: proc(api: ^Api, degree: i64, variation: Variation, index: i64) -> (i64, Result)
+```
+
+Note `index` (0 the lowest) of `key_chord(degree, variation)`: its pitch from a pad's own note.
+
+### key_chord_name
+
+```odin
+key_chord_name :: proc(api: ^Api, degree: i64, variation: Variation) -> (string, Result)
+```
+
+The name of `key_chord(degree, variation)`: its numeral and symbol, "ii7 Dm7" ("–" if the key can't make it). Temporary.
+
+### progression_state
+
+```odin
+progression_state :: proc(api: ^Api) -> (Progression_State, Result)
+```
+
+The progression in use.
+
+### progression_name
+
+```odin
+progression_name :: proc(api: ^Api) -> (string, Result)
+```
+
+The progression in use's name. Temporary.
+
+### progression_set_name
+
+```odin
+progression_set_name :: proc(api: ^Api, name: string) -> Result
+```
+
+Names the progression in use.
+
+### progression_numerals
+
+```odin
+progression_numerals :: proc(api: ^Api) -> (string, Result)
+```
+
+The progression's numerals, "I V vi IV" (as the bank writes them, in lower case where the key's triad there is minor or diminished; the variations marked 7, sus4, sus2, add9, 6, /3, /5). Temporary.
+
+### progression_chord
+
+```odin
+progression_chord :: proc(api: ^Api, index: i64) -> (Progression_Chord, Result)
+```
+
+Chord `index` of the progression in use.
+
+### progression_chord_name
+
+```odin
+progression_chord_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Chord `index` of the progression in use as the key makes it, "ii7 Dm7" ("–" if it can't). Temporary.
+
+### progression_insert
+
+```odin
+progression_insert :: proc(api: ^Api, index: i64, degree: i64, variation: Variation) -> Result
+```
+
+Puts a chord (`degree` 0..48 of the key, `variation`) into the progression in use at `index` (0..its count: the count adds it at the end). Unsupported when it has the most it can.
+
+### progression_set_chord
+
+```odin
+progression_set_chord :: proc(api: ^Api, index: i64, degree: i64, variation: Variation) -> Result
+```
+
+Changes chord `index` of the progression in use.
+
+### progression_remove
+
+```odin
+progression_remove :: proc(api: ^Api, index: i64) -> Result
+```
+
+Takes chord `index` out of the progression in use.
+
+### progression_move
+
+```odin
+progression_move :: proc(api: ^Api, from: i64, to: i64) -> Result
+```
+
+Moves chord `from` of the progression in use to `to` (the others close up around it).
+
+### progression_bank_count
+
+```odin
+progression_bank_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+The built-in progressions: how many.
+
+### progression_bank_name
+
+```odin
+progression_bank_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Built-in progression `index`'s name.
+
+### progression_bank_style
+
+```odin
+progression_bank_style :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Built-in progression `index`'s style ("Pop", "Jazz", "Dark"...).
+
+### progression_bank_numerals
+
+```odin
+progression_bank_numerals :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Built-in progression `index`'s numerals ("I V vi IV").
+
+### progression_use_bank
+
+```odin
+progression_use_bank :: proc(api: ^Api, index: i64) -> Result
+```
+
+Uses built-in progression `index` (a copy: editing it leaves the bank as it is).
+
+### progression_mine_count
+
+```odin
+progression_mine_count :: proc(api: ^Api) -> (i64, Result)
+```
+
+Your progressions (saved with `progression_save`): how many.
+
+### progression_mine_name
+
+```odin
+progression_mine_name :: proc(api: ^Api, index: i64) -> (string, Result)
+```
+
+Your progression `index` (in name order): its name. Temporary.
+
+### progression_use_mine
+
+```odin
+progression_use_mine :: proc(api: ^Api, name: string) -> Result
+```
+
+Uses your progression `name`. Not_Found if there is none; Io_Error if it can't be read.
+
+### progression_save
+
+```odin
+progression_save :: proc(api: ^Api, name: string) -> (string, Result)
+```
+
+Saves the progression in use as yours, called `name` (it is named so too): the file's path (in the settings folder; one of the same name is replaced). Temporary.
 
 ## Project: new, open, save, templates, clean up
 
@@ -3211,7 +3459,7 @@ The window now.
 ui_show :: proc(api: ^Api, name: string) -> Result
 ```
 
-Shows view, panel or device page `name`: a view ("sequence", "song", "mixer", "perform"), the pads ("pads"), the Library ("browser", "devices"), or the selected pad's page ("sample", "global", "env", "filter", "pitch", "lfo", "effect", "eq", "midi"; "device": its chain as it was), performance effect N ("fx 1".."fx 16") in the device panel, a Library category ("library Effects", "library This Project"), the Library for the device shown ("browse device"), the sequencer's Automation tab ("automation"), or a dialog: Sequence Length ("sequence length"), Quantize's settings ("quantize"), Convert ("convert"), Keyboard mode's scale ("scale"), Settings ("settings"), Recording ("recording": the Sample control), Transport ("transport": loop, count-in, the click, the time signature), Copy Bars ("copy bars"), the current sequence's settings ("sequence settings"), launcher lane N's ("lane N", from 1). Not_Found for another name.
+Shows view, panel or device page `name`: a view ("sequence", "song", "mixer", "perform"), the pads ("pads"), the Library ("browser", "devices"), or the selected pad's page ("sample", "global", "env", "filter", "pitch", "lfo", "effect", "eq", "midi"; "device": its chain as it was), performance effect N ("fx 1".."fx 16") in the device panel, a Library category ("library Effects", "library This Project"), the Library for the device shown ("browse device"), the sequencer's Automation tab ("automation"), or a dialog: Sequence Length ("sequence length"), Quantize's settings ("quantize"), Convert ("convert"), the Key dialog ("scale" or "key"), the Progressions dialog ("progressions"), Settings ("settings"), Recording ("recording": the Sample control), Transport ("transport": loop, count-in, the click, the time signature), Copy Bars ("copy bars"), the current sequence's settings ("sequence settings"), launcher lane N's ("lane N", from 1). Not_Found for another name.
 
 ### ui_library_load
 
@@ -3487,21 +3735,33 @@ What a parameter's values are in.
 
 ### Play_Mode
 
-How the pads play.
+How the pads play. (Values kept: new modes are appended.)
 
-`Pads`, `Keyboard`, `Velocity`
+`Pads`, `Scale`, `Velocity`, `Chords`, `Progressions`
 
 ### Scale
 
-Keyboard mode's scales.
+The project key's scales (values kept: new ones are appended).
 
-`Chromatic`, `Major`, `Minor`, `Dorian`, `Mixolydian`, `Harmonic_Minor`, `Major_Pentatonic`, `Minor_Pentatonic`, `Blues`
+`Chromatic`, `Major`, `Minor`, `Dorian`, `Mixolydian`, `Harmonic_Minor`, `Major_Pentatonic`, `Minor_Pentatonic`, `Blues`, `Phrygian`, `Lydian`, `Locrian`, `Melodic_Minor`, `Phrygian_Dominant`, `Hungarian_Minor`, `Whole_Tone`, `Diminished_Half_Whole`, `Diminished_Whole_Half`, `In_Sen`, `Hirajoshi`
 
 ### Chord
 
-Keyboard mode's chords (one pad, several notes).
+Scale mode's chords, as `perform_set_keys` and `Perform_State` had them (Keyboard mode's setting before Chords mode): Off is Scale mode, any other Chords mode.
 
 `Off`, `Triad`, `Seventh`, `Power`
+
+### Variation
+
+The chords each degree of the key has (Chords mode's rows, from the bottom).
+
+`Triad`, `Seventh`, `Sus4`, `Sus2`, `Add9`, `Sixth`, `First_Inversion`, `Second_Inversion`
+
+### Spread
+
+How a chord's notes are spread.
+
+`Close`, `Open`, `Drop_2`
 
 ### Sampling
 
@@ -3543,7 +3803,7 @@ What part of Pads a setting changes (applied when it is set: the audio device re
 
 What a subscriber hears about. Topics whose module isn't built yet answer `subscribe` with `Unsupported`.
 
-`Transport`, `History`, `Selection`, `Pad`, `Mixer`, `Sequence`, `Song`, `Launcher`, `Project`, `Settings`, `Recording`, `Ui`
+`Transport`, `History`, `Selection`, `Pad`, `Mixer`, `Sequence`, `Song`, `Launcher`, `Project`, `Settings`, `Recording`, `Ui`, `Key`
 
 ### Surface_Log_Level
 
@@ -3950,7 +4210,7 @@ Pad `pad`'s sample region: where it starts and ends, in frames of its sample (`f
 
 ### Pad_Slices
 
-A slicer's slices now: how many, the selected one (whose settings its page shows; Keyboard mode's keys play them, from slice 1), and the one sounding (under its playhead; -1: none).
+A slicer's slices now: how many, the selected one (whose settings its page shows; Scale mode's keys play them, from slice 1), and the one sounding (under its playhead; -1: none).
 
 | Field | Type | |
 |---|---|---|
@@ -4002,22 +4262,67 @@ How the pads play now.
 | Field | Type | |
 |---|---|---|
 | `play_mode` | `Play_Mode` |  |
-| `bank` | `i64` | 0..7 (A..H; Keyboard mode: a range of notes) |
-| `selected` | `i64` | the selected pad: what Keyboard and Velocity play, the keys play, the editors show |
+| `bank` | `i64` | 0..7 (A..H; Scale: a range of notes; Chords: of degrees, four a bank) |
+| `selected` | `i64` | the selected pad: what the note modes and Velocity play, the keys play, the editors show |
 | `scale` | `Scale` |  |
 | `root` | `i64` | 0..11, semitones above C |
 | `octave` | `i64` | -3..3 |
-| `chord` | `Chord` |  |
+| `chord` | `Chord` | Triad in Chords mode, else Off (see `Chord`) |
+| `chord_page` | `i64` | Chords mode: 0 the rows triad..sus2, 1 add9..2nd inversion |
 
 ### Perform_Key
 
-One of Keyboard mode's keys: what pressing it plays.
+One of the note modes' keys: what pressing it plays.
 
 | Field | Type | |
 |---|---|---|
-| `pitch` | `i64` | semitones from the selected pad's own note (a chord's first; a slicer's: its slice) |
-| `root` | `bool` | the scale's root (a slicer's: its first slice) |
-| `playable` | `bool` | within what a pad can be pitched to (else it plays nothing) |
+| `pitch` | `i64` | semitones from the selected pad's own note (a chord's lowest; a slicer's: its slice) |
+| `root` | `bool` | the key's root (a chord: built on it; a slicer's: its first slice) |
+| `playable` | `bool` | within what a pad can be pitched to, and a chord the key can make (else it plays nothing) |
+| `count` | `i64` | notes it plays (a chord's several) |
+| `chord` | `bool` | a chord of Chords or Progressions mode |
+
+### Key_Info
+
+The project key and how the chords play it.
+
+| Field | Type | |
+|---|---|---|
+| `root` | `i64` | 0..11, semitones above C |
+| `scale` | `Scale` |  |
+| `octave` | `i64` | Scale mode's: -3..3 |
+| `notes` | `i64` | the scale's notes an octave (its degrees) |
+| `voice_leading` | `bool` | each chord's inversion the closest to the one before |
+| `spread` | `Spread` |  |
+| `strum_ms` | `f64` | 0..100 between a chord's notes, low first |
+
+### Key_Chord
+
+A chord of the key, as built (before voice leading and spread).
+
+| Field | Type | |
+|---|---|---|
+| `ok` | `bool` | the key has its notes (else it is none: "–") |
+| `root` | `i64` | its root's pitch, from a pad's own note |
+| `count` | `i64` | its notes |
+
+### Progression_State
+
+The progression in use (Progressions mode's), saved with the project.
+
+| Field | Type | |
+|---|---|---|
+| `count` | `i64` | its chords |
+| `max` | `i64` | the most it can have (16) |
+
+### Progression_Chord
+
+A chord of a progression.
+
+| Field | Type | |
+|---|---|---|
+| `degree` | `i64` | 0 the key's root; past its notes, octaves up |
+| `variation` | `Variation` |  |
 
 ### Project_State
 
@@ -4091,7 +4396,7 @@ A note.
 | `start` | `f64` | beats from the sequence's top |
 | `length` | `f64` | beats (> 0) |
 | `pad` | `i64` | the pad it plays |
-| `pitch` | `i64` | semitones from the pad's own (-64..63; keyboard mode) |
+| `pitch` | `i64` | semitones from the pad's own (-64..63; the note modes) |
 | `velocity` | `f32` | 0..1 |
 | `probability` | `f32` | 0..1: its chance each time round |
 | `muted` | `bool` | kept, silent |
@@ -4136,6 +4441,7 @@ A pad's note repeat and arpeggiator (its MIDI effects).
 | `arp_octaves` | `i64` | 1..4 |
 | `arp_gate` | `f32` | 0.05..1 |
 | `arp_latch` | `bool` | it goes on after the keys are let go |
+| `arp_in_key` | `bool` | its notes (octaves too) snapped to the project key |
 
 ### Input_Quantize
 

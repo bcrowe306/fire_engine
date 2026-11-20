@@ -265,7 +265,8 @@ Monitor :: enum u8 {
 // pad selected, the sequence pads' bank.
 View_State :: struct {
 	play_mode: Play_Mode,
-	keys:      Keys,
+	keys:      Keys, // the project key, Scale's octave, the chords' voicing
+	progression: Progression, // the one Progressions mode plays
 	bank:      int,
 	selected:  int,
 	seq_bank:  int, // (before v37: the sequence pads' bank; now `seq_row0 / 4`)
@@ -377,6 +378,7 @@ project_init :: proc(p: ^Project, dir: string) {
 	copy(p.arrangements[0].name[:], "Song")
 	for &x in p.perf_intensity do x = 1
 	p.perform = DEFAULT_MIDI_FX
+	p.view.keys.scale = .Major // (a new project's key: C major)
 	for &k, key in p.midi_map do k = i16(key) if key < PADS else -1 // note N plays pad N (A1 = 0)
 	app.store_init(&p.samples)
 	app.store_init(&p.wave_docs)

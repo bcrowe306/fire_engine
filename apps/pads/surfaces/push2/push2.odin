@@ -14,7 +14,7 @@ host-neutral example it grew from.
   the device in its chain; the display shows the device as Pads draws it
   (its envelope, filter, pitch or LFOs, whichever the bank is about).
 - Touching an encoder lights its column on the display, its value large.
-- Pads: Note (Pads' Keyboard mode: the selected pad's keys), Layout
+- Pads: Note (Pads' Scale mode, and its Chords and Progressions: the selected pad's keys), Layout
   (drum pads), Session (Pads' pads in their colours, or its sequences
   with the launcher on the display, each press of Session the other:
   grid.odin); the arrows page the display's view (◀ ▶) and step its
@@ -131,7 +131,7 @@ Push2 :: struct {
 	pads_api:      ^pa.Table_V1, // fire.pads (nil in a host without it)
 	encoders:      [8]^kit.Control,
 	upper, lower:  [8]^kit.Control,
-	key_grid:      ^Grid, // Note: Pads' Keyboard mode
+	key_grid:      ^Grid, // Note: Pads' Scale mode (and Chords, Progressions)
 	device:        ^kit.Device,
 	volumes, pans: ^kit.Mixer,
 	sends:         [MIX_SENDS]^kit.Mixer,
@@ -521,7 +521,8 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "pads"))
 	p.pad_modes.on_change = proc(m: ^kit.Modes, from, to: int) {
 		p := (^Push2)(m.cs.user)
-		// Note is Pads' Keyboard mode (the window's grid too); leaving it,
+		// Note is Pads' Scale mode (Chords and Progressions too, until Push 2
+		// has their grids: its keys play theirs); leaving it,
 		// Pads mode again.
 		if t := p.pads_api; t != nil {
 			perf: pa.Perform_State
@@ -529,8 +530,8 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 			note := kit.modes_current(m) == "note"
 			velocity := kit.modes_current(m) == "velocity"
 			switch {
-			case note && perf.play_mode != .Keyboard:
-				t.perform_set_play_mode(t.api, .Keyboard)
+			case note && !(perf.play_mode == .Scale || perf.play_mode == .Chords || perf.play_mode == .Progressions):
+				t.perform_set_play_mode(t.api, .Scale)
 				app_show(p, "pads")
 			case velocity && perf.play_mode != .Velocity:
 				t.perform_set_play_mode(t.api, .Velocity)

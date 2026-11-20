@@ -63,7 +63,7 @@ Note :: struct {
 	start:       f64,  // beats from the sequence's top
 	length:      f64,  // beats (> 0)
 	pad:         i64,  // the pad it plays
-	pitch:       i64,  // semitones from the pad's own (-64..63; keyboard mode)
+	pitch:       i64,  // semitones from the pad's own (-64..63; the note modes)
 	velocity:    f32,  // 0..1
 	probability: f32,  // 0..1: its chance each time round
 	muted:       bool, // kept, silent
@@ -99,6 +99,7 @@ Midi_Fx :: struct {
 	arp_octaves: i64,  // 1..4
 	arp_gate:    f32,  // 0.05..1
 	arp_latch:   bool, // it goes on after the keys are let go
+	arp_in_key:  bool, // its notes (octaves too) snapped to the project key
 }
 
 // The sequence shown and played (Pattern).
@@ -447,7 +448,7 @@ sequence_midi_fx :: proc(api: ^Api, pad: i64) -> (Midi_Fx, Result) {
 // A pad's MIDI effects as the API says them (a gate of 0: 0.5, its default).
 midi_fx_of :: proc(f: pm.Perform) -> Midi_Fx {
 	return {repeat = f.repeat_on, repeat_rate = Grid(f.repeat.rate), repeat_gate = f.repeat.gate if f.repeat.gate > 0 else 0.5, arp = f.arp_on, arp_mode = Arp_Mode(f.arp.mode),
-		arp_rate = Grid(f.arp.rate), arp_octaves = i64(max(f.arp.octaves, 1)), arp_gate = f.arp.gate if f.arp.gate > 0 else 0.5, arp_latch = f.arp.latch}
+		arp_rate = Grid(f.arp.rate), arp_octaves = i64(max(f.arp.octaves, 1)), arp_gate = f.arp.gate if f.arp.gate > 0 else 0.5, arp_latch = f.arp.latch, arp_in_key = f.arp_in_key}
 }
 
 // Sets pad `pad`'s note repeat and arpeggiator, undoably.
@@ -463,10 +464,11 @@ sequence_set_midi_fx :: proc(api: ^Api, pad: i64, fx: Midi_Fx) -> Result {
 	f.repeat_on, f.repeat.rate, f.repeat.gate = fx.repeat, pf.Rate(fx.repeat_rate), fx.repeat_gate
 	f.arp_on, f.arp.mode, f.arp.rate = fx.arp, pf.Arp_Mode(fx.arp_mode), pf.Rate(fx.arp_rate)
 	f.arp.octaves, f.arp.gate, f.arp.latch = int(fx.arp_octaves), fx.arp_gate, fx.arp_latch
+	f.arp_in_key = fx.arp_in_key
 	// The step is named for what changed: the note repeat, the arpeggiator.
 	old := p.midi_fx
 	name := "MIDI Effect"
-	if f.arp_on == old.arp_on && f.arp == old.arp do name = "Note Repeat"
+	if f.arp_on == old.arp_on && f.arp == old.arp && f.arp_in_key == old.arp_in_key do name = "Note Repeat"
 	else if f.repeat_on == old.repeat_on && f.repeat == old.repeat do name = "Arpeggiator"
 	pm.set_midi_fx(&api.core.m, int(pad), f, name)
 	edited(api)

@@ -28,7 +28,19 @@ Hit :: struct {
 	on:       bool,
 	velocity: f32,
 	pitch:    i8,   // semitones, for a keyboard hit
-	keyboard: bool, // one of many notes of the pad (keyboard mode)
+	keyboard: bool, // one of many notes of the pad (the note modes)
+	delay_ms: f32,  // played this long after it arrives (a strummed chord's notes), 0..1000
+}
+
+// Strummed notes waiting for their time, at most.
+STRUM_PENDING :: 128
+
+// A strummed note waiting: its hit, and the frame it plays at (counted
+// from the router's first block).
+@(private)
+Strum_Note :: struct {
+	hit: Hit,
+	due: i64,
 }
 
 // A note the router heard live, back to the UI (for recording and MIDI
@@ -49,6 +61,7 @@ Taken :: struct {
 Perform :: struct {
 	arp_on:    bool,
 	arp:       pf.Arp_Settings,
+	arp_in_key: bool, // the arpeggiator's notes (octaves too) snapped to the project key
 	repeat_on: bool,
 	repeat:    pf.Repeat_Settings,
 }
@@ -121,12 +134,22 @@ Router :: struct {
 	silence:  u32, // atomic: raised to silence every voice (`silence_all`)
 	silenced: u32, // audio thread: the last `silence` acted on
 	struck:   [PADS]u32, // atomic: times each pad has sounded (the UI lights pads when these move)
+	sample_rate: f64,    // as prepared (strum's milliseconds in frames)
+	frame:    i64,       // audio thread: frames processed so far (when strummed notes are due)
+	pending:  [STRUM_PENDING]Strum_Note, // audio thread: strummed notes waiting, in order
+	pending_count: int,
+	key_mask: u16,       // atomic: the project key's pitch classes (an arpeggiator's In key snaps to them)
+	snapped:  [128]u8,   // audio thread: the key an In key note-on went to, by the key it came as
+	snapped_on: [128]bool,
 }
 
 @(private)
 router_vtable := fc.Node_VTable {
 	name = "pads.router",
-	prepare = proc(self: rawptr, cfg: fc.Prepare_Config, a: mem.Allocator) -> fc.Error { return .None },
+	prepare = proc(self: rawptr, cfg: fc.Prepare_Config, a: mem.Allocator) -> fc.Error {
+		(^Router)(self).sample_rate = cfg.sample_rate
+		return .None
+	},
 	process = router_process,
 	destroy = proc(self: rawptr, a: mem.Allocator) {
 		r := (^Router)(self)
@@ -137,7 +160,8 @@ router_vtable := fc.Node_VTable {
 	},
 }
 
-@(private)
+// A router on its own, as the engine makes it (for tests: its node and
+// itself; the node owns it).
 router_create :: proc(allocator := context.allocator) -> (fc.Node, ^Router) {
 	r := new(Router, allocator)
 	rt.spsc_init(&r.queue, 256, allocator)
@@ -188,19 +212,35 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 	// Live notes: the UI's hits (at the start of the block), then MIDI.
 	live := fc.Event_Writer{buffer = r.live[:]}
 	accent := intrinsics.atomic_load(&r.accent)
+	// (Strummed notes come later: each at its frame, through `pending`.)
+	block_end := r.frame + i64(ctx.frames)
+	late := false
 	for hit in rt.spsc_pop(&r.queue) {
 		h := hit
 		if int(h.pad) >= PADS do continue
 		if accent && h.on do h.velocity = 1
-		if h.keyboard {
-			key := u8(clamp(KEYS_CENTER + int(h.pitch), 0, 127))
-			r.keys_pad[key] = h.pad
-			fc.event_writer_push(&live, {0, note(h.on, KEYS_CHANNEL, key, h.velocity)})
-		} else {
-			fc.event_writer_push(&live, {0, note(h.on, 0, pad_key(int(h.pad)), h.velocity)})
+		if h.delay_ms > 0 && r.sample_rate > 0 && r.pending_count < STRUM_PENDING {
+			r.pending[r.pending_count] = {h, r.frame + i64(f64(min(h.delay_ms, 1000)) * r.sample_rate / 1000 + 0.5)}
+			r.pending_count += 1
+			continue
 		}
-		if r.capture do rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = -1, effected = pad_has_fx(r, int(h.pad))})
+		live_hit(r, &live, h, 0, beat, playing)
 	}
+	// The strummed notes due in this block, in order.
+	kept := 0
+	for i in 0 ..< r.pending_count {
+		x := r.pending[i]
+		if x.due < block_end {
+			offset := u32(max(x.due - r.frame, 0))
+			live_hit(r, &live, x.hit, offset, beat_at(ctx.transport, tl, offset), playing)
+			late = late || offset > 0
+		} else {
+			r.pending[kept] = x
+			kept += 1
+		}
+	}
+	r.pending_count = kept
+	r.frame = block_end
 	for e in ctx.events_in {
 		#partial switch v in e.payload {
 		case fc.Midi_Raw:
@@ -264,6 +304,7 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 
 	// Each pad's MIDI effect on its live notes (the others' pass), then the pads.
 	events := fc.event_writer_events(&live)
+	if late do sort_events(events) // (strummed notes among the MIDI)
 	if r.fx_count > 0 {
 		fx := fc.Event_Writer{buffer = r.effected[:]}
 		for e in events do if !pad_has_fx(r, live_pad(r, e)) do fc.event_writer_push(&fx, e)
@@ -275,6 +316,7 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			from := fx.count
 			if r.effects[pad].arp_on {
 				pf.arp_process(&r.arp[pad], ctx.transport, ctx.frames, mine, &fx, tl)
+				if r.effects[pad].arp_in_key do snap_in_key(r, fx.buffer[from:fx.count])
 			} else {
 				pf.repeat_process(&r.repeat[pad], ctx.transport, ctx.frames, mine, &fx, tl)
 			}
@@ -283,16 +325,7 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 			if r.capture do for e in fx.buffer[from:fx.count] do fx_taken(r, e, beat_at(ctx.transport, tl, e.offset), playing)
 		}
 		events = fc.event_writer_events(&fx)
-		// In time order again (each pad's came apart).
-		for i in 1 ..< len(events) {
-			x := events[i]
-			j := i
-			for j > 0 && events[j - 1].offset > x.offset {
-				events[j] = events[j - 1]
-				j -= 1
-			}
-			events[j] = x
-		}
+		sort_events(events) // (in time order again: each pad's came apart)
 	}
 	for e in events do sound(r, out, e)
 	// A slicer's sequencer note that came without a pitch: its first slice.
@@ -300,6 +333,71 @@ router_process :: proc(self: rawptr, ctx: ^fc.Process_Context) {
 		slice_on(r, i, w.offset, w.id, 0, w.velocity)
 		w.set = false
 	}
+}
+
+// [rt] Live hit `h` into the live notes at `offset` (and to the UI, to
+// record, at `beat`).
+@(private)
+live_hit :: proc "contextless" (r: ^Router, live: ^fc.Event_Writer, h: Hit, offset: u32, beat: f64, playing: bool) {
+	if h.keyboard {
+		key := u8(clamp(KEYS_CENTER + int(h.pitch), 0, 127))
+		r.keys_pad[key] = h.pad
+		fc.event_writer_push(live, {offset, note(h.on, KEYS_CHANNEL, key, h.velocity)})
+	} else {
+		fc.event_writer_push(live, {offset, note(h.on, 0, pad_key(int(h.pad)), h.velocity)})
+	}
+	if r.capture do rt.spsc_push(&r.taken, Taken{hit = h, beat = beat, playing = playing, midi_key = -1, effected = pad_has_fx(r, int(h.pad))})
+}
+
+// [rt] Events in time order (stable: what came first at a frame stays first).
+@(private)
+sort_events :: proc "contextless" (events: []fc.Event) {
+	for i in 1 ..< len(events) {
+		x := events[i]
+		j := i
+		for j > 0 && events[j - 1].offset > x.offset {
+			events[j] = events[j - 1]
+			j -= 1
+		}
+		events[j] = x
+	}
+}
+
+// [rt] An arpeggiator's notes snapped to the project key (In key): each
+// note-on to the key's nearest note, its note-off after it.
+@(private)
+snap_in_key :: proc "contextless" (r: ^Router, events: []fc.Event) {
+	mask := intrinsics.atomic_load(&r.key_mask)
+	for &e in events {
+		#partial switch v in e.payload {
+		case fc.Note_On:
+			if v.channel != KEYS_CHANNEL do continue
+			to := u8(clamp(KEYS_CENTER + snap_to_key(mask, int(v.key) - KEYS_CENTER), 0, 127))
+			r.snapped[v.key], r.snapped_on[v.key] = to, true
+			r.keys_pad[to] = r.keys_pad[v.key]
+			x := v
+			x.key = to
+			e.payload = x
+		case fc.Note_Off:
+			if v.channel != KEYS_CHANNEL || !r.snapped_on[v.key] do continue
+			x := v
+			x.key = r.snapped[v.key]
+			r.snapped_on[v.key] = false
+			e.payload = x
+		}
+	}
+}
+
+// Sends hit `h` to router `r` from the control thread (as `hit` does the
+// engine's; for a router on its own, in tests). False if its queue is full.
+router_push :: proc(r: ^Router, h: Hit) -> bool {
+	return rt.spsc_push(&r.queue, h)
+}
+
+// The project key's pitch classes, for the arpeggiators' In key (control
+// thread; the audio thread reads them).
+set_key_mask :: proc(e: ^Engine, mask: u16) {
+	if e.router != nil do intrinsics.atomic_store(&e.router.key_mask, mask)
 }
 
 // Events a track's device can be sent in one block.

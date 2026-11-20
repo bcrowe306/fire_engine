@@ -85,17 +85,15 @@ keyboard_hits_play_the_pad_pitched :: proc(t: ^testing.T) {
 	testing.expectf(t, kit.tone_amplitude(seg, SR, 880) > 0.2 && kit.tone_amplitude(seg, SR, 440) < 0.05, "880 Hz")
 	// Scales: the bottom-left pad is the root; major degrees; a triad.
 	k := pm.Keys{scale = .Major}
-	pitches: [4]int
-	testing.expect_value(t, pm.keyboard_pitches(k, 0, &pitches)[0], 0) // pad 1, bottom left
-	testing.expect_value(t, pm.keyboard_pitches(k, 1, &pitches)[0], 2)
-	testing.expect_value(t, pm.keyboard_pitches(k, 4, &pitches)[0], 7) // second row from the bottom: degree 4
+	testing.expect_value(t, pm.keyboard_pitch(k, 0), 0) // pad 1, bottom left
+	testing.expect_value(t, pm.keyboard_pitch(k, 1), 2)
+	testing.expect_value(t, pm.keyboard_pitch(k, 4), 7) // second row from the bottom: degree 4
 	testing.expect_value(t, pm.degree_pitch(k, 7), 12)
-	k.chord = .Triad
-	triad := pm.keyboard_pitches(k, 0, &pitches)
-	testing.expect(t, len(triad) == 3 && triad[1] == 4 && triad[2] == 7, "C major")
+	triad := pm.chord_build(k, 0, .Triad).notes
+	testing.expect(t, triad.count == 3 && triad.pitches[1] == 4 && triad.pitches[2] == 7, "C major")
 	k.root, k.scale = 9, .Minor // A minor
-	triad = pm.keyboard_pitches(k, 0, &pitches)
-	testing.expect(t, triad[0] == 9 && triad[1] == 12 && triad[2] == 16, "A minor")
+	triad = pm.chord_build(k, 0, .Triad).notes
+	testing.expect(t, triad.pitches[0] == 9 && triad.pitches[1] == 12 && triad.pitches[2] == 16, "A minor")
 	testing.expect_value(t, pm.velocity_of_pad(0), 1.0 / 16) // pad 1, bottom left: softest
 	testing.expect_value(t, pm.velocity_of_pad(15), 1)       // pad 16, top right
 }

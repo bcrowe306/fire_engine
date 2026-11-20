@@ -19,10 +19,11 @@ Topic :: enum i32 {
 	Settings,  // any setting
 	Recording,
 	Ui,
+	Key,       // the project key, the chords' voicing, the progression in use
 }
 
 // The topics this version reports.
-TOPICS :: bit_set[Topic]{.Transport, .History, .Selection, .Mixer, .Song, .Launcher, .Project, .Settings}
+TOPICS :: bit_set[Topic]{.Transport, .History, .Selection, .Mixer, .Song, .Launcher, .Project, .Settings, .Key}
 
 // Called on the control thread, once a frame at most, when `topic`
 // changed (`index`: which pad, bus...; -1 for the whole topic), with the
@@ -56,6 +57,7 @@ Seen :: struct {
 	song:      u64,
 	launcher:  u64,
 	selection: u64,
+	key:       u64,
 }
 
 // Calls `callback` with `user` when `topic` changes (`index`: only for
@@ -106,6 +108,7 @@ deliver_changes :: proc(api: ^Api) {
 	if now.song != api.last.song do changed += {.Song}
 	if now.launcher != api.last.launcher do changed += {.Launcher}
 	if now.selection != api.last.selection do changed += {.Selection}
+	if now.key != api.last.key do changed += {.Key}
 	changed &= watched
 	api.last = now
 	if changed == {} do return
@@ -133,6 +136,7 @@ seen_take :: proc(to, from: ^Seen, t: Topic) {
 	case .Song:      to.song = from.song
 	case .Launcher:  to.launcher = from.launcher
 	case .Selection: to.selection = from.selection
+	case .Key:       to.key = from.key
 	}
 }
 
@@ -184,6 +188,12 @@ seen_now :: proc(api: ^Api, topics: bit_set[Topic]) -> Seen {
 		x := struct{ sel, bank: int, mode: pm.Play_Mode, keys: pm.Keys }{c.selected, c.bank, c.play_mode, c.keys}
 		fnv(&h, mem.any_to_bytes(x))
 		s.selection = h
+	}
+	if .Key in topics {
+		h := fnv_init()
+		x := struct{ keys: pm.Keys, prog: pm.Progression }{c.keys, c.progression}
+		fnv(&h, mem.any_to_bytes(x))
+		s.key = h
 	}
 	return s
 }

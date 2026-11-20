@@ -201,8 +201,8 @@ dialog_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2) {
 			cur := kit.modes_current(p.pad_modes)
 			if perf.play_mode == .Velocity && cur != "velocity" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "velocity"))
 			else if perf.play_mode != .Velocity && cur == "velocity" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "pads"))
-			if perf.play_mode == .Keyboard && cur != "note" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "note"))
-			else if perf.play_mode != .Keyboard && cur == "note" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "pads"))
+			if (perf.play_mode == .Scale || perf.play_mode == .Chords || perf.play_mode == .Progressions) && cur != "note" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "note"))
+			else if !(perf.play_mode == .Scale || perf.play_mode == .Chords || perf.play_mode == .Progressions) && cur == "note" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "pads"))
 		}, c, c)
 	}
 	p.watch = watch

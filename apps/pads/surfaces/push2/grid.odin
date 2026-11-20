@@ -22,7 +22,7 @@ The pads in Session, two ways (Session switches between them):
   as the Performance tab does (an empty one is only gone to); with Shift,
   it is only gone to.
 
-Note, Pads' Keyboard mode: the grid is its keys, 0 at the bottom left
+Note, Pads' Scale mode (Chords and Progressions too): the grid is its keys, 0 at the bottom left
 along each row (64 of them: four of Pads' banks of keys), each playing the
 selected pad pitched as pressing that key in Pads does (its chord too).
 The scale's roots light in the pad's colour, the other keys dim white,

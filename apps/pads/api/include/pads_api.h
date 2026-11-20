@@ -183,15 +183,17 @@ enum {
 	PADS_PARAM_UNIT_RATIO = 6,
 };
 
-// How the pads play.
+// How the pads play. (Values kept: new modes are appended.)
 typedef int32_t Pads_Play_Mode;
 enum {
 	PADS_PLAY_MODE_PADS = 0,
-	PADS_PLAY_MODE_KEYBOARD = 1,
+	PADS_PLAY_MODE_SCALE = 1,
 	PADS_PLAY_MODE_VELOCITY = 2,
+	PADS_PLAY_MODE_CHORDS = 3,
+	PADS_PLAY_MODE_PROGRESSIONS = 4,
 };
 
-// Keyboard mode's scales.
+// The project key's scales (values kept: new ones are appended).
 typedef int32_t Pads_Scale;
 enum {
 	PADS_SCALE_CHROMATIC = 0,
@@ -203,15 +205,50 @@ enum {
 	PADS_SCALE_MAJOR_PENTATONIC = 6,
 	PADS_SCALE_MINOR_PENTATONIC = 7,
 	PADS_SCALE_BLUES = 8,
+	PADS_SCALE_PHRYGIAN = 9,
+	PADS_SCALE_LYDIAN = 10,
+	PADS_SCALE_LOCRIAN = 11,
+	PADS_SCALE_MELODIC_MINOR = 12,
+	PADS_SCALE_PHRYGIAN_DOMINANT = 13,
+	PADS_SCALE_HUNGARIAN_MINOR = 14,
+	PADS_SCALE_WHOLE_TONE = 15,
+	PADS_SCALE_DIMINISHED_HALF_WHOLE = 16,
+	PADS_SCALE_DIMINISHED_WHOLE_HALF = 17,
+	PADS_SCALE_IN_SEN = 18,
+	PADS_SCALE_HIRAJOSHI = 19,
 };
 
-// Keyboard mode's chords (one pad, several notes).
+// Scale mode's chords, as `perform_set_keys` and `Perform_State` had them
+// (Keyboard mode's setting before Chords mode): Off is Scale mode, any
+// other Chords mode.
 typedef int32_t Pads_Chord;
 enum {
 	PADS_CHORD_OFF = 0,
 	PADS_CHORD_TRIAD = 1,
 	PADS_CHORD_SEVENTH = 2,
 	PADS_CHORD_POWER = 3,
+};
+
+// The chords each degree of the key has (Chords mode's rows, from the
+// bottom).
+typedef int32_t Pads_Variation;
+enum {
+	PADS_VARIATION_TRIAD = 0,
+	PADS_VARIATION_SEVENTH = 1,
+	PADS_VARIATION_SUS4 = 2,
+	PADS_VARIATION_SUS2 = 3,
+	PADS_VARIATION_ADD9 = 4,
+	PADS_VARIATION_SIXTH = 5,
+	PADS_VARIATION_FIRST_INVERSION = 6,
+	PADS_VARIATION_SECOND_INVERSION = 7,
+};
+
+// How a chord's notes are spread.
+typedef int32_t Pads_Spread;
+enum {
+	PADS_SPREAD_CLOSE = 0,
+	PADS_SPREAD_OPEN = 1,
+	PADS_SPREAD_DROP_2 = 2,
 };
 
 // How a sample is recorded into a pad.
@@ -298,6 +335,7 @@ enum {
 	PADS_TOPIC_SETTINGS = 9,
 	PADS_TOPIC_RECORDING = 10,
 	PADS_TOPIC_UI = 11,
+	PADS_TOPIC_KEY = 12,
 };
 
 // How much a surface's log line says.
@@ -649,7 +687,7 @@ typedef struct Pads_Pad_Region {
 } Pads_Pad_Region;
 
 // A slicer's slices now: how many, the selected one (whose settings its
-// page shows; Keyboard mode's keys play them, from slice 1), and the one
+// page shows; Scale mode's keys play them, from slice 1), and the one
 // sounding (under its playhead; -1: none).
 typedef struct Pads_Pad_Slices {
 	int64_t count;
@@ -692,20 +730,53 @@ typedef struct Pads_Param_Info {
 // How the pads play now.
 typedef struct Pads_Perform_State {
 	Pads_Play_Mode play_mode;
-	int64_t bank; // 0..7 (A..H; Keyboard mode: a range of notes)
-	int64_t selected; // the selected pad: what Keyboard and Velocity play, the keys play, the editors show
+	int64_t bank; // 0..7 (A..H; Scale: a range of notes; Chords: of degrees, four a bank)
+	int64_t selected; // the selected pad: what the note modes and Velocity play, the keys play, the editors show
 	Pads_Scale scale;
 	int64_t root; // 0..11, semitones above C
 	int64_t octave; // -3..3
-	Pads_Chord chord;
+	Pads_Chord chord; // Triad in Chords mode, else Off (see `Chord`)
+	int64_t chord_page; // Chords mode: 0 the rows triad..sus2, 1 add9..2nd inversion
 } Pads_Perform_State;
 
-// One of Keyboard mode's keys: what pressing it plays.
+// One of the note modes' keys: what pressing it plays.
 typedef struct Pads_Perform_Key {
-	int64_t pitch; // semitones from the selected pad's own note (a chord's first; a slicer's: its slice)
-	bool root; // the scale's root (a slicer's: its first slice)
-	bool playable; // within what a pad can be pitched to (else it plays nothing)
+	int64_t pitch; // semitones from the selected pad's own note (a chord's lowest; a slicer's: its slice)
+	bool root; // the key's root (a chord: built on it; a slicer's: its first slice)
+	bool playable; // within what a pad can be pitched to, and a chord the key can make (else it plays nothing)
+	int64_t count; // notes it plays (a chord's several)
+	bool chord; // a chord of Chords or Progressions mode
 } Pads_Perform_Key;
+
+// The project key and how the chords play it.
+typedef struct Pads_Key_Info {
+	int64_t root; // 0..11, semitones above C
+	Pads_Scale scale;
+	int64_t octave; // Scale mode's: -3..3
+	int64_t notes; // the scale's notes an octave (its degrees)
+	bool voice_leading; // each chord's inversion the closest to the one before
+	Pads_Spread spread;
+	double strum_ms; // 0..100 between a chord's notes, low first
+} Pads_Key_Info;
+
+// A chord of the key, as built (before voice leading and spread).
+typedef struct Pads_Key_Chord {
+	bool ok; // the key has its notes (else it is none: "–")
+	int64_t root; // its root's pitch, from a pad's own note
+	int64_t count; // its notes
+} Pads_Key_Chord;
+
+// The progression in use (Progressions mode's), saved with the project.
+typedef struct Pads_Progression_State {
+	int64_t count; // its chords
+	int64_t max; // the most it can have (16)
+} Pads_Progression_State;
+
+// A chord of a progression.
+typedef struct Pads_Progression_Chord {
+	int64_t degree; // 0 the key's root; past its notes, octaves up
+	Pads_Variation variation;
+} Pads_Progression_Chord;
 
 // The project now: where it is, whether it changed, the lists beside it.
 typedef struct Pads_Project_State {
@@ -761,7 +832,7 @@ typedef struct Pads_Note {
 	double start; // beats from the sequence's top
 	double length; // beats (> 0)
 	int64_t pad; // the pad it plays
-	int64_t pitch; // semitones from the pad's own (-64..63; keyboard mode)
+	int64_t pitch; // semitones from the pad's own (-64..63; the note modes)
 	float velocity; // 0..1
 	float probability; // 0..1: its chance each time round
 	bool muted; // kept, silent
@@ -797,6 +868,7 @@ typedef struct Pads_Midi_Fx {
 	int64_t arp_octaves; // 1..4
 	float arp_gate; // 0.05..1
 	bool arp_latch; // it goes on after the keys are let go
+	bool arp_in_key; // its notes (octaves too) snapped to the project key
 } Pads_Midi_Fx;
 
 // Input quantize now: on, its grid, strength and swing (0..1).
@@ -1415,15 +1487,18 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*param_touch)(Pads_Api* api, Pads_Param_Ref ref, bool on);
 	// How the pads play now.
 	Pads_Result (*perform_state)(Pads_Api* api, Pads_Perform_State* out);
-	// Plays the pads as `mode` (the pads held let go first; Keyboard opens on
-	// the bank holding the pad's own note).
+	// Plays the pads as `mode` (the pads held let go first; Scale opens on
+	// the bank holding the pad's own note, Chords and Progressions on bank A;
+	// Progressions with no progression in use takes the bank's first).
 	Pads_Result (*perform_set_play_mode)(Pads_Api* api, Pads_Play_Mode mode);
 	// Shows bank `bank` (0..7) of the pads.
 	Pads_Result (*perform_set_bank)(Pads_Api* api, int64_t bank);
 	// Selects pad `pad` (in Pads mode, its bank shown).
 	Pads_Result (*perform_select_pad)(Pads_Api* api, int64_t pad);
-	// Keyboard mode's scale, root (0..11), octave (-3..3) and chord. Saved with
-	// the project (not an edit).
+	// The project key's scale and root (0..11), Scale mode's octave (-3..3),
+	// and `chord`: Off plays Chords mode as Scale, any other Scale mode as
+	// Chords (what Keyboard mode's chords became); else the mode stays. Saved
+	// with the project (not an edit). See `key_set`.
 	Pads_Result (*perform_set_keys)(Pads_Api* api, Pads_Scale scale, int64_t root, int64_t octave, Pads_Chord chord);
 	// The project now.
 	Pads_Result (*project_state)(Pads_Api* api, Pads_Project_State* out);
@@ -1747,7 +1822,7 @@ typedef struct Pads_Api_V1 {
 	// the Library for the device shown ("browse device"), the sequencer's
 	// Automation tab ("automation"), or a dialog: Sequence Length
 	// ("sequence length"), Quantize's settings ("quantize"), Convert
-	// ("convert"), Keyboard mode's scale ("scale"), Settings ("settings"),
+	// ("convert"), the Key dialog ("scale" or "key"), the Progressions dialog ("progressions"), Settings ("settings"),
 	// Recording ("recording": the Sample control), Transport ("transport":
 	// loop, count-in, the click, the time signature), Copy Bars ("copy
 	// bars"), the current sequence's settings ("sequence settings"), launcher
@@ -1874,15 +1949,16 @@ typedef struct Pads_Api_V1 {
 	Pads_Result (*ui_dialog)(Pads_Api* api, Pads_Dialog_State* out);
 	// The dialog's title ("" when none shows). Temporary.
 	Pads_Result (*ui_dialog_title)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
-	// Keyboard mode's key `key` (0..127: 0 the shown bank's first pad, 16 the
-	// next bank's first...): the note it plays on the selected pad, whatever the
-	// play mode now.
+	// The note modes' key `key` (0..127: 0 the shown bank's first pad, 16 the
+	// next bank's first...): what it plays on the selected pad in the play
+	// mode now (Scale's note, Chords' or Progressions' chord; Pads and
+	// Velocity: as Scale).
 	Pads_Result (*perform_key)(Pads_Api* api, int64_t key, Pads_Perform_Key* out);
-	// Plays Keyboard mode's key `key` (as `perform_key` counts them) on the
+	// Plays the note modes' key `key` (as `perform_key` counts them) on the
 	// selected pad, at `velocity` (0..1], or lets it go (`on` false), as
-	// pressing that pad of Pads' grid in Keyboard mode does: a chord's notes
-	// together. A key out of the pad's range plays nothing. What a key played
-	// is what its release ends, whatever changed between.
+	// pressing that pad of Pads' grid does: a chord's notes strummed as the
+	// key's voicing says. A key out of the pad's range plays nothing. What a
+	// key played is what its release ends, whatever changed between.
 	Pads_Result (*perform_play_key)(Pads_Api* api, int64_t key, bool on, float velocity);
 	// How many times pad `pad` has been struck since the engine started (any
 	// hit: a controller's, the sequencer's, the API's): a controller lights a
@@ -2098,6 +2174,89 @@ typedef struct Pads_Api_V1 {
 	// Surface `index`'s id, as its library gives it ("org.fire_engine.pads
 	// .push2"). Temporary.
 	Pads_Result (*surface_id)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Chords mode's rows: `page` 0 the triads, 7ths, sus4s and sus2s (from the
+	// bottom), 1 the add9s, 6ths, first and second inversions. Saved with the
+	// project.
+	Pads_Result (*perform_set_chord_page)(Pads_Api* api, int64_t page);
+	// What the note modes' key `key` shows: a note ("C3"), a slice ("Slice
+	// 2"), or a chord ("ii7 Dm7"; "–" if the key can't make it). Temporary.
+	Pads_Result (*perform_key_name)(Pads_Api* api, int64_t key, char* out, int64_t out_cap, int64_t* out_len);
+	// The project key now.
+	Pads_Result (*key_state)(Pads_Api* api, Pads_Key_Info* out);
+	// Sets the project key: its root (0..11, semitones above C) and scale.
+	// Saved with the project (not an edit); the Key topic reports it.
+	Pads_Result (*key_set)(Pads_Api* api, int64_t root, Pads_Scale scale);
+	// Scale mode's octave, -3..3 (Chords and Progressions too: where their
+	// chords are built).
+	Pads_Result (*key_set_octave)(Pads_Api* api, int64_t octave);
+	// How Chords and Progressions voice their chords: voice leading (each
+	// chord's inversion the closest to the chord the pad played before),
+	// the spread, and the strum (0..100 ms between notes, low first).
+	Pads_Result (*key_set_voicing)(Pads_Api* api, bool voice_leading, Pads_Spread spread, double strum_ms);
+	// The project key's name: "C major", "F# dorian". Temporary.
+	Pads_Result (*key_name)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Scale `scale`'s name, as the window shows it.
+	Pads_Result (*key_scale_name)(Pads_Api* api, Pads_Scale scale, char* out, int64_t out_cap, int64_t* out_len);
+	// Whether `pitch` (semitones from a pad's own note, which is a C) is in the
+	// project key (the piano roll shades those rows).
+	Pads_Result (*key_has)(Pads_Api* api, int64_t pitch, bool* out);
+	// Chord `variation` on degree `degree` (0 the key's root; past its notes,
+	// octaves up) of the project key, made of the key's own notes.
+	Pads_Result (*key_chord)(Pads_Api* api, int64_t degree, Pads_Variation variation, Pads_Key_Chord* out);
+	// Note `index` (0 the lowest) of `key_chord(degree, variation)`: its pitch
+	// from a pad's own note.
+	Pads_Result (*key_chord_note)(Pads_Api* api, int64_t degree, Pads_Variation variation, int64_t index, int64_t* out);
+	// The name of `key_chord(degree, variation)`: its numeral and symbol,
+	// "ii7 Dm7" ("–" if the key can't make it). Temporary.
+	Pads_Result (*key_chord_name)(Pads_Api* api, int64_t degree, Pads_Variation variation, char* out, int64_t out_cap, int64_t* out_len);
+	// The progression in use.
+	Pads_Result (*progression_state)(Pads_Api* api, Pads_Progression_State* out);
+	// The progression in use's name. Temporary.
+	Pads_Result (*progression_name)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Names the progression in use.
+	Pads_Result (*progression_set_name)(Pads_Api* api, const char* name, int64_t name_len);
+	// The progression's numerals, "I V vi IV" (as the bank writes them, in
+	// lower case where the key's triad there is minor or diminished; the
+	// variations marked 7, sus4, sus2, add9, 6, /3, /5). Temporary.
+	Pads_Result (*progression_numerals)(Pads_Api* api, char* out, int64_t out_cap, int64_t* out_len);
+	// Chord `index` of the progression in use.
+	Pads_Result (*progression_chord)(Pads_Api* api, int64_t index, Pads_Progression_Chord* out);
+	// Chord `index` of the progression in use as the key makes it, "ii7 Dm7"
+	// ("–" if it can't). Temporary.
+	Pads_Result (*progression_chord_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Puts a chord (`degree` 0..48 of the key, `variation`) into the
+	// progression in use at `index` (0..its count: the count adds it at the
+	// end). Unsupported when it has the most it can.
+	Pads_Result (*progression_insert)(Pads_Api* api, int64_t index, int64_t degree, Pads_Variation variation);
+	// Changes chord `index` of the progression in use.
+	Pads_Result (*progression_set_chord)(Pads_Api* api, int64_t index, int64_t degree, Pads_Variation variation);
+	// Takes chord `index` out of the progression in use.
+	Pads_Result (*progression_remove)(Pads_Api* api, int64_t index);
+	// Moves chord `from` of the progression in use to `to` (the others close
+	// up around it).
+	Pads_Result (*progression_move)(Pads_Api* api, int64_t from, int64_t to);
+	// The built-in progressions: how many.
+	Pads_Result (*progression_bank_count)(Pads_Api* api, int64_t* out);
+	// Built-in progression `index`'s name.
+	Pads_Result (*progression_bank_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Built-in progression `index`'s style ("Pop", "Jazz", "Dark"...).
+	Pads_Result (*progression_bank_style)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Built-in progression `index`'s numerals ("I V vi IV").
+	Pads_Result (*progression_bank_numerals)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Uses built-in progression `index` (a copy: editing it leaves the bank as
+	// it is).
+	Pads_Result (*progression_use_bank)(Pads_Api* api, int64_t index);
+	// Your progressions (saved with `progression_save`): how many.
+	Pads_Result (*progression_mine_count)(Pads_Api* api, int64_t* out);
+	// Your progression `index` (in name order): its name. Temporary.
+	Pads_Result (*progression_mine_name)(Pads_Api* api, int64_t index, char* out, int64_t out_cap, int64_t* out_len);
+	// Uses your progression `name`. Not_Found if there is none; Io_Error if
+	// it can't be read.
+	Pads_Result (*progression_use_mine)(Pads_Api* api, const char* name, int64_t name_len);
+	// Saves the progression in use as yours, called `name` (it is named so
+	// too): the file's path (in the settings folder; one of the same name is
+	// replaced). Temporary.
+	Pads_Result (*progression_save)(Pads_Api* api, const char* name, int64_t name_len, char* out, int64_t out_cap, int64_t* out_len);
 } Pads_Api_V1;
 
 #ifdef __cplusplus

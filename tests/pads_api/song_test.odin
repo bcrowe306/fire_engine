@@ -163,7 +163,7 @@ keyboard_keys_are_the_scales_notes_on_the_selected_pad :: proc(t: ^testing.T) {
 	defer rig_destroy(r)
 	api := &r.api
 	pa.perform_set_keys(api, .Major, 0, 0, .Off)
-	pa.perform_set_play_mode(api, .Keyboard) // (opening on the bank of the pad's own note)
+	pa.perform_set_play_mode(api, .Scale) // (opening on the bank of the pad's own note)
 	// The key playing the pad's own note: a root; the next, a tone up.
 	root := -1
 	for k in 0 ..< 64 {
@@ -202,16 +202,26 @@ play_modes_banks_and_keys :: proc(t: ^testing.T) {
 	pa.perform_set_note_repeat(api, false)
 	nr, _ = pa.perform_note_repeat(api)
 	testing.expect(t, !nr, "note repeat off")
-	testing.expect_value(t, pa.perform_set_play_mode(api, .Keyboard), pa.Result.Ok)
+	testing.expect_value(t, pa.perform_set_play_mode(api, .Scale), pa.Result.Ok)
 	testing.expect_value(t, released, 1)
 	s, _ = pa.perform_state(api)
-	testing.expect(t, s.play_mode == .Keyboard && s.bank == 3, "Keyboard: the bank of the pad's own note (C3: bank D)")
+	testing.expect(t, s.play_mode == .Scale && s.bank == 3, "Scale: the bank of the pad's own note (C3: bank D)")
 	testing.expect_value(t, pa.perform_set_play_mode(api, .Pads), pa.Result.Ok)
 	s, _ = pa.perform_state(api)
 	testing.expect_value(t, s.bank, 6) // (the pads' bank again)
 	testing.expect_value(t, pa.perform_set_keys(api, .Dorian, 2, -1, .Triad), pa.Result.Ok)
 	s, _ = pa.perform_state(api)
-	testing.expect(t, s.scale == .Dorian && s.root == 2 && s.octave == -1 && s.chord == .Triad, "keys")
+	testing.expect(t, s.scale == .Dorian && s.root == 2 && s.octave == -1 && s.chord == .Off && s.play_mode == .Pads, "keys (Pads mode stays)")
+	// Keyboard's chords, as they were: Scale mode with a chord is Chords
+	// mode, Chords with none Scale.
+	pa.perform_set_play_mode(api, .Scale)
+	pa.perform_set_keys(api, .Dorian, 2, -1, .Seventh)
+	s, _ = pa.perform_state(api)
+	testing.expect(t, s.play_mode == .Chords && s.chord == .Triad && s.bank == 0, "Chords (bank A)")
+	pa.perform_set_keys(api, .Dorian, 2, -1, .Off)
+	s, _ = pa.perform_state(api)
+	testing.expect_value(t, s.play_mode, pa.Play_Mode.Scale)
+	pa.perform_set_play_mode(api, .Pads)
 	testing.expect_value(t, pa.perform_set_keys(api, .Major, 12, 0, .Off), pa.Result.Invalid_Argument)
 	// Accent: every pad hit at full velocity, and off again.
 	testing.expect_value(t, pa.perform_set_accent(api, true), pa.Result.Ok)

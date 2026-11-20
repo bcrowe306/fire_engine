@@ -22,7 +22,7 @@ SAMPLES_TAG :: fc.Tag{'P', 'S', 'M', 'P'}
 // Chunk tag of the rest of a project.
 PROJECT_TAG :: fc.Tag{'P', 'P', 'R', 'J'}
 // Version of the project chunk this version writes.
-PROJECT_VERSION :: 40 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window; 38: tracks' own loops; 39: Quantize's grid and strength; 40: keys' high cuts (SuperFilter)
+PROJECT_VERSION :: 41 // 2: pads' sends; 3: 128 pads (the count is written); 4: the transport's settings; 5: pads' fades; 6: audio pads and their clips; 7: pads' voices; 8: sequences' names and tempos; 9: performance effects' intensity; 10: song steps' parts and settings, arrangements, sequences' colours, automation curves; 11: notes muted; 12: 16 buses (named, routed), sends to each, pads' warps; 13: tracks' MIDI in and out ports, audio inputs by channel; 14: slicers, velocity sensitivity; 15: synths; 16: synths' effects order; 17: the project's own wavetables; 18: synths' preset names; 19: samplers' voice modes and glide; 20: 64 sequences (their count written); 21: the sequence pads' Keys switch; 22: the metronome's sound and accent; 23: plug-ins' states, plug-in pads; 24: songs' tempo lanes, steps' time signatures, markers, loop ranges; 25: sidechain keys, groups; 26: frozen pads; 27: cue sends; 28: the Sequence view's tab; 29: automation of any parameter (points' targets), MIDI CC lanes; 30: songs as lanes of clips, time signature lanes; 31: pads' MIDI effects (note repeat, the arpeggiator: each pad its own); 32: the launcher's Continue; 33: four inserts a pad (two before), pads' EQ on or off; 34: an audio track's monitoring (Auto, In, Off); 35: audio inputs from tracks, buses, main; 36: audio parts (takes and regions); 37: launcher lanes (each sequence's lane and row, the lanes' names and colours), the launcher's window; 38: tracks' own loops; 39: Quantize's grid and strength; 40: keys' high cuts (SuperFilter); 41: the project key's voicing, Chords and Progressions modes (the Keyboard's chords setting gone), the progression in use, the arpeggiators' In key
 
 // Saves the project into its folder: `project.fire` (a fire:session file
 // whose app chunks hold the project; the samples are already in
@@ -496,7 +496,7 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	fc.write_u8(w, u8(v.keys.scale))
 	fc.write_int(w, v.keys.root)
 	fc.write_int(w, v.keys.octave)
-	fc.write_u8(w, u8(v.keys.chord))
+	fc.write_u8(w, 0) // (Keyboard mode's chords before v41: Chords mode now)
 	fc.write_int(w, v.bank)
 	fc.write_int(w, v.selected)
 	fc.write_int(w, v.seq_bank)
@@ -687,6 +687,15 @@ write_project :: proc(w: ^fc.State_Writer, p: ^Project) {
 	for pad, i in p.pads do for sl, k in pad.inserts do if sl.key_lpf > 0 do cut(w, 0, i, k, sl.key_lpf)
 	for b, i in p.buses do for sl, k in b.slots do if sl.key_lpf > 0 do cut(w, 1, i, k, sl.key_lpf)
 	for sl, k in p.main.slots do if sl.key_lpf > 0 do cut(w, 2, 0, k, sl.key_lpf)
+	// v41: the key's voicing, Chords mode's page, the progression in use;
+	// each pad's arpeggiator's In key.
+	fc.write_bool(w, p.view.keys.no_voice_leading)
+	fc.write_u8(w, u8(p.view.keys.spread))
+	fc.write_f32(w, p.view.keys.strum_ms)
+	fc.write_int(w, p.view.keys.chord_page)
+	write_progression(w, &p.view.progression)
+	for pad in p.pads do fc.write_bool(w, pad.midi_fx.arp_in_key)
+	fc.write_bool(w, p.perform.arp_in_key) // (the project's, as it was before v31: kept as the rest of it is)
 }
 
 // v36: the audio parts clips name (only those): where, the takes, the
@@ -1128,7 +1137,8 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 			v.keys.scale = Scale(min(fc.read_u8(r), u8(max(Scale))))
 			v.keys.root = clamp(fc.read_int(r), 0, 11)
 			v.keys.octave = clamp(fc.read_int(r), -3, 3)
-			v.keys.chord = Chord(min(fc.read_u8(r), u8(max(Chord))))
+			// Keyboard mode's chords (before v41): Chords mode now.
+			if chords := fc.read_u8(r); chords != 0 && v.play_mode == .Scale && version < 41 do v.play_mode = .Chords
 			v.bank = clamp(fc.read_int(r), 0, PADS / PADS_PER_BANK - 1)
 			v.selected = clamp(fc.read_int(r), 0, PADS - 1)
 			v.seq_bank = clamp(fc.read_int(r), 0, 3)
@@ -1332,6 +1342,16 @@ read_project_body :: proc(r: ^fc.State_Reader, p: ^Project, version: u32, legacy
 					}
 					if sl != nil do sl.key_lpf = hz
 				}
+			}
+			if version >= 41 {
+				k := &p.view.keys
+				k.no_voice_leading = fc.read_bool(r)
+				k.spread = Spread(min(fc.read_u8(r), u8(max(Spread))))
+				k.strum_ms = clamp(fc.read_f32(r), 0, MAX_STRUM_MS)
+				k.chord_page = clamp(fc.read_int(r), 0, 1)
+				read_progression(r, &p.view.progression)
+				for &pad in p.pads do pad.midi_fx.arp_in_key = fc.read_bool(r)
+				p.perform.arp_in_key = fc.read_bool(r)
 			}
 		} else {
 			p.view.seq_lane0, p.view.seq_row0 = 0, p.view.seq_bank * 4

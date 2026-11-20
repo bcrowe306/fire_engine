@@ -424,6 +424,37 @@ Table_V1 :: struct {
 	perform_set_note_repeat: proc "c" (api: ^Api, on: bool) -> Result,
 	surface_assign_virtual: proc "c" (api: ^Api, lib: i64, k: i64, out: ^i64) -> Result,
 	surface_id: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	perform_set_chord_page: proc "c" (api: ^Api, page: i64) -> Result,
+	perform_key_name: proc "c" (api: ^Api, key: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	key_state: proc "c" (api: ^Api, out: ^Key_Info) -> Result,
+	key_set: proc "c" (api: ^Api, root: i64, scale: Scale) -> Result,
+	key_set_octave: proc "c" (api: ^Api, octave: i64) -> Result,
+	key_set_voicing: proc "c" (api: ^Api, voice_leading: bool, spread: Spread, strum_ms: f64) -> Result,
+	key_name: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	key_scale_name: proc "c" (api: ^Api, scale: Scale, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	key_has: proc "c" (api: ^Api, pitch: i64, out: ^bool) -> Result,
+	key_chord: proc "c" (api: ^Api, degree: i64, variation: Variation, out: ^Key_Chord) -> Result,
+	key_chord_note: proc "c" (api: ^Api, degree: i64, variation: Variation, index: i64, out: ^i64) -> Result,
+	key_chord_name: proc "c" (api: ^Api, degree: i64, variation: Variation, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_state: proc "c" (api: ^Api, out: ^Progression_State) -> Result,
+	progression_name: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_set_name: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
+	progression_numerals: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_chord: proc "c" (api: ^Api, index: i64, out: ^Progression_Chord) -> Result,
+	progression_chord_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_insert: proc "c" (api: ^Api, index: i64, degree: i64, variation: Variation) -> Result,
+	progression_set_chord: proc "c" (api: ^Api, index: i64, degree: i64, variation: Variation) -> Result,
+	progression_remove: proc "c" (api: ^Api, index: i64) -> Result,
+	progression_move: proc "c" (api: ^Api, from: i64, to: i64) -> Result,
+	progression_bank_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	progression_bank_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_bank_style: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_bank_numerals: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_use_bank: proc "c" (api: ^Api, index: i64) -> Result,
+	progression_mine_count: proc "c" (api: ^Api, out: ^i64) -> Result,
+	progression_mine_name: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
+	progression_use_mine: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result,
+	progression_save: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result,
 }
 
 // The C function table of `api` (what a surface asking for "fire.pads" 1 gets).
@@ -850,6 +881,37 @@ table_fill :: proc(api: ^Api) {
 	t.perform_set_note_repeat = c_perform_set_note_repeat
 	t.surface_assign_virtual = c_surface_assign_virtual
 	t.surface_id = c_surface_id
+	t.perform_set_chord_page = c_perform_set_chord_page
+	t.perform_key_name = c_perform_key_name
+	t.key_state = c_key_state
+	t.key_set = c_key_set
+	t.key_set_octave = c_key_set_octave
+	t.key_set_voicing = c_key_set_voicing
+	t.key_name = c_key_name
+	t.key_scale_name = c_key_scale_name
+	t.key_has = c_key_has
+	t.key_chord = c_key_chord
+	t.key_chord_note = c_key_chord_note
+	t.key_chord_name = c_key_chord_name
+	t.progression_state = c_progression_state
+	t.progression_name = c_progression_name
+	t.progression_set_name = c_progression_set_name
+	t.progression_numerals = c_progression_numerals
+	t.progression_chord = c_progression_chord
+	t.progression_chord_name = c_progression_chord_name
+	t.progression_insert = c_progression_insert
+	t.progression_set_chord = c_progression_set_chord
+	t.progression_remove = c_progression_remove
+	t.progression_move = c_progression_move
+	t.progression_bank_count = c_progression_bank_count
+	t.progression_bank_name = c_progression_bank_name
+	t.progression_bank_style = c_progression_bank_style
+	t.progression_bank_numerals = c_progression_bank_numerals
+	t.progression_use_bank = c_progression_use_bank
+	t.progression_mine_count = c_progression_mine_count
+	t.progression_mine_name = c_progression_mine_name
+	t.progression_use_mine = c_progression_use_mine
+	t.progression_save = c_progression_save
 }
 
 @(private)
@@ -4004,6 +4066,283 @@ c_surface_assign_virtual :: proc "c" (api: ^Api, lib: i64, k: i64, out: ^i64) ->
 c_surface_id :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
 	context = runtime.default_context()
 	s, r := surface_id(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_perform_set_chord_page :: proc "c" (api: ^Api, page: i64) -> Result {
+	context = runtime.default_context()
+	return perform_set_chord_page(api, page)
+}
+
+@(private)
+c_perform_key_name :: proc "c" (api: ^Api, key: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := perform_key_name(api, key)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_key_state :: proc "c" (api: ^Api, out: ^Key_Info) -> Result {
+	context = runtime.default_context()
+	v, r := key_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_key_set :: proc "c" (api: ^Api, root: i64, scale: Scale) -> Result {
+	context = runtime.default_context()
+	return key_set(api, root, scale)
+}
+
+@(private)
+c_key_set_octave :: proc "c" (api: ^Api, octave: i64) -> Result {
+	context = runtime.default_context()
+	return key_set_octave(api, octave)
+}
+
+@(private)
+c_key_set_voicing :: proc "c" (api: ^Api, voice_leading: bool, spread: Spread, strum_ms: f64) -> Result {
+	context = runtime.default_context()
+	return key_set_voicing(api, voice_leading, spread, strum_ms)
+}
+
+@(private)
+c_key_name :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := key_name(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_key_scale_name :: proc "c" (api: ^Api, scale: Scale, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := key_scale_name(api, scale)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_key_has :: proc "c" (api: ^Api, pitch: i64, out: ^bool) -> Result {
+	context = runtime.default_context()
+	v, r := key_has(api, pitch)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_key_chord :: proc "c" (api: ^Api, degree: i64, variation: Variation, out: ^Key_Chord) -> Result {
+	context = runtime.default_context()
+	v, r := key_chord(api, degree, variation)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_key_chord_note :: proc "c" (api: ^Api, degree: i64, variation: Variation, index: i64, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := key_chord_note(api, degree, variation, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_key_chord_name :: proc "c" (api: ^Api, degree: i64, variation: Variation, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := key_chord_name(api, degree, variation)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_state :: proc "c" (api: ^Api, out: ^Progression_State) -> Result {
+	context = runtime.default_context()
+	v, r := progression_state(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_progression_name :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_name(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_set_name :: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return progression_set_name(api, name_s)
+}
+
+@(private)
+c_progression_numerals :: proc "c" (api: ^Api, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_numerals(api)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_chord :: proc "c" (api: ^Api, index: i64, out: ^Progression_Chord) -> Result {
+	context = runtime.default_context()
+	v, r := progression_chord(api, index)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_progression_chord_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_chord_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_insert :: proc "c" (api: ^Api, index: i64, degree: i64, variation: Variation) -> Result {
+	context = runtime.default_context()
+	return progression_insert(api, index, degree, variation)
+}
+
+@(private)
+c_progression_set_chord :: proc "c" (api: ^Api, index: i64, degree: i64, variation: Variation) -> Result {
+	context = runtime.default_context()
+	return progression_set_chord(api, index, degree, variation)
+}
+
+@(private)
+c_progression_remove :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return progression_remove(api, index)
+}
+
+@(private)
+c_progression_move :: proc "c" (api: ^Api, from: i64, to: i64) -> Result {
+	context = runtime.default_context()
+	return progression_move(api, from, to)
+}
+
+@(private)
+c_progression_bank_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := progression_bank_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_progression_bank_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_bank_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_bank_style :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_bank_style(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_bank_numerals :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_bank_numerals(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_use_bank :: proc "c" (api: ^Api, index: i64) -> Result {
+	context = runtime.default_context()
+	return progression_use_bank(api, index)
+}
+
+@(private)
+c_progression_mine_count :: proc "c" (api: ^Api, out: ^i64) -> Result {
+	context = runtime.default_context()
+	v, r := progression_mine_count(api)
+	if out != nil do out^ = v
+	return r
+}
+
+@(private)
+c_progression_mine_name :: proc "c" (api: ^Api, index: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	s, r := progression_mine_name(api, index)
+	if out_len != nil do out_len^ = i64(len(s))
+	if out != nil && out_cap > 0 {
+		n := copy(([^]u8)(out)[:out_cap - 1], s)
+		([^]u8)(out)[n] = 0
+	}
+	return r
+}
+
+@(private)
+c_progression_use_mine :: proc "c" (api: ^Api, name: cstring, name_len: i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	return progression_use_mine(api, name_s)
+}
+
+@(private)
+c_progression_save :: proc "c" (api: ^Api, name: cstring, name_len: i64, out: [^]u8, out_cap: i64, out_len: ^i64) -> Result {
+	context = runtime.default_context()
+	name_s := string(([^]u8)(name)[:max(name_len, 0)]) if name != nil else ""
+	s, r := progression_save(api, name_s)
 	if out_len != nil do out_len^ = i64(len(s))
 	if out != nil && out_cap > 0 {
 		n := copy(([^]u8)(out)[:out_cap - 1], s)

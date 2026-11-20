@@ -151,7 +151,7 @@ a_slicers_slices_are_read_selected_and_played :: proc(t: ^testing.T) {
 	testing.expect(t, sl.count == 16 && sl.selected == 0 && sl.playing == -1, "16, the first selected, none sounding")
 	testing.expect_value(t, pa.pad_select_slice(api, 3), pa.Result.Ok)
 	testing.expect_value(t, pa.pad_select_slice(api, 16), pa.Result.Not_Found)
-	// Key 3 of Keyboard mode plays slice 4: it sounds.
+	// Key 3 of Scale mode plays slice 4: it sounds.
 	testing.expect_value(t, pa.perform_play_key(api, 3, true), pa.Result.Ok)
 	render(r, 512)
 	sl, _ = pa.pad_slices(api, 0)

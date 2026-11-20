@@ -88,6 +88,9 @@ every_setting_saves :: proc(t: ^testing.T) {
 		if strings.has_prefix(k, "song.lanes[") && !(strings.has_prefix(k, "song.lanes[0]") || strings.has_prefix(k, "song.lanes[1]") || strings.has_prefix(k, "song.lanes[2]")) do continue
 		if k == "song.count" || k == "song.lane_count" || k == "song.meter_count" do continue // (set the same both times)
 		if strings.has_prefix(k, "song.meters[") && !(strings.has_prefix(k, "song.meters[0]") || strings.has_prefix(k, "song.meters[1]")) do continue
+		// The progression's chords past its count (the scramble leaves it
+		// 0) aren't kept, by design (keys_test.odin saves one).
+		if strings.has_prefix(k, "view.progression.chords[") do continue
 		// Main isn't a group.
 		if k == "main.group" || k == "main.folded" || strings.has_prefix(k, "main.cue.") do continue
 		// An instrument slot can't be keyed (its key isn't kept).
@@ -98,7 +101,7 @@ every_setting_saves :: proc(t: ^testing.T) {
 		// clamped to a range both test values fall outside (they read back
 		// as its bound): tempos (40..300), cutoffs (20 Hz..), count-in (..2 bars).
 		switch {
-		case k == "main.dest", k == "perform.arp.seed", k == "pad.midi_fx.arp.seed", strings.has_suffix(k, ".bpm"), k == "pad.voice.cutoff", k == "transport.count_in":
+		case k == "main.dest", k == "perform.arp.seed", k == "pad.midi_fx.arp.seed", strings.has_suffix(k, ".bpm"), k == "pad.voice.cutoff", k == "transport.count_in", k == "view.keys.chord_page":
 			continue
 		}
 		append(&keys, k)

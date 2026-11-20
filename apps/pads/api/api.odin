@@ -21,6 +21,7 @@ import app "app:core"
 import fsurf "fsurf:host"
 
 import pc "../core"
+import pm "../model"
 
 // The API's major version: a function table of this version only grows.
 VERSION :: 1
@@ -61,15 +62,16 @@ Api :: struct {
 	next_owner: i64,
 	remote:    Remote_Link, // the remote client's (remote.odin)
 	views:     [dynamic]View_Want, // views surfaces ask Pads to draw (views.odin)
-	keys_held: [PADS]Key_Held,     // what each Keyboard key played (perform_play_key)
+	keys_held: [PADS]Key_Held,     // what each note mode's key played (perform_play_key)
 }
 
-// What a Keyboard key's press played, to end it.
+// What a note mode's key press played, to end it.
 @(private)
 Key_Held :: struct {
-	pad:     int,
-	pitches: [4]i8,
-	count:   int,
+	pad:      int,
+	pitches:  [pm.MAX_CHORD_NOTES]i8,
+	count:    int,
+	strum_ms: f32, // (its notes' offs strummed as their ons were)
 }
 
 // A call posted from another thread: run on the control thread at the
