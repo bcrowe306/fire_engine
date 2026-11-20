@@ -20,7 +20,7 @@ plan before it is built.
      delays are the likely hot spot).
   3. Spectral unison (each unison pair its own morphed buffer) waits on the
      voice budget: 8x the rebuilds, 128 KB an oscillator a voice.
-  5. Presets — done. Later: more of the bank; tags and search; an audio
+  4. Presets — done. Later: more of the bank; tags and search; an audio
      keyframe's sound carried along.
   - Later: MPE (per-note bend, slide, lift) and microtuning (.scl/.kbm/.tun).
 - **MIDI learn for any knob** (today: pads only).
