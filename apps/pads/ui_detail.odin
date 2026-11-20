@@ -249,7 +249,7 @@ draw_detail :: proc(user: rawptr) {
 	// At the line's right: how the pads play, and folding the area away
 	// (a synth's presets before them).
 	fh := im.GetFrameHeight()
-	right_room := 4 * fh + 3 * 2 + 16
+	right_room := 6 * fh + 5 * 2 + 16 // (the five play modes and the fold)
 	if st.track.kind == .Pad && st.device.kind == .Instrument && a.m.project.pads[st.track.index].kind == .Synth do draw_preset_bar(a, line_right - right_room, line.y)
 	{
 		back := im.GetCursorScreenPos()

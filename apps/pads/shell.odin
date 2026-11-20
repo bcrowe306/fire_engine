@@ -205,7 +205,8 @@ show_named :: proc(a: ^App, name: string) -> bool {
 	case "transport":          a.controls.transport_open = true // loop, count-in, the click (a controller's Metronome held)
 	case "note repeat":        a.controls.repeat_open = true // the toolbar's note repeat (a controller's Repeat held)
 	case "push window":        a.push_window.open = true // Push 2 on the screen (View > Push 2 on Screen)
-	case "scale":              a.controls.scale_open = true // Keyboard mode's scale (a controller's Scale)
+	case "scale", "key":       a.controls.key_open = true // the project key (a controller's Scale)
+	case "progressions":       a.controls.progression_open = true // Progressions mode's progression: the bank, the editor
 	case "convert":            a.controls.convert_open = true // the selected pad converted or resampled (a controller's Convert)
 	case "copy bars":          begin_copy_bars(a, a.m.project.slot) // (a controller's Clip: Copy Bars)
 	case "quantize":           a.controls.quantize_open = true // Quantize's settings (a controller's Quantize held)
@@ -625,20 +626,27 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 	case "mode":
 		if len(w) < 2 do return false
 		switch w[1] {
-		case "pads":     set_play_mode(a, .Pads)
-		case "keys":     set_play_mode(a, .Keyboard)
-		case "velocity": set_play_mode(a, .Velocity)
+		case "pads":         set_play_mode(a, .Pads)
+		case "keys", "scale": set_play_mode(a, .Scale)
+		case "chords":       set_play_mode(a, .Chords)
+		case "progressions": set_play_mode(a, .Progressions)
+		case "velocity":     set_play_mode(a, .Velocity)
 		case: return false
 		}
 		return true
-	case "scale":
+	case "scale": // scale NAME: the project key's scale ("harmonic minor")
 		if len(w) < 2 do return false
 		for sc in pm.Scale do if strings.equal_fold(string(pm.SCALE_NAMES[sc]), strings.join(w[1:], " ", context.temp_allocator)) {
-			k := a.keys
-			return pa.perform_set_keys(&a.api, pa.Scale(sc), i64(k.root), i64(k.octave), pa.Chord(k.chord)) == .Ok
+			return pa.key_set(&a.api, i64(a.keys.root), pa.Scale(sc)) == .Ok
 		}
 		return false
-	case "chord":
+	case "root": // root NAME: the project key's root ("F#", "Bb")
+		if len(w) < 2 do return false
+		for k in 0 ..< 12 do if strings.equal_fold(pm.NOTE_SHARPS[k], w[1]) || strings.equal_fold(pm.NOTE_FLATS[k], w[1]) {
+			return pa.key_set(&a.api, i64(k), pa.Scale(a.keys.scale)) == .Ok
+		}
+		return false
+	case "chord": // chord off|triad|seventh|power: Scale mode (off) or Chords mode, as Keyboard's chords were
 		if len(w) < 2 do return false
 		ch: pa.Chord
 		switch w[1] {
@@ -650,6 +658,20 @@ drive_command :: proc(user: rawptr, w: []string) -> bool {
 		}
 		k := a.keys
 		return pa.perform_set_keys(&a.api, pa.Scale(k.scale), i64(k.root), i64(k.octave), ch) == .Ok
+	case "chord_page": // chord_page 0|1: Chords mode's rows
+		return pa.perform_set_chord_page(&a.api, i64(num(w, 1))) == .Ok
+	case "voicing": // voicing lead|fixed close|open|wide STRUM_MS
+		if len(w) < 4 do return false
+		sp: pa.Spread
+		switch w[2] {
+		case "close": sp = .Close
+		case "open":  sp = .Open
+		case "wide":  sp = .Drop_2
+		case: return false
+		}
+		return pa.key_set_voicing(&a.api, w[1] == "lead", sp, f64(numf(w, 3))) == .Ok
+	case "progression": // progression N: the bank's progression N (0-based)
+		return pa.progression_use_bank(&a.api, i64(num(w, 1))) == .Ok
 	case "arp", "repeat": // arp|repeat [off]: the selected pad's
 		fx, _ := pa.sequence_midi_fx(&a.api, i64(a.selected))
 		on := len(w) < 2 || w[1] != "off"

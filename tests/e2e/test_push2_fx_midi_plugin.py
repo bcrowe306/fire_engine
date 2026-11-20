@@ -164,8 +164,8 @@ def test_push2_arp_walks_the_notes_held(pads, fixtures):
     show_midi(pads, fixtures)
     pads.api("sequence_set_midi_fx", pad=0, fx=dict(midi_fx(pads), arp=True, arp_octaves=2, arp_mode="Up"))
     bank(pads, 1)
-    # Keyboard mode: the Push's pads play the selected pad's notes.
-    pads.api("perform_set_play_mode", mode="Keyboard")
+    # Scale mode: the Push's pads play the selected pad's notes.
+    pads.api("perform_set_play_mode", mode="Scale")
     pads.wait(10)
     keys = [k for k in range(64) if pads.api("perform_key", key=k)["playable"]]
     root = next(k for k in keys if pads.api("perform_key", key=k)["root"])

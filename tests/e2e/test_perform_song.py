@@ -10,8 +10,8 @@ def test_play_modes_repeat_and_arp_on_the_pads_midi_page(app, fixtures):
     app.cmd("panel midi")  # the pad's MIDI page, first in its chain
     app.wait(3)
     assert app.state()["detail_tab"] == "MIDI"
-    app.click("Keyboard", window="detail")
-    assert app.state()["play_mode"] == "Keyboard"
+    app.click("Scale", window="detail")
+    assert app.state()["play_mode"] == "Scale"
     app.click("Pads", window="detail")
     assert app.state()["play_mode"] == "Pads"
     app.click("Repeat", window="detail")

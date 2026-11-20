@@ -5,6 +5,7 @@ import "core:time"
 
 import app "app:core"
 import "app:ui"
+import pa "api"
 import pm "model"
 import im "deps:imgui"
 import sdl "deps:sdl3"
@@ -110,6 +111,13 @@ draw_statusbar :: proc(user: rawptr) {
 	text(fmt.tprintf("%s%s%s · %s", pm.pad_label(i), " " if name != "" else "", name, pad_device_name(pad.kind) if pm.pad_used(&a.m.project, i) else "empty"), false)
 	ui.name("status track")
 	if im.IsItemHovered() do im.SetTooltip("The track selected (arrow keys: the pads around it)")
+	// The project key (click: the Key dialog).
+	im.SameLine(0, 18)
+	kn, _ := pa.key_name(&a.api)
+	text(fmt.tprintf("Key %s", kn))
+	ui.name("status key")
+	if im.IsItemHovered() do im.SetTooltip("The project key: Scale, Chords and Progressions play it (click to change it)")
+	if im.IsItemClicked() do a.controls.key_open = true
 	// The newest message, at the right; click for the recent ones.
 	log := a.ws.toasts.log[:]
 	if len(log) > 0 {

@@ -30,8 +30,8 @@ def test_monitor_from_the_strips(app):
 
 def test_toolbar_play_mode_and_sequence_arrows(app, fixtures):
     app.click("toolbar play mode")
-    app.click("Keyboard")
-    assert app.state()["play_mode"] == "Keyboard", app.state()["play_mode"]
+    app.click("Scale")
+    assert app.state()["play_mode"] == "Scale", app.state()["play_mode"]
     app.panel("Sequence")
     app.click("sequence after", window="sequence")
     assert app.state()["slot"] == 2

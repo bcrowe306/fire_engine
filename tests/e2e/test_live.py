@@ -60,8 +60,12 @@ def test_effects_play_as_hard_as_pressed(app, fixtures):
 def test_toolbar_play_modes(app, fixtures):
     two(app, fixtures)
     app.panel("Mixer")
-    app.click("Play the pads as a keyboard of the selected pad")
-    assert app.state()["play_mode"] == "Keyboard"
+    app.click("Play the pads as the notes of the key, on the selected pad (Scale)")
+    assert app.state()["play_mode"] == "Scale"
+    app.click("Play the pads as chords of the key, on the selected pad (Chords)")
+    assert app.state()["play_mode"] == "Chords"
+    app.click("Play the pads as a progression's chords, on the selected pad (Progressions)")
+    assert app.state()["play_mode"] == "Progressions"
     app.click("Play the pads as the selected pad at 16 velocities")
     assert app.state()["play_mode"] == "Velocity"
     app.click("Play the pads as pads (each its sound)")

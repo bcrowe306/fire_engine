@@ -72,7 +72,8 @@ MODULES = {
         (r"\.switch_at\s*=[^=]", "launcher_set_quantize"),
     ],
     "perform": [
-        (r"\ba\.(play_mode|keys)\s*=[^=]|\ba\.keys\.\w+\s*=[^=]", "perform_set_play_mode / set_keys"),
+        (r"\ba\.(play_mode|keys)\s*=[^=]|\ba\.keys\.\w+\s*=[^=]", "perform_set_play_mode / key_set / key_set_octave / key_set_voicing"),
+        (r"\ba\.progression(\.\w+)?\s*=[^=]|\bpm\.progression_(save|set_name|parse|builtin)\(", "progression_*"),
         # (Selecting a pad moves its bank along in several places: the
         # selection moves with the ui module; the bank control and the
         # scripts use perform_set_bank.)

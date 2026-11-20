@@ -586,13 +586,13 @@ def test_the_tempo_encoder_a_bpm_a_detent_and_with_shift_a_tenth(pads):
     assert abs(pads.api("transport_state")["bpm"] - 122.6) < 1e-6
 
 
-def test_note_is_pads_keyboard_mode_and_follows_it(pads, fixtures):
+def test_note_is_pads_scale_mode_and_follows_it(pads, fixtures):
     plug(pads)
     pads.api("pad_load_sample", pad=0, path=os.path.join(fixtures, "kick.wav"))
     press(pads, 0x32)  # Note
     pads.wait(5)
     st = pads.api("perform_state")
-    assert st["play_mode"] == "Keyboard", st
+    assert st["play_mode"] == "Scale", st
     key = next(k for k in range(64) if pads.api("perform_key", key=k)["root"] and pads.api("perform_key", key=k)["playable"])
     note = 36 + key
     settle(pads)
@@ -1739,10 +1739,10 @@ def test_convert_turns_the_pad_into_other_devices_and_resamples(pads, fixtures):
 
 def test_scale_accent_add_device_add_track_and_setup(pads, fixtures):
     plug(pads)
-    # Scale: Pads' Scale dialog; encoder 1 the scale, encoder 2 the root.
+    # Scale: Pads' Key dialog; encoder 1 the scale, encoder 2 the root.
     press(pads, 58)
     pads.wait(8)
-    assert pads.api("ui_dialog_title") == "Scale"
+    assert pads.api("ui_dialog_title") == "Key"
     turn(pads, 0, 3)
     turn(pads, 1, 6)
     pads.wait(4)
@@ -1750,12 +1750,12 @@ def test_scale_accent_add_device_add_track_and_setup(pads, fixtures):
     assert ps["scale"] != "Chromatic" or ps["root"] == 2, ps
     settle(pads)
     display_png(pads, os.path.join(pads.out_dir, "push2_scale.png"))
-    press(pads, 20)  # Keyboard Mode
+    press(pads, 20)  # Scale Mode
     pads.wait(4)
-    assert pads.api("perform_state")["play_mode"] == "Keyboard"
-    press(pads, 21)  # Close
+    assert pads.api("perform_state")["play_mode"] == "Scale"
+    press(pads, 22)  # Close (after Chords Mode)
     pads.wait(6)
-    assert cc_light(pads, 58) == 127  # (Keyboard mode: lit)
+    assert cc_light(pads, 58) == 127  # (Scale mode: lit)
     # Accent: on (lit), a pad hit at full velocity; off again.
     press(pads, 57)
     pads.wait(4)

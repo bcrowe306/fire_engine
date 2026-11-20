@@ -85,6 +85,7 @@ def test_choose_a_wavetable_and_voice_modes(app):
 def test_keyboard_mode_banks_and_recording(app):
     synth_pad(app)
     app.cmd("mode keys")
+    app.cmd("scale chromatic")  # (a new project is in C major)
     app.wait(3)
     a = app.state()["keyboard"]
     assert a[0] != "" and a[15] != "", a

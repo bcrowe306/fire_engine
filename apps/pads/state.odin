@@ -19,7 +19,11 @@ import "fire:synth"
 State :: struct {
 	selected:   int,
 	bank:       int,
-	keyboard:   [16]string, // Keyboard mode: the note each pad of the grid plays ("": none)
+	keyboard:   [16]string, // the note modes: the note (Scale) or chord (Chords, Progressions: "ii7 Dm7", "–" none) each pad of the grid plays ("": none)
+	key:        string, // the project key ("C major")
+	chord_page: int,    // Chords mode's rows (0: triad..sus2, 1: add9..2nd inversion)
+	progression: string, // the progression in use: its numerals ("I V vi IV")
+	progression_name: string,
 	wavetable:  State_Wavetable, // the wavetable editor (when open on a table of the project's)
 	play_mode:  string,
 	detail_tab: string, // the sampler's tab in front, or "EQ", or "Effect"
@@ -82,6 +86,8 @@ State :: struct {
 	input_peaks: [4]f32, // the first input channels' meters now (linear)
 	seq_rows:   int,    // the rows the Sequence view shows at once (its vertical zoom)
 	seq_row0:   int,    // ... the first of them (its scroll)
+	seq_row_count: int, // the rows it has in all (folded: fewer)
+	key_fold:   bool,   // the piano roll folded to the project key
 	row_h:      f32,    // ... its rows' height when zoomed (0: as many as fit)
 	seq_mode:   string, // the Sequence view's tab: "Notes", "Automation" or "Audio"
 	audio:      State_Audio_View, // the Audio tab's selection
@@ -315,13 +321,17 @@ state_json :: proc(a: ^App) -> string {
 	p := &m.project
 	s: State
 	s.selected, s.bank = a.selected, a.bank
-	if a.play_mode == .Keyboard {
+	if pm.note_mode(a.play_mode) {
 		for k in 0 ..< pm.PADS_PER_BANK {
-			ps: [4]int
-			notes := keyboard_notes(a, k, &ps)
-			s.keyboard[k] = fmt.tprintf("%s", ui.note_name(60 + notes[0])) if keyboard_in_range(notes) else ""
+			key, _ := pa.perform_key(&a.api, i64(k))
+			name, _ := pa.perform_key_name(&a.api, i64(k))
+			s.keyboard[k] = name if key.playable || key.chord else ""
 		}
 	}
+	s.key, _ = pa.key_name(&a.api)
+	s.chord_page = a.keys.chord_page
+	s.progression, _ = pa.progression_numerals(&a.api)
+	s.progression_name, _ = pa.progression_name(&a.api)
 	if a.wte.open && a.wte.pad >= 0 && a.wte.pad < pm.PADS {
 		src := p.pads[a.wte.pad].synth.tables[a.wte.osc]
 		if d := app.store_get(&p.wave_docs, src.table); d != nil {
@@ -423,6 +433,10 @@ state_json :: proc(a: ^App) -> string {
 	s.latency, s.record_latency = {li, lo, lr}, pm.record_latency(&a.m.engine)
 	for k in 0 ..< 4 do s.input_peaks[k] = input_view(a, k).peak
 	s.seq_rows, s.row_h, s.seq_row0 = a.seq.view.keys, a.seq.row_h, a.seq.view.key0
+	{
+		_, _, all, _ := seq_rows(a, pm.current_sequence(&a.m))
+		s.seq_row_count, s.key_fold = len(all), a.seq.key_fold
+	}
 	s.audio = {region = a.seq.aud.region, range = a.seq.aud.range, cursor = a.seq.aud.cursor, has_clip = a.seq.aud.has_clip}
 	s.chances = make([]f32, len(seq.notes), context.temp_allocator)
 	s.ccs = len(seq.ccs)

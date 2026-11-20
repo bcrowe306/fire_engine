@@ -39,6 +39,7 @@ Seq_State :: struct {
 	piano:    bool, // one pad's notes on a keyboard, not a row per pad
 	piano_pad: int, // ... that pad
 	fold:     bool, // only the rows that have notes
+	key_fold: bool, // the piano roll: only the project key's rows (and any with notes)
 	focused:  bool, // the editor has the keyboard (its tool keys work)
 	free:     bool, // snap off: notes and points go anywhere (Cmd held: the same, for a moment)
 	editing:  bool, // a paint, a sweep or a drag is under way (sealed when the mouse lets go)
@@ -129,6 +130,16 @@ draw_editor_tools :: proc(a: ^App) {
 	if ui.icon_button(ui.ICON_FOLD_VERTICAL, "Fold: only the rows that have notes" if !st.fold else "Fold: on (only the rows that have notes)", on = st.fold) {
 		st.fold = !st.fold
 		st.view.key0 = -1
+	}
+	if st.piano && a.m.project.pads[st.piano_pad].kind != .Slicer {
+		im.SameLine(0, 2)
+		kn, _ := pa.key_name(&a.api)
+		tip := fmt.ctprintf("Fold to key: only the rows of %s (and any with notes)%s", kn, ": on" if st.key_fold else "")
+		if ui.icon_button(ui.ICON_KEYBOARD_MUSIC, tip, on = st.key_fold) {
+			st.key_fold = !st.key_fold
+			st.view.key0 = -1
+		}
+		ui.name("fold to key")
 	}
 	// Vertical zoom: the rows' height, dragged (or Cmd/Ctrl+wheel over the
 	// rows); double-click: as many as fit.
@@ -254,7 +265,9 @@ draw_sequence :: proc(user: rawptr) {
 	if st.view.key0 < 0 {
 		st.view.keys = keys
 		st.view.key0 = 0
-		if st.piano && !st.fold && !slicer do st.view.key0 = 48 - keys / 2 // the pad's own pitch in the middle
+		if st.piano && !st.fold && !slicer { // the pad's own pitch in the middle (folded to the key: the nearest row)
+			for p, k in row_pitch do if p <= 0 do st.view.key0 = k - keys / 2
+		}
 	} else if st.view.keys != keys {
 		// (Zoomed: the bottom row stays where it was.)
 		st.view.keys = keys
@@ -287,6 +300,7 @@ draw_sequence :: proc(user: rawptr) {
 	}
 	top := im.GetCursorScreenPos()
 	e := ui.note_grid("seq", notes[:], rows, &st.view, snap, {avail.x, roll_h}, st.tool, beat if playing else -1, pm.bar_beats(&m.project), drop_type = "PADS_FILE")
+	if st.piano && !slicer do shade_key_rows(a, row_pitch[:], rows, top, {avail.x, roll_h})
 	// Tracks with their own loop: its end marked, the rest dimmed, and
 	// what it plays there (its loop again) as ghosts.
 	if !st.piano {
@@ -473,7 +487,9 @@ seq_rows :: proc(a: ^App, s: pm.Sequence) -> (row_pad, row_pitch: [dynamic]int, 
 		pad := st.piano_pad
 		used: [97]bool
 		for n in s.notes do if int(n.pad) == pad && int(n.pitch) >= -48 && int(n.pitch) <= 48 do used[int(n.pitch) + 48] = true
-		for p in -48 ..= 48 do if !st.fold || used[p + 48] {
+		for p in -48 ..= 48 {
+			has, _ := pa.key_has(&a.api, i64(p))
+			if (st.fold && !used[p + 48]) || (st.key_fold && !has && !used[p + 48]) do continue
 			append(&row_pad, pad)
 			append(&row_pitch, p)
 		}
@@ -1068,4 +1084,25 @@ note_keys :: proc(a: ^App, which, row_pad, row_pitch: []int) {
 	if im.IsKeyPressed(.UpArrow) do rows = 1 // (rows count from the bottom)
 	if im.IsKeyPressed(.DownArrow) do rows = -1
 	if beats != 0 || rows != 0 do nudge_selection(a, beats, rows, row_pad, row_pitch)
+}
+
+// The piano roll's rows in the project key shaded (its root's more), so
+// what's in key shows; the rest left as they are.
+@(private = "file")
+shade_key_rows :: proc(a: ^App, row_pitch: []int, rows: []ui.Roll_Row, top, size: im.Vec2) {
+	st := &a.seq
+	t := ui.theme()
+	ks, _ := pa.key_state(&a.api)
+	names_w := ui.roll_rows_width(rows)
+	row_h := size.y / f32(max(st.view.keys, 1))
+	dl := im.GetWindowDrawList()
+	for k in st.view.key0 ..< min(st.view.key0 + st.view.keys, len(row_pitch)) {
+		p := row_pitch[k]
+		has, _ := pa.key_has(&a.api, i64(p))
+		if !has do continue
+		root := ((i64(p) - ks.root) % 12 + 12) % 12 == 0
+		y := top.y + size.y - f32(k - st.view.key0 + 1) * row_h
+		im.DrawList_AddRectFilled(dl, {top.x + names_w, y}, {top.x + size.x, y + row_h}, ui.col(ui.with_alpha(t.accent, 0.11 if root else 0.05)))
+		im.DrawList_AddRectFilled(dl, {top.x + names_w - 3, y + 1}, {top.x + names_w, y + row_h - 1}, ui.col(ui.with_alpha(t.accent, 0.8 if root else 0.45)))
+	}
 }

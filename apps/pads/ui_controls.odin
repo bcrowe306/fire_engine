@@ -19,7 +19,13 @@ Controls_Ui :: struct {
 	length_open:   bool, // Sequence Length: the current sequence's bars
 	quantize_open: bool, // Quantize: its settings, and input quantize's
 	convert_open:  bool, // Convert: the selected pad's sample as another device, or resampled
-	scale_open:    bool, // Scale: Keyboard mode's scale, root, octave and chord
+	key_open:      bool, // Key: the project key, Scale's octave, the chords' voicing
+	progression_open: bool, // Progressions: the bank, yours, the one in use edited
+	prog_style:    int,  // the bank's style shown (0: yours)
+	prog_style_set: bool, // (the first time: the style of the one in use, else the first)
+	prog_name:     [pm.PROGRESSION_NAME]u8, // the name field
+	prog_name_was: string, // the progression's name the field last showed
+	prog_name_set: bool,
 	recording_open: bool, // Recording: the Sample control (recording into a pad)
 	transport_open: bool, // Transport: loop, count-in, the click, the time signature
 	repeat_open:    bool, // Note Repeat: on, its rate, its gate (a controller's Repeat held)
@@ -271,50 +277,247 @@ draw_convert_dialog :: proc(a: ^App) {
 // The notes' names, from C.
 KEY_NAMES := [12]string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
 
-// Scale: Keyboard mode's scale, root, octave and chord (a controller's
-// Scale: its encoders turn them), and Keyboard mode itself. (The scales,
-// chords and progressions grid mode replaces it later.)
-draw_scale_dialog :: proc(a: ^App) {
+// Key: the project key (its root and scale), Scale mode's octave, and
+// how Chords and Progressions voice their chords (a controller's Scale:
+// its encoders turn them). Its buttons: Scale or Pads mode, Chords mode.
+draw_key_dialog :: proc(a: ^App) {
 	st := &a.controls
-	if !st.scale_open do return
-	im.OpenPopup("Scale")
-	if !modal_begin(a, "Scale", &st.scale_open, {.AlwaysAutoResize}) do return
+	if !st.key_open do return
+	im.OpenPopup("Key")
+	if !modal_begin(a, "Key", &st.key_open, {.AlwaysAutoResize}) do return
 	defer im.EndPopup()
-	ps, _ := pa.perform_state(&a.api)
-	modal_text(a, "Keyboard mode's notes: the pads play this scale from this root.", dim = true)
-	sc, root, oct, ch := int(ps.scale), int(ps.root), int(ps.octave), int(ps.chord)
-	im.SetNextItemWidth(200)
-	if ui.combo("Scale##sc", pm.SCALE_NAMES[pm.Scale(sc)]) {
-		for x in pm.Scale do if im.Selectable(pm.SCALE_NAMES[x], int(x) == sc) do sc = int(x)
+	ks, _ := pa.key_state(&a.api)
+	modal_text(a, "The project key: Scale, Chords and Progressions play it; the piano roll shades it.", dim = true)
+	// The scale, in the dialog's order (an encoder steps through it so).
+	at := 0
+	for x, k in pm.SCALE_ORDER do if int(x) == int(ks.scale) do at = k
+	im.SetNextItemWidth(220)
+	if ui.combo("Scale##sc", pm.SCALE_NAMES[pm.Scale(ks.scale)]) {
+		for x, k in pm.SCALE_ORDER do if im.Selectable(pm.SCALE_NAMES[x], k == at) do at = k
 		im.EndCombo()
 	}
-	sc = clamp(sc + modal_knob(a, "Scale", string(pm.SCALE_NAMES[pm.Scale(sc)])), 0, len(pm.Scale) - 1)
-	im.SetNextItemWidth(200)
+	ui.name("key scale")
+	at = clamp(at + modal_knob(a, "Scale", string(pm.SCALE_NAMES[pm.SCALE_ORDER[at]])), 0, len(pm.SCALE_ORDER) - 1)
+	root := int(ks.root)
+	im.SetNextItemWidth(220)
 	if ui.combo("Root##root", fmt.ctprintf("%s", KEY_NAMES[root])) {
 		for k in 0 ..< 12 do if im.Selectable(fmt.ctprintf("%s", KEY_NAMES[k]), k == root) do root = k
 		im.EndCombo()
 	}
+	ui.name("key root")
 	root = ((root + modal_knob(a, "Root", KEY_NAMES[root])) % 12 + 12) % 12
-	im.SetNextItemWidth(200)
-	o := i32(oct)
+	if root != int(ks.root) || pm.SCALE_ORDER[at] != pm.Scale(ks.scale) do pa.key_set(&a.api, i64(root), pa.Scale(pm.SCALE_ORDER[at]))
+	im.SetNextItemWidth(220)
+	o := i32(ks.octave)
 	im.SliderInt("Octave##oct", &o, -3, 3, "%+d")
-	oct = clamp(int(o) + modal_knob(a, "Octave", fmt.tprintf("%+d", oct)), -3, 3)
-	im.SetNextItemWidth(200)
-	if ui.combo("Chords##ch", pm.CHORD_NAMES[pm.Chord(ch)]) {
-		for x in pm.Chord do if im.Selectable(pm.CHORD_NAMES[x], int(x) == ch) do ch = int(x)
+	ui.name("key octave")
+	oct := clamp(int(o) + modal_knob(a, "Octave", fmt.tprintf("%+d", ks.octave)), -3, 3)
+	if i64(oct) != ks.octave do pa.key_set_octave(&a.api, i64(oct))
+	// The chords' voicing.
+	im.Spacing()
+	im.SeparatorText("Chords")
+	lead := ks.voice_leading
+	im.Checkbox("Voice leading##vl", &lead)
+	ui.name("voice leading")
+	if im.IsItemHovered() do im.SetTooltip("Each chord in the inversion closest to the chord before it (else root position)")
+	lead, _ = modal_switch(a, "Voice lead", lead)
+	sp := int(ks.spread)
+	im.SetNextItemWidth(220)
+	if ui.combo("Spread##spread", pm.SPREAD_NAMES[pm.Spread(sp)]) {
+		for x in pm.Spread do if im.Selectable(pm.SPREAD_NAMES[x], int(x) == sp) do sp = int(x)
 		im.EndCombo()
 	}
-	ch = clamp(ch + modal_knob(a, "Chords", string(pm.CHORD_NAMES[pm.Chord(ch)])), 0, len(pm.Chord) - 1)
-	if sc != int(ps.scale) || root != int(ps.root) || oct != int(ps.octave) || ch != int(ps.chord) {
-		pa.perform_set_keys(&a.api, pa.Scale(sc), i64(root), i64(oct), pa.Chord(ch))
-	}
+	ui.name("key spread")
+	sp = clamp(sp + modal_knob(a, "Spread", string(pm.SPREAD_NAMES[pm.Spread(sp)])), 0, len(pm.Spread) - 1)
+	strum := f32(ks.strum_ms)
+	im.SetNextItemWidth(220)
+	im.SliderFloat("Strum##strum", &strum, 0, pm.MAX_STRUM_MS, "%.0f ms")
+	ui.name("key strum")
+	if im.IsItemHovered() do im.SetTooltip("Time between a chord's notes, low note first")
+	strum = clamp(strum + f32(modal_knob(a, "Strum", fmt.tprintf("%.0f ms", strum), fine = true)), 0, pm.MAX_STRUM_MS)
+	if lead != ks.voice_leading || sp != int(ks.spread) || f64(strum) != ks.strum_ms do pa.key_set_voicing(&a.api, lead, pa.Spread(sp), f64(strum))
 	im.Spacing()
-	keyboard := ps.play_mode == .Keyboard
-	if modal_button(a, "Pads Mode" if keyboard else "Keyboard Mode") do pa.perform_set_play_mode(&a.api, .Pads if keyboard else .Keyboard)
+	ps, _ := pa.perform_state(&a.api)
+	scale := ps.play_mode == .Scale
+	if modal_button(a, "Pads Mode" if scale else "Scale Mode") do pa.perform_set_play_mode(&a.api, .Pads if scale else .Scale)
+	im.SameLine()
+	if modal_button(a, "Chords Mode") do pa.perform_set_play_mode(&a.api, .Chords)
 	im.SameLine()
 	if modal_button(a, "Close") || im.IsKeyPressed(.Escape) {
-		st.scale_open = false
+		st.key_open = false
 		im.CloseCurrentPopup()
+	}
+}
+
+// Progressions: choose one from the bank (by style) or yours, and edit
+// the one in use (its chords, their degrees and variations, its name;
+// saved as yours).
+draw_progressions_dialog :: proc(a: ^App) {
+	st := &a.controls
+	if !st.progression_open do return
+	im.OpenPopup("Progressions")
+	im.SetNextWindowSize({820, 500}, .Appearing)
+	if !modal_begin(a, "Progressions", &st.progression_open) do return
+	defer im.EndPopup()
+	kn, _ := pa.key_name(&a.api)
+	modal_text(a, fmt.tprintf("Roman numerals, so they play in the project key (%s). Each chord is a pad, in order.", kn), dim = true)
+	footer := im.GetFrameHeightWithSpacing() + 8
+	avail := im.GetContentRegionAvail()
+	h := max(avail.y - footer, 120)
+	if im.BeginChild("##progbank", {300, h}, {.Borders}) {
+		draw_progression_bank(a)
+	}
+	im.EndChild()
+	im.SameLine()
+	if im.BeginChild("##progedit", {0, h}, {.Borders}) {
+		draw_progression_editor(a)
+	}
+	im.EndChild()
+	if modal_button(a, "Close") || im.IsKeyPressed(.Escape) {
+		st.progression_open = false
+		im.CloseCurrentPopup()
+	}
+}
+
+// The bank: the styles, then the progressions of the one chosen ("Yours":
+// those saved in the settings folder). A click uses one.
+@(private = "file")
+draw_progression_bank :: proc(a: ^App) {
+	st := &a.controls
+	im.TextDisabled("Style")
+	styles := make([dynamic]string, context.temp_allocator)
+	append(&styles, "Yours")
+	for s in pm.PROGRESSION_STYLES do append(&styles, s)
+	if !st.prog_style_set {
+		st.prog_style, st.prog_style_set = 1, true
+		cur, _ := pa.progression_name(&a.api)
+		n, _ := pa.progression_bank_count(&a.api)
+		for k in 0 ..< n {
+			name, _ := pa.progression_bank_name(&a.api, k)
+			if name != cur do continue
+			style, _ := pa.progression_bank_style(&a.api, k)
+			for s, i in styles do if s == style do st.prog_style = i
+		}
+	}
+	st.prog_style = clamp(st.prog_style, 0, len(styles) - 1)
+	im.SetNextItemWidth(-1)
+	if ui.combo("##progstyle", fmt.ctprintf("%s", styles[st.prog_style])) {
+		for s, k in styles do if im.Selectable(fmt.ctprintf("%s", s), k == st.prog_style) do st.prog_style = k
+		im.EndCombo()
+	}
+	ui.name("progression style")
+	im.Spacing()
+	cur, _ := pa.progression_name(&a.api)
+	if st.prog_style == 0 {
+		n, _ := pa.progression_mine_count(&a.api)
+		if n == 0 do im.TextDisabled("None yet: edit one and Save as yours.")
+		for k in 0 ..< n {
+			name, _ := pa.progression_mine_name(&a.api, k)
+			if im.Selectable(fmt.ctprintf("%s##mine%d", name, k), name == cur) do pa.progression_use_mine(&a.api, name)
+			ui.name(fmt.tprintf("mine %s", name))
+		}
+		return
+	}
+	style := styles[st.prog_style]
+	n, _ := pa.progression_bank_count(&a.api)
+	for k in 0 ..< n {
+		s, _ := pa.progression_bank_style(&a.api, k)
+		if s != style do continue
+		name, _ := pa.progression_bank_name(&a.api, k)
+		nums, _ := pa.progression_bank_numerals(&a.api, k)
+		if im.Selectable(fmt.ctprintf("%s##bank%d", name, k), name == cur) do pa.progression_use_bank(&a.api, k)
+		ui.name(fmt.tprintf("bank %s", name))
+		im.SameLine(150)
+		im.TextDisabled("%s", fmt.ctprintf("%s", nums))
+	}
+}
+
+// The progression in use, editable: its name, its chords (each one's
+// degree and variation, moved up or down, taken out), a chord added, and
+// saved as yours.
+@(private = "file")
+draw_progression_editor :: proc(a: ^App) {
+	st := &a.controls
+	cur, _ := pa.progression_name(&a.api)
+	if !st.prog_name_set || cur != st.prog_name_was {
+		st.prog_name = {}
+		copy(st.prog_name[:len(st.prog_name) - 1], cur)
+		st.prog_name_was = strings.clone(cur)
+		st.prog_name_set = true
+	}
+	im.TextDisabled("Name")
+	im.SameLine(60)
+	im.SetNextItemWidth(220)
+	if im.InputText("##progname", cstring(&st.prog_name[0]), len(st.prog_name)) {
+		name := strings.truncate_to_byte(string(st.prog_name[:]), 0)
+		pa.progression_set_name(&a.api, name)
+		delete(st.prog_name_was)
+		st.prog_name_was = strings.clone(strings.trim_space(name))
+	}
+	ui.name("progression name")
+	im.SameLine()
+	if im.Button("Save as yours") {
+		name := strings.trim_space(strings.truncate_to_byte(string(st.prog_name[:]), 0))
+		if _, r := pa.progression_save(&a.api, name); r == .Ok {
+			ui.toast(&a.ws.toasts, .Success, fmt.tprintf("Saved the progression %s", name))
+		} else {
+			ui.toast(&a.ws.toasts, .Error, fmt.tprintf("Couldn't save the progression: %s", pa.last_error(&a.api)))
+		}
+	}
+	ui.name("save progression")
+	im.Spacing()
+	ks, _ := pa.key_state(&a.api)
+	ps, _ := pa.progression_state(&a.api)
+	if ps.count == 0 do im.TextDisabled("No chords: add one.")
+	for i in 0 ..< ps.count {
+		c, _ := pa.progression_chord(&a.api, i)
+		im.PushIDInt(i32(i))
+		im.AlignTextToFramePadding()
+		im.TextDisabled("%s", fmt.ctprintf("%2d", i + 1))
+		im.SameLine(34)
+		im.SetNextItemWidth(96)
+		deg := c.degree
+		dn, _ := pa.key_chord_name(&a.api, deg, .Triad)
+		if ui.combo("##degree", fmt.ctprintf("%s", dn)) {
+			for d in 0 ..< max(ks.notes, deg + 1) {
+				x, _ := pa.key_chord_name(&a.api, d, .Triad)
+				if im.Selectable(fmt.ctprintf("%s##d%d", x, d), d == deg) do pa.progression_set_chord(&a.api, i, d, c.variation)
+			}
+			im.EndCombo()
+		}
+		ui.name(fmt.tprintf("chord %d degree", i + 1))
+		im.SameLine()
+		im.SetNextItemWidth(104)
+		if ui.combo("##variation", pm.VARIATION_NAMES[pm.Variation(c.variation)]) {
+			for v in pm.Variation do if im.Selectable(pm.VARIATION_NAMES[v], int(v) == int(c.variation)) do pa.progression_set_chord(&a.api, i, c.degree, pa.Variation(v))
+			im.EndCombo()
+		}
+		ui.name(fmt.tprintf("chord %d variation", i + 1))
+		im.SameLine()
+		name, _ := pa.progression_chord_name(&a.api, i)
+		im.AlignTextToFramePadding()
+		im.TextUnformatted(fmt.ctprintf("%s", name))
+		im.SameLine(362) // (the buttons in a column, whatever the name's width)
+		if ui.icon_button(ui.ICON_CHEVRON_UP, "Earlier") && i > 0 do pa.progression_move(&a.api, i, i - 1)
+		ui.name(fmt.tprintf("chord %d up", i + 1))
+		im.SameLine(0, 2)
+		if ui.icon_button(ui.ICON_CHEVRON_DOWN, "Later") && i < ps.count - 1 do pa.progression_move(&a.api, i, i + 1)
+		ui.name(fmt.tprintf("chord %d down", i + 1))
+		im.SameLine(0, 2)
+		if ui.icon_button(ui.ICON_X, "Take it out") do pa.progression_remove(&a.api, i)
+		ui.name(fmt.tprintf("chord %d remove", i + 1))
+		im.PopID()
+	}
+	im.Spacing()
+	if ps.count < ps.max {
+		if im.Button(ui.ICON_PLUS + " Add chord") {
+			last := pa.Progression_Chord{}
+			if ps.count > 0 do last, _ = pa.progression_chord(&a.api, ps.count - 1)
+			pa.progression_insert(&a.api, ps.count, last.degree, last.variation)
+		}
+		ui.name("add chord")
+	} else {
+		im.TextDisabled("%s", fmt.ctprintf("%d chords: the most a progression has", ps.max))
 	}
 }
 

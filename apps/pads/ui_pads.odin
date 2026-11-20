@@ -1,6 +1,7 @@
 package pads
 
 import "core:fmt"
+import "core:strings"
 
 import app "app:core"
 import "app:ui"
@@ -8,9 +9,6 @@ import pa "api"
 import pm "model"
 import im "deps:imgui"
 import "fire:prof"
-
-// How a chord shows on a pad in keyboard mode.
-CHORD_SUFFIX := [pm.Chord]string{.Off = "", .Triad = "chord", .Seventh = "7th", .Power = "5"}
 
 // Key shown on each pad of a bank, for the keyboard.
 PAD_KEY_LABELS := [16]string{"Z", "X", "C", "V", "A", "S", "D", "F", "Q", "W", "E", "R", "1", "2", "3", "4"}
@@ -23,9 +21,10 @@ draw_pads :: proc(user: rawptr) {
 	p := &a.m.project
 	f := a.platform.fonts
 
-	// Keyboard and Velocity play the selected pad: arrows step through the
-	// tracks (the pads with a sound), its name between them, above the
-	// bank tabs.
+	// The note modes and Velocity play the selected pad: arrows step
+	// through the tracks (the pads with a sound), its name between them,
+	// above the bank tabs; Chords' rows and Progressions' progression
+	// beside them.
 	if a.play_mode != .Pads {
 		if ui.icon_button(ui.ICON_CHEVRON_LEFT, "The track before (the pad these keys play)") do step_track(a, -1)
 		ui.name("track before")
@@ -37,11 +36,18 @@ draw_pads :: proc(user: rawptr) {
 		im.SameLine(0, 2)
 		if ui.icon_button(ui.ICON_CHEVRON_RIGHT, "The next track (the pad these keys play)") do step_track(a, 1)
 		ui.name("track after")
+		draw_chord_controls(a)
 		// (A row of its own: the bank tabs keep the width.)
 	}
 	bank := a.bank
 	if ui.segmented("banks", {"A", "B", "C", "D", "E", "F", "G", "H"}, &bank) do pa.perform_set_bank(&a.api, i64(bank))
-	if im.IsItemHovered() && a.play_mode == .Keyboard do im.SetTooltip("In Keyboard mode each bank plays the next 16 notes of the scale")
+	if im.IsItemHovered() {
+		#partial switch a.play_mode {
+		case .Scale:        im.SetTooltip("In Scale mode each bank plays the next 16 notes of the key")
+		case .Chords:       im.SetTooltip("In Chords mode each bank plays the next four degrees of the key")
+		case .Progressions: im.SetTooltip("In Progressions mode bank A plays the progression, a chord a pad")
+		}
+	}
 	im.Spacing()
 
 	avail := im.GetContentRegionAvail()
@@ -93,22 +99,24 @@ draw_pads :: proc(user: rawptr) {
 
 		switch a.play_mode {
 		case .Pads:
-		case .Keyboard: // the notes of the scale, on the selected pad
+		case .Scale, .Chords, .Progressions: // the key's notes or chords, on the selected pad
 			target := &p.pads[a.selected]
-			pitches: [4]int
-			ps := keyboard_notes(a, k, &pitches)
-			face.name = ui.note_name(60 + ps[0])
-			if len(ps) > 1 do face.name = fmt.tprintf("%s %s", face.name, CHORD_SUFFIX[a.keys.chord])
-			face.middle = fmt.tprintf("%+d st", ps[0])
-			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0 || target.kind == .Synth, false, false, nil
-			if (ps[0] - a.keys.root) %% 12 == 0 do face.selected = true // the roots stand out
+			key, _ := pa.perform_key(&a.api, i64(k))
+			face.name, _ = pa.perform_key_name(&a.api, i64(k))
+			face.middle = key_face_middle(a, key)
+			// A chord: its symbol large ("Dm7"), its numeral under it ("ii7"),
+			// so a small pad shows both.
+			if key.chord {
+				if sp := strings.index_byte(face.name, ' '); sp > 0 do face.name, face.middle = face.name[sp + 1:], face.name[:sp]
+			}
+			face.tint, face.has_sound, face.selected, face.buttons, face.peaks = ui.rgb(target.color), target.sample != 0 || target.kind == .Synth, key.root, false, nil
 			if target.kind == .Slicer { // its slices, a pad each
-				face.name = fmt.tprintf("Slice %d", ps[0] + 1)
-				face.middle = ui.note_name(int(target.slicer.base) + ps[0])
-				face.has_sound = ps[0] < int(target.slicer.count)
+				face.middle = ui.note_name(int(target.slicer.base) + int(key.pitch))
+				face.has_sound = key.pitch < i64(target.slicer.count)
 				face.selected = false
 			}
-			if !keyboard_in_range(ps) do face.name, face.middle, face.has_sound, face.selected = "", "", false, false
+			if !key.playable do face.middle, face.has_sound, face.selected = "", false, false
+			if !key.playable && !key.chord do face.name = ""
 		case .Velocity:
 			target := &p.pads[a.selected]
 			face.name = fmt.tprintf("%d", int(pm.velocity_of_pad(k) * 127 + 0.5))
@@ -346,8 +354,8 @@ set_choke :: proc(a: ^App, sel: Pad_Set, g: int) {
 
 // Selects the track `d` steps on from the selected one (the pads with a
 // sound, round from the last to the first; none: every pad), for
-// Keyboard and Velocity to play: what was held let go, its sound shown.
-// Keyboard's banks stay on their notes; back to Pads, its bank.
+// the note modes and Velocity to play: what was held let go, its sound
+// shown. The note modes' banks stay on their notes; back to Pads, its bank.
 step_track :: proc(a: ^App, d: int) {
 	p := &a.m.project
 	any := false
@@ -361,6 +369,38 @@ step_track :: proc(a: ^App, d: int) {
 	for k in 0 ..< pm.PADS_PER_BANK do release(a, a.bank * pm.PADS_PER_BANK + k)
 	a.selected, a.pad_sel, a.pad_anchor = to, {}, to
 	a.pads_bank = to / pm.PADS_PER_BANK
-	if a.play_mode != .Keyboard do a.bank = a.pads_bank
+	if !pm.note_mode(a.play_mode) do a.bank = a.pads_bank
 	show_pad_chain(a, to)
+}
+
+// What a note mode's pad shows under its name: Scale's semitones from the
+// pad's own note (a chord's: its numeral, set by the caller).
+@(private = "file")
+key_face_middle :: proc(a: ^App, key: pa.Perform_Key) -> string {
+	#partial switch a.play_mode {
+	case .Chords, .Progressions:
+		return ""
+	}
+	return fmt.tprintf("%+d st", key.pitch)
+}
+
+// Beside the track arrows: Chords mode's rows (which four variations the
+// pads show), Progressions mode's progression (its dialog). (The key: the
+// status bar's, the MIDI page's.)
+@(private = "file")
+draw_chord_controls :: proc(a: ^App) {
+	#partial switch a.play_mode {
+	case .Chords:
+		im.SameLine(0, 12)
+		ps, _ := pa.perform_state(&a.api)
+		page := int(ps.chord_page)
+		if ui.segmented("chord rows", {"Triad 7 sus", "add9 6 inv"}, &page) do pa.perform_set_chord_page(&a.api, i64(page))
+		if im.IsItemHovered() do im.SetTooltip("The pads' rows, from the bottom: triad, 7th, sus4, sus2; or add9, 6th, 1st and 2nd inversion")
+	case .Progressions:
+		im.SameLine(0, 12)
+		name, _ := pa.progression_name(&a.api)
+		if im.Button(fmt.ctprintf("%s %s##progression", ui.ICON_LIST_MUSIC, name if name != "" else "Progression")) do a.controls.progression_open = true
+		ui.name("progression")
+		if im.IsItemHovered() do im.SetTooltip("The progression the pads play, a chord each: choose another, or edit it")
+	}
 }

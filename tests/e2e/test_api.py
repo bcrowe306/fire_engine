@@ -159,8 +159,8 @@ def test_the_song_launcher_and_perform_through_the_api(app, fixtures):
     lane = app.api("launcher_add_lane")
     app.api("launcher_rename_lane", lane=lane, name="Hats")
     assert app.state()["lanes"][lane] == "Hats"
-    app.api("perform_set_play_mode", mode="Keyboard")
-    assert app.state()["play_mode"] == "Keyboard"
+    app.api("perform_set_play_mode", mode="Scale")
+    assert app.state()["play_mode"] == "Scale"
     app.api("perform_set_play_mode", mode="Pads")
     app.api("perform_set_bank", bank=2)
     assert app.state()["bank"] == 2

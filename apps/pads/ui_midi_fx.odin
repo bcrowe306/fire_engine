@@ -10,7 +10,7 @@ import im "deps:imgui"
 import pf "fire:perform"
 
 // A pad's MIDI page (the first device of its chain, before its sound):
-// how the pads play (Pads, Keyboard on it, Velocity), its note repeat, its
+// how the pads play (Pads, Scale, Chords or Progressions on it, Velocity), its note repeat, its
 // arpeggiator, and its MIDI (the key that plays it, Learn, MIDI out). The
 // repeat and the arpeggiator are the pad's own (saved with it): they act
 // on its live notes, not the sequencer's.
@@ -40,50 +40,42 @@ midi_fx_on :: proc(a: ^App, i: int) -> bool {
 	return fx.repeat_on || fx.arp_on
 }
 
-// How the 16 pads play: each its own sound, a keyboard of this pad (a
-// scale or chords, from a root and octave), or this pad at 16 velocities.
+// How the 16 pads play: each its own sound, this pad in the project key
+// (its notes, its chords, a progression; the key from its root, scale and
+// octave), or this pad at 16 velocities.
 @(private)
 draw_play_as :: proc(a: ^App, i: int) {
 	m := &a.m
 	section(a, "Play the pads as", false)
-	mode := int(a.play_mode)
-	if ui.segmented("play_mode", {"Pads", "Keyboard", "Velocity"}, &mode) do set_play_mode(a, pm.Play_Mode(mode))
+	mode := 0
+	for x, k in pm.PLAY_MODES do if x == a.play_mode do mode = k
+	if ui.segmented("play_mode", {"Pads", "Scale", "Chords", "Progressions", "Velocity"}, &mode) do set_play_mode(a, pm.PLAY_MODES[mode])
 	if a.play_mode != .Pads {
 		im.TextDisabled("%s", fmt.ctprintf("Playing %s %s", pm.pad_label(a.selected), pm.pad_name(&m.project.pads[a.selected])))
 	}
-	if a.play_mode == .Keyboard {
-		k := a.keys // (set through the API: perform_set_keys)
-		set :: proc(a: ^App, k: pm.Keys) { pa.perform_set_keys(&a.api, pa.Scale(k.scale), i64(k.root), i64(k.octave), pa.Chord(k.chord)) }
+	if pm.note_mode(a.play_mode) {
+		ks, _ := pa.key_state(&a.api)
 		im.SetNextItemWidth(170)
-		if ui.combo("##scale", pm.SCALE_NAMES[k.scale]) {
-			for sc in pm.Scale do if im.Selectable(pm.SCALE_NAMES[sc], sc == k.scale) {
-				k.scale = sc
-				set(a, k)
-			}
+		if ui.combo("##scale", pm.SCALE_NAMES[pm.Scale(ks.scale)]) {
+			for sc in pm.SCALE_ORDER do if im.Selectable(pm.SCALE_NAMES[sc], int(sc) == int(ks.scale)) do pa.key_set(&a.api, ks.root, pa.Scale(sc))
 			im.EndCombo()
 		}
 		ui.flow(70)
 		im.SetNextItemWidth(70)
-		if ui.combo("##root", ROOT_NAMES[k.root]) {
-			for r, n in ROOT_NAMES do if im.Selectable(r, n == k.root) {
-				k.root = n
-				set(a, k)
-			}
+		if ui.combo("##root", ROOT_NAMES[ks.root]) {
+			for r, n in ROOT_NAMES do if im.Selectable(r, i64(n) == ks.root) do pa.key_set(&a.api, i64(n), ks.scale)
 			im.EndCombo()
 		}
-		oct := f64(k.octave)
-		if e := ui.number_drag("octave", &oct, -3, 3, 1, 1, "Octave %+.0f", 110); e.changed {
-			k.octave = clamp(int(oct), -3, 3)
-			set(a, k)
-		}
+		oct := f64(ks.octave)
+		if e := ui.number_drag("octave", &oct, -3, 3, 1, 1, "Octave %+.0f", 110); e.changed do pa.key_set_octave(&a.api, i64(clamp(int(oct), -3, 3)))
 		ui.flow(170)
-		im.SetNextItemWidth(170)
-		if ui.combo("##chord", pm.CHORD_NAMES[k.chord]) {
-			for c in pm.Chord do if im.Selectable(pm.CHORD_NAMES[c], c == k.chord) {
-				k.chord = c
-				set(a, k)
-			}
-			im.EndCombo()
+		if im.Button("Voicing…##keydialog") do a.controls.key_open = true
+		ui.name("voicing")
+		if im.IsItemHovered() do im.SetTooltip("The Key dialog: the chords' voice leading, spread and strum")
+		if a.play_mode == .Progressions {
+			im.SameLine()
+			if im.Button("Progression…##progdialog") do a.controls.progression_open = true
+			ui.name("progression dialog")
 		}
 	}
 }
@@ -129,6 +121,10 @@ draw_arp_fx :: proc(a: ^App, i: int) {
 	if im.IsItemHovered() do im.SetTooltip("The notes held on this pad (in Keyboard, a chord) play one after another")
 	im.SameLine(0, 6)
 	if ui.toggle("Latch", &fx.arp.latch) do changed, ended = true, true
+	im.SameLine(0, 6)
+	if ui.toggle("In key", &fx.arp_in_key) do changed, ended = true, true
+	ui.name("arp in key")
+	if im.IsItemHovered() do im.SetTooltip("Its notes (and their octaves) moved to the nearest note of the project key")
 	ui.flow(120, 6)
 	im.SetNextItemWidth(120)
 	if ui.combo("##arp_mode", ARP_NAMES[fx.arp.mode]) {

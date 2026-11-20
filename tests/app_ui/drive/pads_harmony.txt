@@ -1,0 +1,41 @@
+# The project key and the note modes: Chords (a chord of the key a pad,
+# its rows paged), Progressions (a progression's chords in order), the Key
+# and Progressions dialogs, strum.
+size 1440 900
+synth 0
+select 0
+root D
+scale dorian
+mode chords
+wait 3
+screenshot harmony_chords
+expect bank 0
+key z                     # the bottom-left pad: i (Dm), three notes
+wait 4
+expect struck 0 3
+chord_page 1
+wait 3
+screenshot harmony_chords_page2
+chord_page 0
+# The Key dialog: the key, the octave, the chords' voicing.
+voicing lead open 40
+panel key
+wait 3
+screenshot harmony_key_dialog
+key escape
+wait 2
+# Progressions: the bank's first, a chord a pad; its dialog.
+root C
+scale major
+mode progressions
+progression 6
+wait 3
+screenshot harmony_progressions
+key z
+wait 20
+expect struck 0 7         # (strummed: its notes 40 ms apart)
+panel progressions
+wait 3
+screenshot harmony_progressions_dialog
+key escape
+wait 2

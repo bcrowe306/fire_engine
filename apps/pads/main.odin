@@ -323,6 +323,7 @@ main :: proc() {
 		else do view_restore(a)
 	} else {
 		pm.model_new(&a.m, project) // api-lint: the project Pads starts with
+		view_restore(a) // (its key, as a new project's is)
 	}
 	pa.transport_set_metronome(&a.api, true) // (the click on; a new project's clicks only while recording: see Project_Defaults.recording)
 	a.files.untitled = untitled
@@ -483,7 +484,7 @@ frame :: proc(a: ^App) {
 	a.seq.focused, a.song_ui.focused = false, false
 	a.browser_has_keys = false
 	// How the app is left goes with the project when it saves.
-	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, bank = a.bank, selected = a.selected, seq_bank = a.launch.win_row / 4, seq_lane0 = a.launch.win_lane, seq_row0 = a.launch.win_row, seq_keys = a.launch.seq_keys, seq_mode = a.seq.mode}
+	a.m.project.view = {play_mode = a.play_mode, keys = a.keys, progression = a.progression, bank = a.bank, selected = a.selected, seq_bank = a.launch.win_row / 4, seq_lane0 = a.launch.win_lane, seq_row0 = a.launch.win_row, seq_keys = a.launch.seq_keys, seq_mode = a.seq.mode}
 	a.ws.bottom_folded_h = im.GetFrameHeight() + 2 * im.GetStyle().WindowPadding.y
 	prof.begin("workspace")
 	ui.workspace_draw(&a.ws, &a.actions, draw_menu, a)
@@ -506,7 +507,8 @@ frame :: proc(a: ^App) {
 	draw_length_dialog(a)
 	draw_quantize_dialog(a)
 	draw_convert_dialog(a)
-	draw_scale_dialog(a)
+	draw_key_dialog(a)
+	draw_progressions_dialog(a)
 	draw_recording_dialog(a)
 	draw_transport_dialog(a)
 	draw_repeat_dialog(a)
@@ -589,9 +591,10 @@ run_fake :: proc(a: ^App) {
 	}
 }
 
-// Plays pad `index` (from the mouse, a key or a script). In keyboard and
-// velocity modes the pad's place in the grid says how to play the
-// selected pad instead.
+// Plays pad `index` (from the mouse, a key or a script). In the note modes
+// (Scale, Chords, Progressions) and Velocity the pad's place in the grid
+// says how to play the selected pad instead: a chord strummed as the key's
+// voicing says.
 press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 	if a.play_mode == .Pads && sample_press(a, index, im.GetIO().KeyAlt) do return // (recording into it instead of playing it)
 	k := index % pm.PADS_PER_BANK
@@ -602,15 +605,14 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 		a.selected = index
 		g^ = {on = true, pad = index}
 		if pad := a.m.project.pads[index]; pad.sample != 0 || pad.kind == .Synth do pm.hit(&a.m.engine, index, true, velocity) // (a synth needs no sample)
-	case .Keyboard:
-		pitches: [4]int
-		ps := keyboard_notes(a, k, &pitches)
-		if !keyboard_in_range(ps) do break // (past what a pad can be pitched to: silent)
-		g^ = {on = true, pad = a.selected, keyboard = true, count = len(ps)}
-		for p, i in ps {
-			g.pitches[i] = i8(clamp(p, -48, 48))
-			pm.hit(&a.m.engine, a.selected, true, velocity, g.pitches[i], keyboard = true)
-		}
+	case .Scale, .Chords, .Progressions:
+		kn := pc.keyboard_notes(&a.core, k)
+		ps := pm.chord_slice(&kn.notes)
+		if !keyboard_in_range(ps) do break // (past what a pad can be pitched to, or no such chord: silent)
+		g^ = {on = true, pad = a.selected, keyboard = true, count = len(ps), strum_ms = a.keys.strum_ms if kn.chords else 0}
+		for p, i in ps do g.pitches[i] = i8(clamp(p, -48, 48))
+		pc.play_pitches(&a.core, g.pad, g.pitches[:g.count], true, velocity, g.strum_ms)
+		pc.key_played(&a.core, g.pad, kn)
 	case .Velocity:
 		g^ = {on = true, pad = a.selected}
 		pm.hit(&a.m.engine, a.selected, true, pm.velocity_of_pad(k))
@@ -619,21 +621,14 @@ press :: proc(a: ^App, index: int, velocity: f32 = 1) {
 	a.held[index] = true
 }
 
-// The pitches (from the target pad's own) pad `k` of the grid plays in
-// Keyboard mode: the scale's degrees from the bank's start (bank A the
-// first 16 from the root, B the next 16...), or for a slicer its slice.
-keyboard_notes :: proc(a: ^App, k: int, out: ^[4]int) -> []int {
-	return pc.keyboard_notes(&a.core, k, out)
-}
-
-// Keyboard mode's degrees below the pad's own note that bank A's first pad
+// Scale mode's degrees below the pad's own note that bank A's first pad
 // starts at: the root five octaves down (the bottom of the MIDI range,
 // whatever the octave set). A slicer's keys start at its first slice.
 keyboard_bottom :: proc(a: ^App) -> int {
 	return pc.keyboard_bottom(&a.core)
 }
 
-// The bank Keyboard mode opens on: the one holding the pad's own note.
+// The bank Scale mode opens on: the one holding the pad's own note.
 keyboard_home_bank :: proc(a: ^App) -> int {
 	return pc.keyboard_home_bank(&a.core)
 }
@@ -653,7 +648,7 @@ release :: proc(a: ^App, index: int) {
 	if !g.on do return
 	g.on = false
 	if g.keyboard {
-		for p in g.pitches[:g.count] do pm.hit(&a.m.engine, g.pad, false, 0, p, keyboard = true)
+		pc.play_pitches(&a.core, g.pad, g.pitches[:g.count], false, 0, g.strum_ms)
 	} else {
 		pm.hit(&a.m.engine, g.pad, false)
 	}
@@ -664,8 +659,9 @@ Grid_Held :: struct {
 	on:       bool,
 	pad:      int,
 	keyboard: bool,
-	pitches:  [4]i8,
+	pitches:  [pm.MAX_CHORD_NOTES]i8,
 	count:    int,
+	strum_ms: f32, // (a strummed chord's: its offs strummed too)
 }
 
 // The computer keyboard as the 4×4 pad grid, pad 1 first: the bottom row
@@ -723,7 +719,7 @@ pad_arrows :: proc(a: ^App) {
 	if step == 0 do return
 	i := (a.selected + step + pm.PADS) % pm.PADS
 	a.selected = i
-	if a.play_mode != .Keyboard do a.bank = i / pm.PADS_PER_BANK // (Keyboard mode's banks are notes)
+	if !pm.note_mode(a.play_mode) do a.bank = i / pm.PADS_PER_BANK // (the note modes' banks are notes)
 	show_pad_chain(a, i)
 }
 
@@ -754,6 +750,8 @@ handle_drops :: proc(a: ^App) {
 view_restore :: proc(a: ^App) {
 	v := a.m.project.view
 	a.play_mode, a.keys, a.bank, a.selected, a.launch.win_lane, a.launch.win_row, a.launch.seq_keys = v.play_mode, v.keys, v.bank, v.selected, v.seq_lane0, v.seq_row0, v.seq_keys
+	a.progression = v.progression // api-lint: the project's own, as it opens (as the keys above)
+	a.voicing = {}
 	a.seq.mode = v.seq_mode
 }
 
@@ -830,7 +828,7 @@ files_init :: proc(a: ^App) {
 				a.pad_sel = {}
 				for p in pads do a.pad_sel += {p}
 				a.selected, a.pad_anchor = pads[0], pads[0]
-				if a.play_mode != .Keyboard do a.bank = pads[0] / pm.PADS_PER_BANK
+				if !pm.note_mode(a.play_mode) do a.bank = pads[0] / pm.PADS_PER_BANK
 				show_pad_chain(a, a.selected)
 			},
 			selected_pads = proc(user: rawptr) -> []int {

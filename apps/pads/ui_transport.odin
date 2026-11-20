@@ -311,14 +311,17 @@ draw_input_quantize :: proc(a: ^App) {
 
 }
 
-// How the pads play: as pads, as a keyboard of the selected pad, or as it
-// at 16 velocities (also in the Perform panel).
+// How the pads play: as pads, the selected pad in the project key (its
+// notes, its chords, a progression of them), or it at 16 velocities (also
+// in the Perform panel).
 draw_play_modes :: proc(a: ^App) {
 	prof.zone("draw_play_modes")
 	// How the pads play (also in the Perform panel).
-	modes := [3]struct { mode: pm.Play_Mode, icon: string, tip: cstring }{
+	modes := [5]struct { mode: pm.Play_Mode, icon: string, tip: cstring }{
 		{.Pads, ui.ICON_LAYOUT_GRID, "Play the pads as pads (each its sound)"},
-		{.Keyboard, ui.ICON_KEYBOARD_MUSIC, "Play the pads as a keyboard of the selected pad"},
+		{.Scale, ui.ICON_KEYBOARD_MUSIC, "Play the pads as the notes of the key, on the selected pad (Scale)"},
+		{.Chords, ui.ICON_PIANO, "Play the pads as chords of the key, on the selected pad (Chords)"},
+		{.Progressions, ui.ICON_LIST_MUSIC, "Play the pads as a progression's chords, on the selected pad (Progressions)"},
 		{.Velocity, ui.ICON_SIGNAL_HIGH, "Play the pads as the selected pad at 16 velocities"},
 	}
 	for md, k in modes {
@@ -412,17 +415,18 @@ draw_sample_control :: proc(a: ^App, h: f32) {
 }
 
 // How the pads play (as the bottom area's header has it): each its own
-// sound, the selected one as a keyboard, or at 16 velocities.
+// sound, the selected one in the key (Scale, Chords, Progressions), or at
+// 16 velocities.
 @(private = "file")
 draw_play_mode :: proc(a: ^App) {
-	NAMES := [pm.Play_Mode]cstring{.Pads = "Pads", .Keyboard = "Keyboard", .Velocity = "Vel"}
+	NAMES := [pm.Play_Mode]cstring{.Pads = "Pads", .Scale = "Scale", .Chords = "Chords", .Progressions = "Progress.", .Velocity = "Vel"}
 	im.SetNextItemWidth(96)
 	if ui.combo("##toolplaymode", NAMES[a.play_mode]) {
-		for mode in pm.Play_Mode do if im.Selectable(NAMES[mode], mode == a.play_mode) do set_play_mode(a, mode)
+		for mode in pm.PLAY_MODES do if im.Selectable(pm.PLAY_MODE_NAMES[mode], mode == a.play_mode) do set_play_mode(a, mode)
 		im.EndCombo()
 	}
 	ui.name("toolbar play mode")
-	if im.IsItemHovered() do im.SetTooltip("How the pads play: each its own sound (Pads), the selected pad as a keyboard, or the selected pad at 16 velocities (Vel)")
+	if im.IsItemHovered() do im.SetTooltip("How the pads play: each its own sound (Pads), the selected pad in the project key (its notes: Scale; its chords: Chords; a progression's: Progressions), or the selected pad at 16 velocities (Vel)")
 }
 
 // Note Repeat, MPC-style: on, whatever pad you hold repeats at its rate

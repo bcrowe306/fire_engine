@@ -1,4 +1,4 @@
-"""Keyboard mode's track arrows: beside the bank tabs, they step the
+"""Scale mode's track arrows: beside the bank tabs, they step the
 selected pad (the one the keys play) through the pads with a sound,
 round from the last to the first; Pads mode doesn't show them."""
 
