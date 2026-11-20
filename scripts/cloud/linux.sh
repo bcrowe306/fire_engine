@@ -59,8 +59,9 @@ modprobe snd-aloop || true
 modprobe snd-seq || true
 printf "snd-aloop\nsnd-seq\n" > /etc/modules-load.d/snd-aloop.conf
 # The app layer: SDL3's build dependencies, Mesa's software Vulkan (lavapipe)
-# so headless UI tests can draw without a GPU, and Task.
-apt-get install -y build-essential pkg-config ninja-build python3-venv libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev libpulse-dev libwayland-dev libdecor-0-dev mesa-vulkan-drivers libvulkan1 libvulkan-dev
+# so headless UI tests can draw without a GPU, Docker (the Linux packages are
+# built in a Ubuntu 22.04 container: scripts/release/linux.sh), and Task.
+apt-get install -y build-essential pkg-config ninja-build python3-venv libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev libpulse-dev libwayland-dev libdecor-0-dev mesa-vulkan-drivers libvulkan1 libvulkan-dev docker.io
 snap install task --classic
 mkdir -p /opt/odin
 curl -fsSL "https://github.com/odin-lang/Odin/releases/download/$ODIN_RELEASE/odin-linux-amd64-$ODIN_RELEASE.tar.gz" | tar -xz -C /opt/odin --strip-components=1

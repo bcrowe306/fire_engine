@@ -151,7 +151,14 @@ task release:icons     # the icons, from apps/pads/assets/icon_source.jpeg (macO
 Each is built optimized, with debug info (crash reports name lines),
 stamped with its version (`PADS_VERSION` in `apps/pads/version.odin`),
 commit and date (`pads --version`, Help > About Pads), and carries the
-licences of Pads and what it is built from. The AppImage needs
+licences of Pads and what it is built from. The Linux packages are
+built in a Ubuntu 22.04 container (`scripts/release/linux/Dockerfile`;
+Docker), SDL3, ImGui, libusb and Link with them, kept in a Docker volume
+between runs: a binary needs the glibc and libstdc++ it was linked
+against, so they run on Ubuntu 22.04, Debian 12, Raspberry Pi OS Bookworm
+and later (glibc 2.34, libstdc++ 3.4.30 today; the script fails if a
+build needs more than 2.35 and 3.4.30). `FIRE_RELEASE_NATIVE=1` builds on
+the machine as it is instead. The AppImage needs
 appimagetool (`~/tools/appimagetool-<arch>.AppImage`, or
 `$APPIMAGETOOL`); the installer needs Inno Setup 6's `ISCC.exe` (or
 `$ISCC`). The packages are unsigned for now: on macOS the app has an

@@ -78,8 +78,9 @@ one (and are converted), but things will change, and some will break.
   "Run anyway").
 - No MIDI learn from a controller to a knob yet (pads learn their notes).
 - macOS: Apple silicon only in this build.
-- Linux: the AppImage and .deb are built on Ubuntu 24.04; older systems
-  may lack its C library.
+- Linux: the AppImage and .deb need glibc 2.34 and GCC 12's libstdc++
+  or newer: Ubuntu 22.04, Debian 12, Raspberry Pi OS Bookworm (64-bit) and
+  anything since (x86-64 and ARM64).
 - A plug-in that crashes takes Pads down with it (its scan blocks it the
   next time).
 
