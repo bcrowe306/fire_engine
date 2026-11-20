@@ -97,6 +97,7 @@ App :: struct {
 	lib:      Lib_State, // the Library's category, selections, last load (ui_library.odin)
 	knob_target: pm.Auto_Target, // what the knob being drawn moves (see `knob_target`)
 	knob_scale:  f32,
+	knob_offset: f32, // (with knob_scale: what the knob shows is the target's value / scale + offset)
 	auto_rec: Auto_Rec, // recording knob moves (the Automation arm)
 	prefs:    string, // where preferences go (--prefs; default: the system's)
 	control:  ui.Control, // --control: a test harness's live commands
@@ -843,10 +844,10 @@ files_init :: proc(a: ^App) {
 		},
 		param_moved = proc(user: rawptr, t: pm.Auto_Target, value: f32) {
 			a := (^App)(user)
-			scale := a.knob_scale
-			a.knob_scale = 1 // (the API's values are the target's own units)
+			scale, offset := a.knob_scale, a.knob_offset
+			a.knob_scale, a.knob_offset = 1, 0 // (the API's values are the target's own units)
 			record_move(a, value)
-			a.knob_scale = scale
+			a.knob_scale, a.knob_offset = scale, offset
 		},
 	}
 }

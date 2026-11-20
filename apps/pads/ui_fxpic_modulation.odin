@@ -12,7 +12,8 @@
 //   sweep moves the delay, sharper with more feedback.
 // - Phaser: its response the same way, the notches swept around the
 //   centre, the sweep's reach a band along the top.
-// Each has its LFO's cycle at the top right, the sides' places on it now.
+// Each has its LFO's cycle in a column at the right (MOD_SIDE), the sides'
+// places on it now, L and R under it; the page strip below them.
 package pads
 
 import "core:fmt"
@@ -100,21 +101,45 @@ pic_lfo :: proc(dl: ^im.DrawList, pos, size: im.Vec2, sine: bool, left, right: [
 	}
 }
 
-// The LFO's box's place and size in a picture from `r0` to `r1`.
+// The column at a picture's right kept for its LFO (the box, under it the
+// sides' L and R; at the bottom the panel's page strip): the effect is
+// drawn left of it, so nothing is drawn over anything else.
+@(private = "file")
+MOD_SIDE :: 104
+
+// The LFO's box's place and size in a picture from `r0` to `r1` (at the
+// top of its column, MOD_SIDE).
 @(private = "file")
 pic_lfo_box :: proc(r0, r1: im.Vec2) -> (pos, size: im.Vec2) {
-	size = {min(f32(72), (r1.x - r0.x) * 0.12), min(f32(28), (r1.y - r0.y) * 0.42)}
-	return {r1.x - 10 - size.x, r0.y + 6}, size
+	size = {MOD_SIDE - 24, min(f32(26), (r1.y - r0.y) * 0.38)}
+	return {r1.x - MOD_SIDE + 12, r0.y + 6}, size
 }
 
-// "L" and "R" in the sides' colours at `at`.
+// The LFO's column (MOD_SIDE) of a picture from `r0` to `r1`: a line
+// between it and the effect, its box (`sine`, the sides' places `left`
+// and `right`) and, under the box, L and R in the sides' colours.
+@(private = "file")
+pic_lfo_side :: proc(dl: ^im.DrawList, r0, r1: im.Vec2, sine: bool, left, right: []f32, color: ui.Color) {
+	th := ui.theme()
+	sx := r1.x - MOD_SIDE
+	im.DrawList_AddRectFilled(dl, {sx - 4, r0.y}, r1, ui.col(ui.PLOT_BG), th.radius, im.DRAW_FLAGS_ROUND_CORNERS_RIGHT) // (a plot's rounded corner beside it filled)
+	im.DrawList_AddLine(dl, {sx, r0.y + 4}, {sx, r1.y - 4}, ui.col(ui.mix(ui.PLOT_BG, th.text, 0.12)), 1)
+	bp, bs := pic_lfo_box(r0, r1)
+	pic_lfo(dl, bp, bs, sine, left, right, color)
+	pic_lr(dl, {bp.x, bp.y + bs.y + 3}, color)
+}
+
+// "L" and "R" in the sides' colours at `at`, a dot before each.
 @(private = "file")
 pic_lr :: proc(dl: ^im.DrawList, at: im.Vec2, color: ui.Color) {
 	lc, rc := pic_sides(color)
 	ui.text_push(.Caption)
 	defer ui.text_pop()
-	im.DrawList_AddText(dl, at, ui.col(ui.lighten(lc, 0.3)), "L")
-	im.DrawList_AddText(dl, {at.x + 12, at.y}, ui.col(ui.lighten(rc, 0.2)), "R")
+	lh := im.GetTextLineHeight()
+	im.DrawList_AddCircleFilled(dl, {at.x + 3, at.y + lh / 2}, 2.8, ui.col(ui.lighten(lc, 0.35)), 10)
+	im.DrawList_AddText(dl, {at.x + 9, at.y}, ui.col(ui.lighten(lc, 0.3)), "L")
+	im.DrawList_AddCircleFilled(dl, {at.x + 27, at.y + lh / 2}, 2.8, ui.col(ui.lighten(rc, 0.2)), 10)
+	im.DrawList_AddText(dl, {at.x + 33, at.y}, ui.col(ui.lighten(rc, 0.2)), "R")
 }
 
 // --- Chorus --------------------------------------------------------------------------------------
@@ -131,7 +156,7 @@ CHORUS_SWEEP :: 0.03
 mod_chorus_picture :: proc(p: fx.Chorus_Params, phase: f32, rate: string, on: bool, size: im.Vec2, color: ui.Color) {
 	th := ui.theme()
 	dl, r0, r1 := pic_frame("chorus picture", size)
-	x0, x1 := r0.x + 36, r1.x - 14
+	x0, x1 := r0.x + 36, r1.x - MOD_SIDE - 14
 	top, bottom := r0.y + 22, r1.y - 6
 	mid := (top + bottom) / 2
 	half := (bottom - top) / 2
@@ -190,8 +215,7 @@ mod_chorus_picture :: proc(p: fx.Chorus_Params, phase: f32, rate: string, on: bo
 	im.DrawList_AddText(dl, {r0.x + 10, mid}, ui.col(ui.lighten(rc, 0.2)), "R")
 	ui.text_pop()
 	pic_caption(dl, {r0.x + 10, r0.y + 4}, "Chorus" if on else "Chorus (off)", fmt.tprintf("%d %s · %s · %.0f%% feedback", pairs, "voice" if pairs == 1 else "voices", rate, p.feedback * 100))
-	bp, bs := pic_lfo_box(r0, r1)
-	pic_lfo(dl, bp, bs, true, lfo_l[:], lfo_r[:], color)
+	pic_lfo_side(dl, r0, r1, true, lfo_l[:], lfo_r[:], color)
 }
 
 // --- Flanger -------------------------------------------------------------------------------------
@@ -251,7 +275,7 @@ mod_flanger_picture :: proc(p: fx.Flanger_Params, phase: f32, rate: string, on: 
 	th := ui.theme()
 	dl, r0, r1 := pic_frame("flanger picture", size)
 	pad: f32 = 8
-	x0, x1 := r0.x + pad, r1.x - pad
+	x0, x1 := r0.x + pad, r1.x - MOD_SIDE - pad
 	top, bottom := r0.y + pad, r1.y - pad
 	LO :: -30
 	HI :: 18
@@ -279,9 +303,7 @@ mod_flanger_picture :: proc(p: fx.Flanger_Params, phase: f32, rate: string, on: 
 	curve(dl, mod_flanger_response(p, dly, n), x0, x1, top, bottom, lc, 2, true)
 	curve(dl, mod_flanger_response(p, dr, n), x0, x1, top, bottom, ui.with_alpha(ui.lighten(rc, 0.1), 0.85), 1.4, false)
 	pic_caption(dl, {r0.x + 10, r0.y + 4}, "Flanger" if on else "Flanger (off)", fmt.tprintf("%.2f ms · %s · %+.0f%% feedback", dly * 1000, rate, p.feedback * 100))
-	bp, bs := pic_lfo_box(r0, r1)
-	pic_lfo(dl, bp, bs, false, {phase - p.offset / 2}, {phase + p.offset / 2}, color)
-	pic_lr(dl, {bp.x - 32, bp.y + 1}, color)
+	pic_lfo_side(dl, r0, r1, false, {phase - p.offset / 2}, {phase + p.offset / 2}, color)
 }
 
 // --- Phaser --------------------------------------------------------------------------------------
@@ -349,11 +371,12 @@ mod_phaser_picture :: proc(p: fx.Phaser_Params, phase: f32, rate: string, on: bo
 		{db = mod_phaser_response(p, kr, sr, N), color = ui.with_alpha(ui.lighten(rc, 0.1), 0.85), width = 1.4},
 		{db = mod_phaser_response(p, kl, sr, N), color = lc, fill = true, width = 2},
 	}
-	ui.response_plot("phaser picture", curves[:], nil, size, -30, 18)
-	r0, r1 := im.GetItemRectMin(), im.GetItemRectMax()
+	ui.response_plot("phaser picture", curves[:], nil, {size.x - MOD_SIDE, size.y}, -30, 18)
+	r0 := im.GetItemRectMin()
+	r1 := im.Vec2{r0.x + size.x, r0.y + size.y} // (the LFO's column, MOD_SIDE, after the plot)
 	dl := im.GetWindowDrawList()
 	pad: f32 = 8
-	x0, x1 := r0.x + pad, r1.x - pad
+	x0, x1 := r0.x + pad, r1.x - MOD_SIDE - pad
 	xk :: proc(x0, x1, key: f32) -> f32 { return x0 + (x1 - x0) * ui.freq_x(fx.key_to_hz(key)) }
 	// The sweep's reach, along the top; the centre; each side now.
 	yb := r0.y + 6
@@ -364,7 +387,5 @@ mod_phaser_picture :: proc(p: fx.Phaser_Params, phase: f32, rate: string, on: bo
 	im.DrawList_AddCircleFilled(dl, {xk(x0, x1, kr), yb}, 3.5, ui.col(ui.lighten(rc, 0.2)), 10)
 	im.DrawList_AddCircleFilled(dl, {xk(x0, x1, kl), yb}, 3.5, ui.col(ui.lighten(lc, 0.35)), 10)
 	pic_caption(dl, {r0.x + 10, r0.y + 4}, "Phaser" if on else "Phaser (off)", fmt.tprintf("%s · ±%.0f st · %s · %+.0f%% feedback", sf_hz(fx.key_to_hz(kl)), p.depth, rate, p.feedback * 100))
-	bp, bs := pic_lfo_box(r0, r1)
-	pic_lfo(dl, bp, bs, false, {phase + p.offset * 0.5}, {phase - p.offset * 0.5}, color)
-	pic_lr(dl, {bp.x - 32, bp.y + 1}, color)
+	pic_lfo_side(dl, r0, r1, false, {phase + p.offset * 0.5}, {phase - p.offset * 0.5}, color)
 }

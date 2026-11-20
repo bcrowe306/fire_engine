@@ -6,8 +6,9 @@ synth tab keeps its picker and On; Mute + Device and Delete + Device still
 turn the device off and remove it. The display is saved for every bank."""
 
 import os
+import re
 
-from push2_fx import bank, banks, draw_us, in_perform, in_slot, moves, on_synth, pads, press, save, turn  # noqa: F401
+from push2_fx import bank, banks, draw_us, in_perform, in_slot, moves, on_synth, pads, press, save, turn, value  # noqa: F401
 
 # The synth's compressor's parameters (synth.effect_param(.Compressor, f):
 # 700 + 32 * its index among the effects + its field).
@@ -53,6 +54,30 @@ def every_knob(pads, d, layout, name, lead=0, extra=None):
             moves(pads, d, lead + col, pid, steps, check=None if steps > 0 else (lambda x, y: y < x))
         if extra:
             extra(b)
+
+
+def ms(text):
+    """A time as read ("1.4 ms", "28 ms", "1.25 s") in ms."""
+    m = re.fullmatch(r"([\d.]+) (ms|s)", text)
+    assert m, text
+    return float(m.group(1)) * (1000 if m.group(2) == "s" else 1)
+
+
+def compressor_times(pads, d, name, lead=0):
+    """Main's Attack and Release read as times (the middle band's: 1.4 ms
+    and 28 ms at their defaults), and turn in ratios: 14 detents (e^(8 x
+    14/160) = 2.0) about double them."""
+    bank(pads, 0)
+    for col, pid, at_default in ((1, C_ATTACK, 1.4), (2, C_RELEASE, 28)):
+        d.set(pid, 0.5)
+        assert abs(ms(value(pads, lead + col)) - at_default) < 0.06 * at_default, value(pads, lead + col)
+        turn(pads, lead + col, 14)
+        ratio = ms(value(pads, lead + col)) / at_default
+        assert 1.8 < ratio < 2.2, (col, value(pads, lead + col))
+        turn(pads, lead + col, -28)
+        ratio = ms(value(pads, lead + col)) / at_default
+        assert 0.45 < ratio < 0.56, (col, value(pads, lead + col))
+    save(pads, f"{name}_times")
 
 
 def check_intensity(pads):
@@ -125,6 +150,7 @@ def test_push2_compressor_in_a_slot(pads, fixtures):
     pads.cmd("hit 0")
     pads.wait(30)
     every_knob(pads, d, compressor_banks(), "compressor")
+    compressor_times(pads, d, "compressor")
     sidechain(pads, d, 4)
     report(pads, "compressor (slot)")
     pads.cmd("release 0")
@@ -136,6 +162,7 @@ def test_push2_compressor_in_perform(pads):
     d = perform(pads, "compressor")
     assert banks(pads) == 4  # (no sidechain)
     every_knob(pads, d, compressor_banks(), "compressor_perform", lead=1, extra=check_intensity(pads))
+    compressor_times(pads, d, "compressor_perform", lead=1)
     report(pads, "compressor (Perform)")
 
 
@@ -144,6 +171,7 @@ def test_push2_compressor_on_the_synths_effects_tab(pads):
     assert banks(pads) == 4
     d.set(C_ON, 1)
     every_knob(pads, d, compressor_banks(), "compressor_synth", lead=1)
+    compressor_times(pads, d, "compressor_synth", lead=1)
     report(pads, "compressor (synth)")
     # On: the lower row's last button.
     bank(pads, 0)

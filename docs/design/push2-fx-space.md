@@ -58,17 +58,17 @@ over the spectrum of what it puts out.
 
 | Bank | Knobs |
 |---|---|
-| Echoes | Time, Feedback, Mix, Sync, Style, Time R |
+| Echoes | Time, Feedback, Mix, Sync, Time R |
 | Tone | Cutoff, Spread |
 
 - **Time** follows Sync: free, a time in milliseconds (turned up: longer;
   its parameter is a rate, so it is drawn as the time it makes); synced, a
   dropdown of divisions (Freeze, 32/1 ... 1/64). Time R likewise, named
   "(Time R)" while the style is Mono (it has no say then).
-- **Sync** (Free, Tempo, Dotted, Triplet) and **Style** are dropdowns.
+- **Sync** (Free, Tempo, Dotted, Triplet) is a dropdown.
 - **Lower row:** the four styles (Mono, Stereo, Ping-pong, Mid ping-pong),
-  the one it has lit. (Style is also a dropdown in Echoes, so every
-  parameter is on a knob.)
+  the one it has lit. The style is there only (a device's own choices are
+  on the lower row), not a knob too.
 
 ## Reverb
 

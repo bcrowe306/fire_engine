@@ -6,7 +6,8 @@
 //	Cutter: Gate (Rate, Duty, Depth); Rate a dropdown of tempo divisions.
 //	Stutter: Repeat (Length, a dropdown of divisions); in a slot, the lower
 //	row's first button repeats while it's held.
-//	Pitch shift: Shift (Pitch in semitones, Window, Mix).
+//	Pitch shift: Shift (Pitch: a semitone a detent, a cent with Shift
+//	held; Window, Mix).
 //
 // On is Mute + Device, Remove is Delete + Device. In Perform the pictures
 // show the effect as it plays at its intensity (where its pad is pressed,
@@ -110,9 +111,7 @@ rhy_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, s
 	if !ctl_knob(p.ctx, fx_index(p, bank, col), p.banks * 8, tag, p.plot) do return
 	a := p.ctx.a
 	v := fx_value(p, id)
-	knob_target(a, fx_auto_target(p.t, id))
-	e := ui.knob(tag, &v, f32(info.min), f32(info.max), f32(info.default), "%.2f", shown_value = shown(v), step = step)
-	knob_target(a, {})
+	e := fx_ring_knob(p, tag, id, &v, {lo = f32(info.min), hi = f32(info.max)}, f32(info.default), shown = shown(v), step = step)
 	control_effect_param(a, p.t, i64(id), clamp(f64(v), info.min, info.max), e.changed, e.ended)
 }
 
@@ -133,6 +132,49 @@ rhy_division_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: 
 
 @(private = "file")
 rhy_percent :: proc(v: f32) -> cstring { return fmt.ctprintf("%.0f %%", v * 100) }
+
+// The pitch shift's interval on `bank`'s column `col`: a whole semitone a
+// detent (from between two, to the next whole one that way), a cent (0.01
+// semitone) a detent with Shift held; reading "+7 st", "+7.15 st". Its
+// automation and undo as `rhy_knob`'s.
+@(private = "file")
+rhy_pitch_knob :: proc(p: ^Fx_Panel, bank, col: int) {
+	id := dsp.PITCH_PARAM_SEMITONES
+	info, ok := fx_param_info(p, id)
+	if !ok do return
+	n := fx_index(p, bank, col)
+	tag := fmt.ctprintf("Pitch##rhy%d", int(id))
+	if !ctl_knob(p.ctx, n, p.banks * 8, tag, p.plot) do return
+	a := p.ctx.a
+	v := fx_value(p, id)
+	lo, hi := f32(info.min), f32(info.max)
+	// The encoder's detents, counted here (the knob's own turning would
+	// take a 48th of its range a detent): what's left of one waits.
+	moved := false
+	ki := ui.knob_input
+	rest: f64 = 0
+	if ki != nil {
+		k := n % 8
+		fine := a.ctl.shift
+		detent := CTL_DETENT / (10 if fine else 1)
+		if steps := ctl_whole(ki.turn[k] / detent); steps != 0 {
+			ki.turn[k] -= f64(steps) * detent
+			to: f32
+			if fine do to = math.round((v + f32(steps) * 0.01) * 100) / 100
+			else if steps > 0 do to = math.floor(v + 0.005) + f32(steps)
+			else do to = math.ceil(v - 0.005) + f32(steps)
+			to = clamp(to, lo, hi)
+			moved = to != v
+			v = to
+		}
+		rest, ki.turn[k] = ki.turn[k], 0
+	}
+	whole := abs(v - math.round(v)) < 0.005
+	shown := fmt.ctprintf("%+.0f st", v) if whole else fmt.ctprintf("%+.2f st", v)
+	e := fx_ring_knob(p, tag, id, &v, {lo = lo, hi = hi}, f32(info.default), shown = shown)
+	if ki != nil do ki.turn[n % 8] = rest
+	control_effect_param(a, p.t, i64(id), clamp(f64(v), info.min, info.max), e.changed || moved, e.ended)
+}
 
 // Where the picture goes: the cursor at its top left.
 @(private = "file")
@@ -238,7 +280,7 @@ rhy_pitch :: proc(p: ^Fx_Panel) {
 	pic.phase = H.phase
 	rhy_plot_pos()
 	rhy_pitch_picture(pic, p.plot)
-	rhy_knob(p, 0, 0, dsp.PITCH_PARAM_SEMITONES, "Pitch", proc(v: f32) -> cstring { return fmt.ctprintf("%+.0f st", v) }, step = 1)
+	rhy_pitch_knob(p, 0, 0)
 	rhy_knob(p, 0, 1, dsp.PITCH_PARAM_WINDOW_MS, "Window", proc(v: f32) -> cstring { return fmt.ctprintf("%.0f ms", v) })
 	rhy_knob(p, 0, 2, dsp.PITCH_PARAM_MIX, "Mix", rhy_percent)
 }

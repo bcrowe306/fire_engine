@@ -207,8 +207,9 @@ shown_params :: proc(s: pm.Effect_Slot, params: []fc.Param_Info) -> []fc.Param_I
 // Parameter `p` of slot `t` (`s`) at the cursor: a knob (a toggle for an
 // on/off one; `as_knob`: a knob all the same, Off and On its two steps, for
 // a controller's encoder). A plug-in's shows what the plug-in has; an
-// instrument's can be given a lane.
-param_knob :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, p: fc.Param_Info, plugin: ^clap.Plugin, as_knob := false) {
+// instrument's can be given a lane. `shown`: its value as read instead of
+// its number with its unit (a plug-in's own text, on a controller).
+param_knob :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, p: fc.Param_Info, plugin: ^clap.Plugin, as_knob := false, shown: cstring = nil) {
 	is_toggle := p.min == 0 && p.max == 1 && .Stepped in p.flags
 	v := pm.slot_value(s, p.id, max(f32))
 	if v == max(f32) {
@@ -243,7 +244,7 @@ param_knob :: proc(a: ^App, t: pm.Fx_Target, s: pm.Effect_Slot, p: fc.Param_Info
 	format := param_format(p)
 	log_scale := p.unit == .Hertz && p.min > 0 && p.max / p.min >= 50 // frequencies turn in ratios
 	knob_target(a, fx_auto_target(t, p.id))
-	e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale)
+	e := ui.knob(fmt.ctprintf("%s##p%d", p.name, p.id), &v, f32(p.min), f32(p.max), f32(p.default), format, log_scale = log_scale, shown_value = shown)
 	knob_target(a, {})
 	if .Stepped in p.flags do v = f32(int(v + 0.5))
 	control_effect_param(a, t, i64(p.id), clamp(f64(v), p.min, p.max), e.changed, e.ended)

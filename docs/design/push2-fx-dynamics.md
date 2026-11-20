@@ -42,6 +42,13 @@ synth's parameters.
 A band that goes with the one beside it (Bands not Three) keeps its bank,
 its knobs in brackets.
 
+Attack and Release read as times (`dyn_ms`: "1.4 ms", "28 ms", "1.25 s"):
+the middle band's, the one every Bands setting uses
+(`fx.compressor_band_ms`; the low band's are longer, the high's shorter:
+2.8, 1.4 and 0.7 ms of attack, 40, 28 and 15 ms of release at 0.5). Their
+0..1 scales the bands' times by e^(8x-4), so an encoder turns them in
+ratios, about 5 % a detent (14 detents double them).
+
 **The picture:** the three bands side by side. Each has its level in and
 out now (two bars, -80..0 dB) and its transfer curve, input across, output
 up: pressed down above Upper by Upper Ratio, lifted below Lower by Lower

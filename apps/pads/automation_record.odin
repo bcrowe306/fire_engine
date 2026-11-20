@@ -41,7 +41,8 @@ record_touch :: proc(a: ^App, t: pm.Auto_Target) {
 }
 
 // The knob held moved to `value` (in its target's units, `a.knob_scale`
-// times what the knob shows): a point where the playhead is.
+// times what the knob shows less `a.knob_offset`): a point where the
+// playhead is.
 record_move :: proc(a: ^App, value: f32) {
 	r := &a.auto_rec
 	if !r.active do return
@@ -50,7 +51,7 @@ record_move :: proc(a: ^App, value: f32) {
 		return
 	}
 	beat, _ := pm.position(&a.m.engine)
-	v := clamp(value * a.knob_scale, r.target.lo, r.target.hi)
+	v := clamp((value - a.knob_offset) * a.knob_scale, r.target.lo, r.target.hi)
 	if r.last >= 0 && beat < r.last - 1e-6 do record_flush(a) // round the loop: that pass is written, a new one begins
 	if len(r.points) > 0 && beat - r.points[len(r.points) - 1].beat < 1.0 / 64 {
 		r.points[len(r.points) - 1].value = v

@@ -178,10 +178,28 @@ dyn_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string) {
 	case .Decibels:     shown = fmt.ctprintf("%.1f dB", v)
 	case .Ratio:        shown = fmt.ctprintf("%.1f : 1" if v < 10 else "%.0f : 1", v)
 	}
-	knob_target(a, fx_auto_target(p.t, id))
-	e := ui.knob(tag, &v, f32(info.min), f32(info.max), f32(info.default), "%.2f", log_scale = info.min > 0 && info.max / info.min >= 50, shown_value = shown)
-	knob_target(a, {})
+	km := Knob_Map{lo = f32(info.min), hi = f32(info.max), log_scale = info.min > 0 && info.max / info.min >= 50}
+	e := fx_ring_knob(p, tag, id, &v, km, f32(info.default), shown = shown)
 	control_effect_param(a, p.t, i64(id), clamp(f64(v), info.min, info.max), e.changed, e.ended)
+}
+
+// The Compressor's Attack or Release (`id`, 0..1, the synth's: a slot's
+// twin, Perform's, the synth's tab) on Main's column `col`, read as a
+// time: the middle band's (the one every Bands setting uses; the low
+// band's are longer, the high's shorter), in ms or s. Its 0..1 scales the
+// bands' times by e^(8x-4), so the encoder already turns it in ratios
+// (about 5 % a detent).
+@(private = "file")
+dyn_comp_time :: proc(p: ^Fx_Panel, col: int, id: fc.Param_Id, label: string, release: bool) {
+	spec := synth.param_spec(id)
+	if spec == nil do return
+	tag := fmt.ctprintf("%s##fx%d", label, int(id)) // (fx_knob's: the same knob whichever draws it)
+	if !ctl_knob(p.ctx, fx_index(p, 0, col), p.banks * 8, tag, p.plot) do return
+	v := fx_value(p, id)
+	att, rel := fx.compressor_band_ms(v, v, 1)
+	shown := fmt.ctprintf("%s", dyn_ms(rel if release else att))
+	e := fx_ring_knob(p, tag, id, &v, {lo = spec.min, hi = spec.max}, spec.default, "%.3f", shown)
+	fx_ring_set(p, id, f64(clamp(v, spec.min, spec.max)), spec.name, e)
 }
 
 // Where the picture goes on the display (its top left, on the screen),
@@ -247,8 +265,8 @@ dyn_compressor :: proc(p: ^Fx_Panel) {
 	draw_dyn_compressor(dyn_plot_pos(), p.plot, pic)
 	// Main.
 	fx_knob(p, 0, 0, c(.Bands), "Bands", COMPRESSOR_BAND_NAMES)
-	fx_knob(p, 0, 1, c(.Attack), "Attack")
-	fx_knob(p, 0, 2, c(.Release), "Release")
+	dyn_comp_time(p, 1, c(.Attack), "Attack", release = false)
+	dyn_comp_time(p, 2, c(.Release), "Release", release = true)
 	fx_knob(p, 0, 3, c(.Mix), "Mix")
 	// Each band: where it starts pressing down and by how much, where it
 	// starts lifting and by how much, its gain.

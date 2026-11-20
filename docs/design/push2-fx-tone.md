@@ -95,7 +95,10 @@ resonance; at the right, the model and style.
 | Filter | Cutoff, Res, Model, Style, Blend, Drive, Mix |
 | Shape | Gain, Comb Offset, Vowel X, Vowel Y, Formant, Formant Q, Spread |
 
-Model and Style are dropdowns (the style's names by the model). What a
+Model and Style are dropdowns (the style's names by the model). The
+Style box shows the names short enough to fit beside its label
+(`COMB_STYLE_SHORT`, `FILTER_STYLE_SHORT`: "LH flange +", "Notch/pass"),
+its open list the full names, as wide as the longest. What a
 model or style doesn't use is in brackets: Gain but on the Digital model
 (its shelf's gain, Shelf Gain, on the Shelving style; its level on the
 others), Comb Offset but on the Comb model, the vowel's five but on the

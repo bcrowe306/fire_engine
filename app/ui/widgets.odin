@@ -97,6 +97,41 @@ Knob_Input :: struct {
 	drawn: int,
 	size:  f32, // the knobs' size (0: as each asks)
 	bar_w: f32, // > 0: knobs drawn as a value bar this wide (the name and value on a line, a bar under them: a display's compact row)
+	shown: [8]Knob_Shown, // what knob k showed as it was drawn (`knob_shown`)
+}
+
+// What a knob drawn for a controller showed: its name and value as read,
+// whether something else moves it now (`live`: its live mark) and how many
+// modulation marks the app drew on it (`marks`). Read back by the app (its
+// tests); the text is cut to fit.
+Knob_Shown :: struct {
+	label: [32]u8,
+	value: [32]u8,
+	live:    bool,
+	live_at: f32, // where its live mark is along the bar (0..1)
+	marks:   int,
+}
+
+// Puts what knob `k` showed into the controller input's `shown` (no input,
+// or `k` past it: nothing). Knobs drawn as bars do it themselves; an app's
+// own controls in a knob's place (a dropdown) call it.
+knob_shown :: proc(k: int, label, value: string, live := false) {
+	ki := knob_input
+	if ki == nil || k < 0 || k >= len(ki.shown) do return
+	s := &ki.shown[k]
+	s^ = {live = live}
+	copy(s.label[:len(s.label) - 1], label)
+	copy(s.value[:len(s.value) - 1], value)
+}
+
+// A knob's value bar's own rectangle (`knob` drawn at `pos` with
+// `Knob_Input.bar_w` set): where an app draws marks of its own on it.
+knob_bar_rect :: proc(pos: im.Vec2) -> (r0, r1: im.Vec2) {
+	w: f32 = knob_input.bar_w if knob_input != nil else KNOB_SIZE
+	text_push(.Label)
+	defer text_pop()
+	y := pos.y + im.GetTextLineHeight() + 3
+	return {pos.x, y}, {pos.x + w, y + KNOB_BAR_THICK}
 }
 
 // The knobs' controller input now (nil: none, the window's own knobs).
@@ -265,7 +300,7 @@ knob :: proc(label: cstring, value: ^f32, min_v, max_v: f32, default: f32, forma
 	}
 	knob_report(e, value^)
 	if knob_input != nil && knob_input.bar_w > 0 {
-		knob_bar(dl, pos, knob_input.bar_w, shown, value^, frac, min_v, max_v, format, shown_value, held || im.IsItemActive())
+		knob_bar(dl, pos, knob_input.bar_w, shown, value^, frac, min_v, max_v, format, shown_value, held || im.IsItemActive(), log_scale, knob_input.drawn - 1)
 		return
 	}
 	// Arc from 7:30 to 4:30 (270°): track, then the value.
@@ -318,7 +353,7 @@ KNOB_BAR_THICK :: 4
 // when the range is either side of 0: a pan, a gain); `hot` (the encoder
 // touched, dragged) brighter.
 @(private)
-knob_bar :: proc(dl: ^im.DrawList, pos: im.Vec2, w: f32, label: cstring, value, frac, min_v, max_v: f32, format, shown_value: cstring, hot: bool) {
+knob_bar :: proc(dl: ^im.DrawList, pos: im.Vec2, w: f32, label: cstring, value, frac, min_v, max_v: f32, format, shown_value: cstring, hot, log_scale: bool, k: int) {
 	t := current
 	lh := im.GetTextLineHeight()
 	buf: [32]u8
@@ -340,10 +375,17 @@ knob_bar :: proc(dl: ^im.DrawList, pos: im.Vec2, w: f32, label: cstring, value, 
 	} else if f > 0.001 {
 		im.DrawList_AddRectFilled(dl, {pos.x, y}, {pos.x + w * f, y + KNOB_BAR_THICK}, col(c), 2)
 	}
-	if lv, ok := live_value(); ok && max_v > min_v {
-		lx := pos.x + w * clamp((lv - min_v) / (max_v - min_v), 0, 1)
+	lv, live := live_value()
+	live_at: f32 = 0
+	if live && max_v > min_v {
+		lf := (lv - min_v) / (max_v - min_v)
+		if log_scale && min_v > 0 do lf = math.ln(clamp(lv, min_v, max_v) / min_v) / math.ln(max_v / min_v) // (as the knob turns: in ratios)
+		live_at = clamp(lf, 0, 1)
+		lx := pos.x + w * live_at
 		im.DrawList_AddLine(dl, {lx, y - 2}, {lx, y + KNOB_BAR_THICK + 2}, col(LIVE_COLOR), 2)
 	}
+	knob_shown(k, string(label), string(vt), live)
+	if k >= 0 && k < len(knob_input.shown) do knob_input.shown[k].live_at = live_at
 	im.SetCursorScreenPos(pos)
 	im.Dummy({w, lh + 3 + KNOB_BAR_THICK})
 }

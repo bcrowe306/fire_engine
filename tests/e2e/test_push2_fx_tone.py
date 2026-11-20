@@ -7,7 +7,7 @@ bank's every knob moves its parameter; the display saved for each bank."""
 
 import os
 
-from push2_fx import _select_pad, bank, banks, draw_us, in_perform, in_slot, moves, on_synth, pads, plug, press, save, turn, view  # noqa: F401 (pads: its fixture)
+from push2_fx import _select_pad, bank, banks, draw_us, in_perform, in_slot, knobs_shown, moves, on_synth, pads, plug, press, save, turn, view  # noqa: F401 (pads: its fixture)
 
 # The synth's effect parameters (synth.effect_param: 700 + 32 × the effect + its field).
 EQ = 700 + 32 * 4
@@ -146,6 +146,16 @@ def filter_banks(pads, d, name, lead=0, perform=False):
     save(pads, f"{name}_formant")
     d.set(F_MODEL, 6)  # Comb
     save(pads, f"{name}_comb")
+    # The style's box: a name short enough to sit beside "Style" ("LH
+    # flange +" for "Low/high flange +"); touched, its list the full names.
+    style = lead + 3
+    assert knobs_shown(pads)[style]["label"] == "Style", knobs_shown(pads)[style]
+    assert knobs_shown(pads)[style]["value"] in ("LH comb", "LH flange +", "LH flange −", "Band comb", "Bd flange +", "Bd flange −"), knobs_shown(pads)[style]
+    pads.cmd(f"midiport play push 90 {style:02X} 7F")
+    pads.wait(4)
+    save(pads, f"{name}_comb_styles")
+    pads.cmd(f"midiport play push 90 {style:02X} 00")
+    pads.wait(3)
 
 
 # --- EQ ---------------------------------------------------------------------------------------

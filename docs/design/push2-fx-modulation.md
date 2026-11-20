@@ -27,9 +27,12 @@ they play now, automation included, and its sweep's phase) into a size
 they're given, so Pads' window can use them later. The sweep's phase is
 the running effect's own while it moves; when no sound runs through it,
 the picture's clock moves it at the effect's rate, so the sweep always
-shows. Each has the LFO's cycle at the top right with each side's place
-on it now (the left side the device's colour, the right a bluer one), and
-what it is and its main settings at the top left. An effect that's off
+shows. Each keeps a column at its right (`MOD_SIDE`, 104 px) for its
+LFO: the LFO's cycle in a box at its top with each side's place on it now
+(the left side the device's colour, the right a bluer one), L and R under
+it, and at the bottom the page strip; the effect is drawn left of the
+column, so neither the box nor the strip covers it or its axis labels.
+What it is and its main settings are at the top left. An effect that's off
 draws dimmed, "(off)" after its name.
 
 The Rate knob is the free rate (Hz) while Sync is Hz, the tempo division

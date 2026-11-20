@@ -196,6 +196,10 @@ synth_knob :: proc(a: ^App, label: cstring, id: fc.Param_Id) {
 		im.EndDragDropTarget()
 	}
 	_ = knob_id
+	if ki := ui.knob_input; ki != nil && ki.bar_w > 0 { // (a controller's value bar: its routes marked under it)
+		ctl_route_marks(a, i, id, pos, ki.drawn - 1, {lo = spec.min, hi = spec.max})
+		return
+	}
 	if len(routes) == 0 do return
 	// The rings: each route's span from the value, a handle at its end.
 	t := ui.theme()

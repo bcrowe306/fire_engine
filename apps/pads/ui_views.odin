@@ -84,6 +84,7 @@ views_render :: proc(a: ^App) {
 			inp.turn, inp.ended = ctx.knobs.turn, {}
 			inp.pressed, inp.released = {}, {}
 			inp.state = {knobs = i64(ctx.knobs.drawn), buttons = ctx.buttons, lit = ctx.lit, pages = i64(ctx.pages), page = i64(ctx.page)}
+			if w.kind == .Device do a.ctl.shown = ctx.knobs.shown
 		}
 	}
 	for i := len(a.views) - 1; i >= 0; i -= 1 do if !a.views[i].used {

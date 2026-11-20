@@ -8,6 +8,7 @@
 package pads
 
 import "core:fmt"
+import "core:math"
 import "core:time"
 
 import "app:ui"
@@ -135,8 +136,10 @@ fx_param_info :: proc(p: ^Fx_Panel, id: fc.Param_Id) -> (fc.Param_Info, bool) {
 
 // Parameter `id` on `bank`'s column `col`, labelled `label`: a knob (undo,
 // automation and modulation as the window's knobs), or a choice when it is
-// stepped (Off and On, or its steps; `names`: the steps' names).
-fx_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, names: []string = nil) {
+// stepped (Off and On, or its steps; `names`: the steps' names, `short`
+// theirs in the box where they're too long for it). `shown`: a knob's value
+// as read instead of its number (a plug-in's own text).
+fx_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, names: []string = nil, short: []string = nil, shown: cstring = nil) {
 	ctx := p.ctx
 	a := ctx.a
 	n := fx_index(p, bank, col)
@@ -149,7 +152,7 @@ fx_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, na
 		if names != nil {
 			spec := synth.param_spec(id)
 			lo: f32 = spec.min if spec != nil else 0
-			if k, ended := ctl_choice(ctx, n, total, tag, names, int(host_value(a, id) + 0.5) - int(lo), p.plot); k >= 0 || ended {
+			if k, ended := ctl_choice(ctx, n, total, tag, names, int(host_value(a, id) + 0.5) - int(lo), p.plot, short); k >= 0 || ended {
 				if k >= 0 do host_set(a, id, lo + f32(k), label)
 				pa.history_gesture_end(&a.api)
 			}
@@ -168,13 +171,66 @@ fx_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, na
 			else do for x := int(info.min); x <= int(info.max); x += 1 do append(&list, fmt.tprintf("%d", x))
 			steps = list[:]
 		}
-		if j, _ := ctl_choice(ctx, n, total, tag, steps, int(fx_value(p, id)) - int(info.min), p.plot); j >= 0 {
+		if j, _ := ctl_choice(ctx, n, total, tag, steps, int(fx_value(p, id)) - int(info.min), p.plot, short); j >= 0 {
 			control_effect_param(a, p.t, i64(id), info.min + f64(j), true, true)
 		}
 		return
 	}
 	info.name = label
-	if ctl_knob(ctx, n, total, tag, p.plot) do param_knob(a, p.t, p.s, info, p.plugin, as_knob = true)
+	if ctl_knob(ctx, n, total, tag, p.plot) do param_knob(a, p.t, p.s, info, p.plugin, as_knob = true, shown = shown)
+}
+
+// Parameter `id` of the panel's device as an automation target: the
+// synth's tab's, the pad's sound's; a slot's, its insert's ({} for
+// Perform's effects, which are played, not automated).
+fx_target :: proc(p: ^Fx_Panel, id: fc.Param_Id) -> pm.Auto_Target {
+	if p.where_ == .Synth do return sound_param_target(p.pad, id)
+	return fx_auto_target(p.t, id)
+}
+
+// How a knob shows a parameter's plain value: as `value / scale + offset`
+// (a time whose parameter is a rate, turned the other way) over `lo..hi`,
+// in ratios with `log_scale`.
+Knob_Map :: struct {
+	lo, hi:        f32,
+	scale, offset: f32,
+	log_scale:     bool,
+}
+
+// Where plain value `v` is along a knob mapped by `km` (0..1).
+knob_map_frac :: proc(km: Knob_Map, v: f32) -> f32 {
+	x := v / (km.scale if km.scale != 0 else 1) + km.offset
+	if km.hi <= km.lo do return 0
+	if km.log_scale && km.lo > 0 do return clamp(math.ln(clamp(x, km.lo, km.hi) / km.lo) / math.ln(km.hi / km.lo), 0, 1)
+	return clamp((x - km.lo) / (km.hi - km.lo), 0, 1)
+}
+
+// A knob of a panel's own drawing (its range, reading or turning its own)
+// for parameter `id`, at the cursor `ctl_knob` put: `ui.knob` with what
+// moves the parameter besides the encoder shown on it as on `fx_knob`'s:
+// automation playing (its live mark) and, on the synth's tab, its
+// modulation routes (`ctl_route_marks`). `v` is in the knob's units
+// (`km`: its plain value / scale + offset).
+fx_ring_knob :: proc(p: ^Fx_Panel, tag: cstring, id: fc.Param_Id, v: ^f32, km: Knob_Map, default: f32, format: cstring = "%.2f", shown: cstring = nil, step: f32 = 0) -> ui.Edit {
+	a := p.ctx.a
+	pos := im.GetCursorScreenPos()
+	col := ui.knob_input.drawn if ui.knob_input != nil else -1
+	knob_target(a, fx_target(p, id), km.scale if km.scale != 0 else 1, km.offset)
+	e := ui.knob(tag, v, km.lo, km.hi, default, format, log_scale = km.log_scale, shown_value = shown, step = step)
+	knob_target(a, {})
+	if p.where_ == .Synth do ctl_route_marks(a, p.pad, id, pos, col, km)
+	return e
+}
+
+// Sets parameter `id` of the panel's device to plain value `v` from a
+// knob's edit `e` (`name`: the undo step's, on the synth's tab).
+fx_ring_set :: proc(p: ^Fx_Panel, id: fc.Param_Id, v: f64, name: string, e: ui.Edit) {
+	a := p.ctx.a
+	if p.where_ == .Synth {
+		control_param(a, {track = .Pad, index = i64(p.pad), device = .Sound, param = i64(id)}, v, name, e.changed, e.ended)
+		return
+	}
+	control_effect_param(a, p.t, i64(id), v, e.changed, e.ended)
 }
 
 // A choice of the panel's own (not a parameter: a view, a band shown) on
@@ -244,4 +300,51 @@ fx_panel :: proc(p: ^Fx_Panel) -> bool {
 		c.fx_draw_max_us = max(c.fx_draw_max_us, us)
 	}
 	return drawn
+}
+
+// The modulation routes into synth parameter `id` of pad `pad`, marked on
+// the value bar of the knob drawn at `pos` (a controller's: `knob_bar_rect`)
+// as the window's knobs ring them: each route a line under the bar in its
+// source's colour, from the value as far as its amount takes it (either
+// way when bipolar), and where the newest note's envelope or LFO has it
+// now a dot on it. `col`: the knob's encoder (its `Knob_Shown.marks`).
+ctl_route_marks :: proc(a: ^App, pad: int, id: fc.Param_Id, pos: im.Vec2, col: int, km: Knob_Map) {
+	m := &a.m
+	routes := pm.synth_routes_to(m, pad, id)
+	spec := synth.param_spec(id)
+	if len(routes) == 0 || spec == nil || spec.max <= spec.min || ui.knob_input == nil do return
+	t := ui.theme()
+	dl := im.GetWindowDrawList()
+	r0, r1 := ui.knob_bar_rect(pos)
+	span := spec.max - spec.min
+	v := pm.synth_value(m, pad, id)
+	f0 := (v - spec.min) / span
+	x :: proc(km: Knob_Map, spec: ^synth.Param_Spec, r0, r1: im.Vec2, f: f32) -> f32 {
+		return r0.x + (r1.x - r0.x) * knob_map_frac(km, spec.min + clamp(f, 0, 1) * (spec.max - spec.min))
+	}
+	live, playing := pm.synth_live(&m.engine, pad)
+	sy := &m.project.pads[pad].synth
+	for k, n in routes {
+		rt := sy.routes[k]
+		c := mod_color(rt.source)
+		if rt.bypass do c = ui.with_alpha(c, 0.3)
+		lo := f0 - (rt.amount if rt.bipolar else 0)
+		hi := f0 + rt.amount
+		y := r1.y + 3 + f32(n) * 3
+		xa, xb := x(km, spec, r0, r1, min(lo, hi)), x(km, spec, r0, r1, max(lo, hi))
+		im.DrawList_AddLine(dl, {xa, y}, {max(xb, xa + 2), y}, ui.col(c), 2)
+		// Where the newest note has it (envelopes and LFOs from the voice).
+		if playing && live.sounding {
+			sv: f32 = -1
+			#partial switch rt.source {
+			case .Env_1 ..= .Env_6: sv = live.envs[int(rt.source) - int(synth.Mod_Source.Env_1)]
+			case .Lfo_1 ..= .Lfo_8: sv = live.lfos[int(rt.source) - int(synth.Mod_Source.Lfo_1)]
+			}
+			if sv >= 0 {
+				d := sv * 2 - 1 if rt.bipolar else sv
+				im.DrawList_AddCircleFilled(dl, {x(km, spec, r0, r1, f0 + d * rt.amount), y}, 2.5, ui.col(t.text), 8)
+			}
+		}
+	}
+	if col >= 0 && col < len(ui.knob_input.shown) do ui.knob_input.shown[col].marks = len(routes)
 }

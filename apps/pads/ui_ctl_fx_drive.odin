@@ -136,20 +136,9 @@ drv_synth_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label, sho
 	if spec == nil do return
 	tag := fmt.ctprintf("%s##fx%d", label, int(id)) // (fx_knob's: the same knob whichever draws it)
 	if !ctl_knob(p.ctx, fx_index(p, bank, col), p.banks * 8, tag, p.plot) do return
-	a := p.ctx.a
 	v := fx_value(p, id)
-	sv := fmt.ctprintf("%s", shown)
-	if p.where_ == .Slot {
-		knob_target(a, fx_auto_target(p.t, id))
-		e := ui.knob(tag, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = sv)
-		knob_target(a, {})
-		control_effect_param(a, p.t, i64(id), f64(clamp(v, spec.min, spec.max)), e.changed, e.ended)
-		return
-	}
-	knob_target(a, sound_param_target(p.pad, id))
-	e := ui.knob(tag, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = sv)
-	knob_target(a, {})
-	control_param(a, {track = .Pad, index = i64(p.pad), device = .Sound, param = i64(id)}, f64(v), spec.name, e.changed, e.ended)
+	e := fx_ring_knob(p, tag, id, &v, {lo = spec.min, hi = spec.max}, spec.default, "%.3f", fmt.ctprintf("%s", shown))
+	fx_ring_set(p, id, f64(clamp(v, spec.min, spec.max)), spec.name, e)
 }
 
 // --- Ring mod -----------------------------------------------------------------------------------
@@ -175,9 +164,7 @@ drv_ring_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: stri
 	a := p.ctx.a
 	v := fx_value(p, id)
 	shown := fmt.ctprintf("%s", drv_hz_text(v)) if info.unit == .Hertz else fmt.ctprintf("%.0f %%", v * 100)
-	knob_target(a, fx_auto_target(p.t, id))
-	e := ui.knob(tag, &v, f32(info.min), f32(info.max), f32(info.default), "%.2f", log_scale = info.unit == .Hertz, shown_value = shown)
-	knob_target(a, {})
+	e := fx_ring_knob(p, tag, id, &v, {lo = f32(info.min), hi = f32(info.max), log_scale = info.unit == .Hertz}, f32(info.default), shown = shown)
 	control_effect_param(a, p.t, i64(id), clamp(f64(v), info.min, info.max), e.changed, e.ended)
 }
 

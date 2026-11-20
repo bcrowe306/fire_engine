@@ -135,7 +135,6 @@ Tone_Unit :: enum {
 @(private = "file")
 tone_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, unit: Tone_Unit) {
 	ctx := p.ctx
-	a := ctx.a
 	tag := fmt.ctprintf("%s##tn%d", label, int(id))
 	if !ctl_knob(ctx, fx_index(p, bank, col), p.banks * 8, tag, p.plot) do return
 	spec := synth.param_spec(id)
@@ -146,17 +145,8 @@ tone_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string, 
 	case .Hz:        shown = fmt.ctprintf("%s", tone_hz(fx.key_to_hz(v)))
 	case .Semitones: shown = fmt.ctprintf("%+.0f st", v)
 	}
-	if p.where_ == .Synth {
-		knob_target(a, sound_param_target(p.pad, id))
-		e := ui.knob(tag, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown)
-		knob_target(a, {})
-		control_param(a, {track = .Pad, index = i64(p.pad), device = .Sound, param = i64(id)}, f64(clamp(v, spec.min, spec.max)), spec.name, e.changed, e.ended)
-		return
-	}
-	knob_target(a, fx_auto_target(p.t, id))
-	e := ui.knob(tag, &v, spec.min, spec.max, spec.default, "%.3f", shown_value = shown)
-	knob_target(a, {})
-	control_effect_param(a, p.t, i64(id), f64(clamp(v, spec.min, spec.max)), e.changed, e.ended)
+	e := fx_ring_knob(p, tag, id, &v, {lo = spec.min, hi = spec.max}, spec.default, "%.3f", shown)
+	fx_ring_set(p, id, f64(clamp(v, spec.min, spec.max)), spec.name, e)
 }
 
 // The column (0..7) of the knob held now in the bank shown, or -1.
@@ -286,7 +276,7 @@ tone_filter :: proc(p: ^Fx_Panel) {
 	tone_knob(p, 0, 0, f(.Cutoff), "Cutoff", .Hz)
 	fx_knob(p, 0, 1, f(.Resonance), "Res")
 	fx_knob(p, 0, 2, f(.Model), "Model", FILTER_MODEL_NAMES)
-	fx_knob(p, 0, 3, f(.Style), "Style", styles)
+	fx_knob(p, 0, 3, f(.Style), "Style", styles, filter_style_names(model, short = true))
 	fx_knob(p, 0, 4, f(.Blend), "(Blend)" if formant else "Blend")
 	fx_knob(p, 0, 5, f(.Drive), "(Drive)" if formant || comb else "Drive")
 	fx_knob(p, 0, 6, f(.Mix), "Mix")

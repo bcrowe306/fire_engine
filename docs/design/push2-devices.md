@@ -47,6 +47,14 @@ So the families never edit the same lines:
    param, synth param, Intensity), with undo and automation as the knobs
    have now. Helpers: `fx_knob`, `fx_choice`, `fx_banks` (named banks; knob
    1 of each kept for Intensity or the synth's picker when there is one).
+   A family's own knobs (times in ratios, a cutoff in Hz) go through
+   `fx_ring_knob`, so they show what `fx_knob`'s do besides the encoder:
+   automation playing (the live mark on the bar, where the lane has it as
+   the knob turns: `Knob_Map`) and, on the synth's tab, its modulation
+   routes (`ctl_route_marks`: a line under the bar in the source's colour,
+   the envelope's or LFO's place on it while a note sounds), the bar's form
+   of the window's rings. The knobs drawn, their labels, values and marks
+   are in the state (`ctl_knobs`) for the tests.
 2. **The dispatch:** `ctl_effect`, the synth's Effects tab, `ctl_eq` and
    `ctl_midi` ask `fx_panel(...) -> bool` first, which calls one proc per
    family (`fx_panel_dynamics`, `fx_panel_modulation`, ...), each in its own

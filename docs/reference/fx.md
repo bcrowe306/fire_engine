@@ -2844,6 +2844,17 @@ filter_fx_render :: proc "contextless"(f: ^Filter_Fx, p: ^Filter_Fx_Params, l: [
 
 **Realtime-safe** (callable on the audio thread). Runs the filter effect over `l` and `r` in place.
 
+### compressor_band_ms
+
+```odin
+compressor_band_ms :: proc "contextless"(attack: f32, release: f32, band: int) -> (attack_ms: f32, release_ms: f32)
+```
+
+Band `band`'s (0 low, 1 band, 2 high) attack and release times in ms
+at settings `attack` and `release` (0..1, as `Compressor_Params` has
+them: each band's own times scaled by e^(8x-4)), as `compressor_render`
+runs them (it holds them to at least 5 samples). Any thread.
+
 ### compressor_render
 
 ```odin

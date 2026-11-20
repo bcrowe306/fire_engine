@@ -75,6 +75,7 @@ State :: struct {
 	repeat_all: bool,   // the toolbar's note repeat is on
 	fx_draw_us: [2]f64, // a family's device panel on a controller: its last drawing time and the most since (µs; ui_ctl_fx.odin)
 	cutter_bar: [3]f64, // the controller's Cutter picture as last drawn: the beat its bar starts at as the cutter counts, the beat it counts from now (the timeline's playing, else the grid's), and the clock's grid beat
+	ctl_knobs:  [8]State_Ctl_Knob, // the device panel's knobs on a controller as last drawn, by encoder (empty: none there)
 	mic_access: string, // macOS's microphone permission: Unknown, Not_Asked, Denied, Granted
 	latency:    [3]int, // the device's input, output and round-trip latency (frames)
 	record_latency: int, // what a take is moved earlier by
@@ -227,6 +228,15 @@ State_Pad :: struct {
 	attack, release: f32,
 	voice:   pm.Voice, // its envelopes, filter, pitch, LFOs and routes
 	cutoff_now: f64, // the filter's cutoff as it plays now (modulated, automated)
+}
+
+// A knob (or dropdown) of the device panel on a controller, as drawn.
+State_Ctl_Knob :: struct {
+	label: string,
+	value: string, // as read ("12 ms", "+7.15 st", a plug-in's own text)
+	live:  bool,   // automation moves it now (its live mark)
+	live_at: f32,  // ... where the mark is along it (0..1)
+	marks: int,    // modulation routes marked on it (the synth's)
 }
 
 // The Audio tab's selection.
@@ -405,6 +415,9 @@ state_json :: proc(a: ^App) -> string {
 	s.repeat_all = a.m.engine.repeat_all
 	s.fx_draw_us = {a.ctl.fx_draw_us, a.ctl.fx_draw_max_us}
 	s.cutter_bar = a.ctl.cutter_bar
+	for &k, i in a.ctl.shown {
+		s.ctl_knobs[i] = {label = string(cstring(&k.label[0])), value = string(cstring(&k.value[0])), live = k.live, live_at = k.live_at, marks = k.marks}
+	}
 	s.mic_access = enum_name(mic_access())
 	li, lo, lr := app.host_latency(&a.host)
 	s.latency, s.record_latency = {li, lo, lr}, pm.record_latency(&a.m.engine)

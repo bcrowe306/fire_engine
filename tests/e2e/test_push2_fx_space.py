@@ -6,7 +6,7 @@ every knob moves its parameter; the display saved for each bank."""
 
 import os
 
-from push2_fx import bank, banks, draw_us, in_perform, in_slot, moves, on_synth, pads, press, save, turn, view  # noqa: F401 (pads: its fixture)
+from push2_fx import bank, banks, draw_us, in_perform, in_slot, labels, moves, on_synth, pads, press, save, turn, view  # noqa: F401 (pads: its fixture)
 
 # The synth's effect parameters (synth.effect_param: 700 + 32 × the effect + its field).
 DELAY = 700 + 32 * 2
@@ -23,8 +23,8 @@ CHOICE = 3  # detents a choice's step takes
 # Each bank's knobs: (column, parameter, detents); a knob that is a time
 # turned up for longer (its rate down) has a check of its own.
 LONGER = (lambda before, after: after < before)
-DELAY_ECHOES = [(0, D_TEMPO, CHOICE), (1, D_FEEDBACK, 10), (2, D_WET, 10), (4, D_STYLE, CHOICE), (5, D_TEMPO_R, CHOICE)]
-DELAY_ECHOES_FREE = [(0, D_HZ, 10, LONGER), (5, D_HZ_R, 10, LONGER)]  # (Sync: Free)
+DELAY_ECHOES = [(0, D_TEMPO, CHOICE), (1, D_FEEDBACK, 10), (2, D_WET, 10), (4, D_TEMPO_R, CHOICE)]  # (no Style: the lower row's)
+DELAY_ECHOES_FREE = [(0, D_HZ, 10, LONGER), (4, D_HZ_R, 10, LONGER)]  # (Sync: Free)
 DELAY_TONE = [(0, D_CUTOFF, 10), (1, D_SPREAD, -10)]
 REVERB_ROOM = [(0, R_DECAY, 10), (1, R_SIZE, 10), (2, R_PRE, 10), (3, R_WET, 10), (4, R_CHORUS, 10), (5, R_RATE, 10)]
 REVERB_TONE = [(0, R_LO_CUT, 10), (1, R_HI_CUT, -10), (2, R_LO_SHELF, 10), (3, R_LO_GAIN, -10), (4, R_HI_SHELF, 10), (5, R_HI_GAIN, -10)]
@@ -88,6 +88,16 @@ def on_and_removed(pads, d):
 def delay_banks(pads, d, name, lead=0, perform=False):
     assert banks(pads) == 2
     assert d.get(D_SYNC) == 1  # (Tempo: the time a division)
+    # Echoes: no Style knob (the style is the lower row's), no gap where it was.
+    shown = labels(pads)[lead:lead + 6]
+    assert shown == ["Time", "Feedback", "Mix", "Sync", "Time R", ""], labels(pads)
+    press(pads, LOWER + 0)  # Mono: Time R has no say
+    pads.wait(4)
+    assert d.get(D_STYLE) == 0
+    assert labels(pads)[lead + 4] == "(Time R)", labels(pads)
+    press(pads, LOWER + 2)  # Ping-pong
+    pads.wait(4)
+    assert d.get(D_STYLE) == 2
     knobs(pads, d, DELAY_ECHOES, lead)
     if perform:
         intensity_on_column_0(pads)
@@ -101,7 +111,7 @@ def delay_banks(pads, d, name, lead=0, perform=False):
     if perform:
         intensity_on_column_0(pads)
     save(pads, f"{name}_tone")
-    # The lower row: its styles (Ping-pong now, from the dropdown).
+    # The lower row: its styles (Ping-pong now, pressed above).
     bank(pads, 0)
     assert view(pads)["lit"] & 0xF == 1 << 2, view(pads)
     press(pads, LOWER + 3)  # Mid ping-pong

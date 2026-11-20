@@ -131,6 +131,23 @@ def save(pads, name):
     return display_png(pads, os.path.join(pads.out_dir, f"push2_{name}.png"))
 
 
+def knobs_shown(pads):
+    """The panel's knobs (and dropdowns) as last drawn, by encoder: dicts of
+    label, value (as read), live (automation moves it now) and marks (the
+    synth's modulation routes marked on it); label "" where none is."""
+    return pads.state()["ctl_knobs"]
+
+
+def labels(pads):
+    """The knobs' labels as drawn, by encoder ("" where none is)."""
+    return [k["label"] for k in knobs_shown(pads)]
+
+
+def value(pads, encoder):
+    """Encoder `encoder`'s knob's value as read ("12 ms", "+7 st")."""
+    return knobs_shown(pads)[encoder]["value"]
+
+
 def draw_us(pads):
     """The family panel's drawing time on this machine: (last, most) µs."""
     last, most = pads.state()["fx_draw_us"]

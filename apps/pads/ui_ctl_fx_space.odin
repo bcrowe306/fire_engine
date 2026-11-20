@@ -113,7 +113,6 @@ sp_plain :: proc(p: ^Fx_Panel, id: fc.Param_Id) -> f32 {
 @(private)
 sp_time_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: string) {
 	ctx := p.ctx
-	a := ctx.a
 	tag := fmt.ctprintf("%s##fx%d", label, int(id))
 	if !ctl_knob(ctx, fx_index(p, bank, col), p.banks * 8, tag, p.plot) do return
 	spec := synth.param_spec(id)
@@ -122,19 +121,16 @@ sp_time_knob :: proc(p: ^Fx_Panel, bank, col: int, id: fc.Param_Id, label: strin
 	span := spec.max - spec.min
 	x := (spec.max - v) / span // (0: the shortest)
 	shown := fmt.ctprintf("%s", sp_secs(1 / math.pow(2, v)))
-	e := ui.knob(tag, &x, 0, 1, (spec.max - spec.default) / span, "%.3f", shown_value = shown)
-	nv := clamp(spec.max - x * span, spec.min, spec.max)
-	if p.where_ == .Synth {
-		control_param(a, {track = .Pad, index = i64(p.pad), device = .Sound, param = i64(id)}, f64(nv), spec.name, e.changed, e.ended)
-	} else {
-		control_effect_param(a, p.t, i64(id), f64(nv), e.changed, e.ended)
-	}
+	// (x = (max - v) / span: the parameter / -span + max / span, for its rings.)
+	e := fx_ring_knob(p, tag, id, &x, {lo = 0, hi = 1, scale = -span, offset = spec.max / span}, (spec.max - spec.default) / span, "%.3f", shown)
+	fx_ring_set(p, id, f64(clamp(spec.max - x * span, spec.min, spec.max)), spec.name, e)
 }
 
 // --- Delay --------------------------------------------------------------------------------------
 
 // The delay: its echoes and tone; Echoes (Time, Feedback, Mix, Sync,
-// Style, Time R) and Tone (Cutoff, Spread); its four styles on the lower row.
+// Time R) and Tone (Cutoff, Spread); its four styles on the lower row (its
+// own choice: there only, not a knob too).
 @(private)
 sp_delay :: proc(p: ^Fx_Panel) {
 	a := p.ctx.a
@@ -163,10 +159,9 @@ sp_delay :: proc(p: ^Fx_Panel) {
 	fx_knob(p, 0, 1, d(.Feedback), "Feedback")
 	fx_knob(p, 0, 2, d(.Wet), "Mix")
 	fx_knob(p, 0, 3, d(.Sync), "Sync", SP_SYNC_NAMES)
-	fx_knob(p, 0, 4, d(.Style), "Style")
 	right_label := "Time R" if style != int(fx.Delay_Style.Mono) else "(Time R)"
-	if sync == 0 do sp_time_knob(p, 0, 5, d(.Hz_Right), right_label)
-	else do fx_knob(p, 0, 5, d(.Tempo_Right), right_label, TEMPO_NAMES[:]) // (its name isn't " Tempo"'s: named here)
+	if sync == 0 do sp_time_knob(p, 0, 4, d(.Hz_Right), right_label)
+	else do fx_knob(p, 0, 4, d(.Tempo_Right), right_label, TEMPO_NAMES[:]) // (its name isn't " Tempo"'s: named here)
 	// Tone.
 	fx_knob(p, 1, 0, d(.Cutoff), "Cutoff")
 	fx_knob(p, 1, 1, d(.Spread), "Spread")

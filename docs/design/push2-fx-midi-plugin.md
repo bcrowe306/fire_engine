@@ -76,8 +76,10 @@ come from the plug-in, so the banks aren't placed by hand:
   number ("1.00") or not at all: Off and On for two steps, else whole
   numbers.
 - The knobs stay `param_knob` (undo, automation and the touch as the
-  window's), so their value bars read as the window's do (a plug-in gives
-  no units: "375.00").
+  window's), their values read as the plug-in reads them ("375.00 ms",
+  "-6.0 dB": its `value_to_text`, asked on the main thread, never the
+  audio's, and kept per parameter until its value moves); the number where
+  the plug-in gives no text.
 
 **Picture:** at the left, who it is: its name large and its vendor and
 version (an instrument: its pad's letter and name first, in the pad's

@@ -191,14 +191,37 @@ mp_midi :: proc(p: ^Fx_Panel) {
 // --- plug-ins ----------------------------------------------------------------------------------
 
 // What a plug-in says of its parameters that the engine doesn't keep: each
-// one's CLAP module, and its steps' names (a stepped one's, read once).
-// Kept for the plug-in shown (another: read again).
+// one's CLAP module, its steps' names (a stepped one's, read once), and
+// its value as the plug-in reads it (`mp_text`: asked again only when the
+// value moves). Kept for the plug-in shown (another: read again).
 @(private = "file")
 mp_cache: struct {
 	plugin:  ^clap.Plugin,
 	count:   int,
 	modules: map[fc.Param_Id]string,
 	steps:   map[fc.Param_Id][]string,
+	texts:   map[fc.Param_Id]Mp_Text,
+}
+
+// A parameter's value as the plug-in read it, and the value it read.
+@(private = "file")
+Mp_Text :: struct {
+	value: f64,
+	text:  string, // "" : the plug-in gave none
+}
+
+// Parameter `id`'s value `v` as plug-in `pl` reads it ("350.00 ms",
+// "-6.0 dB"; the plug-in's `value_to_text`, on this, the main thread),
+// kept until the value moves; "" where it gives none (the caller shows
+// the number).
+@(private = "file")
+mp_text :: proc(pl: ^clap.Plugin, id: fc.Param_Id, v: f64) -> string {
+	C := &mp_cache
+	if t, ok := C.texts[id]; ok && t.value == v do return t.text
+	if old, ok := C.texts[id]; ok do delete(old.text)
+	text := strings.trim_space(clap.plugin_param_text(pl, id, v, context.temp_allocator))
+	C.texts[id] = {v, strings.clone(text)}
+	return C.texts[id].text
 }
 
 @(private = "file")
@@ -210,8 +233,10 @@ mp_cache_for :: proc(pl: ^clap.Plugin) {
 		for s in list do delete(s)
 		delete(list)
 	}
+	for _, t in C.texts do delete(t.text)
 	clear(&C.modules)
 	clear(&C.steps)
+	clear(&C.texts)
 	C.plugin, C.count = pl, len(pl.infos)
 	if pl.params == nil do return
 	n := int(pl.params.count(pl.plugin))
@@ -322,7 +347,10 @@ mp_plugin :: proc(p: ^Fx_Panel) {
 			info := params[b.params[k]]
 			steps: []string
 			if .Stepped in info.flags do steps = mp_steps(pl, info)
-			fx_knob(p, page, k, info.id, info.name, steps)
+			// Its value as the plug-in reads it (its units; else the number).
+			shown: cstring
+			if text := mp_text(pl, info.id, f64(fx_value(p, info.id))); text != "" do shown = fmt.ctprintf("%s", text)
+			fx_knob(p, page, k, info.id, info.name, steps, shown = shown)
 		}
 	}
 	// The parameter turned: its encoder touched now, else the last.
@@ -366,7 +394,7 @@ mp_plugin :: proc(p: ^Fx_Panel) {
 		} else if info, ok := fx_param_info(p, L.id); ok {
 			v := fx_value(p, L.id)
 			pic.knob = info.name
-			pic.value = clap.plugin_param_text(pl, L.id, f64(v), context.temp_allocator)
+			pic.value = mp_text(pl, L.id, f64(v))
 			if pic.value == "" do pic.value = fmt.tprintf("%.2f", v)
 			if info.max > info.min do pic.frac = f32((f64(v) - info.min) / (info.max - info.min))
 		}

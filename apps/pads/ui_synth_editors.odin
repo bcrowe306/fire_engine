@@ -32,9 +32,23 @@ FORMANT_STYLE_NAMES := []string{"A O I E", "A I U O"}
 COMB_STYLE_NAMES := []string{"Low/high comb", "Low/high flange +", "Low/high flange −", "Band comb", "Band flange +", "Band flange −"}
 PHASER_STYLE_NAMES := []string{"Peaks", "Notches"}
 FILTER_STYLE_NAMES := []string{"12 dB", "24 dB", "Notch / pass swap", "Dual notch / band", "Band / peak / notch", "Shelving"}
+// The comb's and the other models' styles as a controller's dropdown box
+// shows them (its open list: the names above).
+COMB_STYLE_SHORT := []string{"LH comb", "LH flange +", "LH flange −", "Band comb", "Bd flange +", "Bd flange −"}
+FILTER_STYLE_SHORT := []string{"12 dB", "24 dB", "Notch/pass", "Dual notch", "Band/peak", "Shelving"}
 
 // The styles a model has (their names).
-filter_style_names :: proc(model: fx.Filter_Model) -> []string {
+filter_style_names :: proc(model: fx.Filter_Model, short := false) -> []string {
+	if short { // (a controller's dropdown: what fits beside its label)
+		#partial switch model {
+		case .Formant: return FORMANT_STYLE_NAMES
+		case .Comb:    return COMB_STYLE_SHORT
+		case .Phaser:  return PHASER_STYLE_NAMES
+		case .Digital: return FILTER_STYLE_SHORT
+		case .Diode:   return FILTER_STYLE_SHORT[:2]
+		}
+		return FILTER_STYLE_SHORT[:5]
+	}
 	#partial switch model {
 	case .Formant: return FORMANT_STYLE_NAMES
 	case .Comb:    return COMB_STYLE_NAMES

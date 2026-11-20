@@ -83,7 +83,11 @@ In Perform, its pad holds it, so the row is empty.
 
 | Bank | Knobs |
 |---|---|
-| Shift | Pitch (whole semitones, ±24), Window (ms), Mix (%) |
+| Shift | Pitch (±24 semitones), Window (ms), Mix (%) |
+
+Pitch turns a whole semitone a detent (from between two, to the next whole
+one that way) and, with Shift held, a cent (0.01 semitone) a detent; it
+reads "+7 st", or "+7.15 st" off a whole one.
 
 **Picture:** a keyboard four octaves wide (C two octaves down to C two up,
 each C labelled in semitones), the key played (0) in the middle and an arc

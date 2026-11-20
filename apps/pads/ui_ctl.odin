@@ -40,8 +40,11 @@ CTL_KNOBS_H :: 30
 CTL_BUTTONS_H :: 18
 CTL_BAR_W :: CTL_COL - 16 // a knob's value bar
 CTL_METER_W :: 14
+// An encoder's detent: this much of a knob's travel (with Shift held, a
+// tenth of it: the surface turns finer).
+CTL_DETENT :: 1.0 / 160
 // A choice's step: this much of an encoder's turn (three of Push 2's detents).
-CTL_STEP :: 3.0 / 160
+CTL_STEP :: 3 * CTL_DETENT
 
 // The controller's own state of the device panel: the knobs' page (of the
 // device and tab it is for: another starts at the first), the effect an
@@ -57,6 +60,7 @@ Ctl_State :: struct {
 	seq_pad:  int,          // the selected pad they were brought to (+1; another: brought to it)
 	fx_draw_us, fx_draw_max_us: f64, // the last family panel's drawing time, and the most since (ui_ctl_fx.odin's probe)
 	cutter_bar: [3]f64,     // the Cutter picture last drawn: its bar's first beat as the cutter counts, the beat it counts from, the grid beat (the probe's)
+	shown:    [8]ui.Knob_Shown, // the Device view's knobs as last drawn (the state's ctl_knobs: tests read them)
 	seq_row:  int,          // the cursor: its row (the selected pad's, in Drums)
 	seq_beat: f64,          // and the step it's on (a grid step's start, or a note's)
 	seq_transient: bool,    // the selection's last note is there only because the cursor is on it (moved on: let go; Select: kept)
@@ -317,11 +321,12 @@ ctl_page_strip :: proc(ctx: ^View_Ctx, full: im.Vec2, n, cur: int) {
 }
 
 // A choice (an enum: `names`) as a dropdown in knob `n`'s place: its name
-// in a box, the list open around it while its encoder is touched; a turn
-// steps to the next or the one before. The one chosen (-1: no change),
-// and whether its encoder was let go.
+// in a box (`short`'s, if given: names too long for the box beside its
+// label), the list open around it while its encoder is touched (as wide
+// as its longest name); a turn steps to the next or the one before. The
+// one chosen (-1: no change), and whether its encoder was let go.
 @(private)
-ctl_choice :: proc(ctx: ^View_Ctx, n, total: int, label: cstring, names: []string, current: int, plot: im.Vec2) -> (chosen: int, ended: bool) {
+ctl_choice :: proc(ctx: ^View_Ctx, n, total: int, label: cstring, names: []string, current: int, plot: im.Vec2, short: []string = nil) -> (chosen: int, ended: bool) {
 	chosen = -1
 	if len(names) == 0 || !ctl_knob(ctx, n, total, label, plot) do return
 	col := n % 8
@@ -342,14 +347,24 @@ ctl_choice :: proc(ctx: ^View_Ctx, n, total: int, label: cstring, names: []strin
 		}
 	}
 	t := ui.theme()
-	x0, x1, by, bh, lh := ctl_box(col, label, names[cur], held, plot)
+	x0, x1, by, bh, lh := ctl_box(col, label, short[cur] if cur < len(short) else names[cur], held, plot)
 	ly1 := by - 2
 	_ = bh
-	// Touched: the list open over the picture, around the one chosen.
+	// Touched: the list open over the picture, around the one chosen (wider
+	// than the box if a name needs it, kept on the display).
 	if held {
 		ui.text_push(.Label)
 		defer ui.text_pop()
 		fg := im.GetForegroundDrawList()
+		widest: f32 = 0
+		for name in names do widest = max(widest, im.CalcTextSize(fmt.ctprintf("%s", name)).x + 12)
+		if widest > x1 - x0 {
+			x1 = x0 + widest
+			if right := im.GetWindowPos().x + im.GetWindowWidth() - 4; x1 > right {
+				x0 -= x1 - right
+				x1 = right
+			}
+		}
 		rows := min(len(names), 5)
 		top := clamp(cur - rows / 2, 0, len(names) - rows)
 		rh := lh + 4
@@ -389,6 +404,7 @@ ctl_box :: proc(col: int, label: cstring, text: string, held: bool, plot: im.Vec
 	if ctl_shift_now do lc = fmt.ctprintf("%s · fine", shown) // (Shift held: every knob a tenth)
 	ls := im.CalcTextSize(lc)
 	lh = ls.y
+	ui.knob_shown(col, shown, text) // (what it shows, for the app's tests)
 	// As a knob's bar: the name at the left, the choice at the right (▾ after
 	// it), a line under them (the accent while touched).
 	vc := fmt.ctprintf("%s", text)
@@ -1559,7 +1575,11 @@ ctl_synth_param :: proc(ctx: ^View_Ctx, n, total: int, label: cstring, id: fc.Pa
 	spec := synth.param_spec(id)
 	if spec == nil do return
 	if names := synth_choice_names(a, id); names != nil {
-		if k, ended := ctl_choice(ctx, n, total, label, names, int(host_value(a, id) + 0.5) - int(spec.min), plot); k >= 0 || ended {
+		short: []string // (a filter's styles: shorter in the box)
+		if strings.has_suffix(spec.name, " Style") && !strings.has_prefix(spec.name, "Random") && !strings.has_prefix(spec.name, "Delay") {
+			short = filter_style_names(fx.Filter_Model(int(host_value(a, fc.Param_Id(int(id) - 1)) + 0.5)), short = true)
+		}
+		if k, ended := ctl_choice(ctx, n, total, label, names, int(host_value(a, id) + 0.5) - int(spec.min), plot, short); k >= 0 || ended {
 			if k >= 0 do host_set(a, id, spec.min + f32(k), spec.name)
 			pa.history_gesture_end(&a.api)
 		}

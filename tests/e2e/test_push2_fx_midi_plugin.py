@@ -11,11 +11,12 @@ Plug-ins need the test plug-ins (./scripts/clap.sh); those tests skip
 without them."""
 
 import os
+import re
 
 import pytest
 
 from pads import ROOT
-from push2_fx import DEVICE, Device, _select_pad, _show, bank, banks, draw_us, moves, pads, plug, press, save, turn, view  # noqa: F401
+from push2_fx import DEVICE, Device, _select_pad, _show, bank, banks, draw_us, moves, pads, plug, press, save, turn, value, view  # noqa: F401
 
 MUTE, DELETE = 0x3C, 0x76
 LOWER = 20  # the lower row's first button (CC 20..27)
@@ -233,6 +234,26 @@ def every_bank(pads, d, params, names, where):
         turns(pads, d, len(mine) - 1, mine[-1])
 
 
+def own_texts(pads, d, params, lead=0):
+    """Bank 0's knobs read as the plug-in reads them (fire:clap/sdk's
+    value_to_text: "350.00 ms", the number to two places and its unit), not
+    a bare number; those turned (set on the slot: the first and last) their
+    parameter's value now. Its dropdowns are the
+    plug-in's step names. Returns the values read."""
+    bank(pads, 0)
+    shown = []
+    for col, (pid, stepped, lo, hi) in enumerate(params[:8 - lead]):
+        text = value(pads, lead + col)
+        shown.append(text)
+        if stepped:
+            continue
+        m = re.fullmatch(r"(-?\d+\.\d\d)( ms| Hz| dB| %| st|:1)?", text)
+        assert m, (col, text)
+        if col in (0, len(params[:8 - lead]) - 1):
+            assert abs(float(m.group(1)) - d.get(pid)) < 0.006, (col, text, d.get(pid))
+    return shown
+
+
 def wait_loaded(pads):
     for _ in range(40):
         pads.wait(5)
@@ -254,6 +275,15 @@ def test_push2_plugin_in_a_slot(pads, fixtures, clap_lib):
     params = params_of(pads, {"track": "Pad", "index": 0, "device": "Insert", "slot": 0, "param": 0})
     assert len(params) == 8, params
     every_bank(pads, d, params, ["1–8"], "delay")
+    # Each knob reads as the plug-in reads it (its own text: units), and
+    # again as it moves.
+    texts = own_texts(pads, d, params)
+    assert any(t.endswith(" ms") for t in texts), texts
+    first = next(k for k, p in enumerate(params) if not p[1])
+    turn(pads, first, 12)
+    assert value(pads, first) != texts[first], (value(pads, first), texts[first])
+    own_texts(pads, d, params)
+    turn(pads, first, -12)
     # A stepped one (Sync: Off / On) is a dropdown.
     sync = next(p for p in params if p[0] == 2)
     assert sync[1] is True
@@ -292,6 +322,7 @@ def test_push2_plugin_banks_by_module(pads, fixtures, clap_lib):
     assert banks(pads) == 1
     save(pads, "plugin_gain_main")  # (its module: "Main")
     turns(pads, d, 0, params[0])
+    assert value(pads, 0) == f"{d.get(params[0][0]):.1f} dB", value(pads, 0)  # (FireTest's own text: one place, dB)
     report(pads, "plug-in (module)")
 
 
@@ -306,6 +337,7 @@ def test_push2_plugin_instrument(pads, clap_lib):
     params = params_of(pads, {"track": "Pad", "index": 0, "device": "Sound", "slot": 0, "param": 0})
     assert len(params) == 19, params
     every_bank(pads, d, params, ["1–8", "9–16", "17–19"], "synth")
+    own_texts(pads, d, params)
     bank(pads, 0)
     touched(pads, 4, 15, "plugin_synth_turning")
     report(pads, "plug-in (instrument)")

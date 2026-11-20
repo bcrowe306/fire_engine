@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from push2_fx import DEVICE, bank, banks, draw_us, in_perform, in_slot, moves, pads, press, save, turn, view  # noqa: F401
+from push2_fx import DEVICE, bank, banks, draw_us, in_perform, in_slot, moves, pads, press, save, turn, value, view  # noqa: F401
 
 MUTE, DELETE = 0x3C, 0x76
 LOWER = 20  # the lower row's first button (CC 20..27)
@@ -63,6 +63,31 @@ def every_knob(pads, d, kind, where, lead=0):
             moves(pads, d, lead + col, pid, -steps, check=check(pid, -steps, kind))  # (and back)
 
 
+SHIFT = 0x31
+
+
+def pitch_steps(pads, d, where, lead=0):
+    """Pitch: a whole semitone a detent; with Shift held, a cent (0.01 st)
+    a detent; from between two, a detent goes to the next whole one. It
+    reads "+12 st", "+15.15 st"."""
+    d.set(1, 12)
+    assert value(pads, lead) == "+12 st", value(pads, lead)
+    turn(pads, lead, 3)
+    assert abs(d.get(1) - 15) < 1e-6 and value(pads, lead) == "+15 st", (d.get(1), value(pads, lead))
+    pads.cmd(f"midiport play push B0 {SHIFT:02X} 7F")  # Shift held: cents
+    pads.wait(3)
+    turn(pads, lead, 15)
+    assert abs(d.get(1) - 15.15) < 1e-4 and value(pads, lead) == "+15.15 st", (d.get(1), value(pads, lead))
+    save(pads, f"pitch_{where}_cents")
+    pads.cmd(f"midiport play push B0 {SHIFT:02X} 00")
+    pads.wait(3)
+    turn(pads, lead, 1)  # up from +15.15: the next whole one
+    assert abs(d.get(1) - 16) < 1e-6 and value(pads, lead) == "+16 st", (d.get(1), value(pads, lead))
+    turn(pads, lead, -20)
+    assert abs(d.get(1) + 4) < 1e-6 and value(pads, lead) == "-4 st", (d.get(1), value(pads, lead))
+    d.set(1, 12)
+
+
 def report(pads, name):
     last, most = draw_us(pads)
     print(f"DRAW {name}: last {last:.0f} us, most {most:.0f} us")
@@ -97,6 +122,8 @@ def test_push2_rhythm_in_a_slot(pads, fixtures, kind):
     d = in_slot(pads, kind, sample=os.path.join(fixtures, "loop.wav"))
     assert pads.api("effect_state", s=d.slot)["kind"] != 0
     every_knob(pads, d, kind, "slot")
+    if kind == "pitch":
+        pitch_steps(pads, d, "slot")
     pads.cmd("hit 0")
     playing(pads, f"{kind}_slot")
     report(pads, f"{kind} (slot)")
@@ -133,6 +160,8 @@ def test_push2_rhythm_in_a_slot(pads, fixtures, kind):
 def test_push2_rhythm_in_perform(pads, kind):
     d = perform(pads, kind)
     every_knob(pads, d, kind, "perform", lead=1)
+    if kind == "pitch":
+        pitch_steps(pads, d, "perform", lead=1)
     # Held (as its pad holds it), at its own intensity, while the transport plays.
     turn(pads, 0, 20)
     turn(pads, 0, -90)  # (an intensity about a half: its own setting shows beside)

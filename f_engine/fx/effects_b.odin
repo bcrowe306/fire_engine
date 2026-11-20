@@ -143,6 +143,16 @@ COMPRESSOR_DEFAULTS :: Compressor_Params {
 @(private) BAND_ATTACK_MS :: [3]f32{2.8, 1.4, 0.7}
 @(private) BAND_RELEASE_MS :: [3]f32{40, 28, 15}
 
+// Band `band`'s (0 low, 1 band, 2 high) attack and release times in ms
+// at settings `attack` and `release` (0..1, as `Compressor_Params` has
+// them: each band's own times scaled by e^(8x-4)), as `compressor_render`
+// runs them (it holds them to at least 5 samples). Any thread.
+compressor_band_ms :: proc "contextless" (attack, release: f32, band: int) -> (attack_ms, release_ms: f32) {
+	k := clamp(band, 0, 2)
+	att, rel := BAND_ATTACK_MS, BAND_RELEASE_MS
+	return att[k] * math.exp(clamp(attack, 0, 1) * 8 - 4), rel[k] * math.exp(clamp(release, 0, 1) * 8 - 4)
+}
+
 // A compressor's state: its crossovers, each band's levels, and the
 // levels for a meter (`levels`: each band's input and output, mean
 // squared).

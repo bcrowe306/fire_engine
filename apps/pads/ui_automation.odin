@@ -231,9 +231,10 @@ new_automation_items :: proc(a: ^App) {
 // Says what the knob (or fader) about to be drawn moves, for its menu's
 // Automate, learning and recording; `scale` turns what the knob shows
 // into the target's units (a sustain shown 0..1 that is 0..100 % on the
-// node: 100). Give it {} after it.
-knob_target :: proc(a: ^App, t: pm.Auto_Target, scale: f32 = 1) {
-	a.knob_target, a.knob_scale = t, scale
+// node: 100), with `offset` taken off first (a knob turned the other way:
+// what it shows is the target's value / scale + offset). Give it {} after it.
+knob_target :: proc(a: ^App, t: pm.Auto_Target, scale: f32 = 1, offset: f32 = 0) {
+	a.knob_target, a.knob_scale, a.knob_offset = t, scale, offset
 }
 
 // Pad `pad`'s sound parameter named `name` ("Cutoff", "Transpose"), as a
@@ -302,7 +303,7 @@ knob_live :: proc(a: ^App) -> (f32, bool) {
 	t := a.knob_target
 	if t.track == .None do return 0, false
 	scale := a.knob_scale if a.knob_scale != 0 else 1
-	if v, ok := pm.automated_value(&a.m, t); ok do return v / scale, true
+	if v, ok := pm.automated_value(&a.m, t); ok do return v / scale + a.knob_offset, true
 	if t.track != .Pad || t.device != .Sound || int(t.index) >= pm.PADS do return 0, false
 	i := int(t.index)
 	pad := a.m.project.pads[i]
