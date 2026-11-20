@@ -57,7 +57,7 @@ in_device :: proc(p: ^Push2) -> bool {
 // mirror.odin).
 in_mirror :: proc(p: ^Push2) -> bool {
 	m := kit.modes_current(p.enc_modes)
-	return m == "mirror" || m == "browse" || m == "clip" || m == "perform" || m == "mix" || m == "song" || m == "settings" || m == "projects"
+	return m == "mirror" || m == "browse" || m == "clip" || m == "perform" || m == "mix" || m == "song" || m == "settings" || m == "projects" || m == "harmony"
 }
 
 // Mix: Pads' mixer view (Pads is there), or the surface's own pages.
@@ -336,6 +336,7 @@ modes_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, master, mix_b, device_b
 	kit.modes_add(p.enc_modes, "perform", mirror_parts) // (Pads' launcher: Session's Sequences)
 	kit.modes_add(p.enc_modes, "mix", mix_parts)        // (Pads' mixer strips)
 	kit.modes_add(p.enc_modes, "song", song_parts)      // (Pads' Song view: song.odin)
+	kit.modes_add(p.enc_modes, "harmony", mirror_parts) // (Pads' Harmony view: Note, push2.odin)
 	// Pads' Settings (Setup): the upper row's last button, Controller ›, the Push's own (setup.odin).
 	own := kit.component_make(cs, "Push Settings Button")
 	kit.layer_bind(own.layer, "own", p.upper[7])

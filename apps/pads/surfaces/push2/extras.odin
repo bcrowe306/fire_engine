@@ -338,7 +338,7 @@ swing_text :: proc(p: ^Push2) -> string {
 
 // The side buttons that do something else with Shift (lit while it is
 // held; the others dark).
-SHIFT_FUNCTIONS := []string{"Shift", "Record", "Play", "Metronome", "Fixed Length", "Undo", "Master", "New", "Automate", "Add Track", "Setup", "Quantize", "Accent", "Left", "Right"}
+SHIFT_FUNCTIONS := []string{"Shift", "Record", "Play", "Metronome", "Fixed Length", "Undo", "Master", "New", "Automate", "Add Track", "Setup", "Quantize", "Accent", "Left", "Right", "Layout", "Note"}
 
 // Shift held: the side buttons with a Shift function lit, the others dark
 // (their own lights back when it is let go), and Pads' view told (its

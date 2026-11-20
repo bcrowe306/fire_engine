@@ -14,8 +14,10 @@ host-neutral example it grew from.
   the device in its chain; the display shows the device as Pads draws it
   (its envelope, filter, pitch or LFOs, whichever the bank is about).
 - Touching an encoder lights its column on the display, its value large.
-- Pads: Note (Pads' Scale mode, and its Chords and Progressions: the selected pad's keys), Layout
-  (drum pads), Session (Pads' pads in their colours, or its sequences
+- Pads: Note (Pads' note modes on the 8x8 grid: Scale's layouts, Chords'
+  degrees by variations, Progressions' chords and their voicings; again:
+  the next of the three; the display Pads' Harmony view; Shift + Layout:
+  Scale's next layout), Layout (drum pads; again: Velocity), Session (Pads' pads in their colours, or its sequences
   with the launcher on the display, each press of Session the other:
   grid.odin); the arrows page the display's view (◀ ▶) and step its
   items (▲ ▼); Page ◀ ▶ scroll the grid (Clip's steps, Song) or step the
@@ -131,7 +133,9 @@ Push2 :: struct {
 	pads_api:      ^pa.Table_V1, // fire.pads (nil in a host without it)
 	encoders:      [8]^kit.Control,
 	upper, lower:  [8]^kit.Control,
-	key_grid:      ^Grid, // Note: Pads' Scale mode (and Chords, Progressions)
+	key_grid:      ^Grid, // Note: Pads' note modes (Scale, Chords, Progressions: their cells)
+	harmony_enc:   int,          // Note's Harmony view shown: the encoders' mode before it
+	harmony_kind:  pa.View_Kind, // ... and the view
 	device:        ^kit.Device,
 	volumes, pans: ^kit.Mixer,
 	sends:         [MIX_SENDS]^kit.Mixer,
@@ -428,16 +432,17 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 
 	// ── The pads: Note, Layout (drums), Session ──
 	p.key_grid = grid_make(cs, "Keys", pads, .Keys)
-	// Octave Up/Down: Pads' keyboard an octave up or down (-3..3).
+	// Octave Up/Down: the key's octave up or down (-3..3: Scale's grid
+	// and the chords move with it).
 	octave := kit.component_make(cs, "Octave")
 	octave_up, octave_down := side(cs, "Octave Up", CC_OCTAVE_UP, false), side(cs, "Octave Down", CC_OCTAVE_DOWN, false)
 	kit.layer_bind(octave.layer, "up", octave_up)
 	kit.layer_bind(octave.layer, "down", octave_down)
 	octave.on_owned = proc(c: ^kit.Component, slot: string, control: ^kit.Control) {
 		t := (^Push2)(c.cs.user).pads_api
-		perf: pa.Perform_State
-		if t != nil do t.perform_state(t.api, &perf)
-		on := perf.octave < 3 if slot == "up" else perf.octave > -3
+		ks: pa.Key_Info
+		if t != nil do t.key_state(t.api, &ks)
+		on := ks.octave < 3 if slot == "up" else ks.octave > -3
 		kit.light_value(control, W_ON if on else W_DIM)
 	}
 	octave.on_event = proc(c: ^kit.Component, e: kit.Event) {
@@ -445,9 +450,9 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 		p := (^Push2)(c.cs.user)
 		t := p.pads_api
 		if t == nil do return
-		perf: pa.Perform_State
-		t.perform_state(t.api, &perf)
-		t.perform_set_keys(t.api, perf.scale, perf.root, clamp(perf.octave + (1 if e.slot == "up" else -1), -3, 3), perf.chord)
+		ks: pa.Key_Info
+		t.key_state(t.api, &ks)
+		t.key_set_octave(t.api, clamp(ks.octave + (1 if e.slot == "up" else -1), -3, 3))
 		kit.redraw_owned(c)
 		render(p)
 		invalidate(c.cs)
@@ -508,11 +513,41 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	velocity_parts[0] = grid_make(cs, "Velocity Pads", pads, .Velocity)
 	kit.modes_add(p.pad_modes, "velocity", velocity_parts)
 	// Layout pressed again (in its drums): Velocity mode; in it: the drums.
+	// Note pressed again: the next note mode (Scale, Chords, Progressions);
+	// Shift + Layout in Note: Scale's next layout (Layout alone stays the
+	// drums, Velocity).
 	p.events[&p.pad_modes.component] = p.pad_modes.on_event
 	p.pad_modes.on_event = proc(c: ^kit.Component, e: kit.Event) {
 		p := (^Push2)(c.cs.user)
-		if e.kind == .Press && e.slot == "drum" && kit.modes_current(p.pad_modes) == "drum" {
+		cur := kit.modes_current(p.pad_modes)
+		if e.kind == .Press && e.slot == "drum" && cur == "note" && p.shift.held {
+			if t := p.pads_api; t != nil {
+				ks: pa.Key_Info
+				t.key_state(t.api, &ks)
+				t.key_set_layout(t.api, pa.Grid_Layout((int(ks.layout) + 1) % len(pa.Grid_Layout)))
+				render(p)
+				invalidate(c.cs)
+			}
+			return
+		}
+		if e.kind == .Press && e.slot == "drum" && cur == "drum" {
 			kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "velocity"))
+			return
+		}
+		if e.kind == .Press && e.slot == "note" && cur == "note" {
+			if t := p.pads_api; t != nil {
+				perf: pa.Perform_State
+				t.perform_state(t.api, &perf)
+				next: pa.Play_Mode = .Chords
+				#partial switch perf.play_mode {
+				case .Chords:       next = .Progressions
+				case .Progressions: next = .Scale
+				}
+				t.perform_set_play_mode(t.api, next)
+				harmony_show(p)
+				render(p)
+				invalidate(c.cs)
+			}
 			return
 		}
 		if f := p.events[c]; f != nil do f(c, e)
@@ -521,9 +556,9 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 	kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "pads"))
 	p.pad_modes.on_change = proc(m: ^kit.Modes, from, to: int) {
 		p := (^Push2)(m.cs.user)
-		// Note is Pads' Scale mode (Chords and Progressions too, until Push 2
-		// has their grids: its keys play theirs); leaving it,
-		// Pads mode again.
+		// Note is Pads' note modes (Scale unless the window plays Chords or
+		// Progressions), the display their Harmony view; leaving it, Pads
+		// mode again, the display what it showed before.
 		if t := p.pads_api; t != nil {
 			perf: pa.Perform_State
 			t.perform_state(t.api, &perf)
@@ -551,6 +586,9 @@ setup :: proc(cs: ^kit.Control_Surface) -> bool {
 			kit.modes_select(p.enc_modes, p.enc_before)
 			if p.mode_buttons != nil do kit.redraw_owned(p.mode_buttons)
 		}
+		// Note: the Harmony view on the display (after Song gave its back).
+		if kit.modes_current(m) == "note" do harmony_show(p)
+		else do harmony_leave(p)
 		kit.redraw_owned(p.session_button)
 		if p.song_button != nil do kit.redraw_owned(p.song_button)
 		invalidate(m.cs)
@@ -739,4 +777,29 @@ repeat_setup :: proc(cs: ^kit.Control_Surface, button: ^kit.Control) -> ^kit.Com
 		invalidate(c.cs)
 	}
 	return c
+}
+
+// Note's display: Pads' Harmony view (the key, the chord playing, the
+// progression; the key on the encoders), what it showed before kept for
+// when Note is left.
+@(private)
+harmony_show :: proc(p: ^Push2) {
+	if p.pads_api == nil || p.enc_modes == nil do return
+	if kit.modes_current(p.enc_modes) == "harmony" do return
+	p.harmony_enc, p.harmony_kind = p.enc_modes.current, p.mirror_kind
+	p.mirror_kind = .Harmony
+	kit.modes_select(p.enc_modes, kit.modes_find(p.enc_modes, "harmony"))
+	if p.mode_buttons != nil do kit.redraw_owned(p.mode_buttons)
+	invalidate(p.enc_modes.cs)
+}
+
+// Note left: the display what it showed before (if it still shows the
+// Harmony view).
+@(private)
+harmony_leave :: proc(p: ^Push2) {
+	if p.pads_api == nil || p.enc_modes == nil || kit.modes_current(p.enc_modes) != "harmony" do return
+	p.mirror_kind = p.harmony_kind
+	kit.modes_select(p.enc_modes, p.harmony_enc)
+	if p.mode_buttons != nil do kit.redraw_owned(p.mode_buttons)
+	invalidate(p.enc_modes.cs)
 }

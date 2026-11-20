@@ -593,7 +593,7 @@ def test_note_is_pads_scale_mode_and_follows_it(pads, fixtures):
     pads.wait(5)
     st = pads.api("perform_state")
     assert st["play_mode"] == "Scale", st
-    key = next(k for k in range(64) if pads.api("perform_key", key=k)["root"] and pads.api("perform_key", key=k)["playable"])
+    key = next(k for k in range(64) if (c := pads.api("perform_cell", col=k % 8, row=k // 8))["root"] and c["playable"])
     note = 36 + key
     settle(pads)
     colour = pads.api("pad_state", pad=0)["color"]

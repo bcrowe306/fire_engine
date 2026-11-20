@@ -22,11 +22,23 @@ The pads in Session, two ways (Session switches between them):
   as the Performance tab does (an empty one is only gone to); with Shift,
   it is only gone to.
 
-Note, Pads' Scale mode (Chords and Progressions too): the grid is its keys, 0 at the bottom left
-along each row (64 of them: four of Pads' banks of keys), each playing the
-selected pad pitched as pressing that key in Pads does (its chord too).
-The scale's roots light in the pad's colour, the other keys dim white,
-the held green; keys past the pad's range are dark.
+Note, Pads' note modes on the 8x8 grid (`perform_cell`, the cells
+`perform_play_cell` plays on the selected pad as the window's pads do):
+
+- **Scale:** the key laid out as its Layout says (Fourths, Thirds,
+  Sequential, Chromatic; the bottom left the root two octaves under the
+  pad's own note, Octave moving it): roots in the pad's colour, the key's
+  other notes dim white, Chromatic's others dimmer; a slicer's slices one
+  a cell (the selected white, the sounding bright).
+- **Chords:** degrees across, variations up (triad at the bottom to the
+  second inversion at the top): each degree's column in its own colour,
+  the tonic's in the pad's; chords the key can't make dark; the chord
+  playing bright.
+- **Progressions:** the progression's chords along the bottom rows, the
+  rows above the same an octave up, and above those with the bass an
+  octave down; coloured by degree, the one playing bright.
+
+Held cells are green; cells past the pad's range dark.
 
 A grid sends no lights: it is a stack of layers (the frame's, bottom to
 top), drawn and sent by the renderer (render.odin).
@@ -87,7 +99,7 @@ grid_make :: proc(cs: ^kit.Control_Surface, name: string, pads: ^kit.Matrix, kin
 		g := (^Grid)(c)
 		p := (^Push2)(c.cs.user)
 		if t := p.pads_api; t != nil && g.kind == .Keys {
-			for h, i in g.held do if h do t.perform_play_key(t.api, i64(i), false, 1)
+			for h, i in g.held do if h do t.perform_play_cell(t.api, i64(i % 8), i64(i / 8), false, 1)
 		}
 		g.held = {}
 		if p.render.grid == g do render_show(p, nil)
@@ -125,18 +137,10 @@ grid_make :: proc(cs: ^kit.Control_Surface, name: string, pads: ^kit.Matrix, kin
 				// (it sounds through its remap; here it's selected)
 				t.perform_select_pad(t.api, i64(n))
 			case .Keys:
-				t.perform_play_key(t.api, i64(i), true, clamp(f32(e.velocity) / 127, 1.0 / 127, 1))
+				t.perform_play_cell(t.api, i64(i % 8), i64(i / 8), true, clamp(f32(e.velocity) / 127, 1.0 / 127, 1))
 				// (a slicer's slice: selected, its page showing it)
-				perf: pa.Perform_State
-				st: pa.Pad_State
-				k: pa.Perform_Key
-				t.perform_state(t.api, &perf)
-				t.pad_state(t.api, perf.selected, &st)
-				if st.kind == .Slicer && t.perform_key(t.api, i64(i), &k) == .Ok {
-					sl: pa.Pad_Slices
-					t.pad_slices(t.api, perf.selected, &sl)
-					if k.pitch >= 0 && k.pitch < sl.count do t.pad_select_slice(t.api, k.pitch)
-				}
+				cell: pa.Perform_Cell
+				if t.perform_cell(t.api, i64(i % 8), i64(i / 8), &cell) == .Ok && cell.kind == .Slice && cell.playable do t.pad_select_slice(t.api, cell.pitch)
 			case .Perform:
 				perform_press(g, i, true, f32(e.velocity) / 127)
 			case .Song:
@@ -156,7 +160,7 @@ grid_make :: proc(cs: ^kit.Control_Surface, name: string, pads: ^kit.Matrix, kin
 			}
 		case .Release:
 			g.held[i] = false
-			if g.kind == .Keys do t.perform_play_key(t.api, i64(i), false, 1)
+			if g.kind == .Keys do t.perform_play_cell(t.api, i64(i % 8), i64(i / 8), false, 1)
 			if g.kind == .Perform do perform_press(g, i, false, 0)
 			if g.kind == .Steps do steps_release(g, i)
 			if g.kind == .Velocity && bank_pad_of(i) >= 0 {
@@ -215,7 +219,8 @@ grid_route :: proc(g: ^Grid, c: ^kit.Control) {
 // Pads: their colours (the selected white, a sounding one flashing), the held.
 PADS_LAYERS := []Layer{pads_layer, held_layer}
 
-// Keys: the scale (roots in the pad's colour), the held.
+// Keys: the note modes' cells (roots in the pad's colour, chords by
+// degree), the held.
 KEY_LAYERS := []Layer{keys_base, held_layer}
 
 // A pad's colour, its brightness unlit (lit: flashing as it sounds).
@@ -268,8 +273,10 @@ beat_phase :: proc(beat: f64) -> f64 {
 	return beat - f64(int(beat)) if beat >= 0 else 0
 }
 
-// The keys: a root in the selected pad's colour, the others dim white,
-// past the pad's range dark.
+// The note modes' cells (`perform_cell`): Scale's notes (a root in the
+// selected pad's colour, the key's others dim white, Chromatic's others
+// dimmer), a slicer's slices, the chords (each degree its colour, the
+// tonic the pad's; the one playing bright); what plays nothing dark.
 @(private)
 keys_base :: proc(g: ^Grid, f: ^Frame) {
 	t := (^Push2)(g.cs.user).pads_api
@@ -278,26 +285,36 @@ keys_base :: proc(g: ^Grid, f: ^Frame) {
 	t.perform_state(t.api, &perf)
 	st: pa.Pad_State
 	t.pad_state(t.api, perf.selected, &st)
-	if st.kind == .Slicer { // (a slicer: a pad a slice, the selected white, the sounding one bright)
-		sl: pa.Pad_Slices
-		t.pad_slices(t.api, perf.selected, &sl)
-		for i in 0 ..< 64 {
-			k: pa.Perform_Key
-			if t.perform_key(t.api, i64(i), &k) != .Ok || k.pitch < 0 || k.pitch >= sl.count do continue
-			switch {
-			case k.pitch == sl.playing:  f[i] = cell_colour(u32(st.color))
-			case k.pitch == sl.selected: f[i] = cell_index(WHITE)
-			case:                        f[i] = cell_colour(scale(u32(st.color), 0.45))
-			}
-		}
-		return
-	}
+	colour := u32(st.color) & 0xFFFFFF
+	sl: pa.Pad_Slices
+	if st.kind == .Slicer do t.pad_slices(t.api, perf.selected, &sl)
 	for i in 0 ..< 64 {
-		k: pa.Perform_Key
-		if t.perform_key(t.api, i64(i), &k) != .Ok || !k.playable do continue
-		f[i] = cell_colour(u32(st.color)) if k.root else cell_index(DIM_WHITE)
+		c: pa.Perform_Cell
+		if t.perform_cell(t.api, i64(i % 8), i64(i / 8), &c) != .Ok || !c.playable do continue
+		switch c.kind {
+		case .None:
+		case .Slice: // (a pad a slice, the selected white, the sounding one bright)
+			switch {
+			case c.pitch == sl.playing:  f[i] = cell_colour(colour)
+			case c.pitch == sl.selected: f[i] = cell_index(WHITE)
+			case:                        f[i] = cell_colour(scale(colour, PAD_UNLIT))
+			}
+		case .Note:
+			switch {
+			case c.root:   f[i] = cell_colour(colour)
+			case c.in_key: f[i] = cell_index(DIM_WHITE)
+			case:          f[i] = cell_index(W_DIM)
+			}
+		case .Chord:
+			hue := colour if c.root else DEGREE_COLOURS[int(c.degree) % len(DEGREE_COLOURS)]
+			f[i] = cell_colour(hue if c.playing else scale(hue, PAD_UNLIT))
+		}
 	}
 }
+
+// The chords' colours by degree (ii to vii; the tonic is the pad's): none
+// green, which a held cell is.
+DEGREE_COLOURS := [7]u32{0xff2020, 0xff7000, 0xffc800, 0x20c8ff, 0x2050ff, 0xa040ff, 0xff40b0}
 
 // Whether sequence `slot` plays in its lane now, whether it is queued,
 // and the beat on the timeline (to blink in time).

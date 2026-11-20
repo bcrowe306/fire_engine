@@ -234,9 +234,9 @@ song_button_setup :: proc(cs: ^kit.Control_Surface, p: ^Push2, master_b: ^kit.Co
 // Song on the grid and the display (the window's Song tab too).
 @(private)
 song_show :: proc(p: ^Push2) {
+	if kit.modes_current(p.pad_modes) != "song" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "song")) // (leaving Note: its display gone first)
 	enc := kit.modes_current(p.enc_modes)
 	if enc != "song" && enc != "perform" do p.enc_before, p.kind_before = p.enc_modes.current, p.mirror_kind
-	if kit.modes_current(p.pad_modes) != "song" do kit.modes_select(p.pad_modes, kit.modes_find(p.pad_modes, "song"))
 	p.mirror_kind = .Song
 	kit.modes_select(p.enc_modes, kit.modes_find(p.enc_modes, "song"))
 	app_show(p, "song")
