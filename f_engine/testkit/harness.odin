@@ -65,7 +65,8 @@ Timed_Event :: struct {
 Block_Hook :: proc(user: rawptr, block_index: int, ctx: ^core.Process_Context)
 
 // The one timeline in `render`'s transport snapshot. It leads, and when
-// `Render_Config.playing` is set its position equals the grid.
+// `Render_Config.playing` is set it plays from position 0 at `play_from`
+// (by default the grid's beat 0, so its position equals the grid).
 RENDER_TIMELINE :: core.Timeline_Id{0, 1}
 
 // Settings for one `render`. Start from `default_render_config` and override fields.
@@ -78,7 +79,17 @@ Render_Config :: struct {
 	tail_frames:    int,           // extra frames rendered after the input ends (silent input)
 	tempo_bpm:      f64,           // constant tempo for the transport
 	tempo_map:      ^tb.Tempo_Map, // overrides tempo_bpm when set
-	playing:        bool,          // RENDER_TIMELINE is playing (it leads, and follows the grid from beat 0)
+	playing:        bool,          // RENDER_TIMELINE is playing (it leads; from `play_from`, else following the grid from beat 0)
+	// Constant tempo only (no `tempo_map`): the grid beat at frame 0, so a
+	// timeline can start at a grid beat that isn't whole.
+	grid_start:     tb.Beats,
+	// With `playing`: the frame RENDER_TIMELINE starts at (from position 0;
+	// stopped at 0 before it). 0: playing from the first frame.
+	play_from:      int,
+	// Constant tempo only: > 0, RENDER_TIMELINE loops from 0 to this many
+	// beats. As the clock does, `render` splits blocks where it starts and
+	// where it wraps (`Timeline_Flag`s set).
+	loop_beats:     f64,
 	ftz:            bool,          // enable flush-to-zero during process, as on a real audio thread
 	max_events_out: int,           // output event capacity per block; extra events count as dropped
 	// Called after each process call, outside the trap (it may allocate).
@@ -167,7 +178,7 @@ render :: proc(node: ^core.Node, input: Audio_Buffer, cfg: Render_Config, alloca
 	rng := Rng{}
 	if r, ok := blocks.(Random_Blocks); ok do rng.state = r.seed
 
-	timeline := [1]core.Timeline_State{{id = RENDER_TIMELINE, playing = cfg.playing, rate = 1, tempo_map = cfg.tempo_map}}
+	timeline := [1]core.Timeline_State{{id = RENDER_TIMELINE, playing = cfg.playing && cfg.play_from <= 0, rate = 1, tempo_map = cfg.tempo_map}}
 	transport := core.Transport {
 		sample_rate = cfg.sample_rate,
 		meter       = {4, 4},
@@ -188,6 +199,7 @@ render :: proc(node: ^core.Node, input: Audio_Buffer, cfg: Render_Config, alloca
 			n = rng_range(&rng, p.min, p.max)
 		}
 		n = clamp(n, 0, min(cfg.max_block, total - pos))
+		if split := next_split(cfg, pos); split > pos do n = min(n, split - pos)
 
 		for c in 0 ..< in_ch {
 			avail := clamp(input.frames - pos, 0, n)
@@ -284,11 +296,48 @@ update_transport :: proc(t: ^core.Transport, cfg: Render_Config, pos: int) {
 		t.bar_start = tb.bbt_to_beats(cfg.tempo_map, {bbt.bar, 0, 0})
 	} else {
 		t.tempo_bpm = cfg.tempo_bpm
-		t.grid = tb.seconds_to_beats_at(tb.samples_to_seconds(t.frame, cfg.sample_rate), cfg.tempo_bpm)
+		t.grid = cfg.grid_start + tb.seconds_to_beats_at(tb.samples_to_seconds(t.frame, cfg.sample_rate), cfg.tempo_bpm)
 		t.bar = i64(math.floor(f64(t.grid) / 4))
 		t.bar_start = tb.Beats(t.bar * 4)
 	}
-	t.timelines[0].position = t.grid if cfg.playing else 0
+	tl := &t.timelines[0]
+	was := tl.playing
+	tl.playing = cfg.playing && pos >= cfg.play_from
+	tl.flags = {}
+	if tl.playing && !was do tl.flags += {.Started}
+	tl.position = 0
+	if !tl.playing do return
+	if cfg.tempo_map == nil {
+		tl.position = tb.Beats(f64(pos - cfg.play_from) / cfg.sample_rate * cfg.tempo_bpm / 60)
+	} else {
+		tl.position = t.grid - tb.samples_to_beats(cfg.tempo_map, tb.Sample_Time(cfg.play_from), cfg.sample_rate)
+	}
+	if cfg.loop_beats > 0 {
+		L := cfg.loop_beats
+		passes := math.floor(f64(tl.position) / L + 1e-9)
+		tl.looping, tl.loop_start, tl.loop_end = true, 0, tb.Beats(L)
+		tl.position = tb.Beats(max(f64(tl.position) - passes * L, 0))
+		if was && pos == wrap_frame(cfg, int(passes)) do tl.flags += {.Jumped, .Wrapped}
+	}
+}
+
+// The frame RENDER_TIMELINE's loop wraps for the `k`th time (k >= 1).
+@(private)
+wrap_frame :: proc(cfg: Render_Config, k: int) -> int {
+	if k < 1 do return -1
+	return cfg.play_from + int(math.ceil(f64(k) * cfg.loop_beats * 60 / cfg.tempo_bpm * cfg.sample_rate - 1e-6))
+}
+
+// The next frame after `pos` where a block must end (the timeline starts
+// or wraps there), or 0 if none.
+@(private)
+next_split :: proc(cfg: Render_Config, pos: int) -> int {
+	if !cfg.playing do return 0
+	if pos < cfg.play_from do return cfg.play_from
+	if cfg.loop_beats <= 0 || cfg.tempo_map != nil do return 0
+	k := int(math.floor(f64(pos - cfg.play_from) / cfg.sample_rate * cfg.tempo_bpm / 60 / cfg.loop_beats)) + 1
+	for wrap_frame(cfg, k) <= pos do k += 1
+	return wrap_frame(cfg, k)
 }
 
 @(private)

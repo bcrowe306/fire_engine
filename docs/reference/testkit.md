@@ -48,7 +48,8 @@ RENDER_TIMELINE : core.Timeline_Id : core.Timeline_Id{0, 1}
 ```
 
 The one timeline in `render`'s transport snapshot. It leads, and when
-`Render_Config.playing` is set its position equals the grid.
+`Render_Config.playing` is set it plays from position 0 at `play_from`
+(by default the grid's beat 0, so its position equals the grid).
 
 ## Types
 
@@ -300,6 +301,9 @@ Render_Config :: struct {
 	tempo_bpm: f64,
 	tempo_map: ^timebase.Tempo_Map,
 	playing: bool,
+	grid_start: timebase.Beats,
+	play_from: int,
+	loop_beats: f64,
 	ftz: bool,
 	max_events_out: int,
 	after_block: Block_Hook,
@@ -319,7 +323,10 @@ Settings for one `render`. Start from `default_render_config` and override field
 | `tail_frames` | extra frames rendered after the input ends (silent input) |
 | `tempo_bpm` | constant tempo for the transport |
 | `tempo_map` | overrides tempo_bpm when set |
-| `playing` | RENDER_TIMELINE is playing (it leads, and follows the grid from beat 0) |
+| `playing` | RENDER_TIMELINE is playing (it leads; from `play_from`, else following the grid from beat 0) |
+| `grid_start` | Constant tempo only (no `tempo_map`): the grid beat at frame 0, so a timeline can start at a grid beat that isn't whole. |
+| `play_from` | With `playing`: the frame RENDER_TIMELINE starts at (from position 0; stopped at 0 before it). 0: playing from the first frame. |
+| `loop_beats` | Constant tempo only: > 0, RENDER_TIMELINE loops from 0 to this many beats. As the clock does, `render` splits blocks where it starts and where it wraps (`Timeline_Flag`s set). |
 | `ftz` | enable flush-to-zero during process, as on a real audio thread |
 | `max_events_out` | output event capacity per block; extra events count as dropped |
 | `after_block` | Called after each process call, outside the trap (it may allocate). |

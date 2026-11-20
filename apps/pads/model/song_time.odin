@@ -338,17 +338,14 @@ bar_len :: proc(ts: Time_Sig) -> f64 {
 	return f64(ts.num) * 4 / f64(ts.den)
 }
 
-// [control] Song mode, each frame: the timeline leads the clock with the
-// song's tempo map (laid out a few passes ahead of where it plays), and
+// [control] Song mode, each frame: the timeline (the leader) gives the
+// clock the song's tempo map (laid out a few passes ahead of where it plays), and
 // the live tempo is the song's where it stands (what shows when stopped).
 @(private)
 song_map_sync :: proc(e: ^Engine) {
 	p := e.project
 	c := e.host.clock
-	if !e.map_on {
-		transport.set_leader(c, e.timeline)
-		e.map_on, e.map_dirty = true, true
-	}
+	if !e.map_on do e.map_on, e.map_dirty = true, true // (the timeline leads already: build_fixed)
 	pos, on, _ := transport.timeline_status(c, e.timeline)
 	pl := e.plan
 	beat := f64(pos) - pl.at

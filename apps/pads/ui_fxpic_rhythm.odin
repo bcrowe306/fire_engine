@@ -4,7 +4,8 @@
 // display and Pads' window can both use them.
 //
 // - Cutter: one bar on the beat grid, its gate open and closed cut by cut
-//   (open for Duty of each cycle of Rate, down to Depth's floor), the cut
+//   (open for Duty of each cycle of Rate, down to Depth's floor; counted
+//   from bar 1 of what plays, as the effect counts them), the cut
 //   under the playhead lit, the ones it has played brighter than those to
 //   come. In Perform, its own Rate a faint outline behind.
 // - Stutter: one bar of the signal (a picture of one: what goes in isn't
@@ -27,7 +28,8 @@ import im "deps:imgui"
 Rhy_Grid :: struct {
 	bar:     f64,  // beats (quarter notes) in a bar
 	now:     f64,  // the playhead: beats into the bar shown (0 ..< bar)
-	grid:    f64,  // the clock's grid beat now (what the effects follow)
+	grid:    f64,  // the clock's grid beat now (what the stutter follows)
+	count:   f64,  // the beat the cutter counts its cycles from now: the sequence's position while it plays, else the grid's
 	playing: bool, // the transport plays (else the clock's own bar)
 	bar_no:  int,  // the bar shown, from 1 (playing)
 	bpm:     f64,
@@ -172,7 +174,7 @@ rhy_cutter_picture :: proc(pic: Rhy_Cutter_Picture, size: im.Vec2) {
 	fy := yg(top, bottom, floor_gain)
 	if floor_gain > 0.001 do im.DrawList_AddLine(dl, {x0, fy}, {x1, fy}, ui.col(ui.with_alpha(color, 0.35)), 1)
 	// Its own Rate, faint (Perform: the intensity changes it).
-	win0 := g.grid - g.now // (the bar's first beat, on the grid)
+	win0 := g.count - g.now // (the bar's first beat, as the cutter counts)
 	if pic.perform && pic.own_beats > 0 && abs(pic.own_beats - pic.beats) > 1e-4 {
 		cutter_cycles(dl, win0, bar, f64(pic.own_beats), f64(pic.duty), x0, x1, top, bottom, floor_gain, ui.with_alpha(th.text, 0.2), -1, false)
 	}
@@ -180,7 +182,8 @@ rhy_cutter_picture :: proc(pic: Rhy_Cutter_Picture, size: im.Vec2) {
 	pic_playhead(dl, xb(x0, x1, bar, g.now), top, bottom, g.playing)
 }
 
-// The cutter's cycles of `beats` over the bar starting at grid beat `win0`:
+// The cutter's cycles of `beats` over the bar starting at beat `win0` (of
+// the sequence playing, else of the grid):
 // each open for `duty` of it (filled, the one at `now` lit, those before it
 // brighter than those after; `fill` false: an outline only).
 @(private = "file")
@@ -188,7 +191,8 @@ cutter_cycles :: proc(dl: ^im.DrawList, win0, bar, cycle, duty: f64, x0, x1, top
 	beats := max(cycle, 1.0 / 64)
 	xb :: proc(x0, x1: f32, bar, b: f64) -> f32 { return x0 + (x1 - x0) * f32(clamp(b / bar, 0, 1)) }
 	fy := bottom - (bottom - top) * floor_gain
-	// The cycles, as the effect counts them: from grid beat 0.
+	// The cycles, as the effect counts them: from the sequence's beat 0
+	// (bar 1) while it plays, else from the grid's.
 	first := math.floor(win0 / beats)
 	n := int(math.ceil(bar / beats)) + 2
 	if n > 400 do n = 400 // (a bar of 1/128s at most)

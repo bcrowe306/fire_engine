@@ -145,3 +145,22 @@ def test_push2_rhythm_in_perform(pads, kind):
     save(pads, f"{kind}_perform_playing")
     pads.api("transport_stop")
     report(pads, f"{kind} (Perform)")
+
+
+def test_push2_cutter_counts_from_bar_1(pads, fixtures):
+    """After Play, the cutter's picture counts its cycles from bar 1 (the
+    sequencer's timeline, which leads the clock), whatever the clock's grid
+    beat was when Play was pressed; stopped, from the grid."""
+    in_slot(pads, "cutter", sample=os.path.join(fixtures, "loop.wav"))
+    pads.wait(37)  # (the grid runs on: at Play it is somewhere in a beat)
+    start, count, grid = pads.state()["cutter_bar"]
+    assert abs(count - grid) < 1e-9, (count, grid)  # stopped: the grid
+    pads.api("transport_play")
+    for _ in range(3):
+        pads.wait(13)
+        start, count, grid = pads.state()["cutter_bar"]
+        print(f"CUTTER bar at {start:.6f}, counting {count:.4f}, grid {grid:.4f}")
+        assert count >= 0 and 0 <= count - start < 4 + 1e-9, (start, count, grid)
+        assert abs(start - round(start / 4) * 4) < 1e-6, (start, count, grid)  # the bar shown starts on a bar line: a cut
+    save(pads, "cutter_slot_from_bar_1")
+    pads.api("transport_stop")

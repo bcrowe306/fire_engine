@@ -244,7 +244,7 @@ below 10 kHz.
 ## Effects for playing live
 
 Six effects made for a sampler's performance pads (stereo; the cutter and
-stutter follow the clock's grid, 120 BPM without one):
+stutter follow the clock, 120 BPM without one):
 
 | Node | What it does | Parameters |
 |------|--------------|------------|
@@ -252,7 +252,7 @@ stutter follow the clock's grid, 120 BPM without one):
 | `ring_mod_create` | multiplies by a sine: metallic sidebands | frequency, mix |
 | `comb_create` | a short delay fed back: rings at its pitch | frequency, feedback, mix |
 | `pitch_shift_create` | pitch without changing length (two crossfaded read heads, a grainy texture) | semitones, window, mix |
-| `cutter_create` | a trance gate on the grid, with 2 ms edges | rate (beats), duty, depth |
+| `cutter_create` | a trance gate on the beat, with 2 ms edges: its cycles count from the leader timeline's position while it plays (cuts on its bar lines, starting again where it loops or jumps), else from the grid | rate (beats), duty, depth |
 | `stutter_create` | always listening; switched on, loops the slice that just went by | length (beats), active |
 
 ## SuperFilter

@@ -9,8 +9,11 @@ import "fire:core"
 Effects for playing live (a sampler's performance pads): a bit-crusher, a
 ring modulator, a comb filter, a pitch shifter, a tempo-synced cutter and
 a stutter (beat repeat). Stereo (the first two channels; others are
-silent). The cutter and the stutter follow the clock's grid through
-`Process_Context.transport` (120 BPM without one).
+silent). The cutter and the stutter follow the clock through
+`Process_Context.transport` (120 BPM without one): the cutter counts its
+cycles from the leader timeline's position while it plays (so its cuts sit
+on the bar lines), else from the clock's grid; the stutter takes its
+slice's length from the tempo.
 */
 
 // Most channels the performance effects process.
@@ -396,7 +399,11 @@ cutter_params := [?]core.Param_Info{
 
 // A trance gate on the beat grid: open for the first `duty` of every cycle
 // of `beats`, closed (by `depth`) for the rest, with edges of a couple of
-// milliseconds so it never clicks.
+// milliseconds so it never clicks. While the transport's leader timeline
+// plays, the cycles count from its position (beat 0 of the song or
+// sequence: the cuts fall on its bar lines and start again where it loops
+// or jumps); otherwise from the clock's free-running grid beat, and
+// without a transport from its own 120 BPM clock.
 Cutter :: struct {
 	beats, duty, depth: f64,
 	gain:  f64, // smoothed gate gain
@@ -428,9 +435,16 @@ cutter_vtable := core.Node_VTable {
 		}, proc(self: rawptr, ctx: ^core.Process_Context, from, to: int) {
 			ct := (^Cutter)(self)
 			t := ctx.transport
+			// The clock splits blocks where a timeline starts, stops, jumps
+			// or wraps, so one call counts from one of them throughout.
+			tl: ^core.Timeline_State
+			if t != nil do tl = core.transport_timeline(t, t.leader)
+			if tl != nil && !tl.playing do tl = nil
 			for i in from ..< to {
 				beat: f64
-				if t != nil {
+				if tl != nil {
+					beat = f64(core.timeline_position_at(t, tl, i))
+				} else if t != nil {
 					beat = f64(core.transport_grid_at(t, i))
 				} else {
 					beat = ct.beat

@@ -70,19 +70,26 @@ rhy_value :: proc(p: ^Fx_Panel, id: fc.Param_Id) -> f32 {
 }
 
 // The tempo grid now: the bar the transport is in and where in it (stopped:
-// the clock's own bar, which the cutter still follows).
+// the clock's own bar, which the cutter then follows). Playing, the cutter
+// counts from the sequencer's timeline (the clock's leader: its beat 0 is
+// bar 1), counting in too.
 @(private = "file")
 rhy_grid :: proc(a: ^App) -> Rhy_Grid {
 	m := &a.m
 	st := transport.status(a.host.clock)
 	bar := max(pm.bar_beats(&m.project), 0.25)
 	g := Rhy_Grid{bar = bar, grid = f64(st.grid), bpm = st.tempo_bpm if st.tempo_bpm > 0 else 120}
-	if beat, playing := pm.position(&m.engine); playing && beat >= 0 {
+	// (One reading of the timeline: the bar and the count from the same block.)
+	pos, playing := pm.timeline_beat(&m.engine)
+	g.count = pos if playing else g.grid
+	beat := pm.position_at(&m.engine, pos) if playing else 0
+	if playing && beat >= 0 {
 		g.playing = true
 		g.now = math.mod(beat, bar)
 		g.bar_no = int(beat / bar) + 1
+		if pos < 0 do g.now = pos - math.floor(pos / bar) * bar // (counting in: its bars)
 	} else {
-		g.now = g.grid - math.floor(g.grid / bar) * bar
+		g.now = g.count - math.floor(g.count / bar) * bar
 	}
 	return g
 }
@@ -149,6 +156,7 @@ rhy_cutter :: proc(p: ^Fx_Panel) {
 	}
 	rhy_plot_pos()
 	rhy_cutter_picture(pic, p.plot)
+	p.ctx.a.ctl.cutter_bar = {pic.grid.count - pic.grid.now, pic.grid.count, pic.grid.grid}
 	rhy_division_knob(p, 0, 0, dsp.CUTTER_PARAM_BEATS, "Rate", longer = false)
 	rhy_knob(p, 0, 1, dsp.CUTTER_PARAM_DUTY, "Duty", rhy_percent)
 	rhy_knob(p, 0, 2, dsp.CUTTER_PARAM_DEPTH, "Depth", rhy_percent)

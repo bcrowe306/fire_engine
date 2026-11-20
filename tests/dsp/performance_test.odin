@@ -136,6 +136,46 @@ cutter_gates_on_the_grid :: proc(t: ^testing.T) {
 	}
 }
 
+// Played from the top while the clock's grid stands at beat 13.4 (between
+// two cuts), the cutter counts from the sequence's beat 0: a cut opens on
+// the first frame of play and on every 1/16 after it, and the pattern
+// starts again where the loop (1.2 beats: mid-cycle) wraps. Stopped
+// before that, it follows the grid.
+@(test)
+cutter_counts_from_where_the_timeline_plays :: proc(t: ^testing.T) {
+	PLAY :: 12_000 // frames (grid 12.9 + 0.5 = 13.4 there)
+	LOOP :: 28_800 // 1.2 beats at 120 BPM
+	CYCLE :: 6000  // 1/16
+	cfg := kit.default_render_config()
+	cfg.grid_start, cfg.play_from, cfg.loop_beats = 12.9, PLAY, 1.2
+	in_ := kit.buffer_make(2, 96_000, 48_000, context.temp_allocator)
+	for c in 0 ..< 2 do for &v in in_.channels[c] do v = 1
+	node := dsp.cutter_create()
+	defer core.node_destroy(&node)
+	out, r := kit.render(&node, in_, cfg, context.temp_allocator)
+	kit.expect_clean_render(t, r)
+	x := out.channels[0]
+	// Stopped: on the grid (its beat 13 at frame 2400).
+	testing.expectf(t, x[3900] > 0.99 && x[6900] < 0.01 && x[9900] > 0.99, "stopped: on the grid (%v %v %v)", x[3900], x[6900], x[9900])
+	// Playing: from the top, and again at each wrap.
+	for seg := PLAY; seg < len(x); seg += LOOP {
+		for k in 0 ..< 5 {
+			base := seg + k * CYCLE
+			if base + 4500 >= len(x) do break
+			testing.expectf(t, x[base - 20] < 0.05, "shut just before the cut at %d (%v)", base, x[base - 20])
+			testing.expectf(t, x[base + 300] > 0.9, "opens at %d (%v)", base, x[base + 300])
+			testing.expectf(t, x[base + 1500] > 0.99, "open at %d (%v)", base + 1500, x[base + 1500])
+			testing.expectf(t, x[base + 4500] < 0.01, "shut at %d (%v)", base + 4500, x[base + 4500])
+		}
+	}
+	for i in 1 ..< len(x) do if abs(x[i] - x[i - 1]) > 0.02 {
+		testing.expectf(t, false, "a jump at %d", i)
+		break
+	}
+	mk :: proc(_: rawptr) -> core.Node { return dsp.cutter_create() }
+	testing.expect(t, kit.expect_block_invariant(t, {create = mk}, in_, cfg, patterns, name = "cutter_timeline"))
+}
+
 @(test)
 stutter_repeats_the_slice_before_it :: proc(t: ^testing.T) {
 	node := dsp.stutter_create()

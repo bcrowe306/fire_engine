@@ -56,6 +56,7 @@ Ctl_State :: struct {
 	seq_view: ui.Roll_View, // the sequencer's rows shown (its own: the window's are its size)
 	seq_pad:  int,          // the selected pad they were brought to (+1; another: brought to it)
 	fx_draw_us, fx_draw_max_us: f64, // the last family panel's drawing time, and the most since (ui_ctl_fx.odin's probe)
+	cutter_bar: [3]f64,     // the Cutter picture last drawn: its bar's first beat as the cutter counts, the beat it counts from, the grid beat (the probe's)
 	seq_row:  int,          // the cursor: its row (the selected pad's, in Drums)
 	seq_beat: f64,          // and the step it's on (a grid step's start, or a note's)
 	seq_transient: bool,    // the selection's last note is there only because the cursor is on it (moved on: let go; Select: kept)

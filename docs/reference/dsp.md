@@ -2179,7 +2179,11 @@ Cutter :: struct {
 
 A trance gate on the beat grid: open for the first `duty` of every cycle
 of `beats`, closed (by `depth`) for the rest, with edges of a couple of
-milliseconds so it never clicks.
+milliseconds so it never clicks. While the transport's leader timeline
+plays, the cycles count from its position (beat 0 of the song or
+sequence: the cuts fall on its bar lines and start again where it loops
+or jumps); otherwise from the clock's free-running grid beat, and
+without a transport from its own 120 BPM clock.
 
 | Field | Description |
 |-------|-------------|

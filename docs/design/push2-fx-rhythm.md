@@ -30,8 +30,11 @@ it does; with one bank the page strip doesn't show).
 **The tempo grid.** The cutter's and the stutter's pictures are one bar of
 the transport (its meter's beats, sixteenths faint), the playhead running
 across it, and at the top right where the transport is ("Bar 3 · beat 2 ·
-120 BPM", or Stopped). Stopped, the clock's own bar runs on, as the cutter
-still follows it. **Tempo divisions** (the cutter's Rate, the stutter's
+120 BPM", or Stopped). Playing, the cutter counts from the sequencer's
+timeline, which leads the clock in pattern mode as in Song mode: its beat 0
+is bar 1, so the cuts sit on the bar lines from the first frame of Play
+(the clock's free-running grid beat is wherever it was). Stopped, the
+clock's own bar runs on, as the cutter then follows the grid. **Tempo divisions** (the cutter's Rate, the stutter's
 Length) are dropdowns of their names, from 1/4 to 1/128 with dotted and
 triplet ones between (1/8 D, 1/8 T...); a value between them (automation,
 an old project) reads as beats and the dropdown shows the nearest.
@@ -46,9 +49,11 @@ an old project) reads as beats and the dropdown shows the nearest.
 Duty of each cycle of Rate, closed down to Depth's floor (a line at its
 level when it lets something through; the caption says "closes fully" or
 "down 6.0 dB"). The cut under the playhead is lit, those already played
-this bar brighter than those to come. The cycles are counted from the
-clock's grid beat 0, as the effect counts them, so they're drawn where the
-effect cuts. In Perform, the Rate it plays at (Intensity makes it up to
+this bar brighter than those to come. The cycles are counted as the effect
+counts them, so they're drawn where it cuts: from the playing timeline's
+beat 0 (bar 1; counting in, from the count-in's bars), and stopped from
+the clock's grid beat 0. A timeline that loops or jumps starts the pattern
+again there. In Perform, the Rate it plays at (Intensity makes it up to
 four times slower) fills, its own an outline behind.
 
 **Lower row:** nothing (no choice of its own).

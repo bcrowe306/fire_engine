@@ -216,6 +216,11 @@ engine_rebuild :: proc(e: ^Engine) -> fc.Error {
 build_fixed :: proc(e: ^Engine) -> fc.Error {
 	g := e.host.graph
 	e.timeline = transport.add_timeline(e.host.clock) or_return
+	// The sequencer's timeline leads, in pattern mode as in Song mode: its
+	// beat 0 is bar 1, so the clock's bars, plug-ins' bar numbers and what
+	// follows the leader (the Cutter's cuts, the Super Filter's sync) line up
+	// with what plays. (Its tempo map, Song mode's only, sets the tempo.)
+	transport.set_leader(e.host.clock, e.timeline) or_return
 	node, r := router_create()
 	e.router = r
 	r.timeline = e.timeline
@@ -474,8 +479,7 @@ sync_sequencer :: proc(e: ^Engine) {
 	if p.song_mode && p.song.count > 0 {
 		song_map_sync(e)
 	} else if e.map_on {
-		transport.set_leader(e.host.clock, {})
-		transport.set_tempo_map(e.host.clock, e.timeline, nil)
+		transport.set_tempo_map(e.host.clock, e.timeline, nil) // (it still leads: the live tempo sets the tempo)
 		e.map_on = false
 		e.bpm = 0 // (the live tempo sent again)
 	}
@@ -726,8 +730,14 @@ timeline_beat :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 position :: proc(e: ^Engine) -> (beat: f64, playing: bool) {
 	pos, on, _ := transport.timeline_status(e.host.clock, e.timeline)
 	if !on do return 0, false
-	_, _, rel, ok := plan_locate(e.plan, f64(pos), -1 if e.project.song_mode else e.project.slot)
-	return rel if ok else 0, true
+	return position_at(e, f64(pos)), true
+}
+
+// Where timeline beat `pos` (`timeline_beat`'s) is, in beats into the
+// sequence that plays there (0 if none does).
+position_at :: proc(e: ^Engine, pos: f64) -> f64 {
+	_, _, rel, ok := plan_locate(e.plan, pos, -1 if e.project.song_mode else e.project.slot)
+	return rel if ok else 0
 }
 
 // Whether the sample map must be rebuilt to go from `a` to `b`.

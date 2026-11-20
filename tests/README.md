@@ -66,7 +66,7 @@ with `standard_block_patterns`.
 - Output buffers are pre-filled with **NaN**, so any sample the node didn't write fails `expect_clean_render`.
 - **FTZ/DAZ** is on, as on a real audio thread.
 - Block sizes follow the configured pattern, including 0-frame blocks and sizes that change every call.
-- Events are delivered sorted, with block-relative offsets. `Transport` advances with `frame`, plus the grid and tempo from `tempo_bpm` or a `Tempo_Map`, and one timeline, `RENDER_TIMELINE`, that plays when `playing` is set.
+- Events are delivered sorted, with block-relative offsets. `Transport` advances with `frame`, plus the grid and tempo from `tempo_bpm` or a `Tempo_Map`, and one timeline, `RENDER_TIMELINE`, that plays when `playing` is set (from `play_from`, looping over `loop_beats` if given; `grid_start` puts the grid elsewhere, and blocks are split where the timeline starts or wraps, as the clock splits them).
 - Each call is timed against its real-time budget (`report.timing`).
 
 `testkit.Probe` is a pass-through node that records the events and transport it
