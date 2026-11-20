@@ -52,6 +52,12 @@ for ui.frame_begin(&p) {
   (a test VM) skips the software draw that is most of a frame's cost.
   `Platform_Settings.draw_unseen` draws every frame anyway (`--profile`
   sets it, to time the GPU too).
+- When the window or the GPU device can't be had, `platform_init` returns
+  false with `Platform.failed` saying which and `platform_failure_text`
+  saying it for a person (with no GPU driver: install or update it; on
+  Linux Mesa's Vulkan works too, slowly). `show_error` puts that in the
+  system's own error box, which needs neither: Pads shows it unless a
+  script, a test or `--headless` runs it.
 - High-DPI: ImGui works in logical points and draws at the display's
   pixel density; `Platform.ui_scale` enlarges the style only where the OS
   asks for more (a Windows display at 150%).

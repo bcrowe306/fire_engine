@@ -3,6 +3,7 @@ package test_app_ui
 import "core:image/png"
 import "core:os"
 import "core:path/filepath"
+import "core:strings"
 import "core:testing"
 
 import "app:ui"
@@ -39,4 +40,28 @@ png_round_trips :: proc(t: ^testing.T) {
 		for b, i in pixels do same &&= i < len(got) && got[i] == b
 		testing.expect(t, same, "same pixels")
 	}
+}
+
+// What a person is told when the window can't open: nothing when nothing
+// failed; with no GPU driver, what's wrong, what fixes it, and SDL's words.
+@(test)
+a_failed_platform_says_why :: proc(t: ^testing.T) {
+	p: ui.Platform
+	testing.expect_value(t, ui.platform_failure_text(&p, "Pads"), "")
+	p.failed = .Gpu
+	copy(p.failed_why[:], "SDL_CreateGPUDevice: No supported SDL_GPU backend found!")
+	msg := ui.platform_failure_text(&p, "Pads")
+	testing.expectf(t, strings.has_prefix(msg, "Pads can't draw its window"), "%q", msg)
+	testing.expectf(t, strings.contains(msg, "graphics driver") && strings.contains(msg, "mesa-vulkan-drivers"), "%q", msg)
+	testing.expectf(t, strings.has_suffix(msg, "Details: SDL_CreateGPUDevice: No supported SDL_GPU backend found!"), "%q", msg)
+	p.failed = .Window
+	testing.expectf(t, strings.has_prefix(ui.platform_failure_text(&p, "Pads"), "Pads can't open its window."), "%q", ui.platform_failure_text(&p, "Pads"))
+}
+
+// Lines broken at spaces to a width, paragraphs kept.
+@(test)
+text_wraps_at_spaces :: proc(t: ^testing.T) {
+	testing.expect_value(t, ui.wrap_text("one two three four", 9), "one two\nthree\nfour")
+	testing.expect_value(t, ui.wrap_text("a b\n\nc", 10), "a b\n\nc")
+	testing.expect_value(t, ui.wrap_text("unbreakable-word x", 5), "unbreakable-word\nx")
 }

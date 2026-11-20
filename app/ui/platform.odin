@@ -80,6 +80,18 @@ Platform :: struct {
 	ini_cstr:     cstring,
 	drops:        [dynamic]Drop, // files dropped on the window this frame
 	closed:       [dynamic]sdl.WindowID, // other windows (see `Native_Window`) whose close was clicked this frame
+	failed:       Platform_Failure, // what `platform_init` could not do
+	failed_why:   [256]u8, // SDL's words for it (`platform_failure_text`)
+}
+
+// What `platform_init` could not do.
+Platform_Failure :: enum {
+	None,
+	Video,  // start SDL's video (no display to open a window on)
+	Window, // open the window
+	Gpu,    // find a GPU device: no Vulkan, Direct3D 12 or Metal driver it can use
+	Claim,  // give the window a swapchain
+	Imgui,  // start ImGui's SDL or SDL_GPU backend
 }
 
 // A file dropped on the window, at a position in logical points.
@@ -91,8 +103,75 @@ Drop :: struct {
 // Target format of the offscreen frame (and of ImGui's pipeline).
 FRAME_FORMAT :: sdl.GPUTextureFormat.R8G8B8A8_UNORM
 
-// Opens the window, the GPU device and ImGui. Returns false (and logs why)
-// if any of them fails. Call `platform_destroy` either way.
+// Notes failure `f` at step `step` (SDL's error for it kept and logged).
+@(private)
+platform_fail :: proc(p: ^Platform, f: Platform_Failure, step: string) -> bool {
+	why := string(sdl.GetError())
+	fmt.eprintln("ui:", step, "failed:", why)
+	p.failed = f
+	p.failed_why = {}
+	copy(p.failed_why[:len(p.failed_why) - 1], fmt.tprintf("%s: %s", step, why))
+	return false
+}
+
+// What `platform_init` could not do, for a person: what is wrong, what
+// usually fixes it, and SDL's own words. Empty if nothing failed.
+platform_failure_text :: proc(p: ^Platform, app_name: string, allocator := context.temp_allocator) -> string {
+	why := string(cstring(&p.failed_why[0]))
+	switch p.failed {
+	case .None:
+		return ""
+	case .Gpu:
+		return fmt.aprintf("%s can't draw its window: this computer has no graphics driver it can use " +
+			"(Vulkan on Linux, Direct3D 12 or Vulkan on Windows, Metal on macOS).\n\n" +
+			"Installing or updating the graphics driver usually fixes it. On Linux, Mesa's Vulkan drivers " +
+			"(the mesa-vulkan-drivers package) work too, without a graphics card, but slowly.\n\nDetails: %s",
+			app_name, why, allocator = allocator)
+	case .Video:
+		return fmt.aprintf("%s can't open a window: there is no display it can use.\n\nDetails: %s", app_name, why, allocator = allocator)
+	case .Window, .Claim, .Imgui:
+	}
+	return fmt.aprintf("%s can't open its window.\n\nDetails: %s", app_name, why, allocator = allocator)
+}
+
+// Shows `message` in the system's own error box, titled `title`, and waits
+// for it to be closed. Needs no window, GPU or `platform_init` (call it
+// after `platform_destroy`); false if there was no way to show it.
+show_error :: proc(title, message: string) -> bool {
+	t := strings.clone_to_cstring(title, context.temp_allocator)
+	msg := message
+	// (X11's box, SDL's own, doesn't wrap: its lines run off its edges.)
+	when ODIN_OS == .Linux do msg = wrap_text(message, 72)
+	m := strings.clone_to_cstring(msg, context.temp_allocator)
+	return sdl.ShowSimpleMessageBox({.ERROR}, t, m, nil)
+}
+
+// `text` with each line broken at spaces to at most `width` characters (a
+// word longer than that on a line of its own). Temp-allocated.
+wrap_text :: proc(text: string, width: int) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	for line, i in strings.split(text, "\n", context.temp_allocator) {
+		if i > 0 do strings.write_byte(&b, '\n')
+		n := 0
+		for word in strings.fields(line, context.temp_allocator) {
+			w := strings.rune_count(word)
+			if n > 0 && n + 1 + w > width {
+				strings.write_byte(&b, '\n')
+				n = 0
+			} else if n > 0 {
+				strings.write_byte(&b, ' ')
+				n += 1
+			}
+			strings.write_string(&b, word)
+			n += w
+		}
+	}
+	return strings.to_string(b)
+}
+
+// Opens the window, the GPU device and ImGui. Returns false (and logs why;
+// `Platform.failed` says which, `platform_failure_text` in words) if any of
+// them fails. Call `platform_destroy` either way.
 platform_init :: proc(p: ^Platform, settings: Platform_Settings) -> bool {
 	p.settings = settings
 	if p.settings.width <= 0 do p.settings.width = 1280
@@ -100,26 +179,22 @@ platform_init :: proc(p: ^Platform, settings: Platform_Settings) -> bool {
 	p.clear = {0.11, 0.115, 0.13, 1}
 	if p.settings.headless do headless_hints()
 	if !sdl.Init({.VIDEO, .EVENTS}) {
-		fmt.eprintln("ui: SDL_Init:", sdl.GetError())
-		return false
+		return platform_fail(p, .Video, "SDL_Init")
 	}
 	flags := sdl.WindowFlags{.RESIZABLE, .HIGH_PIXEL_DENSITY}
 	if p.settings.headless do flags += {.HIDDEN}
 	title := strings.clone_to_cstring(p.settings.title, context.temp_allocator)
 	p.window = sdl.CreateWindow(title, i32(p.settings.width), i32(p.settings.height), flags)
 	if p.window == nil {
-		fmt.eprintln("ui: SDL_CreateWindow:", sdl.GetError())
-		return false
+		return platform_fail(p, .Window, "SDL_CreateWindow")
 	}
 	p.device = sdl.CreateGPUDevice({.SPIRV, .DXIL, .MSL, .METALLIB}, ODIN_DEBUG, nil)
 	if p.device == nil {
-		fmt.eprintln("ui: SDL_CreateGPUDevice:", sdl.GetError())
-		return false
+		return platform_fail(p, .Gpu, "SDL_CreateGPUDevice")
 	}
 	if !p.settings.headless {
 		if !sdl.ClaimWindowForGPUDevice(p.device, p.window) {
-			fmt.eprintln("ui: SDL_ClaimWindowForGPUDevice:", sdl.GetError())
-			return false
+			return platform_fail(p, .Claim, "SDL_ClaimWindowForGPUDevice")
 		}
 		p.claimed = true
 		_ = sdl.SetGPUSwapchainParameters(p.device, p.window, .SDR, .VSYNC if p.settings.vsync else .IMMEDIATE)
@@ -138,15 +213,13 @@ platform_init :: proc(p: ^Platform, settings: Platform_Settings) -> bool {
 	p.ini_cstr = strings.clone_to_cstring(p.settings.ini_path) if p.settings.ini_path != "" else nil
 	io.IniFilename = p.ini_cstr
 	if !imsdl.InitForSDLGPU(p.window) {
-		fmt.eprintln("ui: ImGui SDL3 backend failed")
-		return false
+		return platform_fail(p, .Imgui, "ImGui's SDL3 backend")
 	}
 	info := imgpu.DEFAULT_INIT_INFO
 	info.Device = p.device
 	info.ColorTargetFormat = FRAME_FORMAT
 	if !imgpu.Init(&info) {
-		fmt.eprintln("ui: ImGui SDL_GPU backend failed")
-		return false
+		return platform_fail(p, .Imgui, "ImGui's SDL_GPU backend")
 	}
 	fonts_load(&p.fonts)
 	set_theme(p, theme_dark())

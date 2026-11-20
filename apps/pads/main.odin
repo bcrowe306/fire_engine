@@ -257,7 +257,11 @@ main :: proc() {
 	// area; a layout.ini from before has panels that are gone.)
 	if a.settings.layout do layout, _ = filepath.join({settings_folder(a), "layout2.ini"})
 	if !ui.platform_init(p, {title = "Pads", width = 1440, height = 900, headless = headless, draw_unseen = profile > 0, vsync = profile == 0, ini_path = layout}) {
+		// Said in a box too, where nobody reads a terminal (opened from a
+		// desktop): not in runs a script or a test drives, which nothing answers.
+		why := ui.platform_failure_text(p, "Pads")
 		ui.platform_destroy(p)
+		if why != "" && !headless && drive == "" && control < 0 && profile == 0 do ui.show_error("Pads can't start", why)
 		os.exit(1)
 	}
 	defer ui.platform_destroy(p)
